@@ -23,13 +23,21 @@ logging:
   # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
   
-  # Log file rotation settings
-  max_file_size_mb: 10
+  # Log message format
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+  # Log file settings
+  file_path: "logs/vast_report_generator.log"
+  rotation_size: 10485760  # 10MB in bytes
   backup_count: 5
   
-  # Console output settings
-  console_output: true
-  colored_output: true
+  # Console color configuration
+  console_colors:
+    DEBUG: "cyan"
+    INFO: "green"
+    WARNING: "yellow"
+    ERROR: "red"
+    CRITICAL: "bold_red"
 
 # Report Configuration
 report:
