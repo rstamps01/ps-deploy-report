@@ -164,3 +164,13 @@ Update the STATUS.md log to reflect the completion of the cross-reference analys
 
 Outline the detailed steps for implementing Task 1.1.3, including specific functions and modules.
 Moving forward - Prior to beginning a new development phase, create an implementation guide that covers implementation considerations.  Next, verify that the implementation guide adheres to the 7-AI-Development-Reference guidelines.  If needed, make any needed adjustments and confirm before proceeding.
+
+
+###-------------------------------------###
+
+Begin all working sessions with the following:
+
+Carefully review the attached design resource package.  When complete, recommend next steps.
+#Attach - 20250912-as-built-report-generation.zip
+
+###-------------------------------------###
