@@ -1,0 +1,123 @@
+{
+    "folders": [
+        {
+            "name": "ps-deploy-report",
+            "path": "."
+        }
+    ],
+    "settings": {
+        "python.defaultInterpreterPath": "./venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        "python.formatting.provider": "black",
+        "python.testing.pytestEnabled": true,
+        "files.exclude": {
+            "**/__pycache__": true,
+            "**/*.pyc": true,
+            "**/.pytest_cache": true,
+            "**/venv": true,
+            "**/.venv": true,
+            "**/.git": true,
+            "**/.DS_Store": true
+        },
+        "editor.formatOnSave": true,
+        "editor.rulers": [88],
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "terminal.integrated.cwd": "${workspaceFolder}",
+        "python.analysis.extraPaths": [
+            "./src"
+        ]
+    },
+    "extensions": {
+        "recommendations": [
+            "ms-python.python",
+            "ms-python.vscode-pylance",
+            "ms-python.black-formatter",
+            "ms-python.flake8",
+            "ms-python.pytest",
+            "ms-python.isort",
+            "redhat.vscode-yaml",
+            "ms-vscode.vscode-markdown",
+            "ms-vscode.vscode-pdf",
+            "ms-vscode.vscode-git",
+            "ms-vscode.vscode-gitlens"
+        ]
+    },
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Python: Main Module",
+                "type": "python",
+                "request": "launch",
+                "program": "${workspaceFolder}/src/main.py",
+                "console": "integratedTerminal",
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            },
+            {
+                "name": "Python: Run All Tests",
+                "type": "python",
+                "request": "launch",
+                "module": "pytest",
+                "args": [
+                    "tests/",
+                    "-v",
+                    "--tb=short"
+                ],
+                "console": "integratedTerminal",
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}/src"
+                }
+            }
+        ]
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Install Dependencies",
+                "type": "shell",
+                "command": "pip",
+                "args": [
+                    "install",
+                    "-r",
+                    "requirements.txt"
+                ],
+                "group": "build"
+            },
+            {
+                "label": "Run Tests",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "pytest",
+                    "tests/",
+                    "-v"
+                ],
+                "group": "test"
+            },
+            {
+                "label": "Format Code",
+                "type": "shell",
+                "command": "python",
+                "args": [
+                    "-m",
+                    "black",
+                    "src/",
+                    "tests/",
+                    "--line-length=88"
+                ],
+                "group": "build"
+            }
+        ]
+    }
+}
