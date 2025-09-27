@@ -3,3 +3,26 @@ alwaysApply: true
 ---
 Reference the following files to stay on track with project alignments:
 @1-Concept.pdf
+@2-Project-Requirements-Document.md
+@2.0.2.0 - MVP Gap Analysis_ Missing Components.pdf
+@3-Project Plan.md
+@3.0.2 - Test Integration_ Risk Analysis and Improvement Recommendations.pdf
+@4-Project-Tasks.pdf
+@5-Development-Status.md
+@6-Design-Guide.pdf
+@7-AI-Development-Reference-Guide-Design-Guardrails.pdf
+@7.0.1.2.1 - AI Compliance Analysis - API Handling.pdf
+@8-Install-README.pdf
+@9a-Report-Diagrams-Example.pdf
+@9b-Report-Example.md
+@10-API-Reference.pdf
+@11.0 - Consistency Analysis_ As-Built Report Generator.pdf
+@12.0.1.1.3 - Implementation Guide - Logging Infrastructure.pdf
+@12.0.1.2.1 - Implementation Analysis & Troubleshooting.pdf
+@12.0.1.2.2 - Implementation Guide_ Core Functionality.pdf
+@12.0.1.2.3 - Implementation Guide_ API Version Detection and Compatibility.pdf
+@12.0.2.0 - Implementation Guide_ Report Generation Core.pdf
+@13.0 - Test Integration_ Detailed Scope and Expected Outcomes.pdf
+@13.0.1 - Test Integration_ Completion Report.pdf
+@13.0.3 - Test Integration_ Python Scripts used for Data Gathering and Functional Validation.pdf
+@14.0 - Hardware Diagrams_ Qualified CBox, DBox, and Switches.pdf
