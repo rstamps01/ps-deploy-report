@@ -1,0 +1,82 @@
+{
+    "Python Test Function": {
+        "prefix": "test",
+        "body": [
+            "def test_${1:function_name}():",
+            "    \"\"\"Test ${1:function_name} functionality.\"\"\"",
+            "    # Arrange",
+            "    ${2:# Setup test data}",
+            "    ",
+            "    # Act",
+            "    ${3:# Call function under test}",
+            "    ",
+            "    # Assert",
+            "    ${4:# Verify results}",
+            "    assert True  # Replace with actual assertion"
+        ],
+        "description": "Create a Python test function with arrange-act-assert pattern"
+    },
+    "Python Class": {
+        "prefix": "class",
+        "body": [
+            "class ${1:ClassName}:",
+            "    \"\"\"${2:Class description.}\"\"\"",
+            "    ",
+            "    def __init__(self${3:, *args, **kwargs}):",
+            "        \"\"\"Initialize ${1:ClassName}.\"\"\"",
+            "        ${4:# Initialize attributes}"
+        ],
+        "description": "Create a Python class with __init__ method"
+    },
+    "Python Function": {
+        "prefix": "def",
+        "body": [
+            "def ${1:function_name}(${2:parameters}):",
+            "    \"\"\"${3:Function description.}\"\"\"",
+            "    ${4:# Function body}"
+        ],
+        "description": "Create a Python function with docstring"
+    },
+    "Python Main Guard": {
+        "prefix": "main",
+        "body": [
+            "if __name__ == \"__main__\":",
+            "    ${1:# Main execution code}"
+        ],
+        "description": "Create Python main execution guard"
+    },
+    "Python Import": {
+        "prefix": "import",
+        "body": [
+            "import ${1:module_name}"
+        ],
+        "description": "Create Python import statement"
+    },
+    "Python From Import": {
+        "prefix": "from",
+        "body": [
+            "from ${1:module_name} import ${2:function_name}"
+        ],
+        "description": "Create Python from import statement"
+    },
+    "Python Try Except": {
+        "prefix": "try",
+        "body": [
+            "try:",
+            "    ${1:# Code that might raise an exception}",
+            "except ${2:ExceptionType} as ${3:e}:",
+            "    ${4:# Handle the exception}",
+            "    ${5:pass}"
+        ],
+        "description": "Create Python try-except block"
+    },
+    "Python Logging": {
+        "prefix": "log",
+        "body": [
+            "import logging",
+            "",
+            "logger = logging.getLogger(__name__)"
+        ],
+        "description": "Create Python logging setup"
+    }
+}

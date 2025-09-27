@@ -133,7 +133,14 @@ logs/*.log
 output/*.pdf
 output/*.json
 config/local_config.yaml
-.vscode/
+# .vscode/  # Commented out to allow VSCode configuration to be committed
+# VSCode user-specific settings (keep project config, exclude user settings)
+.vscode/settings.json.user
+.vscode/launch.json.user
+.vscode/tasks.json.user
+.vscode/keybindings.json.user
+.vscode/snippets.json.user
+.vscode/.ropeproject
 .idea/
 *.swp
 *.swo
