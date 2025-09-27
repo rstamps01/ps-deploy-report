@@ -283,10 +283,10 @@ function Setup-Project {
     # Clone or update repository
     if (Test-Path ".git") {
         Write-Status "Updating repository..."
-        git pull origin main
+        git pull origin develop
     } else {
         Write-Status "Cloning repository..."
-        git clone https://github.com/rstamps01/ps-deploy-report.git .
+        git clone -b develop https://github.com/rstamps01/ps-deploy-report.git .
     }
 
     Write-Success "Project setup completed"

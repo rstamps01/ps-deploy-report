@@ -250,10 +250,10 @@ setup_project() {
     # Clone or update repository
     if [ -d ".git" ]; then
         print_status "Updating repository..."
-        git pull origin main
+        git pull origin develop
     else
         print_status "Cloning repository..."
-        git clone https://github.com/rstamps01/ps-deploy-report.git .
+        git clone -b develop https://github.com/rstamps01/ps-deploy-report.git .
     fi
 
     print_success "Project setup completed"
