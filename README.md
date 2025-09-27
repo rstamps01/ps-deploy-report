@@ -57,7 +57,25 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 
 ## Installation
 
-### Quick Start Installation
+### Quick Start for PS Engineers
+
+**For Mac Users:**
+```bash
+# Download and run the automated installation script
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-mac.sh
+chmod +x install-mac.sh
+./install-mac.sh
+```
+
+**For Windows Users:**
+```powershell
+# Download and run the automated installation script
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-windows.ps1" -OutFile "install-windows.ps1"
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+.\install-windows.ps1
+```
+
+### Manual Installation
 
 1. **Clone the repository:**
    ```bash
@@ -86,6 +104,12 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
    ```bash
    python3 src/main.py --version
    ```
+
+### Platform-Specific Installation Guides
+
+- **📖 [Complete Installation Guide](INSTALLATION-GUIDE.md)**: Comprehensive installation instructions for Mac and Windows
+- **🍎 [macOS Installation Script](install-mac.sh)**: Automated installation for Mac users
+- **🪟 [Windows Installation Script](install-windows.ps1)**: Automated installation for Windows users
 
 ### Production Installation
 
