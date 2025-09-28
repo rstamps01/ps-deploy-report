@@ -5,32 +5,32 @@
 api:
   # Connection timeout in seconds
   timeout: 30
-  
+
   # Number of retry attempts for failed requests
   max_retries: 3
-  
+
   # Delay between retries (exponential backoff base)
   retry_delay: 2
-  
+
   # SSL certificate verification (set to false for self-signed certs)
   verify_ssl: true
-  
-  # API version to use
+
+  # API version to use (will auto-detect highest supported version)
   version: "v7"
 
 # Logging Configuration
 logging:
   # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
   level: "INFO"
-  
+
   # Log message format
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-  
+
   # Log file settings
   file_path: "logs/vast_report_generator.log"
-  rotation_size: 10485760  # 10MB in bytes
+  rotation_size: 10485760 # 10MB in bytes
   backup_count: 5
-  
+
   # Console color configuration
   console_colors:
     DEBUG: "cyan"
@@ -43,26 +43,26 @@ logging:
 report:
   # Company/organization name for report header
   organization: "VAST Data Professional Services"
-  
+
   # Report template settings
   template:
     # Page size: A4, Letter
     page_size: "A4"
-    
+
     # Margins in inches
     margin_top: 1.0
     margin_bottom: 1.0
     margin_left: 1.0
     margin_right: 1.0
-  
+
   # PDF generation settings
   pdf:
     # Include table of contents
     include_toc: true
-    
+
     # Include page numbers
     include_page_numbers: true
-    
+
     # Font settings
     font_family: "Helvetica"
     font_size: 10
@@ -71,12 +71,12 @@ report:
 output:
   # Default output directory (relative to project root)
   default_directory: "./output"
-  
+
   # File naming convention
   # Available variables: {timestamp}, {cluster_name}, {date}
   pdf_filename: "vast_report_{cluster_name}_{timestamp}.pdf"
   json_filename: "vast_data_{cluster_name}_{timestamp}.json"
-  
+
   # Timestamp format for filenames
   timestamp_format: "%Y%m%d_%H%M%S"
 
@@ -90,13 +90,13 @@ data_collection:
     logical_configuration: true
     security_authentication: true
     data_protection: true
-  
+
   # Parallel processing settings
   concurrent_requests: 5
-  
+
   # Data validation settings
   validate_responses: true
-  
+
   # Handle missing data gracefully
   graceful_degradation: true
 
@@ -104,11 +104,10 @@ data_collection:
 security:
   # Credential handling
   prompt_for_credentials: true
-  
+
   # Session management
-  session_timeout: 3600  # 1 hour in seconds
-  
+  session_timeout: 3600 # 1 hour in seconds
+
   # Data sanitization
   sanitize_logs: true
   mask_sensitive_data: true
-

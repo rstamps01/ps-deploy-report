@@ -56,10 +56,49 @@ class VastHardwareInfo:
     """Data class for hardware information with enhanced rack positioning."""
     node_id: str
     node_type: str  # 'cnode' or 'dnode'
-    model: str
+    name: str
     serial_number: str
-    rack_position: Optional[int] = None  # Enhanced: Rack height/U position
+    model: str = "Unknown"
     status: str = "unknown"
+    rack_position: Optional[int] = None  # Enhanced: Rack height/U position
+
+    # Network information
+    primary_ip: Optional[str] = None
+    secondary_ip: Optional[str] = None
+    tertiary_ip: Optional[str] = None
+    mgmt_ip: Optional[str] = None
+    ipmi_ip: Optional[str] = None
+
+    # Hardware details
+    cores: Optional[int] = None
+    box_id: Optional[int] = None
+    box_vendor: Optional[str] = None
+    bios_version: Optional[str] = None
+    cpld_version: Optional[str] = None
+
+    # Role information
+    is_mgmt: bool = False
+    is_leader: bool = False
+    is_pfc: bool = False
+
+    # Software information
+    os_version: Optional[str] = None
+    build_version: Optional[str] = None
+    bmc_state: Optional[str] = None
+    bmc_fw_version: Optional[str] = None
+
+    # Performance features
+    turbo_boost: bool = False
+    required_cores: Optional[int] = None
+
+    # DTray information (for DNodes)
+    dtray_name: Optional[str] = None
+    dtray_position: Optional[str] = None
+    hardware_type: Optional[str] = None
+    mcu_state: Optional[str] = None
+    mcu_version: Optional[str] = None
+    pcie_switch_version: Optional[str] = None
+    bmc_ip: Optional[str] = None
 
 
 class VastApiError(Exception):
@@ -99,11 +138,14 @@ class VastApiHandler:
         self.max_retries = self.api_config.get('max_retries', 3)
         self.retry_delay = self.api_config.get('retry_delay', 2)
         self.verify_ssl = self.api_config.get('verify_ssl', True)
-        self.api_version = self.api_config.get('version', 'v7')
+
+        # API version detection - will be determined during authentication
+        self.api_version = None
+        self.detected_api_version = None
 
         # Session management
         self.session = None
-        self.base_url = f"https://{cluster_ip}/api/{self.api_version}/"
+        self.base_url = None  # Will be set after API version detection
         self.authenticated = False
         self.api_token = None
         self.cluster_version = None
@@ -140,9 +182,60 @@ class VastApiHandler:
 
         return session
 
+    def _detect_api_version(self) -> str:
+        """
+        Detect the highest supported API version for this cluster.
+
+        Returns:
+            str: The highest supported API version (v7, v6, v5, v4, v3, v2, v1)
+        """
+        # API versions in order of preference (newest to oldest)
+        api_versions = ['v7', 'v6', 'v5', 'v4', 'v3', 'v2', 'v1']
+
+        self.logger.info("Detecting highest supported API version...")
+
+        for version in api_versions:
+            try:
+                # Test the version by making a simple API call
+                test_url = f"https://{self.cluster_ip}/api/{version}/vms/"
+                self.logger.debug(f"Testing API version {version} with URL: {test_url}")
+
+                response = self.session.get(
+                    test_url,
+                    auth=(self.username, self.password),
+                    timeout=self.timeout,
+                    verify=self.verify_ssl
+                )
+
+                if response.status_code == 200:
+                    self.logger.info(f"Successfully detected API version: {version}")
+                    return version
+                else:
+                    self.logger.debug(f"API version {version} not supported: {response.status_code}")
+
+            except Exception as e:
+                self.logger.debug(f"API version {version} test failed: {e}")
+                continue
+
+        # Fallback to v1 if no version works
+        self.logger.warning("No API version detected, falling back to v1")
+        return 'v1'
+
+    def _set_api_version(self, version: str) -> None:
+        """
+        Set the API version and update the base URL.
+
+        Args:
+            version (str): API version to use
+        """
+        self.api_version = version
+        self.detected_api_version = version
+        self.base_url = f"https://{self.cluster_ip}/api/{version}/"
+        self.logger.info(f"Using API version: {version}")
+
     def authenticate(self) -> bool:
         """
-        Authenticate with the VAST cluster using API tokens.
+        Authenticate with the VAST cluster using basic auth or API tokens.
 
         Returns:
             bool: True if authentication successful, False otherwise
@@ -153,18 +246,81 @@ class VastApiHandler:
             if not self.session:
                 self.session = self._setup_session()
 
-            # Try to create and use an API token
+            # First detect the highest supported API version
+            detected_version = self._detect_api_version()
+            self._set_api_version(detected_version)
+
+            # Try basic authentication with the detected API version
+            if self._try_basic_auth():
+                self.authenticated = True
+                self.logger.info(f"Successfully authenticated with VAST cluster using basic authentication (API {self.api_version})")
+                self._detect_cluster_capabilities()
+                return True
+
+            # If basic auth fails, try to create an API token
             if self._create_api_token():
                 self.authenticated = True
-                self.logger.info("Successfully authenticated with VAST cluster using API token")
+                self.logger.info(f"Successfully authenticated with VAST cluster using API token (API {self.api_version})")
                 self._detect_cluster_capabilities()
                 return True
             else:
-                self.logger.error("Failed to create API token")
+                self.logger.error("Failed to authenticate with VAST cluster")
                 return False
 
         except Exception as e:
             self.logger.error(f"Unexpected error during authentication: {e}")
+            return False
+
+    def _try_existing_tokens(self) -> bool:
+        """Try to use existing API tokens for authentication."""
+        try:
+            self.logger.debug("Checking for existing API tokens")
+
+            # Get list of existing tokens
+            response = self.session.get(
+                urljoin(self.base_url, 'apitokens/'),
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
+
+            if response.status_code != 200:
+                self.logger.debug(f"Failed to get existing tokens: {response.status_code}")
+                return False
+
+            tokens = response.json()
+            if not tokens:
+                self.logger.debug("No existing tokens found")
+                return False
+
+            # Try to use the most recent non-revoked token
+            for token in sorted(tokens, key=lambda x: x.get('created', ''), reverse=True):
+                if not token.get('revoked', False):
+                    token_id = token.get('id')
+                    if token_id:
+                        # Test the token by making a simple API call
+                        test_response = self.session.get(
+                            urljoin(self.base_url, 'vms/'),
+                            headers={'Authorization': f'Api-Token {token_id}'},
+                            timeout=self.timeout,
+                            verify=self.verify_ssl
+                        )
+
+                        if test_response.status_code == 200:
+                            self.api_token = token_id
+                            self.session.headers.update({
+                                'Authorization': f'Api-Token {token_id}'
+                            })
+                            self.logger.debug(f"Successfully using existing token: {token_id}")
+                            return True
+                        else:
+                            self.logger.debug(f"Token {token_id} failed test: {test_response.status_code}")
+
+            self.logger.debug("No valid existing tokens found")
+            return False
+
+        except Exception as e:
+            self.logger.debug(f"Error trying existing tokens: {e}")
             return False
 
     def _create_api_token(self) -> bool:
@@ -188,7 +344,7 @@ class VastApiHandler:
                 verify=self.verify_ssl
             )
 
-            if response.status_code == 200:
+            if response.status_code == 201:  # 201 Created is the correct status for token creation
                 token_info = response.json()
                 if 'token' in token_info:
                     self.api_token = token_info['token']
@@ -201,6 +357,17 @@ class VastApiHandler:
                 else:
                     self.logger.error(f"API token creation response missing token: {token_info}")
                     return False
+            elif response.status_code == 503:
+                # Handle token limit reached
+                try:
+                    error_info = response.json()
+                    if 'detail' in error_info and 'maximum number of API Tokens' in error_info['detail']:
+                        self.logger.warning("User has reached maximum API token limit. Cannot create new token.")
+                        return False
+                except:
+                    pass
+                self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
+                return False
             else:
                 self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
                 return False
@@ -222,9 +389,14 @@ class VastApiHandler:
                 verify=self.verify_ssl
             )
             self.logger.debug(f"Basic auth response: {response.status_code}")
-            if response.status_code != 200:
+            if response.status_code == 200:
+                # Set up the session for basic auth
+                self.session.auth = (self.username, self.password)
+                self.logger.debug("Basic auth successful, session configured")
+                return True
+            else:
                 self.logger.debug(f"Basic auth failed: {response.text}")
-            return response.status_code == 200
+                return False
         except Exception as e:
             self.logger.debug(f"Basic auth exception: {e}")
             return False
@@ -288,11 +460,24 @@ class VastApiHandler:
     def _detect_cluster_capabilities(self) -> None:
         """Detect cluster version and supported features."""
         try:
-            # Get cluster info to detect version
-            cluster_info = self._make_api_request('vms/')
-            if cluster_info and 'version' in cluster_info:
-                self.cluster_version = cluster_info['version']
-                self.logger.info(f"Detected cluster version: {self.cluster_version}")
+            # Try clusters/ endpoint first for more comprehensive data
+            cluster_data = self._make_api_request('clusters/')
+            if not cluster_data:
+                # Fallback to vms/ endpoint
+                cluster_data = self._make_api_request('vms/')
+
+            if cluster_data:
+                # Handle both single object and array responses
+                if isinstance(cluster_data, list) and len(cluster_data) > 0:
+                    cluster_data = cluster_data[0]
+
+                # Extract version from clusters/ endpoint (sw_version) or vms/ endpoint (version)
+                version = cluster_data.get('sw_version', cluster_data.get('version'))
+                if version:
+                    self.cluster_version = version
+                    self.logger.info(f"Detected cluster version: {self.cluster_version}")
+                else:
+                    self.logger.warning("Could not extract cluster version from response")
 
                 # Determine supported features based on version
                 self._determine_supported_features()
@@ -307,14 +492,23 @@ class VastApiHandler:
     def _determine_supported_features(self) -> None:
         """Determine which enhanced features are supported."""
         # Enhanced features available in API v7 with cluster 5.3+
-        if self.cluster_version and self.cluster_version >= "5.3":
+        # Check both API version and cluster version
+        api_supports_enhanced = self.api_version and self.api_version in ['v7', 'v6', 'v5']
+        cluster_supports_enhanced = self.cluster_version and self.cluster_version >= "5.3"
+
+        if api_supports_enhanced and cluster_supports_enhanced:
             self.rack_height_supported = True
             self.psnt_supported = True
-            self.logger.info("Enhanced features enabled: rack heights and PSNT")
+            self.logger.info(f"Enhanced features enabled: rack heights and PSNT (API {self.api_version}, Cluster {self.cluster_version})")
         else:
             self.rack_height_supported = False
             self.psnt_supported = False
-            self.logger.info("Enhanced features disabled: older cluster version")
+            reason = []
+            if not api_supports_enhanced:
+                reason.append(f"API version {self.api_version} does not support enhanced features")
+            if not cluster_supports_enhanced:
+                reason.append(f"Cluster version {self.cluster_version} does not support enhanced features")
+            self.logger.info(f"Enhanced features disabled: {'; '.join(reason)}")
 
     def _make_api_request(self, endpoint: str, method: str = 'GET',
                          data: Optional[Dict] = None, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -384,26 +578,43 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting cluster information")
 
-            cluster_data = self._make_api_request('vms/')
+            # Try clusters/ endpoint first (more comprehensive data)
+            cluster_data = self._make_api_request('clusters/')
             if not cluster_data:
-                self.logger.error("Failed to retrieve cluster information")
+                self.logger.warning("clusters/ endpoint not available, falling back to vms/")
+                cluster_data = self._make_api_request('vms/')
+                if not cluster_data:
+                    self.logger.error("Failed to retrieve cluster information from both endpoints")
+                    return None
+
+            # Handle both single object and array responses
+            if isinstance(cluster_data, list) and len(cluster_data) > 0:
+                cluster_data = cluster_data[0]  # Use first cluster if array
+            elif not isinstance(cluster_data, dict):
+                self.logger.error(f"Unexpected cluster data format: {type(cluster_data)}")
                 return None
 
-            # Extract basic cluster information
+            # Extract comprehensive cluster information
             cluster_info = VastClusterInfo(
                 name=cluster_data.get('name', 'Unknown'),
                 guid=cluster_data.get('guid', 'Unknown'),
-                version=cluster_data.get('version', 'Unknown'),
+                version=cluster_data.get('sw_version', cluster_data.get('version', 'Unknown')),
                 state=cluster_data.get('state', 'Unknown'),
                 license=cluster_data.get('license', 'Unknown')
             )
 
-            # Enhanced: Add PSNT if supported
-            if self.psnt_supported and 'psnt' in cluster_data:
+            # Enhanced: Add PSNT if available
+            if 'psnt' in cluster_data:
                 cluster_info.psnt = cluster_data['psnt']
                 self.logger.info(f"Retrieved cluster PSNT: {cluster_info.psnt}")
             else:
-                self.logger.info("PSNT not available for this cluster version")
+                self.logger.info("PSNT not available in cluster data")
+
+            # Log additional valuable information
+            if 'build' in cluster_data:
+                self.logger.info(f"Cluster build: {cluster_data['build']}")
+            if 'uptime' in cluster_data:
+                self.logger.info(f"Cluster uptime: {cluster_data['uptime']}")
 
             self.logger.info(f"Cluster: {cluster_info.name} (v{cluster_info.version})")
             return cluster_info
@@ -414,7 +625,7 @@ class VastApiHandler:
 
     def get_cnode_details(self) -> List[VastHardwareInfo]:
         """
-        Get CNode details including enhanced rack positioning.
+        Get CNode details including enhanced rack positioning and comprehensive hardware information.
 
         Returns:
             List[VastHardwareInfo]: List of CNode information
@@ -427,26 +638,82 @@ class VastApiHandler:
                 self.logger.error("Failed to retrieve CNode information")
                 return []
 
+            # Get CBox information for rack positioning
+            cboxes = self.get_cbox_details()
+
             cnodes = []
             for cnode in cnodes_data:
+                # Get associated CBox information for rack positioning
+                cbox_name = cnode.get('cbox')
+                cbox_info = cboxes.get(cbox_name, {}) if cbox_name else {}
+
+                # Extract comprehensive hardware information
                 hardware_info = VastHardwareInfo(
-                    node_id=cnode.get('id', 'Unknown'),
+                    node_id=str(cnode.get('id', 'Unknown')),
                     node_type='cnode',
-                    model=cnode.get('model', 'Unknown'),
-                    serial_number=cnode.get('serial_number', 'Unknown'),
-                    status=cnode.get('state', 'unknown')
+                    name=cnode.get('name', 'Unknown'),
+                    serial_number=cnode.get('sn', cnode.get('serial_number', 'Unknown')),
+                    model=cnode.get('box_vendor', 'Unknown'),
+                    status=cnode.get('state', 'unknown'),
+
+                    # Network information
+                    primary_ip=cnode.get('ip'),
+                    secondary_ip=cnode.get('ip1'),
+                    tertiary_ip=cnode.get('ip2'),
+                    mgmt_ip=cnode.get('mgmt_ip'),
+                    ipmi_ip=cnode.get('ipmi_ip'),
+
+                    # Hardware details
+                    cores=cnode.get('cores'),
+                    box_id=cnode.get('box_id'),
+                    box_vendor=cnode.get('box_vendor'),
+                    bios_version=cnode.get('bios_version'),
+                    cpld_version=cnode.get('cpld'),
+
+                    # Role information
+                    is_mgmt=cnode.get('is_mgmt', False),
+                    is_leader=cnode.get('is_leader', False),
+                    is_pfc=cnode.get('is_pfc', False),
+
+                    # Software information
+                    os_version=cnode.get('os_version'),
+                    build_version=cnode.get('build'),
+                    bmc_state=cnode.get('bmc_state'),
+                    bmc_fw_version=cnode.get('bmc_fw_version'),
+
+                    # Performance features
+                    turbo_boost=cnode.get('turbo_boost', False),
+                    required_cores=cnode.get('required_num_of_cores')
                 )
 
-                # Enhanced: Add rack position if supported
-                if self.rack_height_supported and 'index_in_rack' in cnode:
+                # Enhanced: Add rack position from CBox information
+                if cbox_info.get('rack_unit'):
+                    # Extract rack unit number from "U23" format
+                    rack_unit = cbox_info.get('rack_unit', '')
+                    if rack_unit.startswith('U'):
+                        try:
+                            hardware_info.rack_position = int(rack_unit[1:])
+                            self.logger.debug(f"CNode {hardware_info.name} rack position: {hardware_info.rack_position} ({rack_unit})")
+                        except ValueError:
+                            self.logger.debug(f"CNode {hardware_info.name} invalid rack unit format: {rack_unit}")
+                    else:
+                        self.logger.debug(f"CNode {hardware_info.name} rack unit format not recognized: {rack_unit}")
+                elif self.rack_height_supported and 'index_in_rack' in cnode:
                     hardware_info.rack_position = cnode['index_in_rack']
-                    self.logger.debug(f"CNode {hardware_info.node_id} rack position: {hardware_info.rack_position}")
+                    self.logger.debug(f"CNode {hardware_info.name} rack position: {hardware_info.rack_position}")
                 else:
-                    self.logger.debug(f"CNode {hardware_info.node_id} rack position not available")
+                    self.logger.debug(f"CNode {hardware_info.name} rack position not available")
+
+                # Log key information
+                self.logger.debug(f"CNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.cores} cores, {hardware_info.status}")
+                if hardware_info.is_leader:
+                    self.logger.debug(f"CNode {hardware_info.name} is cluster leader")
+                if hardware_info.is_mgmt:
+                    self.logger.debug(f"CNode {hardware_info.name} is management node")
 
                 cnodes.append(hardware_info)
 
-            self.logger.info(f"Retrieved {len(cnodes)} CNode details")
+            self.logger.info(f"Retrieved {len(cnodes)} CNode details with comprehensive information")
             return cnodes
 
         except Exception as e:
@@ -455,7 +722,7 @@ class VastApiHandler:
 
     def get_dnode_details(self) -> List[VastHardwareInfo]:
         """
-        Get DNode details including enhanced rack positioning.
+        Get DNode details including enhanced rack positioning and comprehensive hardware information.
 
         Returns:
             List[VastHardwareInfo]: List of DNode information
@@ -468,31 +735,250 @@ class VastApiHandler:
                 self.logger.error("Failed to retrieve DNode information")
                 return []
 
+            # Get DTray and DBox information for enhanced hardware details
+            dtrays = self.get_dtray_details()
+            dboxes = self.get_dbox_details()
+
             dnodes = []
             for dnode in dnodes_data:
+                # Get associated DTray and DBox information
+                dtray_name = dnode.get('dtray')
+                dtray_info = dtrays.get(dtray_name, {}) if dtray_name else {}
+
+                dbox_name = dnode.get('dbox')
+                dbox_info = dboxes.get(dbox_name, {}) if dbox_name else {}
+
+                # Extract comprehensive hardware information
                 hardware_info = VastHardwareInfo(
-                    node_id=dnode.get('id', 'Unknown'),
+                    node_id=str(dnode.get('id', 'Unknown')),
                     node_type='dnode',
-                    model=dnode.get('model', 'Unknown'),
-                    serial_number=dnode.get('serial_number', 'Unknown'),
-                    status=dnode.get('state', 'unknown')
+                    name=dnode.get('name', 'Unknown'),
+                    serial_number=dnode.get('sn', dnode.get('serial_number', 'Unknown')),
+                    model=dnode.get('box', 'Unknown'),
+                    status=dnode.get('state', 'unknown'),
+
+                    # Network information
+                    primary_ip=dnode.get('ip'),
+                    secondary_ip=dnode.get('ip1'),
+                    tertiary_ip=dnode.get('ip2'),
+                    mgmt_ip=dnode.get('mgmt_ip'),
+                    ipmi_ip=dnode.get('ipmi_ip'),
+
+                    # Hardware details
+                    box_id=dnode.get('box_id'),
+                    box_vendor=dnode.get('box', 'Unknown'),
+                    bios_version=dnode.get('bios_version'),
+                    cpld_version=dnode.get('cpld'),
+
+                    # Role information (DNodes don't have mgmt/leader roles)
+                    is_mgmt=False,
+                    is_leader=False,
+                    is_pfc=False,
+
+                    # Software information
+                    os_version=dnode.get('os_version'),
+                    build_version=dnode.get('build'),
+                    bmc_state=dnode.get('bmc_state'),
+                    bmc_fw_version=dnode.get('bmc_fw_version'),
+
+                    # Performance features (DNodes don't have turbo_boost/cores)
+                    turbo_boost=False,
+                    required_cores=None,
+
+                    # DTray information
+                    dtray_name=dtray_name,
+                    dtray_position=dtray_info.get('position'),
+                    hardware_type=dtray_info.get('hardware_type'),
+                    mcu_state=dtray_info.get('mcu_state'),
+                    mcu_version=dtray_info.get('mcu_version'),
+                    pcie_switch_version=dtray_info.get('pcie_switch_firmware_version'),
+                    bmc_ip=dtray_info.get('bmc_ip')
                 )
 
-                # Enhanced: Add rack position if supported
-                if self.rack_height_supported and 'index_in_rack' in dnode:
+                # Enhanced: Add rack position from DBox information
+                if dbox_info.get('rack_unit'):
+                    # Extract rack unit number from "U18" format
+                    rack_unit = dbox_info.get('rack_unit', '')
+                    if rack_unit.startswith('U'):
+                        try:
+                            hardware_info.rack_position = int(rack_unit[1:])
+                            self.logger.debug(f"DNode {hardware_info.name} rack position: {hardware_info.rack_position} ({rack_unit})")
+                        except ValueError:
+                            self.logger.debug(f"DNode {hardware_info.name} invalid rack unit format: {rack_unit}")
+                    else:
+                        self.logger.debug(f"DNode {hardware_info.name} rack unit format not recognized: {rack_unit}")
+                elif self.rack_height_supported and 'index_in_rack' in dnode:
                     hardware_info.rack_position = dnode['index_in_rack']
-                    self.logger.debug(f"DNode {hardware_info.node_id} rack position: {hardware_info.rack_position}")
+                    self.logger.debug(f"DNode {hardware_info.name} rack position: {hardware_info.rack_position}")
                 else:
-                    self.logger.debug(f"DNode {hardware_info.node_id} rack position not available")
+                    self.logger.debug(f"DNode {hardware_info.name} rack position not available")
+
+                # Log key information
+                self.logger.debug(f"DNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.status}")
+                if 'position' in dnode:
+                    self.logger.debug(f"DNode {hardware_info.name} position: {dnode['position']}")
+                if hardware_info.hardware_type:
+                    self.logger.debug(f"DNode {hardware_info.name} hardware type: {hardware_info.hardware_type}")
+                if hardware_info.dtray_position:
+                    self.logger.debug(f"DNode {hardware_info.name} DTray position: {hardware_info.dtray_position}")
+                if dbox_info.get('rack_unit'):
+                    self.logger.debug(f"DNode {hardware_info.name} DBox rack unit: {dbox_info.get('rack_unit')}")
 
                 dnodes.append(hardware_info)
 
-            self.logger.info(f"Retrieved {len(dnodes)} DNode details")
+            self.logger.info(f"Retrieved {len(dnodes)} DNode details with comprehensive information")
             return dnodes
 
         except Exception as e:
             self.logger.error(f"Error collecting DNode details: {e}")
             return []
+
+    def get_dtray_details(self) -> Dict[str, Any]:
+        """
+        Get DTray details for enhanced hardware information.
+
+        Returns:
+            Dict[str, Any]: DTray information keyed by dtray name
+        """
+        try:
+            self.logger.info("Collecting DTray details")
+
+            dtrays_data = self._make_api_request('dtrays/')
+            if not dtrays_data:
+                self.logger.warning("Failed to retrieve DTray information")
+                return {}
+
+            dtrays = {}
+            for dtray in dtrays_data:
+                dtray_name = dtray.get('name', 'Unknown')
+                dtrays[dtray_name] = {
+                    'id': dtray.get('id'),
+                    'guid': dtray.get('guid'),
+                    'name': dtray_name,
+                    'dbox': dtray.get('dbox'),
+                    'position': dtray.get('position'),
+                    'state': dtray.get('state'),
+                    'enabled': dtray.get('enabled'),
+                    'hardware_type': dtray.get('hardware_type'),
+                    'serial_number': dtray.get('serial_number'),
+                    'dbox_id': dtray.get('dbox_id'),
+                    'cpld_version': dtray.get('cpld_version'),
+                    'mcu_state': dtray.get('mcu_state'),
+                    'mcu_version': dtray.get('mcu_version'),
+                    'bmc_state': dtray.get('bmc_state'),
+                    'bmc_fw_version': dtray.get('bmc_fw_version'),
+                    'bmc_ip': dtray.get('bmc_ip'),
+                    'pcie_switch_mfg_version': dtray.get('pcie_switch_mfg_version'),
+                    'pcie_switch_firmware_version': dtray.get('pcie_switch_firmware_version'),
+                    'led_status': dtray.get('led_status'),
+                    'dnodes': dtray.get('dnodes', [])
+                }
+
+                self.logger.debug(f"DTray {dtray_name}: {dtray.get('hardware_type')} at {dtray.get('position')} position")
+
+            self.logger.info(f"Retrieved {len(dtrays)} DTray details")
+            return dtrays
+
+        except Exception as e:
+            self.logger.error(f"Error collecting DTray details: {e}")
+            return {}
+
+    def get_cbox_details(self) -> Dict[str, Any]:
+        """
+        Get CBox details including rack positioning information.
+
+        Returns:
+            Dict[str, Any]: CBox information keyed by cbox name
+        """
+        try:
+            self.logger.info("Collecting CBox details")
+
+            cboxes_data = self._make_api_request('cboxes/')
+            if not cboxes_data:
+                self.logger.warning("Failed to retrieve CBox information")
+                return {}
+
+            cboxes = {}
+            for cbox in cboxes_data:
+                cbox_name = cbox.get('name', 'Unknown')
+                cboxes[cbox_name] = {
+                    'id': cbox.get('id'),
+                    'guid': cbox.get('guid'),
+                    'name': cbox_name,
+                    'uid': cbox.get('uid'),
+                    'state': cbox.get('state'),
+                    'cluster': cbox.get('cluster'),
+                    'cluster_id': cbox.get('cluster_id'),
+                    'description': cbox.get('description'),
+                    'subsystem': cbox.get('subsystem'),
+                    'index_in_rack': cbox.get('index_in_rack'),
+                    'rack_id': cbox.get('rack_id'),
+                    'rack_unit': cbox.get('rack_unit'),
+                    'rack_name': cbox.get('rack_name')
+                }
+
+                self.logger.debug(f"CBox {cbox_name}: {cbox.get('rack_unit')} in {cbox.get('rack_name')}")
+
+            self.logger.info(f"Retrieved {len(cboxes)} CBox details")
+            return cboxes
+
+        except Exception as e:
+            self.logger.error(f"Error collecting CBox details: {e}")
+            return {}
+
+    def get_dbox_details(self) -> Dict[str, Any]:
+        """
+        Get DBox details including rack positioning information.
+
+        Returns:
+            Dict[str, Any]: DBox information keyed by dbox name
+        """
+        try:
+            self.logger.info("Collecting DBox details")
+
+            dboxes_data = self._make_api_request('dboxes/')
+            if not dboxes_data:
+                self.logger.warning("Failed to retrieve DBox information")
+                return {}
+
+            dboxes = {}
+            for dbox in dboxes_data:
+                dbox_name = dbox.get('name', 'Unknown')
+                dboxes[dbox_name] = {
+                    'id': dbox.get('id'),
+                    'guid': dbox.get('guid'),
+                    'name': dbox_name,
+                    'uid': dbox.get('uid'),
+                    'state': dbox.get('state'),
+                    'cluster': dbox.get('cluster'),
+                    'cluster_id': dbox.get('cluster_id'),
+                    'drive_type': dbox.get('drive_type'),
+                    'description': dbox.get('description'),
+                    'sync': dbox.get('sync'),
+                    'sync_time': dbox.get('sync_time'),
+                    'arch_type': dbox.get('arch_type'),
+                    'is_conclude_possible': dbox.get('is_conclude_possible'),
+                    'is_replace_possible': dbox.get('is_replace_possible'),
+                    'subsystem': dbox.get('subsystem'),
+                    'index_in_rack': dbox.get('index_in_rack'),
+                    'rack_id': dbox.get('rack_id'),
+                    'rack_unit': dbox.get('rack_unit'),
+                    'box_vendor': dbox.get('box_vendor'),
+                    'is_migrate_target': dbox.get('is_migrate_target'),
+                    'is_migrate_source': dbox.get('is_migrate_source'),
+                    'rack_name': dbox.get('rack_name'),
+                    'hardware_type': dbox.get('hardware_type'),
+                    'failure_domain': dbox.get('failure_domain')
+                }
+
+                self.logger.debug(f"DBox {dbox_name}: {dbox.get('rack_unit')} in {dbox.get('rack_name')}, {dbox.get('hardware_type')}")
+
+            self.logger.info(f"Retrieved {len(dboxes)} DBox details")
+            return dboxes
+
+        except Exception as e:
+            self.logger.error(f"Error collecting DBox details: {e}")
+            return {}
 
     def get_network_configuration(self) -> Dict[str, Any]:
         """

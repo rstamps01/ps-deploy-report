@@ -110,6 +110,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 - **📖 [Complete Installation Guide](INSTALLATION-GUIDE.md)**: Comprehensive installation instructions for Mac and Windows
 - **🍎 [macOS Installation Script](install-mac.sh)**: Automated installation for Mac users
 - **🪟 [Windows Installation Script](install-windows.ps1)**: Automated installation for Windows users
+- **🔗 [API Reference](API-REFERENCE.md)**: Complete API documentation with curl examples
 
 ### Production Installation
 
@@ -462,6 +463,7 @@ tar -xzf logs_backup_20250927.tar.gz
 ps-deploy-report/
 ├── README.md                    # This documentation
 ├── STATUS.md                    # Development status tracking
+├── API-REFERENCE.md             # Complete API documentation
 ├── requirements.txt             # Python dependencies
 ├── config/                      # Configuration files
 │   ├── config.yaml             # Main configuration
