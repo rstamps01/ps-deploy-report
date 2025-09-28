@@ -105,6 +105,7 @@ class VastApiHandler:
         self.session = None
         self.base_url = f"https://{cluster_ip}/api/{self.api_version}/"
         self.authenticated = False
+        self.api_token = None
         self.cluster_version = None
         self.supported_features = set()
 
@@ -141,7 +142,7 @@ class VastApiHandler:
 
     def authenticate(self) -> bool:
         """
-        Authenticate with the VAST cluster using multiple methods.
+        Authenticate with the VAST cluster using API tokens.
 
         Returns:
             bool: True if authentication successful, False otherwise
@@ -152,43 +153,80 @@ class VastApiHandler:
             if not self.session:
                 self.session = self._setup_session()
 
-            # Try different authentication methods
-            auth_methods = [
-                self._try_basic_auth,
-                self._try_session_auth,
-                self._try_jwt_auth
-            ]
-
-            for auth_method in auth_methods:
-                try:
-                    if auth_method():
-                        self.authenticated = True
-                        self.logger.info("Successfully authenticated with VAST cluster")
-                        self._detect_cluster_capabilities()
-                        return True
-                except Exception as e:
-                    self.logger.debug(f"Authentication method failed: {e}")
-                    continue
-
-            self.logger.error("All authentication methods failed")
-            return False
+            # Try to create and use an API token
+            if self._create_api_token():
+                self.authenticated = True
+                self.logger.info("Successfully authenticated with VAST cluster using API token")
+                self._detect_cluster_capabilities()
+                return True
+            else:
+                self.logger.error("Failed to create API token")
+                return False
 
         except Exception as e:
             self.logger.error(f"Unexpected error during authentication: {e}")
+            return False
+
+    def _create_api_token(self) -> bool:
+        """Create an API token for authentication."""
+        try:
+            # First, create an API token using basic auth
+            token_data = {
+                "name": f"VAST-As-Built-Report-{int(time.time())}",
+                "expiry_date": "30D",
+                "owner": self.username
+            }
+
+            self.logger.debug(f"Creating API token for user: {self.username}")
+
+            # Use basic auth to create the token
+            response = self.session.post(
+                urljoin(self.base_url, 'apitokens/'),
+                json=token_data,
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
+
+            if response.status_code == 200:
+                token_info = response.json()
+                if 'token' in token_info:
+                    self.api_token = token_info['token']
+                    # Set the API token in the session headers for future requests
+                    self.session.headers.update({
+                        'Authorization': f'Api-Token {self.api_token}'
+                    })
+                    self.logger.debug("API token created and set in session headers")
+                    return True
+                else:
+                    self.logger.error(f"API token creation response missing token: {token_info}")
+                    return False
+            else:
+                self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error creating API token: {e}")
             return False
 
     def _try_basic_auth(self) -> bool:
         """Try basic authentication."""
         try:
             # Test basic auth with a simple endpoint
+            url = urljoin(self.base_url, 'vms/')
+            self.logger.debug(f"Trying basic auth with URL: {url}")
             response = self.session.get(
-                urljoin(self.base_url, 'vms/'),
+                url,
                 auth=(self.username, self.password),
                 timeout=self.timeout,
                 verify=self.verify_ssl
             )
+            self.logger.debug(f"Basic auth response: {response.status_code}")
+            if response.status_code != 200:
+                self.logger.debug(f"Basic auth failed: {response.text}")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            self.logger.debug(f"Basic auth exception: {e}")
             return False
 
     def _try_session_auth(self) -> bool:
@@ -207,8 +245,16 @@ class VastApiHandler:
                 timeout=self.timeout,
                 verify=self.verify_ssl
             )
-            return response.status_code == 200
-        except Exception:
+            if response.status_code == 200:
+                # Store session token if provided
+                if 'sessionid' in response.cookies:
+                    self.session.cookies.update(response.cookies)
+                return True
+            else:
+                self.logger.debug(f"Session auth failed: {response.status_code} - {response.text}")
+                return False
+        except Exception as e:
+            self.logger.debug(f"Session auth exception: {e}")
             return False
 
     def _try_jwt_auth(self) -> bool:
