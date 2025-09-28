@@ -141,7 +141,7 @@ class VastApiHandler:
 
     def authenticate(self) -> bool:
         """
-        Authenticate with the VAST cluster.
+        Authenticate with the VAST cluster using multiple methods.
 
         Returns:
             bool: True if authentication successful, False otherwise
@@ -152,6 +152,48 @@ class VastApiHandler:
             if not self.session:
                 self.session = self._setup_session()
 
+            # Try different authentication methods
+            auth_methods = [
+                self._try_basic_auth,
+                self._try_session_auth,
+                self._try_jwt_auth
+            ]
+
+            for auth_method in auth_methods:
+                try:
+                    if auth_method():
+                        self.authenticated = True
+                        self.logger.info("Successfully authenticated with VAST cluster")
+                        self._detect_cluster_capabilities()
+                        return True
+                except Exception as e:
+                    self.logger.debug(f"Authentication method failed: {e}")
+                    continue
+
+            self.logger.error("All authentication methods failed")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Unexpected error during authentication: {e}")
+            return False
+
+    def _try_basic_auth(self) -> bool:
+        """Try basic authentication."""
+        try:
+            # Test basic auth with a simple endpoint
+            response = self.session.get(
+                urljoin(self.base_url, 'vms/'),
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def _try_session_auth(self) -> bool:
+        """Try session-based authentication."""
+        try:
             # Prepare authentication data
             auth_data = {
                 'username': self.username,
@@ -165,30 +207,43 @@ class VastApiHandler:
                 timeout=self.timeout,
                 verify=self.verify_ssl
             )
+            return response.status_code == 200
+        except Exception:
+            return False
+
+    def _try_jwt_auth(self) -> bool:
+        """Try JWT token authentication."""
+        try:
+            # First get a JWT token
+            auth_data = {
+                'username': self.username,
+                'password': self.password
+            }
+
+            response = self.session.post(
+                urljoin(self.base_url, 'jwt/'),
+                json=auth_data,
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
 
             if response.status_code == 200:
-                self.authenticated = True
-                self.logger.info("Successfully authenticated with VAST cluster")
-
-                # Detect cluster version and capabilities
-                self._detect_cluster_capabilities()
-                return True
-            else:
-                self.logger.error(f"Authentication failed: {response.status_code} - {response.text}")
-                return False
-
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Authentication request failed: {e}")
+                token_data = response.json()
+                if 'access' in token_data:
+                    # Set the JWT token in the session headers
+                    self.session.headers.update({
+                        'Authorization': f"Bearer {token_data['access']}"
+                    })
+                    return True
             return False
-        except Exception as e:
-            self.logger.error(f"Unexpected error during authentication: {e}")
+        except Exception:
             return False
 
     def _detect_cluster_capabilities(self) -> None:
         """Detect cluster version and supported features."""
         try:
             # Get cluster info to detect version
-            cluster_info = self._make_api_request('clusters/')
+            cluster_info = self._make_api_request('vms/')
             if cluster_info and 'version' in cluster_info:
                 self.cluster_version = cluster_info['version']
                 self.logger.info(f"Detected cluster version: {self.cluster_version}")
@@ -283,7 +338,7 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting cluster information")
 
-            cluster_data = self._make_api_request('clusters/')
+            cluster_data = self._make_api_request('vms/')
             if not cluster_data:
                 self.logger.error("Failed to retrieve cluster information")
                 return None
