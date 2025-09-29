@@ -235,7 +235,12 @@ class VastApiHandler:
 
     def authenticate(self) -> bool:
         """
-        Authenticate with the VAST cluster using basic auth or API tokens.
+        Authenticate with the VAST cluster using improved token management.
+
+        Authentication sequence:
+        1. Check for existing valid tokens first
+        2. Try basic authentication if no valid tokens
+        3. Create new token only if needed (respecting 5-token limit)
 
         Returns:
             bool: True if authentication successful, False otherwise
@@ -250,22 +255,39 @@ class VastApiHandler:
             detected_version = self._detect_api_version()
             self._set_api_version(detected_version)
 
-            # Try basic authentication with the detected API version
+            # Step 1: Check for existing valid tokens first (recommended approach)
+            self.logger.info("Checking for existing API tokens...")
+            if self._try_existing_tokens():
+                self.authenticated = True
+                self.logger.info(f"Successfully authenticated using existing API token (API {self.api_version})")
+                self._detect_cluster_capabilities()
+                return True
+
+            # Step 2: Try basic authentication if no valid tokens found
+            self.logger.info("No valid existing tokens found, trying basic authentication...")
             if self._try_basic_auth():
                 self.authenticated = True
                 self.logger.info(f"Successfully authenticated with VAST cluster using basic authentication (API {self.api_version})")
                 self._detect_cluster_capabilities()
                 return True
 
-            # If basic auth fails, try to create an API token
-            if self._create_api_token():
-                self.authenticated = True
-                self.logger.info(f"Successfully authenticated with VAST cluster using API token (API {self.api_version})")
-                self._detect_cluster_capabilities()
-                return True
+            # Step 3: Only create new token if basic auth fails and we have token slots available
+            self.logger.info("Basic authentication failed, checking token availability...")
+            if self._check_token_availability():
+                self.logger.info("Token slots available, creating new API token...")
+                if self._create_api_token():
+                    self.authenticated = True
+                    self.logger.info(f"Successfully authenticated with VAST cluster using new API token (API {self.api_version})")
+                    self._detect_cluster_capabilities()
+                    return True
+                else:
+                    self.logger.error("Failed to create new API token")
             else:
-                self.logger.error("Failed to authenticate with VAST cluster")
-                return False
+                self.logger.warning("Token limit reached (5 tokens max per user). Cannot create new token.")
+                self.logger.info("Recommendation: Revoke unused tokens or use basic authentication")
+
+            self.logger.error("All authentication methods failed")
+            return False
 
         except Exception as e:
             self.logger.error(f"Unexpected error during authentication: {e}")
@@ -322,6 +344,46 @@ class VastApiHandler:
         except Exception as e:
             self.logger.debug(f"Error trying existing tokens: {e}")
             return False
+
+    def _check_token_availability(self) -> bool:
+        """
+        Check if we can create a new API token (respecting 5-token limit per user).
+
+        Returns:
+            bool: True if token slots are available, False if at limit
+        """
+        try:
+            self.logger.debug("Checking API token availability...")
+
+            # Get list of existing tokens
+            response = self.session.get(
+                urljoin(self.base_url, 'apitokens/'),
+                auth=(self.username, self.password),
+                timeout=self.timeout,
+                verify=self.verify_ssl
+            )
+
+            if response.status_code != 200:
+                self.logger.debug(f"Failed to get token list: {response.status_code}")
+                # If we can't check, assume we can try to create (will fail gracefully)
+                return True
+
+            tokens = response.json()
+            active_tokens = [token for token in tokens if not token.get('revoked', False)]
+
+            self.logger.debug(f"Found {len(active_tokens)} active tokens out of {len(tokens)} total tokens")
+
+            if len(active_tokens) >= 5:
+                self.logger.warning(f"Token limit reached: {len(active_tokens)}/5 active tokens")
+                return False
+
+            self.logger.debug(f"Token slots available: {5 - len(active_tokens)} remaining")
+            return True
+
+        except Exception as e:
+            self.logger.debug(f"Error checking token availability: {e}")
+            # If we can't check, assume we can try to create (will fail gracefully)
+            return True
 
     def _create_api_token(self) -> bool:
         """Create an API token for authentication."""
