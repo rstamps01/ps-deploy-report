@@ -29,6 +29,7 @@ import json
 sys.path.insert(0, str(Path(__file__).parent))
 
 from utils.logger import get_logger
+from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
 
 try:
     from reportlab.lib import colors
@@ -107,7 +108,10 @@ class VastReportBuilder:
         if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
             raise ReportGenerationError("Neither ReportLab nor WeasyPrint is available. Please install one of them.")
 
-        self.logger.info("Report builder initialized")
+        # Initialize VAST brand compliance
+        self.brand_compliance = create_vast_brand_compliance()
+
+        self.logger.info("Report builder initialized with VAST brand compliance")
 
     def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
@@ -235,71 +239,49 @@ class VastReportBuilder:
             return False
 
     def _create_title_page(self, data: Dict[str, Any]) -> List[Any]:
-        """Create title page content."""
-        styles = getSampleStyleSheet()
-
-        # Title style
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Title'],
-            fontSize=self.config.title_font_size + 4,
-            spaceAfter=30,
-            alignment=TA_CENTER
-        )
-
-        # Subtitle style
-        subtitle_style = ParagraphStyle(
-            'CustomSubtitle',
-            parent=styles['Heading2'],
-            fontSize=self.config.heading_font_size + 2,
-            spaceAfter=20,
-            alignment=TA_CENTER
-        )
-
-        # Normal style
-        normal_style = ParagraphStyle(
-            'CustomNormal',
-            parent=styles['Normal'],
-            fontSize=self.config.font_size,
-            spaceAfter=12,
-            alignment=TA_CENTER
-        )
-
+        """Create VAST brand-compliant title page content."""
         content = []
 
-        # Main title
-        content.append(Paragraph("VAST As-Built Report", title_style))
-        content.append(Spacer(1, 20))
-
-        # Cluster information
+        # Get cluster information
         cluster_info = data.get('cluster_summary', {})
-        cluster_name = cluster_info.get('name', 'Unknown Cluster')
-        cluster_version = cluster_info.get('version', 'Unknown Version')
 
-        content.append(Paragraph(f"Cluster: {cluster_name}", subtitle_style))
-        content.append(Paragraph(f"Version: {cluster_version}", subtitle_style))
-        content.append(Spacer(1, 30))
+        # Create VAST brand-compliant header
+        title = "VAST As-Built Report"
+        subtitle = "Customer Deployment Documentation"
 
-        # Generation information
+        header_elements = self.brand_compliance.create_vast_header(
+            title=title,
+            subtitle=subtitle,
+            cluster_info=cluster_info
+        )
+        content.extend(header_elements)
+
+        # Add generation information with VAST styling
         if self.config.include_timestamp:
             timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-            content.append(Paragraph(f"Generated on: {timestamp}", normal_style))
+            timestamp_para = Paragraph(
+                f"<b>Generated on:</b> {timestamp}",
+                self.brand_compliance.styles['vast_body']
+            )
+            content.append(timestamp_para)
+            content.append(Spacer(1, 10))
 
-        # PSNT information
-        psnt = cluster_info.get('psnt')
-        if psnt:
-            content.append(Paragraph(f"PSNT: {psnt}", normal_style))
-
-        # Enhanced features
+        # Enhanced features information
         enhanced_features = data.get('metadata', {}).get('enhanced_features', {})
         if enhanced_features.get('rack_height_supported'):
-            content.append(Paragraph("Enhanced Features: Rack Positioning Available", normal_style))
+            features_para = Paragraph(
+                "<b>Enhanced Features:</b> Rack Positioning Available",
+                self.brand_compliance.styles['vast_body']
+            )
+            content.append(features_para)
+            content.append(Spacer(1, 20))
 
-        content.append(Spacer(1, 50))
-
-        # Footer
-        content.append(Paragraph("VAST Professional Services", normal_style))
-        content.append(Paragraph("Automated As-Built Documentation", normal_style))
+        # Add VAST Professional Services footer
+        footer_elements = self.brand_compliance.create_vast_footer({
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'completeness': data.get('metadata', {}).get('overall_completeness', 0.0)
+        })
+        content.extend(footer_elements)
 
         return content
 
@@ -347,92 +329,74 @@ class VastReportBuilder:
         return content
 
     def _create_executive_summary(self, data: Dict[str, Any]) -> List[Any]:
-        """Create executive summary section."""
-        styles = getSampleStyleSheet()
-
-        heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
-            fontSize=self.config.heading_font_size,
-            spaceAfter=12
-        )
-
-        normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
-            fontSize=self.config.font_size,
-            spaceAfter=8
-        )
-
+        """Create VAST brand-compliant executive summary section."""
         content = []
 
-        content.append(Paragraph("Executive Summary", heading_style))
-        content.append(Spacer(1, 12))
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Executive Summary", level=1
+        )
+        content.extend(heading_elements)
 
-        # Cluster overview
+        # Cluster overview with VAST styling
         cluster_info = data.get('cluster_summary', {})
         cluster_name = cluster_info.get('name', 'Unknown')
         cluster_version = cluster_info.get('version', 'Unknown')
         cluster_state = cluster_info.get('state', 'Unknown')
 
-        content.append(Paragraph(f"<b>Cluster Overview:</b>", normal_style))
-        content.append(Paragraph(f"• Name: {cluster_name}", normal_style))
-        content.append(Paragraph(f"• Version: {cluster_version}", normal_style))
-        content.append(Paragraph(f"• State: {cluster_state}", normal_style))
+        overview_text = f"<b>Cluster Overview:</b><br/>"
+        overview_text += f"• Name: {cluster_name}<br/>"
+        overview_text += f"• Version: {cluster_version}<br/>"
+        overview_text += f"• State: {cluster_state}"
+
+        overview_para = Paragraph(overview_text, self.brand_compliance.styles['vast_body'])
+        content.append(overview_para)
         content.append(Spacer(1, 12))
 
-        # Hardware summary
+        # Hardware summary with VAST styling
         hardware = data.get('hardware_inventory', {})
         total_nodes = hardware.get('total_nodes', 0)
         cnodes = len(hardware.get('cnodes', []))
         dnodes = len(hardware.get('dnodes', []))
         rack_positions = hardware.get('rack_positions_available', False)
 
-        content.append(Paragraph(f"<b>Hardware Summary:</b>", normal_style))
-        content.append(Paragraph(f"• Total Nodes: {total_nodes}", normal_style))
-        content.append(Paragraph(f"• CNodes: {cnodes}", normal_style))
-        content.append(Paragraph(f"• DNodes: {dnodes}", normal_style))
-        content.append(Paragraph(f"• Rack Positions: {'Available' if rack_positions else 'Not Available'}", normal_style))
+        hardware_text = f"<b>Hardware Summary:</b><br/>"
+        hardware_text += f"• Total Nodes: {total_nodes}<br/>"
+        hardware_text += f"• CNodes: {cnodes}<br/>"
+        hardware_text += f"• DNodes: {dnodes}<br/>"
+        hardware_text += f"• Rack Positions: {'Available' if rack_positions else 'Not Available'}"
+
+        hardware_para = Paragraph(hardware_text, self.brand_compliance.styles['vast_body'])
+        content.append(hardware_para)
         content.append(Spacer(1, 12))
 
-        # Data completeness
+        # Data completeness with VAST styling
         metadata = data.get('metadata', {})
         completeness = metadata.get('overall_completeness', 0.0)
 
-        content.append(Paragraph(f"<b>Data Collection:</b>", normal_style))
-        content.append(Paragraph(f"• Overall Completeness: {completeness:.1%}", normal_style))
-        content.append(Paragraph(f"• Enhanced Features: {'Enabled' if metadata.get('enhanced_features', {}).get('rack_height_supported') else 'Disabled'}", normal_style))
+        data_text = f"<b>Data Collection:</b><br/>"
+        data_text += f"• Overall Completeness: {completeness:.1%}<br/>"
+        data_text += f"• Enhanced Features: {'Enabled' if metadata.get('enhanced_features', {}).get('rack_height_supported') else 'Disabled'}"
+
+        data_para = Paragraph(data_text, self.brand_compliance.styles['vast_body'])
+        content.append(data_para)
 
         return content
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
-        """Create cluster information section."""
-        styles = getSampleStyleSheet()
-
-        heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
-            fontSize=self.config.heading_font_size,
-            spaceAfter=12
-        )
-
-        normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
-            fontSize=self.config.font_size,
-            spaceAfter=8
-        )
-
+        """Create VAST brand-compliant cluster information section."""
         content = []
 
-        content.append(Paragraph("Cluster Information", heading_style))
-        content.append(Spacer(1, 12))
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Cluster Information", level=1
+        )
+        content.extend(heading_elements)
 
         cluster_info = data.get('cluster_summary', {})
 
-        # Create cluster info table
+        # Create cluster info table with VAST styling
         cluster_data = [
-            ['Property', 'Value'],
             ['Name', cluster_info.get('name', 'Unknown')],
             ['GUID', cluster_info.get('guid', 'Unknown')],
             ['Version', cluster_info.get('version', 'Unknown')],
@@ -441,119 +405,61 @@ class VastReportBuilder:
             ['PSNT', cluster_info.get('psnt', 'Not Available')]
         ]
 
-        table = Table(cluster_data, colWidths=[2*inch, 4*inch])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-
-        content.append(table)
+        table_elements = self.brand_compliance.create_vast_table(
+            cluster_data,
+            "Cluster Details",
+            ['Property', 'Value']
+        )
+        content.extend(table_elements)
 
         return content
 
     def _create_hardware_inventory(self, data: Dict[str, Any]) -> List[Any]:
-        """Create hardware inventory section."""
-        styles = getSampleStyleSheet()
-
-        heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
-            fontSize=self.config.heading_font_size,
-            spaceAfter=12
-        )
-
-        normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
-            fontSize=self.config.font_size,
-            spaceAfter=8
-        )
-
+        """Create VAST brand-compliant hardware inventory section."""
         content = []
 
-        content.append(Paragraph("Hardware Inventory", heading_style))
-        content.append(Spacer(1, 12))
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Hardware Inventory", level=1
+        )
+        content.extend(heading_elements)
 
         hardware = data.get('hardware_inventory', {})
 
-        # Hardware summary
+        # Hardware summary with VAST styling
         total_nodes = hardware.get('total_nodes', 0)
         rack_positions = hardware.get('rack_positions_available', False)
 
-        content.append(Paragraph(f"<b>Summary:</b> {total_nodes} total nodes", normal_style))
-        content.append(Paragraph(f"<b>Rack Positioning:</b> {'Available' if rack_positions else 'Not Available'}", normal_style))
+        summary_text = f"<b>Summary:</b> {total_nodes} total nodes<br/>"
+        summary_text += f"<b>Rack Positioning:</b> {'Available' if rack_positions else 'Not Available'}"
+
+        summary_para = Paragraph(summary_text, self.brand_compliance.styles['vast_body'])
+        content.append(summary_para)
         content.append(Spacer(1, 12))
 
-        # CNodes table
+        # CNodes table with VAST styling
         cnodes = hardware.get('cnodes', [])
         if cnodes:
-            content.append(Paragraph("CNodes:", normal_style))
-            cnode_data = [['ID', 'Model', 'Serial Number', 'Status', 'Rack Position', 'U Number']]
+            cnode_elements = self.brand_compliance.create_vast_hardware_table(
+                cnodes, "CNodes"
+            )
+            content.extend(cnode_elements)
 
-            for cnode in cnodes:
-                rack_pos = cnode.get('rack_position', 'N/A')
-                u_number = f"U{rack_pos}" if rack_pos != 'N/A' else 'Manual Entry'
-                cnode_data.append([
-                    cnode.get('id', 'Unknown'),
-                    cnode.get('model', 'Unknown'),
-                    cnode.get('serial_number', 'Unknown'),
-                    cnode.get('status', 'Unknown'),
-                    str(rack_pos),
-                    u_number
-                ])
-
-            table = Table(cnode_data, colWidths=[1*inch, 1.5*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.8*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size - 1),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-
-            content.append(table)
-            content.append(Spacer(1, 12))
-
-        # DNodes table
+        # DNodes table with VAST styling
         dnodes = hardware.get('dnodes', [])
         if dnodes:
-            content.append(Paragraph("DNodes:", normal_style))
-            dnode_data = [['ID', 'Model', 'Serial Number', 'Status', 'Rack Position', 'U Number']]
+            dnode_elements = self.brand_compliance.create_vast_hardware_table(
+                dnodes, "DNodes"
+            )
+            content.extend(dnode_elements)
 
-            for dnode in dnodes:
-                rack_pos = dnode.get('rack_position', 'N/A')
-                u_number = f"U{rack_pos}" if rack_pos != 'N/A' else 'Manual Entry'
-                dnode_data.append([
-                    dnode.get('id', 'Unknown'),
-                    dnode.get('model', 'Unknown'),
-                    dnode.get('serial_number', 'Unknown'),
-                    dnode.get('status', 'Unknown'),
-                    str(rack_pos),
-                    u_number
-                ])
-
-            table = Table(dnode_data, colWidths=[1*inch, 1.5*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.8*inch])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), self.config.font_size - 1),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-
-            content.append(table)
+        # Add physical layout diagram placeholder
+        if rack_positions:
+            layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
+                "Physical Rack Layout",
+                "Visual representation of hardware positioning in the rack with U-number assignments."
+            )
+            content.extend(layout_elements)
 
         return content
 

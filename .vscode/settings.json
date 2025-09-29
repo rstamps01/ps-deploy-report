@@ -71,5 +71,11 @@
         "**/.pytest_cache": true,
         "**/node_modules": true,
         "**/.git": true
-    }
+    },
+    "cursorpyright.analysis.autoImportCompletions": true,
+    "cursorpyright.analysis.autoSearchPaths": true,
+    "cursorpyright.analysis.extraPaths": [
+        "./src"
+    ],
+    "cursorpyright.analysis.typeCheckingMode": "basic"
 }
