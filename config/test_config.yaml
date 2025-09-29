@@ -1,0 +1,20 @@
+# VAST As-Built Report Generator - Test Configuration
+# This configuration disables SSL verification for testing environments
+
+api:
+  timeout: 30
+  max_retries: 3
+  retry_delay: 2
+  verify_ssl: false # Disable SSL verification for testing
+  version: "v7"
+
+logging:
+  level: INFO
+  file: logs/vast_report_generator.log
+  max_size: 10485760 # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Test-specific settings
+test_mode: true
+ssl_verification_disabled: true

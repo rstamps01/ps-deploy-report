@@ -1,0 +1,120 @@
+VAST API Curl Command Test Report
+==================================================
+
+SUMMARY:
+  Total Tests: 9
+  Successful: 4
+  Failed: 5
+  Errors/Timeouts: 0
+  Success Rate: 44.4%
+
+DETAILED RESULTS:
+--------------------------------------------------
+
+Section: Cluster Basic Info
+Status: SUCCESS
+Description: Cluster Basic Info (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Output: "selab-var-204","127db70c-0197-5f4f-8af8-44bead61cda2",,"ONLINE","selab-var-204","11 days, 15:19:19.586379","release-5.3.1-sp3-1898015",
+Notes: Basic cluster information
+------------------------------
+
+Section: Cluster State Info
+Status: FAILED
+Description: Cluster State Info (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100 16563  100 16563    0     0  19360      0 --:--:-- --:--:-- --:--:-- 19349
+jq: error (at <stdin>:0): object ({"cboxes":f...) is not valid in a csv row
+Output: 
+Notes: Detailed cluster state and configuration
+------------------------------
+
+Section: Cluster Capacity Info
+Status: SUCCESS
+Description: Cluster Capacity Info (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Output: ,,,,,,
+Notes: Capacity and utilization metrics
+------------------------------
+
+Section: Cluster Encryption Info
+Status: FAILED
+Description: Cluster Encryption Info (/api/v1/encryption/)
+API Endpoint: /api/v1/encryption/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100   179  100   179    0     0    819      0 --:--:-- --:--:-- --:--:--   821
+jq: parse error: Invalid numeric literal at line 2, column 10
+Output: 
+Notes: Encryption configuration
+------------------------------
+
+Section: CNodes Info
+Status: SUCCESS
+Description: CNodes Info (/api/v1/cnodes/)
+API Endpoint: /api/v1/cnodes/
+Output: 6,"cnode-3-10",,,,,,"172.16.3.10",,"supermicro_gen5_cbox, two dual-port NICs",
+2,"cnode-3-11",,,,,,"172.16.3.11",,"supermicro_gen5_cbox, two dual-port NICs",
+3,"cnode-3-12",,,,,,"172.16.3.12",,"supermicro_gen5_cbox, two dual-port NICs",
+Notes: Control node hardware details
+------------------------------
+
+Section: DNodes Info
+Status: SUCCESS
+Description: DNodes Info (/api/v1/dnodes/)
+API Endpoint: /api/v1/dnodes/
+Output: 1,"dnode-3-112",,,,,,"172.16.3.112",,,
+2,"dnode-3-113",,,,,,"172.16.3.113",,,
+Notes: Data node hardware details
+------------------------------
+
+Section: Cluster Network
+Status: FAILED
+Description: Cluster Network (/api/v1/cluster_network/)
+API Endpoint: /api/v1/cluster_network/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100   179  100   179    0     0    734      0 --:--:-- --:--:-- --:--:--   733
+jq: parse error: Invalid numeric literal at line 2, column 10
+Output: 
+Notes: Cluster-level network configuration
+------------------------------
+
+Section: CNode Network
+Status: FAILED
+Description: CNode Network (/api/v1/cnode_network/)
+API Endpoint: /api/v1/cnode_network/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100   179  100   179    0     0    776      0 --:--:-- --:--:-- --:--:--   778
+jq: parse error: Invalid numeric literal at line 2, column 10
+Output: 
+Notes: Control node network configuration
+------------------------------
+
+Section: DNode Network
+Status: FAILED
+Description: DNode Network (/api/v1/dnode_network/)
+API Endpoint: /api/v1/dnode_network/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100   179  100   179    0     0    739      0 --:--:-- --:--:-- --:--:--   742
+jq: parse error: Invalid numeric literal at line 2, column 10
+Output: 
+Notes: Data node network configuration
+------------------------------
+

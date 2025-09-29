@@ -1,0 +1,18 @@
+
+CLUSTER NETWORK CONFIGURATION
+=============================
+Management VIPs: None
+External Gateways: None
+DNS: None
+NTP: None
+External Netmask: None
+Ethernet MTU: None
+InfiniBand MTU: None
+IPMI Gateway: None
+IPMI Netmask: None
+
+CNODE NETWORK SETTINGS
+======================
+
+DNODE NETWORK SETTINGS
+======================

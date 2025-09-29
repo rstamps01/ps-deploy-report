@@ -1,0 +1,1048 @@
+VAST API Curl Command Test Report
+==================================================
+
+SUMMARY:
+  Total Tests: 8
+  Successful: 7
+  Failed: 1
+  Errors/Timeouts: 0
+  Success Rate: 87.5%
+
+DETAILED RESULTS:
+--------------------------------------------------
+
+Section: Cluster Basic Info
+Status: SUCCESS
+Description: Cluster Basic Info (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Output: "selab-var-204","127db70c-0197-5f4f-8af8-44bead61cda2",,"ONLINE","selab-var-204","11 days, 15:20:50.449008","release-5.3.1-sp3-1898015",
+Notes: Basic cluster information - tested and working
+------------------------------
+
+Section: Cluster State Info (Fixed)
+Status: FAILED
+Description: Cluster State Info (Fixed) (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Error: % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+100 16495  100 16495    0     0  31228      0 --:--:-- --:--:-- --:--:-- 31240
+jq: error (at <stdin>:0): object ({"cboxes":f...) is not valid in a csv row
+Output: 
+Notes: Complex state info - may need field adjustment
+------------------------------
+
+Section: CNodes Info
+Status: SUCCESS
+Description: CNodes Info (/api/v1/cnodes/)
+API Endpoint: /api/v1/cnodes/
+Output: 6,"cnode-3-10",,,,,,"172.16.3.10",,"supermicro_gen5_cbox, two dual-port NICs",
+2,"cnode-3-11",,,,,,"172.16.3.11",,"supermicro_gen5_cbox, two dual-port NICs",
+3,"cnode-3-12",,,,,,"172.16.3.12",,"supermicro_gen5_cbox, two dual-port NICs",
+Notes: Control node hardware details - tested and working
+------------------------------
+
+Section: DNodes Info
+Status: SUCCESS
+Description: DNodes Info (/api/v1/dnodes/)
+API Endpoint: /api/v1/dnodes/
+Output: 1,"dnode-3-112",,,,,,"172.16.3.112",,,
+2,"dnode-3-113",,,,,,"172.16.3.113",,,
+Notes: Data node hardware details - tested and working
+------------------------------
+
+Section: Network Info (Fixed)
+Status: SUCCESS
+Description: Network Info (Fixed) (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Output: "172.16.4.204","cnode-3-11"
+Notes: Network configuration from cluster data - working
+------------------------------
+
+Section: Raw Cluster Data
+Status: SUCCESS
+Description: Raw Cluster Data (/api/v1/clusters/)
+API Endpoint: /api/v1/clusters/
+Output: [
+  {
+    "id": 1,
+    "guid": "127db70c-0197-5f4f-8af8-44bead61cda2",
+    "name": "selab-var-204",
+    "url": "https://10.143.11.204/api/v1/clusters/1",
+    "title": "selab-var-204",
+    "build": "release-5.3.1-sp3-1898015",
+    "state": "ONLINE",
+    "audit_dir_name": ".vast_audit_dir",
+    "default_others_share_level_perm": "FULL",
+    "enable_trash": true,
+    "protocols": [],
+    "protocols_audit": {
+      "read_data": false,
+      "modify_data": false,
+      "log_username": false,
+      "read_data_md": false,
+      "log_full_path": false,
+      "modify_data_md": false,
+      "session_create_close": false,
+      "log_deleted_files_dirs": false,
+      "create_delete_files_dirs_objects": false
+    },
+    "allow_encryption": false,
+    "use_smb_privileged_group": true,
+    "use_smb_privileged_user": true,
+    "smb_privileged_group_full_access": true,
+    "is_indestructible_object_enabled": false,
+    "enable_encryption": false,
+    "encryption_type": "INTERNAL",
+    "voc": false,
+    "enable_s3": true,
+    "logical_space_in_use": 250701735613456,
+    "physical_space_in_use": 179860621448014,
+    "mgmt_vip": "10.143.11.204",
+    "enable_bucket_replication": false,
+    "ip": "172.16.3.11",
+    "enabled": true,
+    "physical_space": 310166732637470,
+    "logical_space": 431927613980672,
+    "drr": 1.7615848431346743,
+    "drr_text": "1.8:1",
+    "physical_space_tb": 282.095,
+    "physical_space_in_use_tb": 163.582,
+    "logical_space_tb": 392.836,
+    "system_settings": {
+      "ab_score": 0,
+      "ad_score": 0,
+      "bc_score": 0,
+      "reserved": false,
+      "dr_active": true,
+      "deprecated": 0,
+      "enable_smb": false,
+      "reserved_1": 0,
+      "reserved_2": 0,
+      "skip_dedup": false,
+      "deprecated2": 0,
+      "disable_rmw": false,
+      "enable_nfs4": true,
+      "s3_use_etag": false,
+      "USE_FLASH_WB": "true",
+      "dedup_active": true,
+      "deprecated_1": 0,
+      "deprecated_2": false,
+      "deprecated_3": false,
+      "deprecated_4": false,
+      "deprecated_5": {
+        "deny_cnode_system_access": false,
+        "next_system_lock_time_ids": 0,
+        "enable_migrate_denylisting_upon_oos": true
+      },
+      "deprecated_6": true,
+      "deprecated_7": 0,
+      "sim_score_x1": 0,
+      "sim_score_x2": 0,
+      "sim_score_y1": 0,
+      "sim_score_y2": 0,
+      "vms_election": true,
+      "allow_fpga_ha": false,
+      "force_fpga_ha": false,
+      "s3_enable_http": true,
+      "udb_v2_enabled": true,
+      "f_max_writers_1": 8,
+      "s3_enable_https": true,
+      "verbose_tracing": false,
+      "defrag_threshold": 0,
+      "should_enable_dr": true,
+      "trim_enabled_new": true,
+      "similarity_active": true,
+      "isolate_singletons": true,
+      "print_http_request": false,
+      "raid_stripe_length": 0,
+      "SPDK_QUEUE_IO_DEPTH": "64",
+      "allow_nvram_rebuild": true,
+      "bc_gain_threshold_1": 4294967295,
+      "bc_gain_threshold_2": 4294967295,
+      "bc_gain_threshold_3": 4294967295,
+      "MGMT_PRIV_ACCESS_KEY": "_qVgsO8ANQtuQUtgsP7w",
+      "SHOULD_VALIDATE_UTF8": "true",
+      "USE_WB_COMPOSER_FLOW": "true",
+      "ab_score_threshold_1": 4294967295,
+      "ad_score_threshold_2": 4294967295,
+      "ad_score_threshold_3": 4294967295,
+      "bw_read_budget_bytes": 4194304,
+      "disable_bloom_filter": false,
+      "rpcgss_nfs_auth_conf": "RPCGSS_NFS4_ONLY_ENABLED",
+      "DATA_RESHAPER_ENABLED": "true",
+      "bw_write_budget_bytes": 1786432,
+      "data_prefetch_enabled": true,
+      "idle_conn_timeout_sec": 20,
+      "migrate_low_threshold": 40,
+      "nfs_min_write_io_size": 0,
+      "nis_entry_refresh_sec": 1800,
+      "nvram_rebuild_io_size": 65536,
+      "udb_entry_refresh_sec": 3600,
+      "force_max_ssds_in_dbox": 65535,
+      "lazy_defrag_read_prcnt": 8,
+      "migrate_high_threshold": 50,
+      "nfs4_htoe_hot_cache_th": 10,
+      "REAL_PATH_IN_SHARE_ENUM": "true",
+      "dbox_ha_support_ci_mode": false,
+      "delete_hash_update_rate": 1000,
+      "enable_nfs4_enforcement": true,
+      "extra_read_verification": true,
+      "is_compressed_threshold": 95,
+      "posix_priority_provider": "00000000-ffff-0000-ffff-00000000ffff",
+      "NFS_ALLOW_INSECURE_PORTS": "false",
+      "NFS_STRICT_PORT_CHECKING": "true",
+      "d_agg_table_disabled_sim": false,
+      "disco_bouncer_batch_size": 100,
+      "flush_shard_wait_time_ms": 500,
+      "reset_to_snap_batch_size": 250,
+      "scrubber_full_drive_mode": false,
+      "similarity_a_2_b_win_val": 36,
+      "similarity_a_2_d_win_val": 36,
+      "similarity_b_2_c_win_val": 36,
+      "tcp_connections_per_silo": 512,
+      "urgent_defrag_read_prcnt": 100,
+      "user_negative_cache_size": 1000,
+      "d_checker_reset_if_needed": false,
+      "defrag_extra_verification": false,
+      "depracated_num_sim_hashes": 4,
+      "disable_patch_compression": false,
+      "force_short_flash_padding": false,
+      "raid_num_parallel_stripes": 0,
+      "udb_prefetch_interval_sec": 10,
+      "S3_BLOCK_V2_AUTHENTICATION": "False",
+      "S3_ENABLE_ONLY_AES_CIPHERS": "true",
+      "cloud_rep_cache_md_uploads": true,
+      "d_agg_table_disabled_dedup": false,
+      "d_update_skip_slow_silo_ms": 1000,
+      "similarity_use_estimations": false,
+      "use_native_hack_deprecated": false,
+      "AUDERY_ADD_TENANT_PREDICATE": "true",
+      "S3_OVERRIDE_ALLOW_ANONYMOUS": "false",
+      "max_failed_drives_in_stripe": 2,
+      "max_s3_active_reqs_per_silo": 32,
+      "no_recluster_added_gain_val": 100,
+      "s3_xbucket_cleanup_freq_sec": 3600,
+      "smb2_connection_max_credits": 20000,
+      "S3_ENABLE_RESTRICTED_CIPHERS": "true",
+      "TABULAR_PARALLEL_DDL_SUPPORT": "true",
+      "deprecated_vmsg_tcp_bw_limit": 102400,
+      "enable_immediate_denylisting": true,
+      "flush_shard_max_wait_time_ms": 300000,
+      "isolate_singletons_threshold": 16,
+      "nfs4_client_lease_update_sec": 10,
+      "obsolete_s3_cleanup_freq_sec": 3600,
+      "similarity_protector_enabled": true,
+      "CERES_IPMITOOL_ADMIN_PASSWORD": "YWRtaW52YXN0ZGF0YQ==",
+      "LAST_MODIFIED_MGMT_ACCESS_KEY": "1759082034.051166",
+      "S3_IGNORE_UNSUPPORTED_HEADERS": "True",
+      "USE_WB_RAID_SECTION_ALLOCATOR": "true",
+      "delete_snap_min_data_snap_new": 1,
+      "disbale_balanced_stripe_alloc": false,
+      "nfs4_collapse_compatible_aces": true,
+      "protected_system_settings_new": {
+        "deny_cnode_system_access": false,
+        "next_system_lock_time_ids": 0,
+        "enable_migrate_denylisting_upon_oos": true
+      },
+      "remaining_stripes_wm_increase": 0,
+      "s3_min_bytes_read_before_send": 2097152,
+      "BLOCK_ACCESS_ON_MISSING_TABLES": "true",
+      "S3_OBJ_LOCK_RETAIN_TIME_FORMAT": "2",
+      "defrag_read_rate_limit_percent": 100,
+      "deprecated_sim_internal_hasher": "FAST_HASH_8_OPT",
+      "hash_table_checker_io_sleep_us": 25000,
+      "nfs4_htoe_hot_cache_max_enries": 10000,
+      "replication_rate_limit_percent": 100,
+      "s3_cleanup_object_lifetime_sec": 1800,
+      "smb_durable_handle_timeout_sec": 125,
+      "cloud_rep_reader_prefetch_attrs": true,
+      "defrag_extra_verification_alert": true,
+      "defrag_write_rate_limit_percent": 100,
+      "fpga_ha_stripe_length_threshold": 2,
+      "max_lazy_defrag_prcnt_threshold": 94,
+      "nfs4_htoe_cold_cache_max_enries": 100000,
+      "nfs4_htoe_link_cache_max_enries": 5000,
+      "obsolete_drc_entry_lifetime_sec": 65,
+      "raid_scrubber_mb_sec_deprecated": 8192,
+      "rebuild_read_rate_limit_percent": 100,
+      "cloud_rep_reader_prefetch_xattrs": true,
+      "deprecated_use_prefetch_feedback": true,
+      "enable_non_immediate_denylisting": true,
+      "extra_content_block_verification": false,
+      "shard_balancer_fixed_base_weight": 200,
+      "shard_balancer_tolerance_percent": 0,
+      "similarity_min_score_threshold_1": 1,
+      "bloom_filter_refresher_cycle_secs": 18000,
+      "max_urgent_defrag_prcnt_threshold": 94,
+      "nfs4_server_major_id_includes_vip": false,
+      "nlm_pending_write_timeout_in_msec": 6,
+      "num_sim_hashes_when_bloom_invalid": 1,
+      "s3_force_endpoint_bucket_creation": false,
+      "similarity_recluster_n_candidates": 1,
+      "disable_background_dr_hash_checker": false,
+      "loanee_lease_hb_timeout_safety_sec": 3,
+      "nfs4_max_open_connections_per_silo": 256,
+      "num_ref_candidates_allowed_to_fail": 2,
+      "reset_to_snap_padding_timeout_secs": 5,
+      "ENABLE_BIG_CATALOG_WITH_REPLICATION": "true",
+      "delete_hash_update_rate_upper_limit": 300,
+      "deprecated_d_table_scrubber_wait_us": 0,
+      "POLL_TIME_MONITOR_DATA_TYPE_VIEW_SEC": "55",
+      "disco_bouncer_max_batches_per_bounce": 10,
+      "similarity_breaker_of_chains_enabled": true,
+      "user_negative_cache_expire_after_sec": 300,
+      "d_rebalance_io_consumption_deprecated": 100,
+      "delete_hash_update_rate_limit_percent": 100,
+      "lazy_defrag_max_write_bw_per_dbox_mbs": 1300,
+      "similarity_breaker_rate_limit_percent": 100,
+      "skip_corrupted_name_content_block_new": false,
+      "wb_distinct_handles_counter_threshold": 65535,
+      "GET_GROUP_FROM_CLIENT_BEFORE_PROVIDERS": "true",
+      "lazy_defrag_max_write_bw_per_cnode_mbs": 325,
+      "smb_durable_handle_cleanup_timeout_sec": 965,
+      "deprecated_estore_shard_balancer_policy": 0,
+      "deprecated_nfs4_client_lease_period_sec": 600,
+      "max_snap_gap_between_ingest_and_migrate": 0,
+      "TABULAR_AVOID_DUPLICATE_IMPORTED_OBJECTS": "true",
+      "fail_nvram_without_waiting_for_migration": false,
+      "loanee_lease_comm_ver_timeout_safety_sec": 3,
+      "scheduler_rounds_counter_sample_period_us": 0,
+      "udb_cache_entry_last_lookup_max_limit_sec": 10800,
+      "deprecated_nfs4_concurrent_owners_per_silo": 2000,
+      "deprecated_nfs4_htoe_cache_valid_timestamp": 3600,
+      "UDB_QUERY_USERNAME_INCLUDE_COMPUTER_ACCOUNTS": "false",
+      "deprecated_nfs4_client_cleanup_period_factor": 1,
+      "deprecated_nfs4_concurrent_handles_per_client": 60,
+      "scheduler_rounds_counter_sample_weight_1024th": 100,
+      "S3_POLICIES_FAIL_POLICY_WITH_UNSUPPORTED_TERMS": "true",
+      "delete_hash_update_rate_max_bonus_from_migrate": 14625,
+      "min_lazy_defrag_chunk_occupied_prcnt_threshold": 70,
+      "shard_balancer_bucket_remove_budget_deprecated": 65535,
+      "deprecated_use_old_nvram_subsection_locks_scheme": false,
+      "deprecated_delete_snap_overwritten_blocks_threshold": 500,
+      "deprecated_delete_snap_memory_allowed_for_bitmap_views": 524288,
+      "deprecated_similarity_breaker_max_refcount_for_recluster": 4,
+      "deprecated_min_urgent_defrag_chunk_occupied_prcnt_threshold": 83
+    },
+    "logical_space_in_use_tb": 228.012,
+    "physical_space_in_use_percent": 57.99,
+    "logical_space_in_use_percent": 58.04,
+    "logical_drr_percent": 63.74,
+    "physical_space_wo_overhead": 337137752866816,
+    "physical_space_in_use_wo_overhead": 142604219382353,
+    "free_physical_space_wo_overhead": 194533533484463,
+    "free_physical_space_wo_overhead_tb": 176.927,
+    "usable_auxiliary_space_in_use": 288204011023.1502,
+    "usable_capacity_bytes": 245192621476140,
+    "free_usable_capacity": 102588402093787,
+    "free_usable_capacity_tb": 93.304,
+    "usable_capacity_tb": 223.001,
+    "ndb_number_of_running_queries": 0.0,
+    "ndb_rows_scanned_per_second": 120825.0,
+    "ndb_bandwidth": 0.0,
+    "ndb_bandwidth_read": 0.0,
+    "ndb_bandwidth_write": 0.0,
+    "general_md_usage": 15.79,
+    "auxiliary_space_in_use": 363499430458.288,
+    "auxiliary_space_in_use_tb": 0.331,
+    "use_spdk": false,
+    "logical_auxiliary_space_in_use": 507695817549,
+    "logical_auxiliary_space_in_use_tb": 0.462,
+    "physical_drr_percent": 36.26,
+    "rd_iops": 18968.0,
+    "wr_iops": 1513.0,
+    "iops": 20481.0,
+    "rd_md_iops": 33.0,
+    "wr_md_iops": 16.0,
+    "md_iops": 49.0,
+    "rd_bw": 679650690.0,
+    "wr_bw": 18488388.0,
+    "bw": 698139078.0,
+    "rd_bw_mb": 679.651,
+    "wr_bw_mb": 18.488,
+    "bw_mb": 698.139,
+    "rd_latency": 529.4801784963468,
+    "wr_latency": 941.2128254706824,
+    "latency": 559.896246797317,
+    "s3_certificate": "*********",
+    "s3_private_key": "**************",
+    "s3_certificate_info": {
+      "subject": [
+        [
+          [
+            "countryName",
+            "US"
+          ]
+        ],
+        [
+          [
+            "stateOrProvinceName",
+            "New York"
+          ]
+        ],
+        [
+          [
+            "localityName",
+            "New York City"
+          ]
+        ],
+        [
+          [
+            "organizationName",
+            "VAST Data"
+          ]
+        ],
+        [
+          [
+            "organizationalUnitName",
+            "VMS"
+          ]
+        ],
+        [
+          [
+            "emailAddress",
+            "ssl@vastdata.com"
+          ]
+        ],
+        [
+          [
+            "commonName",
+            "vms.vastdata.conf"
+          ]
+        ]
+      ],
+      "issuer": [
+        [
+          [
+            "countryName",
+            "US"
+          ]
+        ],
+        [
+          [
+            "stateOrProvinceName",
+            "New York"
+          ]
+        ],
+        [
+          [
+            "localityName",
+            "New York City"
+          ]
+        ],
+        [
+          [
+            "organizationName",
+            "VAST Data"
+          ]
+        ],
+        [
+          [
+            "organizationalUnitName",
+            "VMS"
+          ]
+        ],
+        [
+          [
+            "commonName",
+            "vastdata.com"
+          ]
+        ]
+      ],
+      "version": 3,
+      "serialNumber": "FEA944C853D8389E",
+      "notBefore": "Jun 11 11:35:05 2018 GMT",
+      "notAfter": "Jun  8 11:35:05 2028 GMT",
+      "subjectAltName": [
+        [
+          "DNS",
+          "*.vastdata.com"
+        ],
+        [
+          "DNS",
+          "vms.vastdata.com"
+        ],
+        [
+          "DNS",
+          "*"
+        ]
+      ]
+    },
+    "rd_latency_ms": 0.529,
+    "wr_latency_ms": 0.941,
+    "latency_ms": 0.56,
+    "shards": 256,
+    "dr_shards": 256,
+    "dr_wb_shards": 128,
+    "estore_capacity_in_use_bytes": 251209431431005,
+    "estore_capacity_in_use_tb": 228.474,
+    "stripe_groups": 64,
+    "cnode_cores": 35,
+    "max_nvram_replication_factor": 2,
+    "nfs4_certificate": null,
+    "nfs4_private_key": null,
+    "nfs4_certificate_info": null,
+    "max_ssd_capacity_percent": 100,
+    "sw_version": "5.3.1.1.10603406698381149702",
+    "loopback": false,
+    "perf_check": true,
+    "dmsetup": false,
+    "enable_dr": true,
+    "nvram_size": 18000000000,
+    "drive_size": 42949672960,
+    "ssh_user": "vastdata",
+    "system_name": "9a8667cb-6569-483c-be8d-03a946e7a50c",
+    "leader_cnode": "cnode-3-11",
+    "ssd_raid_state": "HEALTHY",
+    "nvram_raid_state": "HEALTHY",
+    "memory_raid_state": "HEALTHY",
+    "raid_drives_can_fail": 0,
+    "ssd_raid_rebuild_progress": 0,
+    "nvram_raid_rebuild_progress": 100,
+    "memory_raid_rebuild_progress": 100,
+    "raid_rebuild_progress": "SSD 0 NVRAM 100 RIO 100 Memory 100",
+    "free_physical_space": 130306111189456,
+    "free_physical_space_tb": 118.513,
+    "free_logical_space": 180718182549667,
+    "free_logical_space_tb": 164.362,
+    "max_nvram_capacity_percent": 100,
+    "dbox_ha_support": false,
+    "disable_metrics": false,
+    "upgrade_state": "NOT_UPLOADED",
+    "defrag_threshold": null,
+    "enable_smb": false,
+    "enable_similarity": true,
+    "drive_pci_port_type": null,
+    "half_system": false,
+    "deep_stripe": false,
+    "format_drives": true,
+    "psnt": "selab-var-204",
+    "dr_hash_size": 0,
+    "delete_snap_blocks_threshold": 500,
+    "logical_inodes_in_use_num": 45175647,
+    "remaining_stripes_health": "HEALTHY",
+    "md_usage_health": "HEALTHY",
+    "burst_mode_state": "NONE",
+    "expansion_state": "NONE",
+    "expansion_phase": 0,
+    "expansion_phase_description": "Running pre-expansion validations",
+    "leader_state": "UP",
+    "uptime": "11 days, 15:20:53.968818",
+    "online_start_time": "2025-09-17T22:34:29.502591Z",
+    "deployment_time": "2025-08-07T18:57:44.259621Z",
+    "upgrade_progress": {
+      "cnodes": {
+        "done": 0,
+        "total": 0
+      },
+      "dnodes": {
+        "done": 0,
+        "total": 0
+      }
+    },
+    "upgrade_phase": "NONE",
+    "max_performance": {
+      "read_bw": 70,
+      "write_bw": 14.5,
+      "read_iops": 480,
+      "write_iops": 210
+    },
+    "quotas_used_percent": 0.06,
+    "quotas_used_capacity": 18396136945172,
+    "quotas_allocated_capacity": 306469486586930,
+    "mgmt_cnode": "cnode-3-12",
+    "mgmt_inner_vip": "172.16.4.204",
+    "mgmt_inner_vip_cnode": "cnode-3-11",
+    "micro_shards": 32768,
+    "micro_dr_shards": 32768,
+    "micro_dr_wb_shards": 32768,
+    "micro_stripe_groups": 32768,
+    "mega_shards": 256,
+    "mega_dr_shards": 256,
+    "mega_dr_wb_shards": 128,
+    "mega_stripe_groups": 64,
+    "available_upgrade_version": {},
+    "s3_new_version": {},
+    "leader_upgrade_state": "NONE",
+    "disable_dirsnap": false,
+    "nvram_raid_rebuild_progress_fraction": "264/264",
+    "replication_rd_iops": 0.0,
+    "replication_wr_iops": 0.0,
+    "replication_iops": 0.0,
+    "replication_rd_bw_mb": 0.0,
+    "replication_wr_bw_mb": 0.0,
+    "replication_bw_mb": 0.0,
+    "motd_append_to_default": null,
+    "replication_rd_latency_ms": 0.0,
+    "replication_wr_latency_ms": 0.0,
+    "replication_latency_ms": 0.0,
+    "auto_logout_timeout": 0,
+    "motd": null,
+    "max_audit_dir_size": null,
+    "cnode_metrics": true,
+    "provides_blocked": false,
+    "rewrite_progress": 0,
+    "rewrite_phase": "NONE",
+    "rewrite_type": [],
+    "used_handles_count": 48038066,
+    "max_handles_count": 3404800000,
+    "used_handles_percent": 1.41,
+    "is_large_subnet": false,
+    "cluster_certificate": "***********",
+    "cluster_private_key": "*********",
+    "cluster_certificate_info": {
+      "subject": [
+        [
+          [
+            "commonName",
+            "vast.com"
+          ]
+        ]
+      ],
+      "issuer": [
+        [
+          [
+            "commonName",
+            "vast_Root-ca"
+          ]
+        ]
+      ],
+      "version": 1,
+      "serialNumber": "9D7F9F41A9D3D16D",
+      "notBefore": "Mar 27 09:48:06 2023 GMT",
+      "notAfter": "Mar 24 09:48:06 2033 GMT"
+    },
+    "root_certificate": "************",
+    "turbo_boost_flag": false,
+    "ekm_address": "",
+    "ekm_port": 5696,
+    "secondary_ekm_address": null,
+    "secondary_ekm_port": 5696,
+    "ekm_servers": "",
+    "ekm_auth_domain": "",
+    "voc_ha_supported": false,
+    "voc_cluster_type": null,
+    "virtual": false,
+    "ebox": false,
+    "external_version": "",
+    "external_build": "",
+    "external_sp_version": "",
+    "external_hotfix_version": "",
+    "vast_audit_log_state": "CREATED",
+    "gn_max_size": "0B",
+    "gn_max_inode_count": 0,
+    "gn_used_size": "0B",
+    "gn_used_inode_count": 0,
+    "vast_install": false,
+    "wb_raid_layout": "DATA_6_PARITY_2",
+    "rio_nvram_state": "HEALTHY",
+    "dbox_migration_state": "NONE",
+    "region": null,
+    "is_wb_raid_enabled": true,
+    "dbox_migration_validation_state": {},
+    "s3_enable_v2_authentication": true,
+    "use_flash_write_buffers": true,
+    "mio_raid_state": "HEALTHY",
+    "b2b_configuration": {
+      "cboxes": false,
+      "dboxes": false
+    },
+    "triplication_enabled": false,
+    "qos": {
+      "static_limits": {
+        "max_reads_iops": 0,
+        "max_writes_iops": 0,
+        "burst_reads_iops": 0,
+        "burst_reads_bw_mb": 0,
+        "burst_writes_iops": 0,
+        "max_reads_bw_mbps": 0,
+        "burst_writes_bw_mb": 0,
+        "max_writes_bw_mbps": 0,
+        "burst_reads_loan_mb": 0,
+        "burst_writes_loan_mb": 0,
+        "burst_reads_loan_iops": 0,
+        "burst_writes_loan_iops": 0
+      }
+    },
+    "rewrite_progress_current": null,
+    "rewrite_progress_total": null,
+    "enable_bucket_db_replication": false,
+    "access_ip_ranges": [],
+    "bgp_session_state_per_port": {
+      "1": {
+        "p1": {
+          "name": "",
+          "state": "IDLE"
+        },
+        "p2": {
+          "name": "",
+          "state": "IDLE"
+        }
+      },
+      "2": {
+        "p1": {
+          "name": "",
+          "state": "IDLE"
+        },
+        "p2": {
+          "name": "",
+          "state": "IDLE"
+        }
+      },
+      "3": {
+        "p1": {
+          "name": "",
+          "state": "IDLE"
+        },
+        "p2": {
+          "name": "",
+          "state": "IDLE"
+        }
+      },
+      "6": {
+        "p1": {
+          "name": "",
+          "state": "IDLE"
+        },
+        "p2": {
+          "name": "",
+          "state": "IDLE"
+        }
+      }
+    },
+    "rio_raid_rebuild_progress": 100,
+    "rio_raid_rebuild_progress_fraction": "10/10",
+    "enable_rack_level_resiliency": false,
+    "showmount_suppressed": false,
+    "s3_allow_cors": true,
+    "allow_nfs3_over_udp": false,
+    "showmount_hide_slash": false,
+    "max_cluster_write_bw_mb": 102400,
+    "read_access_users": [
+      "james",
+      "vastdata",
+      "radwansk",
+      "jeno-admin"
+    ],
+    "read_access_users_groups": [],
+    "max_file_size": 1000000000,
+    "max_retention_period": 1,
+    "max_retention_timeunit": "D",
+    "enable_vast_db_audit": true,
+    "enable_json_audit": true,
+    "mock_fanout_auth": false,
+    "smb_privileged_user_name": "",
+    "smb_privileged_group_sid": "",
+    "smb_administrators_group_name": "",
+    "trash_gid": 0,
+    "fetch_msg_iops": 10564.0,
+    "fetch_event_iops": 0.0,
+    "fetch_bw": 0.0,
+    "fetch_msg_latency": 716.3403569430125,
+    "produce_msg_iops": 0.0,
+    "produce_event_iops": 0.0,
+    "produce_bw": 0.0,
+    "produce_msg_latency": 0.0,
+    "fetch_event_latency": 0.0,
+    "produce_event_latency": 0.0,
+    "msg_iops": 3521.3333333333335,
+    "event_iops": 0.0,
+    "kafka_bw": 0.0,
+    "msg_latency": 477.9575630122652,
+    "event_latency": 0.0
+  }
+]
+Notes: Raw JSON cluster data for debugging
+------------------------------
+
+Section: Raw CNodes Data
+Status: SUCCESS
+Description: Raw CNodes Data (/api/v1/cnodes/)
+API Endpoint: /api/v1/cnodes/
+Output: [
+  {
+    "id": 6,
+    "guid": "de6c623c-8358-5f20-9cd4-d45f39bfe636",
+    "name": "cnode-3-10",
+    "url": "https://10.143.11.204/api/v1/cnodes/6",
+    "title": "cnode-3-10 (172.16.3.10) [se-az-arrow-cb4-cn-1]",
+    "box": "cbox-S929986X5306758",
+    "box_id": 4,
+    "box_type": "cbox",
+    "ip": "172.16.3.10",
+    "ip1": "172.16.2.10",
+    "ip2": "172.16.1.10",
+    "host_label": "172.16.1.10",
+    "sn": "S929986X5306758",
+    "platform_rdma_port": 4000,
+    "platform_tcp_port": 4001,
+    "data_rdma_port": 5000,
+    "data_tcp_port": 5001,
+    "state": "ACTIVE",
+    "cluster": "selab-var-204",
+    "cbox": "cbox-S929986X5306758",
+    "cbox_id": 4,
+    "ebox_id": null,
+    "cluster_id": 1,
+    "enabled": true,
+    "is_mgmt": false,
+    "is_leader": false,
+    "os_version": "12.14.19-1809895",
+    "build": "release-5.3.1-sp3-1898015",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": "1.02.14.01",
+    "hostname": "se-az-arrow-cb4-cn-1",
+    "cores": 35,
+    "mgmt_ip": "10.143.11.81",
+    "vlan": 69,
+    "led_status": "unknown",
+    "position": "N/A",
+    "display_state": "ACTIVE",
+    "sync": "SYNCED",
+    "sync_time": "2025-09-29T13:48:21.394513Z",
+    "new_name": "cnode-3-10",
+    "bios_version": "1.7a.V1",
+    "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+    "turbo_boost": true,
+    "ipv6": "fe80::8d3a:5d3d:d508:3433",
+    "ipmi_ip": "10.143.11.82",
+    "display_name": "cnode-3-10 (172.16.3.10) [se-az-arrow-cb4-cn-1]",
+    "vms_preferred": false,
+    "cpld": "Motherboard: F2.66.04, Backplane: 2919 / 06",
+    "host_opensm_master": false,
+    "is_dpu": false,
+    "default_required_num_of_cores": 35,
+    "required_num_of_cores": 35,
+    "is_application_cnode": false,
+    "opensm_state": false,
+    "is_pfc": true,
+    "tpm_boot_dev_encryption_status": "Unsupported"
+  },
+  {
+    "id": 2,
+    "guid": "48962484-aec8-5682-ac8b-3bc9cec03633",
+    "name": "cnode-3-11",
+    "url": "https://10.143.11.204/api/v1/cnodes/2",
+    "title": "cnode-3-11 (172.16.3.11) [se-az-arrow-cb4-cn-2]",
+    "box": "cbox-S929986X5306720",
+    "box_id": 3,
+    "box_type": "cbox",
+    "ip": "172.16.3.11",
+    "ip1": "172.16.2.11",
+    "ip2": "172.16.1.11",
+    "host_label": "172.16.1.11",
+    "sn": "S929986X5306720",
+    "platform_rdma_port": 4000,
+    "platform_tcp_port": 4001,
+    "data_rdma_port": 5000,
+    "data_tcp_port": 5001,
+    "state": "ACTIVE",
+    "cluster": "selab-var-204",
+    "cbox": "cbox-S929986X5306720",
+    "cbox_id": 3,
+    "ebox_id": null,
+    "cluster_id": 1,
+    "enabled": true,
+    "is_mgmt": false,
+    "is_leader": true,
+    "os_version": "12.14.15-1791040",
+    "build": "release-5.3.1-sp3-1898015",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": "1.02.14.01",
+    "hostname": "se-az-arrow-cb4-cn-2",
+    "cores": 35,
+    "mgmt_ip": "10.143.11.83",
+    "vlan": 69,
+    "led_status": "unknown",
+    "position": "N/A",
+    "display_state": "ACTIVE",
+    "sync": "SYNCED",
+    "sync_time": "2025-09-29T13:48:21.416891Z",
+    "new_name": "cnode-3-11",
+    "bios_version": "1.7a.V1",
+    "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+    "turbo_boost": true,
+    "ipv6": "fe80::b741:8c1c:d136:66c1",
+    "ipmi_ip": "10.143.11.84",
+    "display_name": "cnode-3-11 (172.16.3.11) [se-az-arrow-cb4-cn-2] leader",
+    "vms_preferred": false,
+    "cpld": "Motherboard: F2.66.04, Backplane: 2919 / 06",
+    "host_opensm_master": false,
+    "is_dpu": false,
+    "default_required_num_of_cores": 35,
+    "required_num_of_cores": 35,
+    "is_application_cnode": false,
+    "opensm_state": false,
+    "is_pfc": false,
+    "tpm_boot_dev_encryption_status": "Unsupported"
+  },
+  {
+    "id": 3,
+    "guid": "e9ac9df1-129d-57f3-9fc6-b4781b37b1c7",
+    "name": "cnode-3-12",
+    "url": "https://10.143.11.204/api/v1/cnodes/3",
+    "title": "cnode-3-12 (172.16.3.12) [se-az-arrow-cb4-cn-3]",
+    "box": "cbox-S929986X5306437",
+    "box_id": 1,
+    "box_type": "cbox",
+    "ip": "172.16.3.12",
+    "ip1": "172.16.2.12",
+    "ip2": "172.16.1.12",
+    "host_label": "172.16.1.12",
+    "sn": "S929986X5306437",
+    "platform_rdma_port": 4000,
+    "platform_tcp_port": 4001,
+    "data_rdma_port": 5000,
+    "data_tcp_port": 5001,
+    "state": "ACTIVE",
+    "cluster": "selab-var-204",
+    "cbox": "cbox-S929986X5306437",
+    "cbox_id": 1,
+    "ebox_id": null,
+    "cluster_id": 1,
+    "enabled": true,
+    "is_mgmt": true,
+    "is_leader": false,
+    "os_version": "12.12.15-1440723",
+    "build": "release-5.3.1-sp3-1898015",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": "1.02.14.01",
+    "hostname": "se-az-arrow-cb4-cn-3",
+    "cores": 35,
+    "mgmt_ip": "10.143.11.85",
+    "vlan": 69,
+    "led_status": "unknown",
+    "position": "N/A",
+    "display_state": "ACTIVE",
+    "sync": "SYNCED",
+    "sync_time": "2025-09-29T13:48:21.305930Z",
+    "new_name": "cnode-3-12",
+    "bios_version": "1.7a.V1",
+    "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+    "turbo_boost": true,
+    "ipv6": "fe80::10c8:c4ba:ccbf:a3ac",
+    "ipmi_ip": "10.143.11.86",
+    "display_name": "cnode-3-12 (172.16.3.12) [se-az-arrow-cb4-cn-3] vms",
+    "vms_preferred": false,
+    "cpld": "Motherboard: F2.66.04, Backplane: 2919 / 06",
+    "host_opensm_master": false,
+    "is_dpu": false,
+    "default_required_num_of_cores": 35,
+    "required_num_of_cores": 35,
+    "is_application_cnode": false,
+    "opensm_state": false,
+    "is_pfc": false,
+    "tpm_boot_dev_encryption_status": "Unsupported"
+  }
+]
+Notes: Raw JSON CNodes data for debugging
+------------------------------
+
+Section: Raw DNodes Data
+Status: SUCCESS
+Description: Raw DNodes Data (/api/v1/dnodes/)
+API Endpoint: /api/v1/dnodes/
+Output: [
+  {
+    "id": 1,
+    "guid": "1db0587e-4101-5698-a182-1f50611e4a9e",
+    "name": "dnode-3-112",
+    "url": "https://10.143.11.204/api/v1/dnodes/1",
+    "title": "dnode-3-112 (172.16.3.112) [se-az-arrow-db4-dn-1]",
+    "box": "dbox-515-25042300200055",
+    "box_id": 1,
+    "box_type": "dbox",
+    "ip": "172.16.3.112",
+    "ip1": "172.16.1.112",
+    "ip2": "172.16.2.112",
+    "ipv6": "fe80::7364:83fa:e86:d646",
+    "host_label": "172.16.1.112",
+    "sn": "C15-25042300200017",
+    "platform_rdma_port": 4000,
+    "platform_tcp_port": 4001,
+    "data_rdma_port": 5000,
+    "position": "right",
+    "data_tcp_port": 5001,
+    "box_rdma_port": 7000,
+    "state": "ACTIVE",
+    "dbox": "dbox-515-25042300200055",
+    "dbox_id": 1,
+    "ebox_id": null,
+    "cluster": "selab-var-204",
+    "led_status": "unknown",
+    "ipmi_ip": "10.143.11.42",
+    "cluster_id": 1,
+    "enabled": true,
+    "os_version": "12.14.15-1791040",
+    "build": "release-5.3.1-sp3-1898015",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": null,
+    "hostname": "se-az-arrow-db4-dn-1",
+    "mgmt_ip": "10.143.11.41",
+    "bios_version": "4.9.0.13378",
+    "sync": "SYNCED",
+    "sync_time": "2025-09-29T13:48:21.732512Z",
+    "dtray": "DTray-dbox-515-25042300200055-right",
+    "new_name": "dnode-3-112",
+    "arch_type": "aarch64",
+    "is_primary": null,
+    "display_name": "dnode-3-112 (172.16.3.112) [se-az-arrow-db4-dn-1]",
+    "cpld": null
+  },
+  {
+    "id": 2,
+    "guid": "65620553-a57b-5593-bce3-f9a1bf59ef7d",
+    "name": "dnode-3-113",
+    "url": "https://10.143.11.204/api/v1/dnodes/2",
+    "title": "dnode-3-113 (172.16.3.113) [se-az-arrow-db4-dn-2]",
+    "box": "dbox-515-25042300200055",
+    "box_id": 1,
+    "box_type": "dbox",
+    "ip": "172.16.3.113",
+    "ip1": "172.16.1.113",
+    "ip2": "172.16.2.113",
+    "ipv6": "fe80::116a:e0ff:7243:6f65",
+    "host_label": "172.16.1.113",
+    "sn": "C15-25042300200021",
+    "platform_rdma_port": 4000,
+    "platform_tcp_port": 4001,
+    "data_rdma_port": 5000,
+    "position": "left",
+    "data_tcp_port": 5001,
+    "box_rdma_port": 7000,
+    "state": "ACTIVE",
+    "dbox": "dbox-515-25042300200055",
+    "dbox_id": 1,
+    "ebox_id": null,
+    "cluster": "selab-var-204",
+    "led_status": "unknown",
+    "ipmi_ip": "10.143.11.44",
+    "cluster_id": 1,
+    "enabled": true,
+    "os_version": "12.14.15-1791040",
+    "build": "release-5.3.1-sp3-1898015",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": null,
+    "hostname": "se-az-arrow-db4-dn-2",
+    "mgmt_ip": "10.143.11.43",
+    "bios_version": "4.9.0.13378",
+    "sync": "SYNCED",
+    "sync_time": "2025-09-29T13:48:21.687234Z",
+    "dtray": "DTray-dbox-515-25042300200055-left",
+    "new_name": "dnode-3-113",
+    "arch_type": "aarch64",
+    "is_primary": null,
+    "display_name": "dnode-3-113 (172.16.3.113) [se-az-arrow-db4-dn-2]",
+    "cpld": null
+  }
+]
+Notes: Raw JSON DNodes data for debugging
+------------------------------
+

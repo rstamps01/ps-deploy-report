@@ -1,0 +1,21 @@
+Field,Value
+state,ONLINE
+ssd_raid_state,HEALTHY
+nvram_raid_state,HEALTHY
+memory_raid_state,HEALTHY
+leader_state,UP
+leader_cnode,cnode-3-11
+mgmt_cnode,cnode-3-12
+mgmt_inner_vip,172.16.4.204
+mgmt_inner_vip_cnode,cnode-3-11
+enabled,True
+enable_similarity,True
+similarity_active,False
+skip_dedup,False
+dedup_active,False
+is_wb_raid_enabled,True
+wb_raid_layout,DATA_6_PARITY_2
+dbox_ha_support,False
+enable_rack_level_resiliency,False
+b2b_configuration,"{'cboxes': False, 'dboxes': False}"
+disable_metrics,False

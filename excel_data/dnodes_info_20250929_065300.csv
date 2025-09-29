@@ -1,0 +1,3 @@
+dnode_id,dnode_name,dnode_model,dnode_serial,dnode_status,dnode_rack_position,dnode_rack_u,dnode_ip,dnode_mac,dnode_vendor,dnode_firmware
+1,dnode-3-112,Unknown,Unknown,Unknown,Unknown,Unknown,172.16.3.112,Unknown,Unknown,Unknown
+2,dnode-3-113,Unknown,Unknown,Unknown,Unknown,Unknown,172.16.3.113,Unknown,Unknown,Unknown

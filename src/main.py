@@ -19,14 +19,14 @@ Date: September 26, 2025
 """
 
 import argparse
-import sys
-import os
-import json
-import time
-from pathlib import Path
-from typing import Optional, Dict, Any
-from datetime import datetime
 import getpass
+import json
+import os
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from api_handler import VastApiHandler, create_vast_api_handler
 from data_extractor import VastDataExtractor, create_data_extractor
 from report_builder import VastReportBuilder, create_report_builder
-from utils.logger import setup_logging, get_logger
+from utils.logger import get_logger, setup_logging
 
 
 class VastReportGenerator:
@@ -156,8 +156,8 @@ class VastReportGenerator:
             self.logger.info("Connecting to VAST cluster...")
 
             # Get credentials
-            username, password = self._get_credentials(args)
-            if not username or not password:
+            username, password, token = self._get_credentials(args)
+            if not username and not password and not token:
                 self.logger.error("Failed to obtain credentials")
                 return False
 
@@ -166,7 +166,8 @@ class VastReportGenerator:
                 cluster_ip=args.cluster_ip,
                 username=username,
                 password=password,
-                config=self.config
+                token=token,
+                config=self.config,
             )
 
             # Authenticate
@@ -181,7 +182,9 @@ class VastReportGenerator:
             self.logger.error(f"Failed to connect to cluster: {e}")
             return False
 
-    def _get_credentials(self, args: argparse.Namespace) -> tuple[Optional[str], Optional[str]]:
+    def _get_credentials(
+        self, args: argparse.Namespace
+    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Get user credentials from various sources.
 
@@ -189,39 +192,66 @@ class VastReportGenerator:
             args (argparse.Namespace): Parsed command-line arguments
 
         Returns:
-            tuple[Optional[str], Optional[str]]: Username and password
+            tuple[Optional[str], Optional[str], Optional[str]]: Username, password, and token
         """
         try:
+            # Check for API token first (highest priority)
+            token = None
+
+            # Try command-line token argument
+            if args.token:
+                token = args.token
+                self.logger.info("Using API token from command-line argument")
+                return None, None, token
+
+            # Try environment variable for token
+            token = os.getenv("VAST_TOKEN")
+            if token:
+                self.logger.info("Using API token from environment variable")
+                return None, None, token
+
+            # Fall back to username/password authentication
             # Try environment variables first
-            username = os.getenv('VAST_USERNAME')
-            password = os.getenv('VAST_PASSWORD')
+            username = os.getenv("VAST_USERNAME")
+            password = os.getenv("VAST_PASSWORD")
 
             if username and password:
-                self.logger.info("Using credentials from environment variables")
-                return username, password
+                self.logger.info("Using username/password from environment variables")
+                return username, password, None
 
             # Try command-line arguments
             if args.username and args.password:
-                self.logger.info("Using credentials from command-line arguments")
-                return args.username, args.password
+                self.logger.info("Using username/password from command-line arguments")
+                return args.username, args.password, None
 
             # Prompt for credentials
             self.logger.info("Prompting for credentials...")
-            username = input("VAST Username: ").strip()
-            if not username:
-                self.logger.error("Username cannot be empty")
-                return None, None
+            auth_method = input(
+                "Authentication method (1=token, 2=username/password) [2]: "
+            ).strip()
 
-            password = getpass.getpass("VAST Password: ")
-            if not password:
-                self.logger.error("Password cannot be empty")
-                return None, None
+            if auth_method == "1":
+                token = getpass.getpass("VAST API Token: ")
+                if not token:
+                    self.logger.error("Token cannot be empty")
+                    return None, None, None
+                return None, None, token
+            else:
+                username = input("VAST Username: ").strip()
+                if not username:
+                    self.logger.error("Username cannot be empty")
+                    return None, None, None
 
-            return username, password
+                password = getpass.getpass("VAST Password: ")
+                if not password:
+                    self.logger.error("Password cannot be empty")
+                    return None, None, None
+
+                return username, password, None
 
         except Exception as e:
             self.logger.error(f"Failed to get credentials: {e}")
-            return None, None
+            return None, None, None
 
     def _collect_data(self) -> Optional[Dict[str, Any]]:
         """
@@ -240,13 +270,21 @@ class VastReportGenerator:
                 return None
 
             # Log collection summary
-            cluster_info = raw_data.get('cluster_info', {})
-            enhanced_features = raw_data.get('enhanced_features', {})
+            cluster_info = raw_data.get("cluster_info", {})
+            enhanced_features = raw_data.get("enhanced_features", {})
 
-            self.logger.info(f"Data collection completed for cluster: {cluster_info.get('name', 'Unknown')}")
-            self.logger.info(f"Cluster version: {cluster_info.get('version', 'Unknown')}")
-            self.logger.info(f"Enhanced features enabled: {enhanced_features.get('rack_height_supported', False)}")
-            self.logger.info(f"PSNT available: {enhanced_features.get('psnt_supported', False)}")
+            self.logger.info(
+                f"Data collection completed for cluster: {cluster_info.get('name', 'Unknown')}"
+            )
+            self.logger.info(
+                f"Cluster version: {cluster_info.get('version', 'Unknown')}"
+            )
+            self.logger.info(
+                f"Enhanced features enabled: {enhanced_features.get('rack_height_supported', False)}"
+            )
+            self.logger.info(
+                f"PSNT available: {enhanced_features.get('psnt_supported', False)}"
+            )
 
             return raw_data
 
@@ -274,17 +312,17 @@ class VastReportGenerator:
                 return None
 
             # Log processing summary
-            metadata = processed_data.get('metadata', {})
-            overall_completeness = metadata.get('overall_completeness', 0.0)
+            metadata = processed_data.get("metadata", {})
+            overall_completeness = metadata.get("overall_completeness", 0.0)
 
             self.logger.info(f"Data processing completed")
             self.logger.info(f"Overall data completeness: {overall_completeness:.1%}")
 
             # Log section status
-            sections = processed_data.get('sections', {})
+            sections = processed_data.get("sections", {})
             for section_name, section_data in sections.items():
-                status = section_data.get('status', 'unknown')
-                completeness = section_data.get('completeness', 0.0)
+                status = section_data.get("status", "unknown")
+                completeness = section_data.get("completeness", 0.0)
                 self.logger.info(f"  {section_name}: {status} ({completeness:.1%})")
 
             return processed_data
@@ -293,7 +331,9 @@ class VastReportGenerator:
             self.logger.error(f"Failed to process data: {e}")
             return None
 
-    def _generate_reports(self, processed_data: Dict[str, Any], args: argparse.Namespace) -> bool:
+    def _generate_reports(
+        self, processed_data: Dict[str, Any], args: argparse.Namespace
+    ) -> bool:
         """
         Generate JSON and PDF reports.
 
@@ -313,13 +353,17 @@ class VastReportGenerator:
 
             # Generate timestamp for filenames
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            cluster_name = processed_data.get('cluster_summary', {}).get('name', 'unknown')
+            cluster_name = processed_data.get("cluster_summary", {}).get(
+                "name", "unknown"
+            )
 
             # Generate JSON report
             json_filename = f"vast_data_{cluster_name}_{timestamp}.json"
             json_path = output_dir / json_filename
 
-            if not self.data_extractor.save_processed_data(processed_data, str(json_path)):
+            if not self.data_extractor.save_processed_data(
+                processed_data, str(json_path)
+            ):
                 self.logger.error("Failed to save JSON report")
                 return False
 
@@ -329,7 +373,9 @@ class VastReportGenerator:
             pdf_filename = f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
             pdf_path = output_dir / pdf_filename
 
-            if not self.report_builder.generate_pdf_report(processed_data, str(pdf_path)):
+            if not self.report_builder.generate_pdf_report(
+                processed_data, str(pdf_path)
+            ):
                 self.logger.error("Failed to generate PDF report")
                 return False
 
@@ -341,7 +387,9 @@ class VastReportGenerator:
             self.logger.error(f"Failed to generate reports: {e}")
             return False
 
-    def _display_summary(self, processed_data: Dict[str, Any], args: argparse.Namespace) -> None:
+    def _display_summary(
+        self, processed_data: Dict[str, Any], args: argparse.Namespace
+    ) -> None:
         """
         Display execution summary.
 
@@ -355,27 +403,31 @@ class VastReportGenerator:
             print("=" * 70)
 
             # Cluster information
-            cluster_info = processed_data.get('cluster_summary', {})
+            cluster_info = processed_data.get("cluster_summary", {})
             print(f"Cluster Name: {cluster_info.get('name', 'Unknown')}")
             print(f"Cluster Version: {cluster_info.get('version', 'Unknown')}")
             print(f"Cluster State: {cluster_info.get('state', 'Unknown')}")
             print(f"PSNT: {cluster_info.get('psnt', 'Not Available')}")
 
             # Hardware inventory
-            hardware = processed_data.get('hardware_inventory', {})
+            hardware = processed_data.get("hardware_inventory", {})
             print(f"Total Nodes: {hardware.get('total_nodes', 0)}")
             print(f"CNodes: {len(hardware.get('cnodes', []))}")
             print(f"DNodes: {len(hardware.get('dnodes', []))}")
-            print(f"Rack Positions Available: {hardware.get('rack_positions_available', False)}")
+            print(
+                f"Rack Positions Available: {hardware.get('rack_positions_available', False)}"
+            )
 
             # Data completeness
-            metadata = processed_data.get('metadata', {})
-            overall_completeness = metadata.get('overall_completeness', 0.0)
+            metadata = processed_data.get("metadata", {})
+            overall_completeness = metadata.get("overall_completeness", 0.0)
             print(f"Overall Data Completeness: {overall_completeness:.1%}")
 
             # Enhanced features
-            enhanced_features = metadata.get('enhanced_features', {})
-            print(f"Enhanced Features Enabled: {enhanced_features.get('rack_height_supported', False)}")
+            enhanced_features = metadata.get("enhanced_features", {})
+            print(
+                f"Enhanced Features Enabled: {enhanced_features.get('rack_height_supported', False)}"
+            )
 
             # Output files
             print(f"\nOutput Directory: {args.output_dir}")
@@ -414,6 +466,9 @@ Examples:
   # Basic usage with interactive credentials
   python main.py --cluster 192.168.1.100 --output ./reports
 
+  # Using API token (recommended for automation)
+  python main.py --cluster 192.168.1.100 --token YOUR_API_TOKEN --output ./reports
+
   # Using environment variables for credentials
   export VAST_USERNAME=admin
   export VAST_PASSWORD=password
@@ -424,50 +479,53 @@ Examples:
 
   # Verbose output for debugging
   python main.py --cluster 192.168.1.100 --output ./reports --verbose
-        """
+        """,
     )
 
     # Required arguments
     parser.add_argument(
-        '--cluster', '--cluster-ip',
-        dest='cluster_ip',
+        "--cluster",
+        "--cluster-ip",
+        dest="cluster_ip",
         required=True,
-        help='IP address of the VAST Management Service'
+        help="IP address of the VAST Management Service",
     )
 
     parser.add_argument(
-        '--output', '--output-dir',
-        dest='output_dir',
+        "--output",
+        "--output-dir",
+        dest="output_dir",
         required=True,
-        help='Output directory for generated reports'
+        help="Output directory for generated reports",
     )
 
     # Optional arguments
     parser.add_argument(
-        '--username', '-u',
-        help='VAST username (will prompt if not provided)'
+        "--username", "-u", help="VAST username (will prompt if not provided)"
     )
 
     parser.add_argument(
-        '--password', '-p',
-        help='VAST password (will prompt if not provided)'
+        "--password", "-p", help="VAST password (will prompt if not provided)"
     )
 
     parser.add_argument(
-        '--config', '-c',
-        help='Path to configuration file (default: config/config.yaml)'
+        "--token",
+        "-t",
+        help="VAST API token (alternative to username/password authentication)",
     )
 
     parser.add_argument(
-        '--verbose', '-v',
-        action='store_true',
-        help='Enable verbose output'
+        "--config",
+        "-c",
+        help="Path to configuration file (default: config/config.yaml)",
     )
 
     parser.add_argument(
-        '--version',
-        action='version',
-        version='VAST As-Built Report Generator 1.0.0'
+        "--verbose", "-v", action="store_true", help="Enable verbose output"
+    )
+
+    parser.add_argument(
+        "--version", action="version", version="VAST As-Built Report Generator 1.0.0"
     )
 
     return parser
@@ -486,16 +544,18 @@ def load_configuration(config_path: Optional[str] = None) -> Dict[str, Any]:
     import yaml
 
     if config_path is None:
-        config_path = 'config/config.yaml'
+        config_path = "config/config.yaml"
 
     try:
         config_file = Path(config_path)
         if config_file.exists():
-            with open(config_file, 'r') as f:
+            with open(config_file, "r") as f:
                 config = yaml.safe_load(f)
             return config or {}
         else:
-            print(f"Warning: Configuration file {config_path} not found, using defaults")
+            print(
+                f"Warning: Configuration file {config_path} not found, using defaults"
+            )
             return {}
     except Exception as e:
         print(f"Warning: Failed to load configuration: {e}")
@@ -518,10 +578,10 @@ def main() -> int:
         config = load_configuration(args.config)
 
         # Set up logging
-        log_level = 'DEBUG' if args.verbose else 'INFO'
-        if 'logging' not in config:
-            config['logging'] = {}
-        config['logging']['level'] = log_level
+        log_level = "DEBUG" if args.verbose else "INFO"
+        if "logging" not in config:
+            config["logging"] = {}
+        config["logging"]["level"] = log_level
 
         setup_logging(config)
         logger = get_logger(__name__)

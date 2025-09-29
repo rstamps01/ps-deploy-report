@@ -1,0 +1,13 @@
+{
+  "metadata": {
+    "collection_timestamp": "2025-09-29T06:55:13.674893",
+    "cluster_ip": "10.143.11.204",
+    "api_version": "v1"
+  },
+  "cluster_summary": {},
+  "hardware_inventory": {},
+  "network_config": {},
+  "logical_config": {},
+  "security_config": {},
+  "data_protection_config": {}
+}
