@@ -1,0 +1,480 @@
+nv set evpn enable on
+
+nv unset interface eth0 ip address dhcp
+nv set interface eth0 ip address 10.71.198.4/23
+nv set interface eth0 ip gateway 10.71.198.1
+nv set interface eth0 ip vrf mgmt
+nv set interface eth0 type eth
+
+
+nv set interface lo ip address 10.1.0.1/32
+nv set interface lo type loopback
+nv set interface swp1-28 type swp
+nv set interface swp49-50,51-52,53-54,55-56 type swp
+nv set qos roce
+
+nv set system hostname ams17-spi-spine1-vast-a
+nv set nve vxlan enable on
+nv set router bgp autonomous-system 4263716755
+nv set router bgp enable on
+nv set router bgp router-id 10.1.0.1
+nv set vrf default router bgp enable on
+nv set router bgp graceful-restart mode full
+nv set router bgp graceful-restart path-selection-deferral-time 0
+nv set router bgp graceful-restart restart-time 1
+nv set router bgp graceful-restart stale-routes-time 1
+nv set vrf default router bgp peer-group eBGP graceful-shutdown on
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast enable on
+
+
+nv set vrf RED evpn enable on
+nv set vrf RED evpn vni 4001
+nv set vrf RED router bgp address-family ipv4-unicast enable on
+nv set vrf RED router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp address-family ipv4-unicast route-export to-evpn enable on
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp enable on
+
+
+nv set vrf default router bgp neighbor swp1-28 peer-group eBGP
+nv set vrf default router bgp neighbor swp1-28 type unnumbered
+
+nv set vrf default router bgp peer-group eBGP address-family l2vpn-evpn enable on
+nv set vrf default router bgp peer-group eBGP bfd detect-multiplier 3
+nv set vrf default router bgp peer-group eBGP bfd enable on
+nv set vrf default router bgp peer-group eBGP bfd min-rx-interval 300
+nv set vrf default router bgp peer-group eBGP bfd min-tx-interval 300
+nv set vrf default router bgp peer-group eBGP description eBGP
+nv set vrf default router bgp peer-group eBGP remote-as external
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast network 10.1.0.1/32
+
+
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.196.0/23 summary-only on
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.195.0/24 summary-only on
+
+
+nv set vrf RED router bgp peer-group client remote-as external
+nv set vrf RED router bgp autonomous-system 4263716755
+nv set vrf RED router bgp router-id 10.1.0.1
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast
+
+
+nv set vrf RED router bgp neighbor 10.71.181.193 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.193 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.193 type numbered
+nv set interface swp49 ip address 10.71.181.192/31
+
+nv set vrf RED router bgp neighbor 10.71.181.195 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.195 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.195 type numbered
+nv set interface swp50 ip address 10.71.181.194/31
+
+nv set vrf RED router bgp neighbor 10.71.181.209 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.209 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.209 type numbered
+nv set interface swp51 ip address 10.71.181.208/31
+
+nv set vrf RED router bgp neighbor 10.71.181.211 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.211 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.211 type numbered
+nv set interface swp52 ip address 10.71.181.210/31
+
+nv set vrf RED router bgp neighbor 10.71.181.225 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.225 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.225 type numbered
+nv set interface swp53 ip address 10.71.181.224/31
+
+nv set vrf RED router bgp neighbor 10.71.181.227 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.227 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.227 type numbered
+nv set interface swp54 ip address 10.71.181.226/31
+
+nv set vrf RED router bgp neighbor 10.71.181.241 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.241 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.241 type numbered
+nv set interface swp55 ip address 10.71.181.240/31
+
+nv set vrf RED router bgp neighbor 10.71.181.243 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.243 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.243 type numbered
+nv set interface swp56 ip address 10.71.181.242/31
+nv set interface swp49-50 ip vrf RED
+nv set interface swp51-52 ip vrf RED
+nv set interface swp53-54 ip vrf RED
+nv set interface swp55-56 ip vrf RED
+
+nv unset service ntp default
+nv unset service ntp mgmt server 0.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 1.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 2.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 3.cumulusnetworks.pool.ntp.org
+nv set service ntp mgmt server 10.71.1.90 iburst on
+nv set service dns mgmt server 10.71.24.8
+nv set qos mapping default-global trust l3
+nv config apply -y
+nv config save
+
+########################################################
+
+nv set evpn enable on
+
+nv unset interface eth0 ip address dhcp
+nv set interface eth0 ip address 10.71.198.5/23
+nv set interface eth0 ip gateway 10.71.198.1
+nv set interface eth0 ip vrf mgmt
+nv set interface eth0 type eth
+
+
+nv set interface lo ip address 10.1.0.2/32
+nv set interface lo type loopback
+nv set interface swp1-28 type swp
+nv set interface swp49-50,51-52,53-54,55-56 type swp
+nv set qos roce
+
+nv set system hostname ams17-spi-spine2-vast-a
+nv set nve vxlan enable on
+nv set router bgp autonomous-system 4263716755
+nv set router bgp enable on
+nv set router bgp router-id 10.1.0.2
+nv set vrf default router bgp enable on
+nv set router bgp graceful-restart mode full
+nv set router bgp graceful-restart path-selection-deferral-time 0
+nv set router bgp graceful-restart restart-time 1
+nv set router bgp graceful-restart stale-routes-time 1
+nv set vrf default router bgp peer-group eBGP graceful-shutdown on
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast enable on
+
+
+nv set vrf RED evpn enable on
+nv set vrf RED evpn vni 4001
+nv set vrf RED router bgp address-family ipv4-unicast enable on
+nv set vrf RED router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp address-family ipv4-unicast route-export to-evpn enable on
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp enable on
+
+
+nv set vrf default router bgp neighbor swp1-28 peer-group eBGP
+nv set vrf default router bgp neighbor swp1-28 type unnumbered
+
+nv set vrf default router bgp peer-group eBGP address-family l2vpn-evpn enable on
+nv set vrf default router bgp peer-group eBGP bfd detect-multiplier 3
+nv set vrf default router bgp peer-group eBGP bfd enable on
+nv set vrf default router bgp peer-group eBGP bfd min-rx-interval 300
+nv set vrf default router bgp peer-group eBGP bfd min-tx-interval 300
+nv set vrf default router bgp peer-group eBGP description eBGP
+nv set vrf default router bgp peer-group eBGP remote-as external
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast network 10.1.0.2/32
+
+
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.196.0/23 summary-only on
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.195.0/24 summary-only on
+
+
+nv set vrf RED router bgp peer-group client remote-as external
+nv set vrf RED router bgp autonomous-system 4263716755
+nv set vrf RED router bgp router-id 10.1.0.2
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast
+
+
+nv set vrf RED router bgp neighbor 10.71.181.197 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.197 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.197 type numbered
+nv set interface swp49 ip address 10.71.181.196/31
+
+nv set vrf RED router bgp neighbor 10.71.181.199 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.199 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.199 type numbered
+nv set interface swp50 ip address 10.71.181.198/31
+
+nv set vrf RED router bgp neighbor 10.71.181.213 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.213 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.213 type numbered
+nv set interface swp51 ip address 10.71.181.212/31
+
+nv set vrf RED router bgp neighbor 10.71.181.215 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.215 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.215 type numbered
+nv set interface swp52 ip address 10.71.181.214/31
+
+nv set vrf RED router bgp neighbor 10.71.181.229 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.229 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.229 type numbered
+nv set interface swp53 ip address 10.71.181.228/31
+
+nv set vrf RED router bgp neighbor 10.71.181.231 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.231 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.231 type numbered
+nv set interface swp54 ip address 10.71.181.230/31
+
+nv set vrf RED router bgp neighbor 10.71.181.245 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.245 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.245 type numbered
+nv set interface swp55 ip address 10.71.181.244/31
+
+nv set vrf RED router bgp neighbor 10.71.181.247 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.247 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.247 type numbered
+nv set interface swp56 ip address 10.71.181.246/31
+nv set interface swp49-50 ip vrf RED
+nv set interface swp51-52 ip vrf RED
+nv set interface swp53-54 ip vrf RED
+nv set interface swp55-56 ip vrf RED
+
+nv unset service ntp default
+nv unset service ntp mgmt server 0.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 1.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 2.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 3.cumulusnetworks.pool.ntp.org
+nv set service ntp mgmt server 10.71.1.90 iburst on
+nv set service dns mgmt server 10.71.24.8
+nv set qos mapping default-global trust l3
+nv config apply -y
+nv config save
+
+
+########################################################
+
+nv set evpn enable on
+
+nv unset interface eth0 ip address dhcp
+nv set interface eth0 ip address 10.71.198.6/23
+nv set interface eth0 ip gateway 10.71.198.1
+nv set interface eth0 ip vrf mgmt
+nv set interface eth0 type eth
+
+
+nv set interface lo ip address 10.1.0.3/32
+nv set interface lo type loopback
+nv set interface swp1-28 type swp
+nv set interface swp49-50,51-52,53-54,55-56 type swp
+nv set qos roce
+
+nv set system hostname ams17-spi-spine3-vast-a
+nv set nve vxlan enable on
+nv set router bgp autonomous-system 4263716755
+nv set router bgp enable on
+nv set router bgp router-id 10.1.0.3
+nv set vrf default router bgp enable on
+nv set router bgp graceful-restart mode full
+nv set router bgp graceful-restart path-selection-deferral-time 0
+nv set router bgp graceful-restart restart-time 1
+nv set router bgp graceful-restart stale-routes-time 1
+nv set vrf default router bgp peer-group eBGP graceful-shutdown on
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast enable on
+
+
+nv set vrf RED evpn enable on
+nv set vrf RED evpn vni 4001
+nv set vrf RED router bgp address-family ipv4-unicast enable on
+nv set vrf RED router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp address-family ipv4-unicast route-export to-evpn enable on
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp enable on
+
+
+nv set vrf default router bgp neighbor swp1-28 peer-group eBGP
+nv set vrf default router bgp neighbor swp1-28 type unnumbered
+
+nv set vrf default router bgp peer-group eBGP address-family l2vpn-evpn enable on
+nv set vrf default router bgp peer-group eBGP bfd detect-multiplier 3
+nv set vrf default router bgp peer-group eBGP bfd enable on
+nv set vrf default router bgp peer-group eBGP bfd min-rx-interval 300
+nv set vrf default router bgp peer-group eBGP bfd min-tx-interval 300
+nv set vrf default router bgp peer-group eBGP description eBGP
+nv set vrf default router bgp peer-group eBGP remote-as external
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast network 10.1.0.3/32
+
+
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.196.0/23 summary-only on
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.195.0/24 summary-only on
+
+
+nv set vrf RED router bgp peer-group client remote-as external
+nv set vrf RED router bgp autonomous-system 4263716755
+nv set vrf RED router bgp router-id 10.1.0.3
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast
+
+
+nv set vrf RED router bgp neighbor 10.71.181.201 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.201 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.201 type numbered
+nv set interface swp49 ip address 10.71.181.200/31
+
+nv set vrf RED router bgp neighbor 10.71.181.203 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.203 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.203 type numbered
+nv set interface swp50 ip address 10.71.181.202/31
+
+nv set vrf RED router bgp neighbor 10.71.181.217 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.217 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.217 type numbered
+nv set interface swp51 ip address 10.71.181.216/31
+
+nv set vrf RED router bgp neighbor 10.71.181.219 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.219 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.219 type numbered
+nv set interface swp52 ip address 10.71.181.218/31
+
+nv set vrf RED router bgp neighbor 10.71.181.233 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.233 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.233 type numbered
+nv set interface swp53 ip address 10.71.181.232/31
+
+nv set vrf RED router bgp neighbor 10.71.181.235 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.235 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.235 type numbered
+nv set interface swp54 ip address 10.71.181.234/31
+
+nv set vrf RED router bgp neighbor 10.71.181.249 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.249 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.249 type numbered
+nv set interface swp55 ip address 10.71.181.248/31
+
+nv set vrf RED router bgp neighbor 10.71.181.251 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.251 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.251 type numbered
+nv set interface swp56 ip address 10.71.181.250/31
+nv set interface swp49-50 ip vrf RED
+nv set interface swp51-52 ip vrf RED
+nv set interface swp53-54 ip vrf RED
+nv set interface swp55-56 ip vrf RED
+
+nv unset service ntp default
+nv unset service ntp mgmt server 0.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 1.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 2.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 3.cumulusnetworks.pool.ntp.org
+nv set service ntp mgmt server 10.71.1.90 iburst on
+nv set service dns mgmt server 10.71.24.8
+nv set qos mapping default-global trust l3
+nv config apply -y
+nv config save
+
+
+########################################################
+
+
+nv set evpn enable on
+
+nv unset interface eth0 ip address dhcp
+nv set interface eth0 ip address 10.71.198.7/23
+nv set interface eth0 ip gateway 10.71.198.1
+nv set interface eth0 ip vrf mgmt
+nv set interface eth0 type eth
+
+
+nv set interface lo ip address 10.1.0.4/32
+nv set interface lo type loopback
+nv set interface swp1-28 type swp
+nv set interface swp49-50,51-52,53-54,55-56 type swp
+nv set qos roce
+
+nv set system hostname ams17-spi-spine4-vast-a
+nv set nve vxlan enable on
+nv set router bgp autonomous-system 4263716755
+nv set router bgp enable on
+nv set router bgp router-id 10.1.0.4
+nv set vrf default router bgp enable on
+nv set router bgp graceful-restart mode full
+nv set router bgp graceful-restart path-selection-deferral-time 0
+nv set router bgp graceful-restart restart-time 1
+nv set router bgp graceful-restart stale-routes-time 1
+nv set vrf default router bgp peer-group eBGP graceful-shutdown on
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast enable on
+
+
+nv set vrf RED evpn enable on
+nv set vrf RED evpn vni 4001
+nv set vrf RED router bgp address-family ipv4-unicast enable on
+nv set vrf RED router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp address-family ipv4-unicast route-export to-evpn enable on
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast redistribute connected enable on
+nv set vrf RED router bgp enable on
+
+
+nv set vrf default router bgp neighbor swp1-28 peer-group eBGP
+nv set vrf default router bgp neighbor swp1-28 type unnumbered
+
+nv set vrf default router bgp peer-group eBGP address-family l2vpn-evpn enable on
+nv set vrf default router bgp peer-group eBGP bfd detect-multiplier 3
+nv set vrf default router bgp peer-group eBGP bfd enable on
+nv set vrf default router bgp peer-group eBGP bfd min-rx-interval 300
+nv set vrf default router bgp peer-group eBGP bfd min-tx-interval 300
+nv set vrf default router bgp peer-group eBGP description eBGP
+nv set vrf default router bgp peer-group eBGP remote-as external
+nv set vrf default router bgp address-family ipv4-unicast enable on
+nv set vrf default router bgp address-family ipv4-unicast network 10.1.0.4/32
+
+
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.196.0/23 summary-only on
+nv set vrf RED router bgp address-family ipv4-unicast aggregate-route 10.71.195.0/24 summary-only on
+
+
+nv set vrf RED router bgp peer-group client remote-as external
+nv set vrf RED router bgp autonomous-system 4263716755
+nv set vrf RED router bgp router-id 10.1.0.4
+nv set vrf default router bgp peer-group eBGP address-family ipv4-unicast
+
+
+nv set vrf RED router bgp neighbor 10.71.181.205 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.205 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.205 type numbered
+nv set interface swp49 ip address 10.71.181.204/31
+
+nv set vrf RED router bgp neighbor 10.71.181.207 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.207 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.207 type numbered
+nv set interface swp50 ip address 10.71.181.206/31
+
+nv set vrf RED router bgp neighbor 10.71.181.221 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.221 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.221 type numbered
+nv set interface swp51 ip address 10.71.181.220/31
+
+nv set vrf RED router bgp neighbor 10.71.181.223 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.223 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.223 type numbered
+nv set interface swp52 ip address 10.71.181.222/31
+
+nv set vrf RED router bgp neighbor 10.71.181.237 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.237 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.237 type numbered
+nv set interface swp53 ip address 10.71.181.236/31
+
+nv set vrf RED router bgp neighbor 10.71.181.239 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.239 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.239 type numbered
+nv set interface swp54 ip address 10.71.181.238/31
+
+nv set vrf RED router bgp neighbor 10.71.181.253 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.253 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.253 type numbered
+nv set interface swp55 ip address 10.71.181.252/31
+
+nv set vrf RED router bgp neighbor 10.71.181.255 bfd enable on
+nv set vrf RED router bgp neighbor 10.71.181.255 peer-group client
+nv set vrf RED router bgp neighbor 10.71.181.255 type numbered
+nv set interface swp56 ip address 10.71.181.254/31
+nv set interface swp49-50 ip vrf RED
+nv set interface swp51-52 ip vrf RED
+nv set interface swp53-54 ip vrf RED
+nv set interface swp55-56 ip vrf RED
+
+nv unset service ntp default
+nv unset service ntp mgmt server 0.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 1.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 2.cumulusnetworks.pool.ntp.org
+nv unset service ntp mgmt server 3.cumulusnetworks.pool.ntp.org
+nv set service ntp mgmt server 10.71.1.90 iburst on
+nv set service dns mgmt server 10.71.24.8
+nv set qos mapping default-global trust l3
+nv config apply -y
+nv config save

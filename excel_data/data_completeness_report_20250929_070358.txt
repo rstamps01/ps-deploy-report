@@ -1,0 +1,44 @@
+VAST As-Built Report Data Completeness Analysis
+============================================================
+
+Collection Timestamp: 2025-09-29T07:04:15.087942
+Cluster IP: 10.143.11.204
+API Version: v1
+Overall Completeness: 57.9%
+
+DATA SOURCES STATUS:
+------------------------------
+cluster_basic        : ✅ Available
+cluster_state        : ✅ Available
+cluster_capacity     : ✅ Available
+cnodes               : ✅ Available
+dnodes               : ✅ Available
+cboxes               : ✅ Available
+dboxes               : ✅ Available
+dtrays               : ✅ Available
+encryption           : ⚠️ Missing (Optional)
+cluster_network      : ⚠️ Missing (Optional)
+cnode_network        : ⚠️ Missing (Optional)
+dnode_network        : ⚠️ Missing (Optional)
+ntp                  : ⚠️ Missing (Optional)
+ldap                 : ⚠️ Missing (Optional)
+snapshot_programs    : ⚠️ Missing (Optional)
+shares               : ⚠️ Missing (Optional)
+quotas               : ✅ Available
+users                : ✅ Available
+groups               : ✅ Available
+
+MISSING ENDPOINTS (0):
+------------------------------
+
+RECOMMENDATIONS:
+------------------------------
+⚠️ Data collection below 93.5% confidence threshold
+   Consider investigating missing endpoints
+
+NEXT STEPS:
+------------------------------
+1. Review Excel file for comprehensive data
+2. Use curl commands for manual data collection if needed
+3. Check troubleshooting guide for common issues
+4. Validate data accuracy against source systems
