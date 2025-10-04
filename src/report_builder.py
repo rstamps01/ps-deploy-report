@@ -17,37 +17,50 @@ Author: Manus AI
 Date: September 26, 2025
 """
 
+import json
 import os
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
 from dataclasses import dataclass
-import json
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.logger import get_logger
 from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
+from utils.logger import get_logger
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch, cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, Image
-    from reportlab.platypus import KeepTogether, Frame, PageTemplate, BaseDocTemplate
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
-    from reportlab.pdfgen import canvas
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
+    from reportlab.lib.pagesizes import A4, letter
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+    from reportlab.lib.units import cm, inch
     from reportlab.lib.utils import ImageReader
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import (
+        BaseDocTemplate,
+        Frame,
+        Image,
+        KeepTogether,
+        PageBreak,
+        PageTemplate,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
 try:
     import weasyprint
-    from weasyprint import HTML, CSS
+    from weasyprint import CSS, HTML
+
     WEASYPRINT_AVAILABLE = True
 except (ImportError, OSError):
     # OSError can occur when system libraries are missing
@@ -57,6 +70,7 @@ except (ImportError, OSError):
 @dataclass
 class ReportConfig:
     """Configuration for report generation."""
+
     page_size: str = "A4"
     margin_top: float = 1.0
     margin_bottom: float = 1.0
@@ -75,6 +89,7 @@ class ReportConfig:
 @dataclass
 class ReportSection:
     """Data class for report section information."""
+
     title: str
     content: List[Any]
     level: int = 1
@@ -83,6 +98,7 @@ class ReportSection:
 
 class ReportGenerationError(Exception):
     """Custom exception for report generation errors."""
+
     pass
 
 
@@ -106,14 +122,18 @@ class VastReportBuilder:
 
         # Check for required libraries
         if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
-            raise ReportGenerationError("Neither ReportLab nor WeasyPrint is available. Please install one of them.")
+            raise ReportGenerationError(
+                "Neither ReportLab nor WeasyPrint is available. Please install one of them."
+            )
 
         # Initialize VAST brand compliance
         self.brand_compliance = create_vast_brand_compliance()
 
         self.logger.info("Report builder initialized with VAST brand compliance")
 
-    def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
+    def generate_pdf_report(
+        self, processed_data: Dict[str, Any], output_path: str
+    ) -> bool:
         """
         Generate a professional PDF report from processed data.
 
@@ -143,7 +163,9 @@ class VastReportBuilder:
             self.logger.error(f"Error generating PDF report: {e}")
             return False
 
-    def _generate_with_reportlab(self, processed_data: Dict[str, Any], output_path: str) -> bool:
+    def _generate_with_reportlab(
+        self, processed_data: Dict[str, Any], output_path: str
+    ) -> bool:
         """Generate PDF using ReportLab."""
         try:
             # Set up document
@@ -154,7 +176,7 @@ class VastReportBuilder:
                 rightMargin=self.config.margin_right * inch,
                 leftMargin=self.config.margin_left * inch,
                 topMargin=self.config.margin_top * inch,
-                bottomMargin=self.config.margin_bottom * inch
+                bottomMargin=self.config.margin_bottom * inch,
             )
 
             # Build story (content)
@@ -215,7 +237,9 @@ class VastReportBuilder:
             self.logger.error(f"Error generating PDF with ReportLab: {e}")
             return False
 
-    def _generate_with_weasyprint(self, processed_data: Dict[str, Any], output_path: str) -> bool:
+    def _generate_with_weasyprint(
+        self, processed_data: Dict[str, Any], output_path: str
+    ) -> bool:
         """Generate PDF using WeasyPrint."""
         try:
             # Generate HTML content
@@ -231,7 +255,9 @@ class VastReportBuilder:
             # Generate PDF
             html_doc.write_pdf(output_path, stylesheets=[css_doc])
 
-            self.logger.info(f"PDF report generated successfully with WeasyPrint: {output_path}")
+            self.logger.info(
+                f"PDF report generated successfully with WeasyPrint: {output_path}"
+            )
             return True
 
         except Exception as e:
@@ -243,16 +269,14 @@ class VastReportBuilder:
         content = []
 
         # Get cluster information
-        cluster_info = data.get('cluster_summary', {})
+        cluster_info = data.get("cluster_summary", {})
 
         # Create VAST brand-compliant header
         title = "VAST As-Built Report"
         subtitle = "Customer Deployment Documentation"
 
         header_elements = self.brand_compliance.create_vast_header(
-            title=title,
-            subtitle=subtitle,
-            cluster_info=cluster_info
+            title=title, subtitle=subtitle, cluster_info=cluster_info
         )
         content.extend(header_elements)
 
@@ -261,26 +285,30 @@ class VastReportBuilder:
             timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
             timestamp_para = Paragraph(
                 f"<b>Generated on:</b> {timestamp}",
-                self.brand_compliance.styles['vast_body']
+                self.brand_compliance.styles["vast_body"],
             )
             content.append(timestamp_para)
             content.append(Spacer(1, 10))
 
         # Enhanced features information
-        enhanced_features = data.get('metadata', {}).get('enhanced_features', {})
-        if enhanced_features.get('rack_height_supported'):
+        enhanced_features = data.get("metadata", {}).get("enhanced_features", {})
+        if enhanced_features.get("rack_height_supported"):
             features_para = Paragraph(
                 "<b>Enhanced Features:</b> Rack Positioning Available",
-                self.brand_compliance.styles['vast_body']
+                self.brand_compliance.styles["vast_body"],
             )
             content.append(features_para)
             content.append(Spacer(1, 20))
 
         # Add VAST Professional Services footer
-        footer_elements = self.brand_compliance.create_vast_footer({
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            'completeness': data.get('metadata', {}).get('overall_completeness', 0.0)
-        })
+        footer_elements = self.brand_compliance.create_vast_footer(
+            {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "completeness": data.get("metadata", {}).get(
+                    "overall_completeness", 0.0
+                ),
+            }
+        )
         content.extend(footer_elements)
 
         return content
@@ -290,19 +318,19 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle(
-            'TOC_Title',
-            parent=styles['Heading1'],
+            "TOC_Title",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size + 2,
             spaceAfter=20,
-            alignment=TA_CENTER
+            alignment=TA_CENTER,
         )
 
         toc_style = ParagraphStyle(
-            'TOC_Item',
-            parent=styles['Normal'],
+            "TOC_Item",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
             spaceAfter=8,
-            leftIndent=20
+            leftIndent=20,
         )
 
         content = []
@@ -320,7 +348,7 @@ class VastReportBuilder:
             "6. Security & Authentication",
             "7. Data Protection",
             "8. Enhanced Features",
-            "9. Appendix"
+            "9. Appendix",
         ]
 
         for item in toc_items:
@@ -339,46 +367,66 @@ class VastReportBuilder:
         content.extend(heading_elements)
 
         # Cluster overview with VAST styling
-        cluster_info = data.get('cluster_summary', {})
-        cluster_name = cluster_info.get('name', 'Unknown')
-        cluster_version = cluster_info.get('version', 'Unknown')
-        cluster_state = cluster_info.get('state', 'Unknown')
+        cluster_info = data.get("cluster_summary", {})
+        cluster_name = cluster_info.get("name", "Unknown")
+        cluster_version = cluster_info.get("version", "Unknown")
+        cluster_state = cluster_info.get("state", "Unknown")
+        cluster_id = cluster_info.get("cluster_id", "Unknown")
+        mgmt_vip = cluster_info.get("mgmt_vip", "Unknown")
+        build = cluster_info.get("build", "Unknown")
+        psnt = cluster_info.get("psnt", "Unknown")
+        uptime = cluster_info.get("uptime", "Unknown")
+        online_start_time = cluster_info.get("online_start_time", "Unknown")
+        deployment_time = cluster_info.get("deployment_time", "Unknown")
 
         overview_text = f"<b>Cluster Overview:</b><br/>"
         overview_text += f"• Name: {cluster_name}<br/>"
+        overview_text += f"• Cluster ID: {cluster_id}<br/>"
+        overview_text += f"• Management VIP: {mgmt_vip}<br/>"
         overview_text += f"• Version: {cluster_version}<br/>"
-        overview_text += f"• State: {cluster_state}"
+        overview_text += f"• Build: {build}<br/>"
+        overview_text += f"• State: {cluster_state}<br/>"
+        overview_text += f"• PSNT: {psnt}<br/>"
+        overview_text += f"• Uptime: {uptime}<br/>"
+        overview_text += f"• Online Since: {online_start_time}<br/>"
+        overview_text += f"• Deployed: {deployment_time}"
 
-        overview_para = Paragraph(overview_text, self.brand_compliance.styles['vast_body'])
+        overview_para = Paragraph(
+            overview_text, self.brand_compliance.styles["vast_body"]
+        )
         content.append(overview_para)
         content.append(Spacer(1, 12))
 
         # Hardware summary with VAST styling
-        hardware = data.get('hardware_inventory', {})
-        total_nodes = hardware.get('total_nodes', 0)
-        cnodes = len(hardware.get('cnodes', []))
-        dnodes = len(hardware.get('dnodes', []))
-        rack_positions = hardware.get('rack_positions_available', False)
+        hardware = data.get("hardware_inventory", {})
+        total_nodes = hardware.get("total_nodes", 0)
+        cnodes = len(hardware.get("cnodes", []))
+        dnodes = len(hardware.get("dnodes", []))
+        rack_positions = hardware.get("rack_positions_available", False)
 
         hardware_text = f"<b>Hardware Summary:</b><br/>"
         hardware_text += f"• Total Nodes: {total_nodes}<br/>"
         hardware_text += f"• CNodes: {cnodes}<br/>"
         hardware_text += f"• DNodes: {dnodes}<br/>"
-        hardware_text += f"• Rack Positions: {'Available' if rack_positions else 'Not Available'}"
+        hardware_text += (
+            f"• Rack Positions: {'Available' if rack_positions else 'Not Available'}"
+        )
 
-        hardware_para = Paragraph(hardware_text, self.brand_compliance.styles['vast_body'])
+        hardware_para = Paragraph(
+            hardware_text, self.brand_compliance.styles["vast_body"]
+        )
         content.append(hardware_para)
         content.append(Spacer(1, 12))
 
         # Data completeness with VAST styling
-        metadata = data.get('metadata', {})
-        completeness = metadata.get('overall_completeness', 0.0)
+        metadata = data.get("metadata", {})
+        completeness = metadata.get("overall_completeness", 0.0)
 
         data_text = f"<b>Data Collection:</b><br/>"
         data_text += f"• Overall Completeness: {completeness:.1%}<br/>"
         data_text += f"• Enhanced Features: {'Enabled' if metadata.get('enhanced_features', {}).get('rack_height_supported') else 'Disabled'}"
 
-        data_para = Paragraph(data_text, self.brand_compliance.styles['vast_body'])
+        data_para = Paragraph(data_text, self.brand_compliance.styles["vast_body"])
         content.append(data_para)
 
         return content
@@ -393,22 +441,20 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        cluster_info = data.get('cluster_summary', {})
+        cluster_info = data.get("cluster_summary", {})
 
         # Create cluster info table with VAST styling
         cluster_data = [
-            ['Name', cluster_info.get('name', 'Unknown')],
-            ['GUID', cluster_info.get('guid', 'Unknown')],
-            ['Version', cluster_info.get('version', 'Unknown')],
-            ['State', cluster_info.get('state', 'Unknown')],
-            ['License', cluster_info.get('license', 'Unknown')],
-            ['PSNT', cluster_info.get('psnt', 'Not Available')]
+            ["Name", cluster_info.get("name", "Unknown")],
+            ["GUID", cluster_info.get("guid", "Unknown")],
+            ["Version", cluster_info.get("version", "Unknown")],
+            ["State", cluster_info.get("state", "Unknown")],
+            ["License", cluster_info.get("license", "Unknown")],
+            ["PSNT", cluster_info.get("psnt", "Not Available")],
         ]
 
         table_elements = self.brand_compliance.create_vast_table(
-            cluster_data,
-            "Cluster Details",
-            ['Property', 'Value']
+            cluster_data, "Cluster Details", ["Property", "Value"]
         )
         content.extend(table_elements)
 
@@ -424,21 +470,23 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        hardware = data.get('hardware_inventory', {})
+        hardware = data.get("hardware_inventory", {})
 
         # Hardware summary with VAST styling
-        total_nodes = hardware.get('total_nodes', 0)
-        rack_positions = hardware.get('rack_positions_available', False)
+        total_nodes = hardware.get("total_nodes", 0)
+        rack_positions = hardware.get("rack_positions_available", False)
 
         summary_text = f"<b>Summary:</b> {total_nodes} total nodes<br/>"
         summary_text += f"<b>Rack Positioning:</b> {'Available' if rack_positions else 'Not Available'}"
 
-        summary_para = Paragraph(summary_text, self.brand_compliance.styles['vast_body'])
+        summary_para = Paragraph(
+            summary_text, self.brand_compliance.styles["vast_body"]
+        )
         content.append(summary_para)
         content.append(Spacer(1, 12))
 
         # CNodes table with VAST styling
-        cnodes = hardware.get('cnodes', [])
+        cnodes = hardware.get("cnodes", [])
         if cnodes:
             cnode_elements = self.brand_compliance.create_vast_hardware_table(
                 cnodes, "CNodes"
@@ -446,7 +494,7 @@ class VastReportBuilder:
             content.extend(cnode_elements)
 
         # DNodes table with VAST styling
-        dnodes = hardware.get('dnodes', [])
+        dnodes = hardware.get("dnodes", [])
         if dnodes:
             dnode_elements = self.brand_compliance.create_vast_hardware_table(
                 dnodes, "DNodes"
@@ -457,7 +505,7 @@ class VastReportBuilder:
         if rack_positions:
             layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
                 "Physical Rack Layout",
-                "Visual representation of hardware positioning in the rack with U-number assignments."
+                "Visual representation of hardware positioning in the rack with U-number assignments.",
             )
             content.extend(layout_elements)
 
@@ -468,17 +516,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -486,39 +534,58 @@ class VastReportBuilder:
         content.append(Paragraph("Network Configuration", heading_style))
         content.append(Spacer(1, 12))
 
-        sections = data.get('sections', {})
-        network_config = sections.get('network_configuration', {}).get('data', {})
+        sections = data.get("sections", {})
+        network_config = sections.get("network_configuration", {}).get("data", {})
 
         # DNS Configuration
-        dns_config = network_config.get('dns')
+        dns_config = network_config.get("dns")
         if dns_config:
             content.append(Paragraph("<b>DNS Configuration:</b>", normal_style))
-            content.append(Paragraph(f"• Enabled: {dns_config.get('enabled', False)}", normal_style))
-            servers = dns_config.get('servers', [])
+            content.append(
+                Paragraph(
+                    f"• Enabled: {dns_config.get('enabled', False)}", normal_style
+                )
+            )
+            servers = dns_config.get("servers", [])
             if servers:
-                content.append(Paragraph(f"• Servers: {', '.join(servers)}", normal_style))
-            search_domains = dns_config.get('search_domains', [])
+                content.append(
+                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
+                )
+            search_domains = dns_config.get("search_domains", [])
             if search_domains:
-                content.append(Paragraph(f"• Search Domains: {', '.join(search_domains)}", normal_style))
+                content.append(
+                    Paragraph(
+                        f"• Search Domains: {', '.join(search_domains)}", normal_style
+                    )
+                )
             content.append(Spacer(1, 8))
 
         # NTP Configuration
-        ntp_config = network_config.get('ntp')
+        ntp_config = network_config.get("ntp")
         if ntp_config:
             content.append(Paragraph("<b>NTP Configuration:</b>", normal_style))
-            content.append(Paragraph(f"• Enabled: {ntp_config.get('enabled', False)}", normal_style))
-            servers = ntp_config.get('servers', [])
+            content.append(
+                Paragraph(
+                    f"• Enabled: {ntp_config.get('enabled', False)}", normal_style
+                )
+            )
+            servers = ntp_config.get("servers", [])
             if servers:
-                content.append(Paragraph(f"• Servers: {', '.join(servers)}", normal_style))
+                content.append(
+                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
+                )
             content.append(Spacer(1, 8))
 
         # VIP Pools
-        vippool_config = network_config.get('vippools')
+        vippool_config = network_config.get("vippools")
         if vippool_config:
-            content.append(Paragraph("<b>VIP Pools:</b>", normal_style))
-            pools = vippool_config.get('pools', [])
-            for pool in pools:
-                content.append(Paragraph(f"• {pool.get('name', 'Unknown')}: {pool.get('vips', [])}", normal_style))
+            pools = vippool_config.get("pools", [])
+            pool_count = len(pools) if isinstance(pools, list) else 0
+            content.append(
+                Paragraph(
+                    f"<b>VIP Pools:</b> {pool_count} pools configured", normal_style
+                )
+            )
 
         return content
 
@@ -527,17 +594,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -545,31 +612,46 @@ class VastReportBuilder:
         content.append(Paragraph("Logical Configuration", heading_style))
         content.append(Spacer(1, 12))
 
-        sections = data.get('sections', {})
-        logical_config = sections.get('logical_configuration', {}).get('data', {})
+        sections = data.get("sections", {})
+        logical_config = sections.get("logical_configuration", {}).get("data", {})
 
         # Tenants
-        tenants = logical_config.get('tenants')
+        tenants = logical_config.get("tenants")
         if tenants:
-            content.append(Paragraph("<b>Tenants:</b>", normal_style))
-            for tenant in tenants.get('tenants', []):
-                content.append(Paragraph(f"• {tenant.get('name', 'Unknown')} (ID: {tenant.get('id', 'Unknown')}) - {tenant.get('state', 'Unknown')}", normal_style))
+            tenant_list = (
+                tenants.get("tenants", []) if isinstance(tenants, dict) else tenants
+            )
+            tenant_count = len(tenant_list) if isinstance(tenant_list, list) else 0
+            content.append(
+                Paragraph(
+                    f"<b>Tenants:</b> {tenant_count} tenants configured", normal_style
+                )
+            )
             content.append(Spacer(1, 8))
 
         # Views
-        views = logical_config.get('views')
+        views = logical_config.get("views")
         if views:
-            content.append(Paragraph("<b>Views:</b>", normal_style))
-            for view in views.get('views', []):
-                content.append(Paragraph(f"• {view.get('name', 'Unknown')} ({view.get('path', 'Unknown')}) - {view.get('state', 'Unknown')}", normal_style))
+            view_list = views.get("views", []) if isinstance(views, dict) else views
+            view_count = len(view_list) if isinstance(view_list, list) else 0
+            content.append(
+                Paragraph(f"<b>Views:</b> {view_count} views configured", normal_style)
+            )
             content.append(Spacer(1, 8))
 
         # View Policies
-        policies = logical_config.get('view_policies')
+        policies = logical_config.get("view_policies")
         if policies:
-            content.append(Paragraph("<b>View Policies:</b>", normal_style))
-            for policy in policies.get('policies', []):
-                content.append(Paragraph(f"• {policy.get('name', 'Unknown')} ({policy.get('type', 'Unknown')}) - {policy.get('state', 'Unknown')}", normal_style))
+            policy_list = (
+                policies.get("policies", []) if isinstance(policies, dict) else policies
+            )
+            policy_count = len(policy_list) if isinstance(policy_list, list) else 0
+            content.append(
+                Paragraph(
+                    f"<b>View Policies:</b> {policy_count} policies configured",
+                    normal_style,
+                )
+            )
 
         return content
 
@@ -578,17 +660,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -596,33 +678,47 @@ class VastReportBuilder:
         content.append(Paragraph("Security & Authentication", heading_style))
         content.append(Spacer(1, 12))
 
-        sections = data.get('sections', {})
-        security_config = sections.get('security_configuration', {}).get('data', {})
+        sections = data.get("sections", {})
+        security_config = sections.get("security_configuration", {}).get("data", {})
 
         # Active Directory
-        ad_config = security_config.get('active_directory')
+        ad_config = security_config.get("active_directory")
         if ad_config:
             content.append(Paragraph("<b>Active Directory:</b>", normal_style))
-            content.append(Paragraph(f"• Enabled: {ad_config.get('enabled', False)}", normal_style))
-            if ad_config.get('domain'):
-                content.append(Paragraph(f"• Domain: {ad_config.get('domain')}", normal_style))
-            servers = ad_config.get('servers', [])
+            content.append(
+                Paragraph(f"• Enabled: {ad_config.get('enabled', False)}", normal_style)
+            )
+            if ad_config.get("domain"):
+                content.append(
+                    Paragraph(f"• Domain: {ad_config.get('domain')}", normal_style)
+                )
+            servers = ad_config.get("servers", [])
             if servers:
-                content.append(Paragraph(f"• Servers: {', '.join(servers)}", normal_style))
+                content.append(
+                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
+                )
             content.append(Spacer(1, 8))
 
         # LDAP
-        ldap_config = security_config.get('ldap')
+        ldap_config = security_config.get("ldap")
         if ldap_config:
             content.append(Paragraph("<b>LDAP:</b>", normal_style))
-            content.append(Paragraph(f"• Enabled: {ldap_config.get('enabled', False)}", normal_style))
+            content.append(
+                Paragraph(
+                    f"• Enabled: {ldap_config.get('enabled', False)}", normal_style
+                )
+            )
             content.append(Spacer(1, 8))
 
         # NIS
-        nis_config = security_config.get('nis')
+        nis_config = security_config.get("nis")
         if nis_config:
             content.append(Paragraph("<b>NIS:</b>", normal_style))
-            content.append(Paragraph(f"• Enabled: {nis_config.get('enabled', False)}", normal_style))
+            content.append(
+                Paragraph(
+                    f"• Enabled: {nis_config.get('enabled', False)}", normal_style
+                )
+            )
 
         return content
 
@@ -631,17 +727,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -649,23 +745,37 @@ class VastReportBuilder:
         content.append(Paragraph("Data Protection", heading_style))
         content.append(Spacer(1, 12))
 
-        sections = data.get('sections', {})
-        protection_config = sections.get('data_protection_configuration', {}).get('data', {})
+        sections = data.get("sections", {})
+        protection_config = sections.get("data_protection_configuration", {}).get(
+            "data", {}
+        )
 
         # Snapshot Programs
-        snapshots = protection_config.get('snapshot_programs')
+        snapshots = protection_config.get("snapshot_programs")
         if snapshots:
             content.append(Paragraph("<b>Snapshot Programs:</b>", normal_style))
-            for snapshot in snapshots.get('programs', []):
-                content.append(Paragraph(f"• {snapshot.get('name', 'Unknown')} - {snapshot.get('schedule', 'Unknown')} ({'Enabled' if snapshot.get('enabled') else 'Disabled'})", normal_style))
+            for snapshot in snapshots.get("programs", []):
+                content.append(
+                    Paragraph(
+                        f"• {snapshot.get('name', 'Unknown')} - {snapshot.get('schedule', 'Unknown')} ({'Enabled' if snapshot.get('enabled') else 'Disabled'})",
+                        normal_style,
+                    )
+                )
             content.append(Spacer(1, 8))
 
         # Protection Policies
-        policies = protection_config.get('protection_policies')
+        policies = protection_config.get("protection_policies")
         if policies:
-            content.append(Paragraph("<b>Protection Policies:</b>", normal_style))
-            for policy in policies.get('policies', []):
-                content.append(Paragraph(f"• {policy.get('name', 'Unknown')} ({policy.get('type', 'Unknown')}) - {policy.get('retention', 'Unknown')} ({'Enabled' if policy.get('enabled') else 'Disabled'})", normal_style))
+            policy_list = (
+                policies.get("policies", []) if isinstance(policies, dict) else policies
+            )
+            policy_count = len(policy_list) if isinstance(policy_list, list) else 0
+            content.append(
+                Paragraph(
+                    f"<b>Protection Policies:</b> {policy_count} policies configured",
+                    normal_style,
+                )
+            )
 
         return content
 
@@ -674,17 +784,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -692,31 +802,53 @@ class VastReportBuilder:
         content.append(Paragraph("Enhanced Features", heading_style))
         content.append(Spacer(1, 12))
 
-        enhanced_features = data.get('metadata', {}).get('enhanced_features', {})
+        enhanced_features = data.get("metadata", {}).get("enhanced_features", {})
 
         # Rack Height Support
-        rack_support = enhanced_features.get('rack_height_supported', False)
+        rack_support = enhanced_features.get("rack_height_supported", False)
         content.append(Paragraph("<b>Rack Positioning:</b>", normal_style))
-        content.append(Paragraph(f"• Supported: {'Yes' if rack_support else 'No'}", normal_style))
+        content.append(
+            Paragraph(f"• Supported: {'Yes' if rack_support else 'No'}", normal_style)
+        )
         if rack_support:
-            content.append(Paragraph("• Automated U-number generation for hardware positioning", normal_style))
-            content.append(Paragraph("• Physical rack layout visualization available", normal_style))
+            content.append(
+                Paragraph(
+                    "• Automated U-number generation for hardware positioning",
+                    normal_style,
+                )
+            )
+            content.append(
+                Paragraph(
+                    "• Physical rack layout visualization available", normal_style
+                )
+            )
         else:
-            content.append(Paragraph("• Manual entry required for rack positions", normal_style))
+            content.append(
+                Paragraph("• Manual entry required for rack positions", normal_style)
+            )
         content.append(Spacer(1, 8))
 
         # PSNT Support
-        psnt_support = enhanced_features.get('psnt_supported', False)
+        psnt_support = enhanced_features.get("psnt_supported", False)
         content.append(Paragraph("<b>PSNT Tracking:</b>", normal_style))
-        content.append(Paragraph(f"• Supported: {'Yes' if psnt_support else 'No'}", normal_style))
+        content.append(
+            Paragraph(f"• Supported: {'Yes' if psnt_support else 'No'}", normal_style)
+        )
         if psnt_support:
-            content.append(Paragraph("• Cluster Product Serial Number available for support tracking", normal_style))
-            cluster_info = data.get('cluster_summary', {})
-            psnt = cluster_info.get('psnt')
+            content.append(
+                Paragraph(
+                    "• Cluster Product Serial Number available for support tracking",
+                    normal_style,
+                )
+            )
+            cluster_info = data.get("cluster_summary", {})
+            psnt = cluster_info.get("psnt")
             if psnt:
                 content.append(Paragraph(f"• PSNT: {psnt}", normal_style))
         else:
-            content.append(Paragraph("• PSNT not available for this cluster version", normal_style))
+            content.append(
+                Paragraph("• PSNT not available for this cluster version", normal_style)
+            )
 
         return content
 
@@ -725,17 +857,17 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
-            'Section_Heading',
-            parent=styles['Heading1'],
+            "Section_Heading",
+            parent=styles["Heading1"],
             fontSize=self.config.heading_font_size,
-            spaceAfter=12
+            spaceAfter=12,
         )
 
         normal_style = ParagraphStyle(
-            'Section_Normal',
-            parent=styles['Normal'],
+            "Section_Normal",
+            parent=styles["Normal"],
             fontSize=self.config.font_size,
-            spaceAfter=8
+            spaceAfter=8,
         )
 
         content = []
@@ -744,24 +876,61 @@ class VastReportBuilder:
         content.append(Spacer(1, 12))
 
         # Generation metadata
-        metadata = data.get('metadata', {})
+        metadata = data.get("metadata", {})
         content.append(Paragraph("<b>Report Generation Information:</b>", normal_style))
-        content.append(Paragraph(f"• Generated on: {metadata.get('extraction_timestamp', 'Unknown')}", normal_style))
-        content.append(Paragraph(f"• Data completeness: {metadata.get('overall_completeness', 0.0):.1%}", normal_style))
-        content.append(Paragraph(f"• API version: {metadata.get('api_version', 'Unknown')}", normal_style))
-        content.append(Paragraph(f"• Cluster version: {metadata.get('cluster_version', 'Unknown')}", normal_style))
+        content.append(
+            Paragraph(
+                f"• Generated on: {metadata.get('extraction_timestamp', 'Unknown')}",
+                normal_style,
+            )
+        )
+        content.append(
+            Paragraph(
+                f"• Data completeness: {metadata.get('overall_completeness', 0.0):.1%}",
+                normal_style,
+            )
+        )
+        content.append(
+            Paragraph(
+                f"• API version: {metadata.get('api_version', 'Unknown')}", normal_style
+            )
+        )
+        content.append(
+            Paragraph(
+                f"• Cluster version: {metadata.get('cluster_version', 'Unknown')}",
+                normal_style,
+            )
+        )
         content.append(Spacer(1, 12))
 
         # Physical layout information
-        hardware = data.get('hardware_inventory', {})
-        physical_layout = hardware.get('physical_layout')
+        hardware = data.get("hardware_inventory", {})
+        physical_layout = hardware.get("physical_layout")
         if physical_layout:
             content.append(Paragraph("<b>Physical Rack Layout:</b>", normal_style))
-            stats = physical_layout.get('statistics', {})
-            content.append(Paragraph(f"• Occupied positions: {stats.get('occupied_positions', 0)}", normal_style))
-            content.append(Paragraph(f"• Position range: U{stats.get('min_position', 0)} - U{stats.get('max_position', 0)}", normal_style))
-            content.append(Paragraph(f"• Total CNodes: {stats.get('total_cnodes', 0)}", normal_style))
-            content.append(Paragraph(f"• Total DNodes: {stats.get('total_dnodes', 0)}", normal_style))
+            stats = physical_layout.get("statistics", {})
+            content.append(
+                Paragraph(
+                    f"• Occupied positions: {stats.get('occupied_positions', 0)}",
+                    normal_style,
+                )
+            )
+            content.append(
+                Paragraph(
+                    f"• Position range: U{stats.get('min_position', 0)} - U{stats.get('max_position', 0)}",
+                    normal_style,
+                )
+            )
+            content.append(
+                Paragraph(
+                    f"• Total CNodes: {stats.get('total_cnodes', 0)}", normal_style
+                )
+            )
+            content.append(
+                Paragraph(
+                    f"• Total DNodes: {stats.get('total_dnodes', 0)}", normal_style
+                )
+            )
 
         return content
 

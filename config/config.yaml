@@ -13,7 +13,7 @@ api:
   retry_delay: 2
 
   # SSL certificate verification (set to false for self-signed certs)
-  verify_ssl: true
+  verify_ssl: false
 
   # API version to use (will auto-detect highest supported version)
   version: "v7"
