@@ -58,6 +58,24 @@ class ClusterSummary:
     online_start_time: Optional[str] = None
     deployment_time: Optional[str] = None
     url: Optional[str] = None
+    # Cluster operational states and management details
+    ssd_raid_state: Optional[str] = None
+    nvram_raid_state: Optional[str] = None
+    memory_raid_state: Optional[str] = None
+    leader_state: Optional[str] = None
+    leader_cnode: Optional[str] = None
+    mgmt_cnode: Optional[str] = None
+    mgmt_inner_vip: Optional[str] = None
+    mgmt_inner_vip_cnode: Optional[str] = None
+    # Cluster feature flags and configuration
+    enabled: Optional[bool] = None
+    enable_similarity: Optional[bool] = None
+    dedup_active: Optional[bool] = None
+    is_wb_raid_enabled: Optional[bool] = None
+    wb_raid_layout: Optional[str] = None
+    dbox_ha_support: Optional[bool] = None
+    enable_rack_level_resiliency: Optional[bool] = None
+    disable_metrics: Optional[bool] = None
 
 
 @dataclass
@@ -145,6 +163,28 @@ class VastDataExtractor:
                 online_start_time=cluster_info.get("online_start_time", "Unknown"),
                 deployment_time=cluster_info.get("deployment_time", "Unknown"),
                 url=cluster_info.get("url", "Unknown"),
+                # Cluster operational states and management details
+                ssd_raid_state=cluster_info.get("ssd_raid_state", "Unknown"),
+                nvram_raid_state=cluster_info.get("nvram_raid_state", "Unknown"),
+                memory_raid_state=cluster_info.get("memory_raid_state", "Unknown"),
+                leader_state=cluster_info.get("leader_state", "Unknown"),
+                leader_cnode=cluster_info.get("leader_cnode", "Unknown"),
+                mgmt_cnode=cluster_info.get("mgmt_cnode", "Unknown"),
+                mgmt_inner_vip=cluster_info.get("mgmt_inner_vip", "Unknown"),
+                mgmt_inner_vip_cnode=cluster_info.get(
+                    "mgmt_inner_vip_cnode", "Unknown"
+                ),
+                # Cluster feature flags and configuration
+                enabled=cluster_info.get("enabled"),
+                enable_similarity=cluster_info.get("enable_similarity"),
+                dedup_active=cluster_info.get("dedup_active"),
+                is_wb_raid_enabled=cluster_info.get("is_wb_raid_enabled"),
+                wb_raid_layout=cluster_info.get("wb_raid_layout", "Unknown"),
+                dbox_ha_support=cluster_info.get("dbox_ha_support"),
+                enable_rack_level_resiliency=cluster_info.get(
+                    "enable_rack_level_resiliency"
+                ),
+                disable_metrics=cluster_info.get("disable_metrics"),
             )
 
             # Validate data completeness
@@ -161,6 +201,15 @@ class VastDataExtractor:
                     summary.uptime != "Unknown",
                     summary.online_start_time != "Unknown",
                     summary.deployment_time != "Unknown",
+                    summary.ssd_raid_state != "Unknown",
+                    summary.nvram_raid_state != "Unknown",
+                    summary.memory_raid_state != "Unknown",
+                    summary.leader_state != "Unknown",
+                    summary.leader_cnode != "Unknown",
+                    summary.mgmt_cnode != "Unknown",
+                    summary.mgmt_inner_vip != "Unknown",
+                    summary.mgmt_inner_vip_cnode != "Unknown",
+                    summary.wb_raid_layout != "Unknown",
                 ]
             )
 
@@ -189,6 +238,15 @@ class VastDataExtractor:
                 online_start_time="Error",
                 deployment_time="Error",
                 url="Error",
+                ssd_raid_state="Error",
+                nvram_raid_state="Error",
+                memory_raid_state="Error",
+                leader_state="Error",
+                leader_cnode="Error",
+                mgmt_cnode="Error",
+                mgmt_inner_vip="Error",
+                mgmt_inner_vip_cnode="Error",
+                wb_raid_layout="Error",
             )
 
     def extract_hardware_inventory(self, raw_data: Dict[str, Any]) -> HardwareInventory:

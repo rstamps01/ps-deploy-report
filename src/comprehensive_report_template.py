@@ -88,11 +88,11 @@ class ClusterOverview:
     # Additional cluster details from /api/v7/clusters/ endpoint
     cluster_id: Optional[str] = None
     mgmt_vip: Optional[str] = None
+    url: Optional[str] = None
     build: Optional[str] = None
     uptime: Optional[str] = None
     online_start_time: Optional[str] = None
     deployment_time: Optional[str] = None
-    url: Optional[str] = None
 
 
 @dataclass
@@ -311,16 +311,16 @@ class ComprehensiveReportTemplate:
         content.append(Paragraph("Cluster Overview", subheading_style))
 
         cluster_text = f"""
-        • <b>Cluster Name:</b> {cluster_overview.name}<br/>
-        • <b>Cluster ID:</b> {cluster_overview.cluster_id or 'Unknown'}<br/>
+        • <b>ID:</b> {cluster_overview.cluster_id or 'Unknown'}<br/>
+        • <b>Name:</b> {cluster_overview.name}<br/>
         • <b>Management VIP:</b> {cluster_overview.mgmt_vip or 'Unknown'}<br/>
-        • <b>Cluster PSNT:</b> {cluster_overview.psnt}<br/>
-        • <b>VAST OS Version:</b> {cluster_overview.version}<br/>
-        • <b>Build Version:</b> {cluster_overview.build or 'Unknown'}<br/>
-        • <b>Cluster GUID:</b> {cluster_overview.guid}<br/>
+        • <b>URL:</b> {cluster_overview.url or 'Unknown'}<br/>
+        • <b>Build:</b> {cluster_overview.build or 'Unknown'}<br/>
+        • <b>PSNT:</b> {cluster_overview.psnt}<br/>
+        • <b>GUID:</b> {cluster_overview.guid}<br/>
         • <b>Uptime:</b> {cluster_overview.uptime or 'Unknown'}<br/>
         • <b>Online Since:</b> {cluster_overview.online_start_time or 'Unknown'}<br/>
-        • <b>Deployment Date:</b> {cluster_overview.deployment_time or cluster_overview.deployment_date or 'To be determined'}<br/>
+        • <b>Deployed:</b> {cluster_overview.deployment_time or cluster_overview.deployment_date or 'To be determined'}<br/>
         • <b>Total Usable Capacity:</b> {cluster_overview.total_capacity or 'To be determined'}<br/>
         • <b>Licensed Capacity:</b> {cluster_overview.licensed_capacity or 'To be determined'}<br/>
         • <b>Performance Rating:</b> {cluster_overview.performance_rating or 'To be determined'}<br/>

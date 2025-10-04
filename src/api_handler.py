@@ -60,6 +60,24 @@ class VastClusterInfo:
     online_start_time: Optional[str] = None
     deployment_time: Optional[str] = None
     url: Optional[str] = None
+    # Cluster operational states and management details
+    ssd_raid_state: Optional[str] = None
+    nvram_raid_state: Optional[str] = None
+    memory_raid_state: Optional[str] = None
+    leader_state: Optional[str] = None
+    leader_cnode: Optional[str] = None
+    mgmt_cnode: Optional[str] = None
+    mgmt_inner_vip: Optional[str] = None
+    mgmt_inner_vip_cnode: Optional[str] = None
+    # Cluster feature flags and configuration
+    enabled: Optional[bool] = None
+    enable_similarity: Optional[bool] = None
+    dedup_active: Optional[bool] = None
+    is_wb_raid_enabled: Optional[bool] = None
+    wb_raid_layout: Optional[str] = None
+    dbox_ha_support: Optional[bool] = None
+    enable_rack_level_resiliency: Optional[bool] = None
+    disable_metrics: Optional[bool] = None
 
 
 @dataclass
@@ -903,6 +921,36 @@ class VastApiHandler:
                 self.logger.info(f"Retrieved cluster PSNT: {cluster_info.psnt}")
             else:
                 self.logger.info("PSNT not available in cluster data")
+
+            # Extract cluster operational states and management details
+            cluster_info.ssd_raid_state = cluster_data.get("ssd_raid_state", "Unknown")
+            cluster_info.nvram_raid_state = cluster_data.get(
+                "nvram_raid_state", "Unknown"
+            )
+            cluster_info.memory_raid_state = cluster_data.get(
+                "memory_raid_state", "Unknown"
+            )
+            cluster_info.leader_state = cluster_data.get("leader_state", "Unknown")
+            cluster_info.leader_cnode = cluster_data.get("leader_cnode", "Unknown")
+            cluster_info.mgmt_cnode = cluster_data.get("mgmt_cnode", "Unknown")
+            cluster_info.mgmt_inner_vip = cluster_data.get("mgmt_inner_vip", "Unknown")
+            cluster_info.mgmt_inner_vip_cnode = cluster_data.get(
+                "mgmt_inner_vip_cnode", "Unknown"
+            )
+
+            # Extract cluster feature flags and configuration
+            cluster_info.enabled = cluster_data.get("enabled", None)
+            cluster_info.enable_similarity = cluster_data.get("enable_similarity", None)
+            cluster_info.dedup_active = cluster_data.get("dedup_active", None)
+            cluster_info.is_wb_raid_enabled = cluster_data.get(
+                "is_wb_raid_enabled", None
+            )
+            cluster_info.wb_raid_layout = cluster_data.get("wb_raid_layout", "Unknown")
+            cluster_info.dbox_ha_support = cluster_data.get("dbox_ha_support", None)
+            cluster_info.enable_rack_level_resiliency = cluster_data.get(
+                "enable_rack_level_resiliency", None
+            )
+            cluster_info.disable_metrics = cluster_data.get("disable_metrics", None)
 
             # Log additional valuable information
             if "build" in cluster_data:
@@ -1932,6 +1980,24 @@ class VastApiHandler:
                     "online_start_time": cluster_info.online_start_time,
                     "deployment_time": cluster_info.deployment_time,
                     "url": cluster_info.url,
+                    # Cluster operational states and management details
+                    "ssd_raid_state": cluster_info.ssd_raid_state,
+                    "nvram_raid_state": cluster_info.nvram_raid_state,
+                    "memory_raid_state": cluster_info.memory_raid_state,
+                    "leader_state": cluster_info.leader_state,
+                    "leader_cnode": cluster_info.leader_cnode,
+                    "mgmt_cnode": cluster_info.mgmt_cnode,
+                    "mgmt_inner_vip": cluster_info.mgmt_inner_vip,
+                    "mgmt_inner_vip_cnode": cluster_info.mgmt_inner_vip_cnode,
+                    # Cluster feature flags and configuration
+                    "enabled": cluster_info.enabled,
+                    "enable_similarity": cluster_info.enable_similarity,
+                    "dedup_active": cluster_info.dedup_active,
+                    "is_wb_raid_enabled": cluster_info.is_wb_raid_enabled,
+                    "wb_raid_layout": cluster_info.wb_raid_layout,
+                    "dbox_ha_support": cluster_info.dbox_ha_support,
+                    "enable_rack_level_resiliency": cluster_info.enable_rack_level_resiliency,
+                    "disable_metrics": cluster_info.disable_metrics,
                 }
 
             # Hardware inventory

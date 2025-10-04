@@ -290,16 +290,6 @@ class VastReportBuilder:
             content.append(timestamp_para)
             content.append(Spacer(1, 10))
 
-        # Enhanced features information
-        enhanced_features = data.get("metadata", {}).get("enhanced_features", {})
-        if enhanced_features.get("rack_height_supported"):
-            features_para = Paragraph(
-                "<b>Enhanced Features:</b> Rack Positioning Available",
-                self.brand_compliance.styles["vast_body"],
-            )
-            content.append(features_para)
-            content.append(Spacer(1, 20))
-
         # Add VAST Professional Services footer
         footer_elements = self.brand_compliance.create_vast_footer(
             {
@@ -366,27 +356,27 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        # Cluster overview with VAST styling
+        # Cluster overview with VAST styling - resequenced to match screenshot order
         cluster_info = data.get("cluster_summary", {})
-        cluster_name = cluster_info.get("name", "Unknown")
-        cluster_version = cluster_info.get("version", "Unknown")
-        cluster_state = cluster_info.get("state", "Unknown")
         cluster_id = cluster_info.get("cluster_id", "Unknown")
+        cluster_name = cluster_info.get("name", "Unknown")
         mgmt_vip = cluster_info.get("mgmt_vip", "Unknown")
+        url = cluster_info.get("url", "Unknown")
         build = cluster_info.get("build", "Unknown")
         psnt = cluster_info.get("psnt", "Unknown")
+        guid = cluster_info.get("guid", "Unknown")
         uptime = cluster_info.get("uptime", "Unknown")
         online_start_time = cluster_info.get("online_start_time", "Unknown")
         deployment_time = cluster_info.get("deployment_time", "Unknown")
 
         overview_text = f"<b>Cluster Overview:</b><br/>"
+        overview_text += f"• ID: {cluster_id}<br/>"
         overview_text += f"• Name: {cluster_name}<br/>"
-        overview_text += f"• Cluster ID: {cluster_id}<br/>"
         overview_text += f"• Management VIP: {mgmt_vip}<br/>"
-        overview_text += f"• Version: {cluster_version}<br/>"
+        overview_text += f"• URL: {url}<br/>"
         overview_text += f"• Build: {build}<br/>"
-        overview_text += f"• State: {cluster_state}<br/>"
         overview_text += f"• PSNT: {psnt}<br/>"
+        overview_text += f"• GUID: {guid}<br/>"
         overview_text += f"• Uptime: {uptime}<br/>"
         overview_text += f"• Online Since: {online_start_time}<br/>"
         overview_text += f"• Deployed: {deployment_time}"
@@ -418,17 +408,6 @@ class VastReportBuilder:
         content.append(hardware_para)
         content.append(Spacer(1, 12))
 
-        # Data completeness with VAST styling
-        metadata = data.get("metadata", {})
-        completeness = metadata.get("overall_completeness", 0.0)
-
-        data_text = f"<b>Data Collection:</b><br/>"
-        data_text += f"• Overall Completeness: {completeness:.1%}<br/>"
-        data_text += f"• Enhanced Features: {'Enabled' if metadata.get('enhanced_features', {}).get('rack_height_supported') else 'Disabled'}"
-
-        data_para = Paragraph(data_text, self.brand_compliance.styles["vast_body"])
-        content.append(data_para)
-
         return content
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
@@ -443,18 +422,111 @@ class VastReportBuilder:
 
         cluster_info = data.get("cluster_summary", {})
 
-        # Create cluster info table with VAST styling
+        # Create cluster info table with VAST styling - reorganized per requirements
+        cluster_name = cluster_info.get("name", "Unknown")
         cluster_data = [
-            ["Name", cluster_info.get("name", "Unknown")],
-            ["GUID", cluster_info.get("guid", "Unknown")],
-            ["Version", cluster_info.get("version", "Unknown")],
             ["State", cluster_info.get("state", "Unknown")],
-            ["License", cluster_info.get("license", "Unknown")],
-            ["PSNT", cluster_info.get("psnt", "Not Available")],
+            ["SSD RAID State", cluster_info.get("ssd_raid_state", "Unknown")],
+            ["NVRAM RAID State", cluster_info.get("nvram_raid_state", "Unknown")],
+            ["Memory RAID State", cluster_info.get("memory_raid_state", "Unknown")],
+            ["Leader State", cluster_info.get("leader_state", "Unknown")],
+            ["Leader CNode", cluster_info.get("leader_cnode", "Unknown")],
+            ["Management CNode", cluster_info.get("mgmt_cnode", "Unknown")],
+            ["Management Inner VIP", cluster_info.get("mgmt_inner_vip", "Unknown")],
+            [
+                "Management Inner VIP CNode",
+                cluster_info.get("mgmt_inner_vip_cnode", "Unknown"),
+            ],
+            [
+                "Enabled",
+                (
+                    "Yes"
+                    if cluster_info.get("enabled")
+                    else (
+                        "No" if cluster_info.get("enabled") is not None else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Similarity Enabled",
+                (
+                    "Yes"
+                    if cluster_info.get("enable_similarity")
+                    else (
+                        "No"
+                        if cluster_info.get("enable_similarity") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Deduplication Active",
+                (
+                    "Yes"
+                    if cluster_info.get("dedup_active")
+                    else (
+                        "No"
+                        if cluster_info.get("dedup_active") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Write-Back RAID Enabled",
+                (
+                    "Yes"
+                    if cluster_info.get("is_wb_raid_enabled")
+                    else (
+                        "No"
+                        if cluster_info.get("is_wb_raid_enabled") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Write-Back RAID Layout",
+                cluster_info.get("wb_raid_layout", "Unknown"),
+            ],
+            [
+                "DBox HA Support",
+                (
+                    "Yes"
+                    if cluster_info.get("dbox_ha_support")
+                    else (
+                        "No"
+                        if cluster_info.get("dbox_ha_support") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Rack Level Resiliency",
+                (
+                    "Yes"
+                    if cluster_info.get("enable_rack_level_resiliency")
+                    else (
+                        "No"
+                        if cluster_info.get("enable_rack_level_resiliency") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
+            [
+                "Metrics Disabled",
+                (
+                    "Yes"
+                    if cluster_info.get("disable_metrics")
+                    else (
+                        "No"
+                        if cluster_info.get("disable_metrics") is not None
+                        else "Unknown"
+                    )
+                ),
+            ],
         ]
 
         table_elements = self.brand_compliance.create_vast_table(
-            cluster_data, "Cluster Details", ["Property", "Value"]
+            cluster_data, f"Cluster Name: {cluster_name}", ["Function", "Status"]
         )
         content.extend(table_elements)
 
