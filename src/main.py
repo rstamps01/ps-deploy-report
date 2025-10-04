@@ -33,8 +33,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from api_handler import VastApiHandler, create_vast_api_handler
 from data_extractor import VastDataExtractor, create_data_extractor
+from enhanced_report_builder import (
+    EnhancedReportBuilder,
+    create_enhanced_report_builder,
+)
 from report_builder import VastReportBuilder, create_report_builder
-from enhanced_report_builder import EnhancedReportBuilder, create_enhanced_report_builder
 from utils.logger import get_logger, setup_logging
 
 
