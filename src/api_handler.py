@@ -1534,12 +1534,182 @@ class VastApiHandler:
                 self.logger.warning("VIP pool configuration not available")
                 network_config["vippools"] = None
 
+            # VMs Network Data (for additional network settings)
+            try:
+                vms_data = self._make_api_request("vms/")
+                if vms_data and isinstance(vms_data, list) and len(vms_data) > 0:
+                    vms_info = vms_data[0]
+                    # Update cluster info with VMs network data
+                    if hasattr(self, "_cluster_info") and self._cluster_info:
+                        # Extract network data from VMs
+                        ip1 = vms_info.get("ip1")
+                        ip2 = vms_info.get("ip2")
+                        ipv6_support = vms_info.get("ipv6_support")
+
+                        # Update network fields if not already set
+                        if (
+                            ip1
+                            and self._cluster_info.management_vips == "Not Configured"
+                        ):
+                            self._cluster_info.management_vips = ip1
+                        if (
+                            ip2
+                            and self._cluster_info.external_gateways == "Not Configured"
+                        ):
+                            self._cluster_info.external_gateways = ip2
+
+                        self.logger.info(
+                            f"Updated cluster network info from VMs: IP1={ip1}, IP2={ip2}, IPv6={ipv6_support}"
+                        )
+            except Exception as e:
+                self.logger.warning(f"Failed to retrieve VMs network data: {e}")
+
             self.logger.info("Network configuration collection completed")
             return network_config
 
         except Exception as e:
             self.logger.error(f"Error collecting network configuration: {e}")
             return {}
+
+    def get_cluster_network_configuration(self) -> Dict[str, Any]:
+        """Get cluster-wide network configuration from /api/v7/clusters/ endpoint."""
+        try:
+            self.logger.info("Collecting cluster-wide network configuration...")
+
+            # Get cluster configuration
+            cluster_data = self._make_api_request("clusters/")
+            if not cluster_data:
+                self.logger.warning(
+                    "No cluster data available for network configuration"
+                )
+                return {}
+
+            # Handle both single object and array responses
+            if isinstance(cluster_data, list) and len(cluster_data) > 0:
+                cluster_info = cluster_data[0]
+            else:
+                cluster_info = cluster_data
+
+            # Extract cluster network configuration
+            network_config = {
+                "management_vips": cluster_info.get("management_vips", []),
+                "external_gateways": cluster_info.get("external_gateways", []),
+                "dns": cluster_info.get("dns", []),
+                "ntp": cluster_info.get("ntp", []),
+                "ext_netmask": cluster_info.get("ext_netmask", "Unknown"),
+                "auto_ports_ext_iface": cluster_info.get(
+                    "auto_ports_ext_iface", "Unknown"
+                ),
+                "b2b_ipmi": cluster_info.get("b2b_ipmi", False),
+                "eth_mtu": cluster_info.get("eth_mtu", "Unknown"),
+                "ib_mtu": cluster_info.get("ib_mtu", "Unknown"),
+                "ipmi_gateway": cluster_info.get("ipmi_gateway", "Unknown"),
+                "ipmi_netmask": cluster_info.get("ipmi_netmask", "Unknown"),
+            }
+
+            self.logger.info(
+                f"Retrieved cluster network config: VIPs={network_config['management_vips']}, Gateways={network_config['external_gateways']}"
+            )
+            return network_config
+
+        except Exception as e:
+            self.logger.error(f"Failed to collect cluster network configuration: {e}")
+            return {}
+
+    def get_cnodes_network_configuration(self) -> List[Dict[str, Any]]:
+        """Get CNodes network configuration from /api/v7/vms/1/network_settings/ endpoint."""
+        try:
+            self.logger.info("Collecting CNodes network configuration...")
+
+            # Get network settings data
+            network_data = self._make_api_request("vms/1/network_settings/")
+            if not network_data or "data" not in network_data:
+                self.logger.warning("No network settings data available")
+                return []
+
+            cnodes = []
+            boxes = network_data.get("data", {}).get("boxes", [])
+
+            for box in boxes:
+                box_name = box.get("box_name", "")
+                if box_name.startswith("cbox-"):
+                    hosts = box.get("hosts", [])
+                    for host in hosts:
+                        vast_install_info = host.get("vast_install_info", {})
+                        cnode_info = {
+                            "id": host.get("id", "Unknown"),
+                            "hostname": host.get("hostname", "Unknown"),
+                            "mgmt_ip": host.get("mgmt_ip", "Unknown"),
+                            "ipmi_ip": host.get("ipmi_ip", "Unknown"),
+                            "box_vendor": vast_install_info.get(
+                                "box_vendor", "Unknown"
+                            ),
+                            "vast_os": vast_install_info.get("vast_os", "Unknown"),
+                            "node_type": vast_install_info.get("node_type", "Unknown"),
+                            "box_name": vast_install_info.get("box_name", "Unknown"),
+                            "is_vms_host": vast_install_info.get("is_vms_host", False),
+                            "tpm_boot_dev_encryption_supported": vast_install_info.get(
+                                "tpm_boot_dev_encryption_supported", False
+                            ),
+                            "tpm_boot_dev_encryption_enabled": vast_install_info.get(
+                                "tpm_boot_dev_encryption_enabled", False
+                            ),
+                            "single_nic": vast_install_info.get("single_nic", False),
+                            "net_type": vast_install_info.get("net_type", "Unknown"),
+                        }
+                        cnodes.append(cnode_info)
+
+            self.logger.info(f"Retrieved {len(cnodes)} CNodes network configuration")
+            return cnodes
+
+        except Exception as e:
+            self.logger.error(f"Failed to collect CNodes network configuration: {e}")
+            return []
+
+    def get_dnodes_network_configuration(self) -> List[Dict[str, Any]]:
+        """Get DNodes network configuration from /api/v7/vms/1/network_settings/ endpoint."""
+        try:
+            self.logger.info("Collecting DNodes network configuration...")
+
+            # Get network settings data
+            network_data = self._make_api_request("vms/1/network_settings/")
+            if not network_data or "data" not in network_data:
+                self.logger.warning("No network settings data available")
+                return []
+
+            dnodes = []
+            boxes = network_data.get("data", {}).get("boxes", [])
+
+            for box in boxes:
+                box_name = box.get("box_name", "")
+                if box_name.startswith("dbox-"):
+                    hosts = box.get("hosts", [])
+                    for host in hosts:
+                        vast_install_info = host.get("vast_install_info", {})
+                        dnode_info = {
+                            "id": host.get("id", "Unknown"),
+                            "hostname": host.get("hostname", "Unknown"),
+                            "mgmt_ip": host.get("mgmt_ip", "Unknown"),
+                            "ipmi_ip": host.get("ipmi_ip", "Unknown"),
+                            "box_vendor": vast_install_info.get(
+                                "box_vendor", "Unknown"
+                            ),
+                            "vast_os": vast_install_info.get("vast_os", "Unknown"),
+                            "node_type": vast_install_info.get("node_type", "Unknown"),
+                            "position": vast_install_info.get("position", "Unknown"),
+                            "box_name": vast_install_info.get("box_name", "Unknown"),
+                            "is_ceres": vast_install_info.get("is_ceres", False),
+                            "is_ceres_v2": vast_install_info.get("is_ceres_v2", False),
+                            "net_type": vast_install_info.get("net_type", "Unknown"),
+                        }
+                        dnodes.append(dnode_info)
+
+            self.logger.info(f"Retrieved {len(dnodes)} DNodes network configuration")
+            return dnodes
+
+        except Exception as e:
+            self.logger.error(f"Failed to collect DNodes network configuration: {e}")
+            return []
 
     def get_logical_configuration(self) -> Dict[str, Any]:
         """
@@ -2200,6 +2370,9 @@ class VastApiHandler:
 
             # Configuration sections
             all_data["network"] = self.get_network_configuration()
+            all_data["cluster_network"] = self.get_cluster_network_configuration()
+            all_data["cnodes_network"] = self.get_cnodes_network_configuration()
+            all_data["dnodes_network"] = self.get_dnodes_network_configuration()
             all_data["logical"] = self.get_logical_configuration()
             all_data["security"] = self.get_security_configuration()
             all_data["data_protection"] = self.get_data_protection_configuration()

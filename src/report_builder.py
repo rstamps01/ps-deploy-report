@@ -203,8 +203,20 @@ class VastReportBuilder:
             story.extend(self._create_hardware_inventory(processed_data))
             story.append(PageBreak())
 
-            # Add network configuration
+            # Add network configuration sections
             story.extend(self._create_network_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Add cluster network configuration
+            story.extend(self._create_cluster_network_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Add CNodes network configuration
+            story.extend(self._create_cnodes_network_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Add DNodes network configuration
+            story.extend(self._create_dnodes_network_configuration(processed_data))
             story.append(PageBreak())
 
             # Add logical configuration
@@ -356,7 +368,7 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        # Cluster overview with VAST styling - resequenced to match screenshot order
+        # Cluster overview table - resequenced to match screenshot order
         cluster_info = data.get("cluster_summary", {})
         cluster_id = cluster_info.get("cluster_id", "Unknown")
         cluster_name = cluster_info.get("name", "Unknown")
@@ -369,44 +381,64 @@ class VastReportBuilder:
         online_start_time = cluster_info.get("online_start_time", "Unknown")
         deployment_time = cluster_info.get("deployment_time", "Unknown")
 
-        overview_text = f"<b>Cluster Overview:</b><br/>"
-        overview_text += f"• ID: {cluster_id}<br/>"
-        overview_text += f"• Name: {cluster_name}<br/>"
-        overview_text += f"• Management VIP: {mgmt_vip}<br/>"
-        overview_text += f"• URL: {url}<br/>"
-        overview_text += f"• Build: {build}<br/>"
-        overview_text += f"• PSNT: {psnt}<br/>"
-        overview_text += f"• GUID: {guid}<br/>"
-        overview_text += f"• Uptime: {uptime}<br/>"
-        overview_text += f"• Online Since: {online_start_time}<br/>"
-        overview_text += f"• Deployed: {deployment_time}"
+        cluster_overview_data = [
+            ["ID", cluster_id],
+            ["Name", cluster_name],
+            ["Management VIP", mgmt_vip],
+            ["URL", url],
+            ["Build", build],
+            ["PSNT", psnt],
+            ["GUID", guid],
+            ["Uptime", uptime],
+            ["Online Since", online_start_time],
+            ["Deployed", deployment_time],
+        ]
 
-        overview_para = Paragraph(
-            overview_text, self.brand_compliance.styles["vast_body"]
+        # Create cluster overview table with same style as Cluster Information
+        cluster_table_elements = self._create_cluster_info_table(
+            cluster_overview_data, "Cluster Overview"
         )
-        content.append(overview_para)
+        content.extend(cluster_table_elements)
         content.append(Spacer(1, 12))
 
-        # Hardware summary with VAST styling
+        # Hardware overview table
         hardware = data.get("hardware_inventory", {})
         total_nodes = hardware.get("total_nodes", 0)
         cnodes = len(hardware.get("cnodes", []))
         dnodes = len(hardware.get("dnodes", []))
-        rack_positions = hardware.get("rack_positions_available", False)
+        cboxes = len(hardware.get("cboxes", []))
+        dboxes = len(hardware.get("dboxes", []))
+        switches = len(hardware.get("switches", []))
 
-        hardware_text = f"<b>Hardware Summary:</b><br/>"
-        hardware_text += f"• Total Nodes: {total_nodes}<br/>"
-        hardware_text += f"• CNodes: {cnodes}<br/>"
-        hardware_text += f"• DNodes: {dnodes}<br/>"
-        hardware_text += (
-            f"• Rack Positions: {'Available' if rack_positions else 'Not Available'}"
-        )
+        hardware_overview_data = [
+            ["Total Nodes", str(total_nodes)],
+            ["CNodes", str(cnodes)],
+            ["DNodes", str(dnodes)],
+            ["CBoxes", str(cboxes)],
+            ["DBoxes", str(dboxes)],
+            ["Switches", str(switches)],
+        ]
 
-        hardware_para = Paragraph(
-            hardware_text, self.brand_compliance.styles["vast_body"]
+        # Create hardware overview table with same style as Cluster Information
+        hardware_table_elements = self._create_cluster_info_table(
+            hardware_overview_data, "Hardware Overview"
         )
-        content.append(hardware_para)
+        content.extend(hardware_table_elements)
         content.append(Spacer(1, 12))
+
+        return content
+
+    def _create_cluster_info_table(
+        self, table_data: List[List[str]], title: str
+    ) -> List[Any]:
+        """Create a cluster information style table with VAST branding."""
+        content = []
+
+        # Create table with VAST styling
+        table_elements = self.brand_compliance.create_vast_table(
+            table_data, title, ["Description", "Value"]
+        )
+        content.extend(table_elements)
 
         return content
 
@@ -538,24 +570,11 @@ class VastReportBuilder:
 
         # Add section heading with VAST styling
         heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Hardware Inventory", level=1
+            "Hardware Summary", level=1
         )
         content.extend(heading_elements)
 
         hardware = data.get("hardware_inventory", {})
-
-        # Hardware summary with VAST styling
-        total_nodes = hardware.get("total_nodes", 0)
-        rack_positions = hardware.get("rack_positions_available", False)
-
-        summary_text = f"<b>Summary:</b> {total_nodes} total nodes<br/>"
-        summary_text += f"<b>Rack Positioning:</b> {'Available' if rack_positions else 'Not Available'}"
-
-        summary_para = Paragraph(
-            summary_text, self.brand_compliance.styles["vast_body"]
-        )
-        content.append(summary_para)
-        content.append(Spacer(1, 12))
 
         # Add storage capacity section
         cluster_info = data.get("cluster_summary", {})
@@ -583,14 +602,14 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Usable Capacity",
-                        f"{cluster_info.get('usable_capacity_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('usable_capacity_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("free_usable_capacity_tb") is not None:
                 storage_data.append(
                     [
                         "Free Usable Capacity",
-                        f"{cluster_info.get('free_usable_capacity_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('free_usable_capacity_tb', 0))} TB",
                     ]
                 )
             if (
@@ -609,28 +628,28 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Physical Space",
-                        f"{cluster_info.get('physical_space_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('physical_space_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Physical Space In Use",
-                        f"{cluster_info.get('physical_space_in_use_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('physical_space_in_use_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("free_physical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Physical Space",
-                        f"{cluster_info.get('free_physical_space_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('free_physical_space_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_percent") is not None:
                 storage_data.append(
                     [
                         "Physical Space In Use %",
-                        f"{cluster_info.get('physical_space_in_use_percent', 0):.2f}%",
+                        f"{round(cluster_info.get('physical_space_in_use_percent', 0))}%",
                     ]
                 )
 
@@ -639,28 +658,28 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Logical Space",
-                        f"{cluster_info.get('logical_space_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('logical_space_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Logical Space In Use",
-                        f"{cluster_info.get('logical_space_in_use_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('logical_space_in_use_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("free_logical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Logical Space",
-                        f"{cluster_info.get('free_logical_space_tb', 0):.3f} TB",
+                        f"{round(cluster_info.get('free_logical_space_tb', 0))} TB",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_percent") is not None:
                 storage_data.append(
                     [
                         "Logical Space In Use %",
-                        f"{cluster_info.get('logical_space_in_use_percent', 0):.2f}%",
+                        f"{round(cluster_info.get('logical_space_in_use_percent', 0))}%",
                     ]
                 )
 
@@ -671,24 +690,37 @@ class VastReportBuilder:
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
 
-        # CNodes table with VAST styling
+        # CBox Inventory (Compute) table with VAST styling
         cnodes = hardware.get("cnodes", [])
         if cnodes:
             cnode_elements = self.brand_compliance.create_vast_hardware_table(
-                cnodes, "CNodes"
+                cnodes, "CBox Inventory (Compute)"
             )
             content.extend(cnode_elements)
 
-        # DNodes table with VAST styling
+            # Add page break if we have many CNodes to prevent layout issues
+            if len(cnodes) > 10:  # Threshold for large inventories
+                content.append(PageBreak())
+
+        # DBox Inventory (Data) table with VAST styling
         dnodes = hardware.get("dnodes", [])
         if dnodes:
             dnode_elements = self.brand_compliance.create_vast_hardware_table(
-                dnodes, "DNodes"
+                dnodes, "DBox Inventory (Data)"
             )
             content.extend(dnode_elements)
 
-        # Add physical layout diagram placeholder
+            # Add page break if we have many DNodes to prevent layout issues
+            if len(dnodes) > 10:  # Threshold for large inventories
+                content.append(PageBreak())
+
+        # Add page break before Physical Rack Layout to ensure it starts on a new page
+        rack_positions = hardware.get("rack_positions_available", False)
         if rack_positions:
+            # Force page break to move Physical Rack Layout to next page
+            content.append(PageBreak())
+
+            # Add physical layout diagram placeholder anchored to top of new page
             layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
                 "Physical Rack Layout",
                 "Visual representation of hardware positioning in the rack with U-number assignments.",
@@ -873,6 +905,401 @@ class VastReportBuilder:
             ib_mtu_display = ib_mtu if ib_mtu is not None else "Not Configured"
             content.append(
                 Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style)
+            )
+
+        return content
+
+    def _create_cluster_network_configuration(self, data: Dict[str, Any]) -> List[Any]:
+        """Create cluster-wide network configuration section."""
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        normal_style = ParagraphStyle(
+            "Section_Normal",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=8,
+        )
+
+        content = []
+
+        content.append(Paragraph("Cluster Network Configuration", heading_style))
+        content.append(Spacer(1, 12))
+
+        sections = data.get("sections", {})
+        cluster_network_config = sections.get("cluster_network_configuration", {}).get(
+            "data", {}
+        )
+
+        if cluster_network_config:
+            # Management VIPs
+            management_vips = cluster_network_config.get(
+                "management_vips", "Not Configured"
+            )
+            if management_vips != "Not Configured":
+                content.append(
+                    Paragraph(f"• Management VIPs: {management_vips}", normal_style)
+                )
+            else:
+                content.append(
+                    Paragraph("• Management VIPs: Not Configured", normal_style)
+                )
+
+            # Management VIP (single)
+            mgmt_vip = cluster_network_config.get("mgmt_vip", "Not Configured")
+            if mgmt_vip != "Not Configured":
+                content.append(Paragraph(f"• Management VIP: {mgmt_vip}", normal_style))
+
+            # Management Inner VIP
+            mgmt_inner_vip = cluster_network_config.get(
+                "mgmt_inner_vip", "Not Configured"
+            )
+            if mgmt_inner_vip != "Not Configured":
+                content.append(
+                    Paragraph(f"• Management Inner VIP: {mgmt_inner_vip}", normal_style)
+                )
+
+            # Management Inner VIP CNode
+            mgmt_inner_vip_cnode = cluster_network_config.get(
+                "mgmt_inner_vip_cnode", "Not Configured"
+            )
+            if mgmt_inner_vip_cnode != "Not Configured":
+                content.append(
+                    Paragraph(
+                        f"• Management Inner VIP CNode: {mgmt_inner_vip_cnode}",
+                        normal_style,
+                    )
+                )
+
+            # External Gateways
+            external_gateways = cluster_network_config.get(
+                "external_gateways", "Not Configured"
+            )
+            if external_gateways != "Not Configured":
+                content.append(
+                    Paragraph(f"• External Gateways: {external_gateways}", normal_style)
+                )
+            else:
+                content.append(
+                    Paragraph("• External Gateways: Not Configured", normal_style)
+                )
+
+            # DNS Servers
+            dns = cluster_network_config.get("dns", "Not Configured")
+            if dns != "Not Configured":
+                content.append(Paragraph(f"• DNS Servers: {dns}", normal_style))
+            else:
+                content.append(Paragraph("• DNS Servers: Not Configured", normal_style))
+
+            # NTP Servers
+            ntp = cluster_network_config.get("ntp", "Not Configured")
+            if ntp != "Not Configured":
+                content.append(Paragraph(f"• NTP Servers: {ntp}", normal_style))
+            else:
+                content.append(Paragraph("• NTP Servers: Not Configured", normal_style))
+
+            # Network Interface Configuration
+            ext_netmask = cluster_network_config.get("ext_netmask", "Unknown")
+            ext_netmask_display = (
+                ext_netmask if ext_netmask != "Unknown" else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style)
+            )
+
+            auto_ports_ext_iface = cluster_network_config.get(
+                "auto_ports_ext_iface", "Unknown"
+            )
+            auto_ports_ext_iface_display = (
+                auto_ports_ext_iface
+                if auto_ports_ext_iface != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• Auto Ports External Interface: {auto_ports_ext_iface_display}",
+                    normal_style,
+                )
+            )
+
+            # IPMI Configuration
+            b2b_ipmi = cluster_network_config.get("b2b_ipmi", False)
+            content.append(Paragraph(f"• B2B IPMI: {b2b_ipmi}", normal_style))
+
+            # MTU Configuration
+            eth_mtu = cluster_network_config.get("eth_mtu", "Unknown")
+            eth_mtu_display = eth_mtu if eth_mtu != "Unknown" else "Not Configured"
+            content.append(
+                Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style)
+            )
+
+            ib_mtu = cluster_network_config.get("ib_mtu", "Unknown")
+            ib_mtu_display = ib_mtu if ib_mtu != "Unknown" else "Not Configured"
+            content.append(
+                Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style)
+            )
+
+            # IPMI Gateway and Netmask
+            ipmi_gateway = cluster_network_config.get("ipmi_gateway", "Unknown")
+            ipmi_gateway_display = (
+                ipmi_gateway if ipmi_gateway != "Unknown" else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style)
+            )
+
+            ipmi_netmask = cluster_network_config.get("ipmi_netmask", "Unknown")
+            ipmi_netmask_display = (
+                ipmi_netmask if ipmi_netmask != "Unknown" else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style)
+            )
+
+        return content
+
+    def _create_cnodes_network_configuration(self, data: Dict[str, Any]) -> List[Any]:
+        """Create CNodes network configuration section with scale-out support."""
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        normal_style = ParagraphStyle(
+            "Section_Normal",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=8,
+        )
+
+        content = []
+
+        content.append(Paragraph("CNodes Network Configuration", heading_style))
+        content.append(Spacer(1, 12))
+
+        sections = data.get("sections", {})
+        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get(
+            "data", {}
+        )
+
+        cnodes = cnodes_network_config.get("cnodes", [])
+        total_cnodes = cnodes_network_config.get("total_cnodes", 0)
+
+        if cnodes:
+            content.append(
+                Paragraph(f"<b>Total CNodes:</b> {total_cnodes}", normal_style)
+            )
+            content.append(Spacer(1, 12))
+
+            # Create table for CNodes with scale-out support
+            table_data = [
+                [
+                    "ID",
+                    "Hostname",
+                    "Mgmt IP",
+                    "IPMI IP",
+                    "Box Vendor",
+                    "VAST OS",
+                    "VMS Host",
+                    "TPM Support",
+                    "Single NIC",
+                    "Net Type",
+                ]
+            ]
+
+            for cnode in cnodes:
+                table_data.append(
+                    [
+                        str(cnode.get("id", "Unknown")),
+                        cnode.get("hostname", "Unknown"),
+                        cnode.get("mgmt_ip", "Unknown"),
+                        cnode.get("ipmi_ip", "Unknown"),
+                        (
+                            cnode.get("box_vendor", "Unknown")[:30] + "..."
+                            if len(cnode.get("box_vendor", "")) > 30
+                            else cnode.get("box_vendor", "Unknown")
+                        ),
+                        cnode.get("vast_os", "Unknown"),
+                        "Yes" if cnode.get("is_vms_host", False) else "No",
+                        (
+                            "Yes"
+                            if cnode.get("tpm_boot_dev_encryption_supported", False)
+                            else "No"
+                        ),
+                        "Yes" if cnode.get("single_nic", False) else "No",
+                        cnode.get("net_type", "Unknown"),
+                    ]
+                )
+
+            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
+            page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+            table = Table(
+                table_data,
+                colWidths=[
+                    page_width * 0.08,  # ID
+                    page_width * 0.18,  # Hostname
+                    page_width * 0.12,  # Mgmt IP
+                    page_width * 0.12,  # IPMI IP
+                    page_width * 0.20,  # Box Vendor
+                    page_width * 0.12,  # VAST OS
+                    page_width * 0.06,  # VMS Host
+                    page_width * 0.06,  # TPM Support
+                    page_width * 0.06,  # Single NIC
+                    page_width * 0.10,  # Net Type
+                ],
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, 0), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                        ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                        ("FONTSIZE", (0, 1), (-1, -1), 7),
+                        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+                    ]
+                )
+            )
+
+            content.append(table)
+        else:
+            content.append(
+                Paragraph(
+                    "No CNodes network configuration data available", normal_style
+                )
+            )
+
+        return content
+
+    def _create_dnodes_network_configuration(self, data: Dict[str, Any]) -> List[Any]:
+        """Create DNodes network configuration section with scale-out support."""
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        normal_style = ParagraphStyle(
+            "Section_Normal",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=8,
+        )
+
+        content = []
+
+        content.append(Paragraph("DNodes Network Configuration", heading_style))
+        content.append(Spacer(1, 12))
+
+        sections = data.get("sections", {})
+        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get(
+            "data", {}
+        )
+
+        dnodes = dnodes_network_config.get("dnodes", [])
+        total_dnodes = dnodes_network_config.get("total_dnodes", 0)
+
+        if dnodes:
+            content.append(
+                Paragraph(f"<b>Total DNodes:</b> {total_dnodes}", normal_style)
+            )
+            content.append(Spacer(1, 12))
+
+            # Create table for DNodes with scale-out support
+            table_data = [
+                [
+                    "ID",
+                    "Hostname",
+                    "Mgmt IP",
+                    "IPMI IP",
+                    "Box Vendor",
+                    "VAST OS",
+                    "Position",
+                    "Ceres",
+                    "Ceres v2",
+                    "Net Type",
+                ]
+            ]
+
+            for dnode in dnodes:
+                table_data.append(
+                    [
+                        str(dnode.get("id", "Unknown")),
+                        dnode.get("hostname", "Unknown"),
+                        dnode.get("mgmt_ip", "Unknown"),
+                        dnode.get("ipmi_ip", "Unknown"),
+                        (
+                            dnode.get("box_vendor", "Unknown")[:30] + "..."
+                            if len(dnode.get("box_vendor", "")) > 30
+                            else dnode.get("box_vendor", "Unknown")
+                        ),
+                        dnode.get("vast_os", "Unknown"),
+                        dnode.get("position", "Unknown"),
+                        "Yes" if dnode.get("is_ceres", False) else "No",
+                        "Yes" if dnode.get("is_ceres_v2", False) else "No",
+                        dnode.get("net_type", "Unknown"),
+                    ]
+                )
+
+            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
+            page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+            table = Table(
+                table_data,
+                colWidths=[
+                    page_width * 0.08,  # ID
+                    page_width * 0.18,  # Hostname
+                    page_width * 0.12,  # Mgmt IP
+                    page_width * 0.12,  # IPMI IP
+                    page_width * 0.20,  # Box Vendor
+                    page_width * 0.12,  # VAST OS
+                    page_width * 0.06,  # Position
+                    page_width * 0.06,  # Ceres
+                    page_width * 0.06,  # Ceres v2
+                    page_width * 0.10,  # Net Type
+                ],
+            )
+            table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, 0), 8),
+                        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+                        ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+                        ("FONTSIZE", (0, 1), (-1, -1), 7),
+                        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+                    ]
+                )
+            )
+
+            content.append(table)
+        else:
+            content.append(
+                Paragraph(
+                    "No DNodes network configuration data available", normal_style
+                )
             )
 
         return content

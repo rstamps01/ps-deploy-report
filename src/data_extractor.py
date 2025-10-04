@@ -554,6 +554,276 @@ class VastDataExtractor:
                 status="error",
             )
 
+    def extract_cluster_network_configuration(
+        self, raw_data: Dict[str, Any]
+    ) -> ReportSection:
+        """
+        Extract and process cluster-wide network configuration data.
+
+        Args:
+            raw_data (Dict[str, Any]): Raw data from API handler
+
+        Returns:
+            ReportSection: Processed cluster network configuration section
+        """
+        try:
+            self.logger.info("Extracting cluster network configuration")
+
+            # Get cluster network data from both cluster_network and cluster_summary
+            cluster_network_data = raw_data.get("cluster_network", {})
+            cluster_summary = raw_data.get("cluster_summary", {})
+
+            # Process cluster network configuration - prioritize cluster_summary data
+            processed_data = {
+                "management_vips": cluster_summary.get(
+                    "management_vips", "Not Configured"
+                ),
+                "external_gateways": cluster_summary.get(
+                    "external_gateways", "Not Configured"
+                ),
+                "dns": cluster_summary.get("dns", "Not Configured"),
+                "ntp": cluster_summary.get("ntp", "Not Configured"),
+                "mgmt_vip": cluster_summary.get("mgmt_vip", "Not Configured"),
+                "mgmt_inner_vip": cluster_summary.get(
+                    "mgmt_inner_vip", "Not Configured"
+                ),
+                "mgmt_inner_vip_cnode": cluster_summary.get(
+                    "mgmt_inner_vip_cnode", "Not Configured"
+                ),
+                "ext_netmask": cluster_summary.get("ext_netmask", "Not Configured"),
+                "auto_ports_ext_iface": cluster_summary.get(
+                    "auto_ports_ext_iface", "Not Configured"
+                ),
+                "b2b_ipmi": cluster_summary.get("b2b_ipmi", False),
+                "eth_mtu": cluster_summary.get("eth_mtu", "Not Configured"),
+                "ib_mtu": cluster_summary.get("ib_mtu", "Not Configured"),
+                "ipmi_gateway": cluster_summary.get("ipmi_gateway", "Not Configured"),
+                "ipmi_netmask": cluster_summary.get("ipmi_netmask", "Not Configured"),
+                "extraction_timestamp": datetime.now().isoformat(),
+            }
+
+            # Calculate completeness based on configured vs not configured
+            completeness = self._calculate_completeness(
+                [
+                    processed_data["management_vips"] != "Not Configured",
+                    processed_data["external_gateways"] != "Not Configured",
+                    processed_data["dns"] != "Not Configured",
+                    processed_data["ntp"] != "Not Configured",
+                    processed_data["mgmt_vip"] != "Not Configured",
+                    processed_data["ext_netmask"] != "Not Configured",
+                    processed_data["eth_mtu"] != "Not Configured",
+                    processed_data["ib_mtu"] != "Not Configured",
+                ]
+            )
+
+            status = self._determine_section_status(completeness)
+
+            section = ReportSection(
+                name="cluster_network_configuration",
+                title="Cluster Network Configuration",
+                data=processed_data,
+                completeness=completeness,
+                status=status,
+            )
+
+            self.logger.info(
+                f"Cluster network configuration extracted (completeness: {completeness:.1%})"
+            )
+            return section
+
+        except Exception as e:
+            self.logger.error(f"Error extracting cluster network configuration: {e}")
+            if not self.graceful_degradation:
+                raise DataExtractionError(
+                    f"Failed to extract cluster network configuration: {e}"
+                )
+            return ReportSection(
+                name="cluster_network_configuration",
+                title="Cluster Network Configuration",
+                data={},
+                completeness=0.0,
+                status="error",
+            )
+
+    def extract_cnodes_network_configuration(
+        self, raw_data: Dict[str, Any]
+    ) -> ReportSection:
+        """
+        Extract and process CNodes network configuration data.
+
+        Args:
+            raw_data (Dict[str, Any]): Raw data from API handler
+
+        Returns:
+            ReportSection: Processed CNodes network configuration section
+        """
+        try:
+            self.logger.info("Extracting CNodes network configuration")
+
+            cnodes_network_data = raw_data.get("cnodes_network", [])
+
+            # Process CNodes network configuration
+            processed_cnodes = []
+            for cnode in cnodes_network_data:
+                processed_cnode = {
+                    "id": cnode.get("id", "Unknown"),
+                    "hostname": cnode.get("hostname", "Unknown"),
+                    "mgmt_ip": cnode.get("mgmt_ip", "Unknown"),
+                    "ipmi_ip": cnode.get("ipmi_ip", "Unknown"),
+                    "box_vendor": cnode.get("box_vendor", "Unknown"),
+                    "vast_os": cnode.get("vast_os", "Unknown"),
+                    "node_type": cnode.get("node_type", "Unknown"),
+                    "box_name": cnode.get("box_name", "Unknown"),
+                    "is_vms_host": cnode.get("is_vms_host", False),
+                    "tpm_boot_dev_encryption_supported": cnode.get(
+                        "tpm_boot_dev_encryption_supported", False
+                    ),
+                    "tpm_boot_dev_encryption_enabled": cnode.get(
+                        "tpm_boot_dev_encryption_enabled", False
+                    ),
+                    "single_nic": cnode.get("single_nic", False),
+                    "net_type": cnode.get("net_type", "Unknown"),
+                }
+                processed_cnodes.append(processed_cnode)
+
+            processed_data = {
+                "cnodes": processed_cnodes,
+                "total_cnodes": len(processed_cnodes),
+                "extraction_timestamp": datetime.now().isoformat(),
+            }
+
+            # Calculate completeness
+            completeness = self._calculate_completeness(
+                [
+                    len(processed_cnodes) > 0,
+                    all(
+                        cnode.get("hostname") != "Unknown" for cnode in processed_cnodes
+                    ),
+                    all(
+                        cnode.get("mgmt_ip") != "Unknown" for cnode in processed_cnodes
+                    ),
+                    all(
+                        cnode.get("vast_os") != "Unknown" for cnode in processed_cnodes
+                    ),
+                ]
+            )
+
+            status = self._determine_section_status(completeness)
+
+            section = ReportSection(
+                name="cnodes_network_configuration",
+                title="CNodes Network Configuration",
+                data=processed_data,
+                completeness=completeness,
+                status=status,
+            )
+
+            self.logger.info(
+                f"CNodes network configuration extracted: {len(processed_cnodes)} CNodes (completeness: {completeness:.1%})"
+            )
+            return section
+
+        except Exception as e:
+            self.logger.error(f"Error extracting CNodes network configuration: {e}")
+            if not self.graceful_degradation:
+                raise DataExtractionError(
+                    f"Failed to extract CNodes network configuration: {e}"
+                )
+            return ReportSection(
+                name="cnodes_network_configuration",
+                title="CNodes Network Configuration",
+                data={},
+                completeness=0.0,
+                status="error",
+            )
+
+    def extract_dnodes_network_configuration(
+        self, raw_data: Dict[str, Any]
+    ) -> ReportSection:
+        """
+        Extract and process DNodes network configuration data.
+
+        Args:
+            raw_data (Dict[str, Any]): Raw data from API handler
+
+        Returns:
+            ReportSection: Processed DNodes network configuration section
+        """
+        try:
+            self.logger.info("Extracting DNodes network configuration")
+
+            dnodes_network_data = raw_data.get("dnodes_network", [])
+
+            # Process DNodes network configuration
+            processed_dnodes = []
+            for dnode in dnodes_network_data:
+                processed_dnode = {
+                    "id": dnode.get("id", "Unknown"),
+                    "hostname": dnode.get("hostname", "Unknown"),
+                    "mgmt_ip": dnode.get("mgmt_ip", "Unknown"),
+                    "ipmi_ip": dnode.get("ipmi_ip", "Unknown"),
+                    "box_vendor": dnode.get("box_vendor", "Unknown"),
+                    "vast_os": dnode.get("vast_os", "Unknown"),
+                    "node_type": dnode.get("node_type", "Unknown"),
+                    "position": dnode.get("position", "Unknown"),
+                    "box_name": dnode.get("box_name", "Unknown"),
+                    "is_ceres": dnode.get("is_ceres", False),
+                    "is_ceres_v2": dnode.get("is_ceres_v2", False),
+                    "net_type": dnode.get("net_type", "Unknown"),
+                }
+                processed_dnodes.append(processed_dnode)
+
+            processed_data = {
+                "dnodes": processed_dnodes,
+                "total_dnodes": len(processed_dnodes),
+                "extraction_timestamp": datetime.now().isoformat(),
+            }
+
+            # Calculate completeness
+            completeness = self._calculate_completeness(
+                [
+                    len(processed_dnodes) > 0,
+                    all(
+                        dnode.get("hostname") != "Unknown" for dnode in processed_dnodes
+                    ),
+                    all(
+                        dnode.get("mgmt_ip") != "Unknown" for dnode in processed_dnodes
+                    ),
+                    all(
+                        dnode.get("vast_os") != "Unknown" for dnode in processed_dnodes
+                    ),
+                ]
+            )
+
+            status = self._determine_section_status(completeness)
+
+            section = ReportSection(
+                name="dnodes_network_configuration",
+                title="DNodes Network Configuration",
+                data=processed_data,
+                completeness=completeness,
+                status=status,
+            )
+
+            self.logger.info(
+                f"DNodes network configuration extracted: {len(processed_dnodes)} DNodes (completeness: {completeness:.1%})"
+            )
+            return section
+
+        except Exception as e:
+            self.logger.error(f"Error extracting DNodes network configuration: {e}")
+            if not self.graceful_degradation:
+                raise DataExtractionError(
+                    f"Failed to extract DNodes network configuration: {e}"
+                )
+            return ReportSection(
+                name="dnodes_network_configuration",
+                title="DNodes Network Configuration",
+                data={},
+                completeness=0.0,
+                status="error",
+            )
+
     def _process_dns_configuration(
         self, dns_data: Optional[Any]
     ) -> Optional[Dict[str, Any]]:
@@ -1363,6 +1633,11 @@ class VastDataExtractor:
             cluster_summary = self.extract_cluster_summary(raw_data)
             hardware_inventory = self.extract_hardware_inventory(raw_data)
             network_config = self.extract_network_configuration(raw_data)
+            cluster_network_config = self.extract_cluster_network_configuration(
+                raw_data
+            )
+            cnodes_network_config = self.extract_cnodes_network_configuration(raw_data)
+            dnodes_network_config = self.extract_dnodes_network_configuration(raw_data)
             logical_config = self.extract_logical_configuration(raw_data)
             security_config = self.extract_security_configuration(raw_data)
             protection_config = self.extract_data_protection_configuration(raw_data)
@@ -1378,6 +1653,9 @@ class VastDataExtractor:
             # Calculate overall completeness
             section_completeness = [
                 network_config.completeness,
+                cluster_network_config.completeness,
+                cnodes_network_config.completeness,
+                dnodes_network_config.completeness,
                 logical_config.completeness,
                 security_config.completeness,
                 protection_config.completeness,
@@ -1403,6 +1681,9 @@ class VastDataExtractor:
                 "hardware_inventory": asdict(hardware_inventory),
                 "sections": {
                     "network_configuration": asdict(network_config),
+                    "cluster_network_configuration": asdict(cluster_network_config),
+                    "cnodes_network_configuration": asdict(cnodes_network_config),
+                    "dnodes_network_configuration": asdict(dnodes_network_config),
                     "logical_configuration": asdict(logical_config),
                     "security_configuration": asdict(security_config),
                     "data_protection_configuration": asdict(protection_config),

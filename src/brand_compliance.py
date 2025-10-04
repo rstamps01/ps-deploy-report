@@ -27,7 +27,7 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm, inch
-from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import PageBreak, Paragraph, Spacer, Table, TableStyle
 
 from utils.logger import get_logger
 
@@ -306,8 +306,12 @@ class VastBrandCompliance:
             table_data.append(headers)
         table_data.extend(data)
 
-        # Create table with VAST styling
-        table = Table(table_data)
+        # Create table with VAST styling and page-width sizing
+        page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+        num_cols = len(table_data[0]) if table_data else 1
+        col_width = page_width / num_cols if num_cols > 0 else page_width
+
+        table = Table(table_data, colWidths=[col_width] * num_cols)
 
         # Apply VAST brand table styling
         table_style = TableStyle(
@@ -335,6 +339,7 @@ class VastBrandCompliance:
                 ("PADDING", (0, 0), (-1, -1), 8),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
         )
 
@@ -348,7 +353,7 @@ class VastBrandCompliance:
         self, hardware_data: List[Dict[str, Any]], hardware_type: str
     ) -> List[Any]:
         """
-        Create VAST brand-compliant hardware inventory table.
+        Create VAST brand-compliant hardware inventory table with auto-adjusting column widths.
 
         Args:
             hardware_data (List[Dict[str, Any]]): Hardware data
@@ -371,9 +376,15 @@ class VastBrandCompliance:
         # Prepare table data
         table_data = []
         for item in hardware_data:
+            # Format model text with line breaks for better wrapping
+            model = item.get("model", "Unknown")
+            if model != "Unknown" and "," in model:
+                # Split on comma and join with line break for better wrapping
+                model = model.replace(", ", "<br/>")
+
             row = [
                 item.get("id", "Unknown"),
-                item.get("model", "Unknown"),
+                model,
                 item.get("serial_number", "Unknown"),
                 item.get("status", "Unknown"),
             ]
@@ -390,7 +401,184 @@ class VastBrandCompliance:
 
             table_data.append(row)
 
-        return self.create_vast_table(table_data, f"{hardware_type} Inventory", headers)
+        # Create table with auto-adjusting column widths and multi-page support
+        return self.create_vast_hardware_table_with_pagination(
+            table_data, hardware_type, headers
+        )
+
+    def create_vast_hardware_table_with_auto_width(
+        self, table_data: List[List[str]], title: str, headers: List[str]
+    ) -> List[Any]:
+        """
+        Create VAST brand-compliant hardware table with auto-adjusting column widths.
+
+        Args:
+            table_data (List[List[str]]): Table data
+            title (str): Table title
+            headers (List[str]): Column headers
+
+        Returns:
+            List[Any]: Table elements
+        """
+        if not table_data:
+            return []
+
+        elements = []
+
+        # Title
+        title_para = Paragraph(f"<b>{title}</b>", self.styles["vast_subheading"])
+        elements.append(title_para)
+        elements.append(Spacer(1, 8))
+
+        # Prepare table data with headers
+        full_table_data = []
+        if headers:
+            full_table_data.append(headers)
+        full_table_data.extend(table_data)
+
+        # Calculate optimal column widths based on content
+        page_width = 7.5 * inch  # A4 width minus 0.5" margins
+        num_cols = len(headers)
+
+        # Define column width ratios based on typical content length
+        # ID: narrow, Model: medium, Serial Number: medium, Status: narrow, Rack Height: wider
+        if num_cols == 5:  # CNodes/DNodes
+            col_ratios = [
+                0.08,
+                0.35,
+                0.25,
+                0.12,
+                0.2,
+            ]  # ID, Model, Serial, Status, Rack Height
+        else:  # Other hardware types
+            col_ratios = [
+                0.15,
+                0.35,
+                0.25,
+                0.15,
+                0.1,
+            ]  # ID, Model, Serial, Status, Position
+
+        col_widths = [page_width * ratio for ratio in col_ratios]
+
+        # Convert model column data to Paragraph objects for HTML support with center alignment
+        processed_table_data = []
+        for i, row in enumerate(full_table_data):
+            if i == 0:  # Header row
+                processed_table_data.append(row)
+            else:
+                processed_row = []
+                for j, cell in enumerate(row):
+                    if j == 1 and "<br/>" in str(cell):  # Model column with HTML
+                        # Create Paragraph with center alignment for Model column
+                        model_style = ParagraphStyle(
+                            "ModelCenter",
+                            parent=self.styles["vast_body"],
+                            alignment=1,  # 1 = CENTER alignment
+                        )
+                        processed_row.append(Paragraph(str(cell), model_style))
+                    else:
+                        processed_row.append(str(cell))
+                processed_table_data.append(processed_row)
+
+        # Create table with calculated column widths
+        table = Table(processed_table_data, colWidths=col_widths)
+
+        # Apply VAST brand table styling with text wrapping - match create_vast_table styling
+        table_style = TableStyle(
+            [
+                # Header row styling
+                ("BACKGROUND", (0, 0), (-1, 0), self.colors.VAST_BLUE_PRIMARY),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), self.typography.PRIMARY_FONT),
+                ("FONTSIZE", (0, 0), (-1, 0), self.typography.BODY_SIZE),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                # Special alignment for Model column (column 1) to ensure Paragraph objects are centered
+                ("ALIGN", (1, 1), (1, -1), "CENTER"),
+                # Data rows styling with gradient effect
+                ("BACKGROUND", (0, 1), (-1, -1), self.colors.VAST_BLUE_LIGHTEST),
+                ("TEXTCOLOR", (0, 1), (-1, -1), self.colors.DARK_GRAY),
+                ("FONTNAME", (0, 1), (-1, -1), self.typography.BODY_FONT),
+                ("FONTSIZE", (0, 1), (-1, -1), self.typography.BODY_SIZE),
+                # Borders and spacing
+                ("GRID", (0, 0), (-1, -1), 1, self.colors.VAST_BLUE_DARKER),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.colors.VAST_BLUE_LIGHTEST, self.colors.PURE_WHITE],
+                ),
+                ("PADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+            ]
+        )
+
+        table.setStyle(table_style)
+        elements.append(table)
+        elements.append(Spacer(1, 12))
+
+        return elements
+
+    def create_vast_hardware_table_with_pagination(
+        self, table_data: List[List[str]], title: str, headers: List[str]
+    ) -> List[Any]:
+        """
+        Create VAST brand-compliant hardware table with pagination support for large tables.
+        Automatically splits large tables across multiple pages with repeated headers.
+
+        Args:
+            table_data (List[List[str]]): Table data
+            title (str): Table title
+            headers (List[str]): Column headers
+
+        Returns:
+            List[Any]: Table elements with pagination
+        """
+        if not table_data:
+            return []
+
+        elements = []
+
+        # Define rows per page (adjust based on page size and row height)
+        # Assuming ~25 rows per page for A4 with current styling
+        rows_per_page = 25
+
+        # Calculate number of pages needed
+        total_rows = len(table_data)
+        num_pages = (total_rows + rows_per_page - 1) // rows_per_page
+
+        # If only one page needed, use the regular method
+        if num_pages <= 1:
+            return self.create_vast_hardware_table_with_auto_width(
+                table_data, title, headers
+            )
+
+        # Split data into pages
+        for page_num in range(num_pages):
+            start_idx = page_num * rows_per_page
+            end_idx = min(start_idx + rows_per_page, total_rows)
+            page_data = table_data[start_idx:end_idx]
+
+            # Create page title with pagination info
+            if num_pages > 1:
+                page_title = f"{title} (Page {page_num + 1} of {num_pages})"
+            else:
+                page_title = title
+
+            # Create table for this page
+            page_elements = self.create_vast_hardware_table_with_auto_width(
+                page_data, page_title, headers
+            )
+            elements.extend(page_elements)
+
+            # Add page break between pages (except for the last page)
+            if page_num < num_pages - 1:
+                elements.append(PageBreak())
+
+        return elements
 
     def create_vast_2d_diagram_placeholder(
         self, title: str, description: str
