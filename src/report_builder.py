@@ -557,6 +557,120 @@ class VastReportBuilder:
         content.append(summary_para)
         content.append(Spacer(1, 12))
 
+        # Add storage capacity section
+        cluster_info = data.get("cluster_summary", {})
+        if any(
+            cluster_info.get(field) is not None
+            for field in [
+                "usable_capacity_tb",
+                "free_usable_capacity_tb",
+                "drr_text",
+                "physical_space_tb",
+                "physical_space_in_use_tb",
+                "free_physical_space_tb",
+                "physical_space_in_use_percent",
+                "logical_space_tb",
+                "logical_space_in_use_tb",
+                "free_logical_space_tb",
+                "logical_space_in_use_percent",
+            ]
+        ):
+            # Storage capacity table
+            storage_data = []
+
+            # Usable capacity section
+            if cluster_info.get("usable_capacity_tb") is not None:
+                storage_data.append(
+                    [
+                        "Usable Capacity",
+                        f"{cluster_info.get('usable_capacity_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("free_usable_capacity_tb") is not None:
+                storage_data.append(
+                    [
+                        "Free Usable Capacity",
+                        f"{cluster_info.get('free_usable_capacity_tb', 0):.3f} TB",
+                    ]
+                )
+            if (
+                cluster_info.get("drr_text")
+                and cluster_info.get("drr_text") != "Unknown"
+            ):
+                storage_data.append(
+                    [
+                        "Data Reduction Ratio (DRR)",
+                        cluster_info.get("drr_text", "Unknown"),
+                    ]
+                )
+
+            # Physical space section
+            if cluster_info.get("physical_space_tb") is not None:
+                storage_data.append(
+                    [
+                        "Physical Space",
+                        f"{cluster_info.get('physical_space_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("physical_space_in_use_tb") is not None:
+                storage_data.append(
+                    [
+                        "Physical Space In Use",
+                        f"{cluster_info.get('physical_space_in_use_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("free_physical_space_tb") is not None:
+                storage_data.append(
+                    [
+                        "Free Physical Space",
+                        f"{cluster_info.get('free_physical_space_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("physical_space_in_use_percent") is not None:
+                storage_data.append(
+                    [
+                        "Physical Space In Use %",
+                        f"{cluster_info.get('physical_space_in_use_percent', 0):.2f}%",
+                    ]
+                )
+
+            # Logical space section
+            if cluster_info.get("logical_space_tb") is not None:
+                storage_data.append(
+                    [
+                        "Logical Space",
+                        f"{cluster_info.get('logical_space_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("logical_space_in_use_tb") is not None:
+                storage_data.append(
+                    [
+                        "Logical Space In Use",
+                        f"{cluster_info.get('logical_space_in_use_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("free_logical_space_tb") is not None:
+                storage_data.append(
+                    [
+                        "Free Logical Space",
+                        f"{cluster_info.get('free_logical_space_tb', 0):.3f} TB",
+                    ]
+                )
+            if cluster_info.get("logical_space_in_use_percent") is not None:
+                storage_data.append(
+                    [
+                        "Logical Space In Use %",
+                        f"{cluster_info.get('logical_space_in_use_percent', 0):.2f}%",
+                    ]
+                )
+
+            if storage_data:
+                storage_table_elements = self.brand_compliance.create_vast_table(
+                    storage_data, "Storage Capacity", ["Metric", "Value"]
+                )
+                content.extend(storage_table_elements)
+                content.append(Spacer(1, 12))
+
         # CNodes table with VAST styling
         cnodes = hardware.get("cnodes", [])
         if cnodes:
@@ -657,6 +771,108 @@ class VastReportBuilder:
                 Paragraph(
                     f"<b>VIP Pools:</b> {pool_count} pools configured", normal_style
                 )
+            )
+            content.append(Spacer(1, 8))
+
+        # Cluster Network Configuration
+        cluster_summary = data.get("cluster_summary", {})
+        if cluster_summary:
+            content.append(
+                Paragraph("<b>Cluster Network Configuration:</b>", normal_style)
+            )
+
+            # Management and Gateway Configuration - Always show placeholders
+            management_vips = cluster_summary.get("management_vips")
+            management_vips_display = (
+                management_vips
+                if management_vips and management_vips != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• Management VIPs: {management_vips_display}", normal_style)
+            )
+
+            external_gateways = cluster_summary.get("external_gateways")
+            external_gateways_display = (
+                external_gateways
+                if external_gateways and external_gateways != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• External Gateways: {external_gateways_display}", normal_style
+                )
+            )
+
+            # DNS and NTP Configuration - Always show placeholders
+            dns = cluster_summary.get("dns")
+            dns_display = dns if dns and dns != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• DNS Server: {dns_display}", normal_style))
+
+            ntp = cluster_summary.get("ntp")
+            ntp_display = ntp if ntp and ntp != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• NTP Server: {ntp_display}", normal_style))
+
+            # Network Interface Configuration - Always show placeholders
+            ext_netmask = cluster_summary.get("ext_netmask")
+            ext_netmask_display = (
+                ext_netmask
+                if ext_netmask and ext_netmask != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style)
+            )
+
+            auto_ports_ext_iface = cluster_summary.get("auto_ports_ext_iface")
+            auto_ports_ext_iface_display = (
+                auto_ports_ext_iface
+                if auto_ports_ext_iface and auto_ports_ext_iface != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• Auto Ports External Interface: {auto_ports_ext_iface_display}",
+                    normal_style,
+                )
+            )
+
+            # IPMI Configuration - Always show placeholders
+            b2b_ipmi = cluster_summary.get("b2b_ipmi")
+            b2b_ipmi_display = b2b_ipmi if b2b_ipmi is not None else "Not Configured"
+            content.append(Paragraph(f"• B2B IPMI: {b2b_ipmi_display}", normal_style))
+
+            ipmi_gateway = cluster_summary.get("ipmi_gateway")
+            ipmi_gateway_display = (
+                ipmi_gateway
+                if ipmi_gateway and ipmi_gateway != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style)
+            )
+
+            ipmi_netmask = cluster_summary.get("ipmi_netmask")
+            ipmi_netmask_display = (
+                ipmi_netmask
+                if ipmi_netmask and ipmi_netmask != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style)
+            )
+
+            # MTU Configuration - Always show placeholders
+            eth_mtu = cluster_summary.get("eth_mtu")
+            eth_mtu_display = eth_mtu if eth_mtu is not None else "Not Configured"
+            content.append(
+                Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style)
+            )
+
+            ib_mtu = cluster_summary.get("ib_mtu")
+            ib_mtu_display = ib_mtu if ib_mtu is not None else "Not Configured"
+            content.append(
+                Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style)
             )
 
         return content
@@ -789,6 +1005,106 @@ class VastReportBuilder:
             content.append(
                 Paragraph(
                     f"• Enabled: {nis_config.get('enabled', False)}", normal_style
+                )
+            )
+            content.append(Spacer(1, 8))
+
+        # Encryption Configuration
+        cluster_summary = data.get("cluster_summary", {})
+        if cluster_summary:
+            content.append(Paragraph("<b>Encryption Configuration:</b>", normal_style))
+
+            # Basic encryption settings - Always show placeholders
+            enable_encryption = cluster_summary.get("enable_encryption")
+            enable_encryption_display = (
+                enable_encryption if enable_encryption is not None else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• Encryption Enabled: {enable_encryption_display}", normal_style
+                )
+            )
+
+            encryption_type = cluster_summary.get("encryption_type")
+            encryption_type_display = (
+                encryption_type
+                if encryption_type and encryption_type != "Unknown"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• Encryption Type: {encryption_type_display}", normal_style)
+            )
+
+            s3_aes_ciphers = cluster_summary.get("s3_enable_only_aes_ciphers")
+            s3_aes_ciphers_display = (
+                s3_aes_ciphers if s3_aes_ciphers is not None else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• S3 AES Ciphers Only: {s3_aes_ciphers_display}", normal_style
+                )
+            )
+
+            # External Key Management (EKM) settings - Always show placeholders
+            ekm_servers = cluster_summary.get("ekm_servers")
+            ekm_servers_display = (
+                ekm_servers
+                if ekm_servers and ekm_servers != "Unknown" and ekm_servers != ""
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• EKM Servers: {ekm_servers_display}", normal_style)
+            )
+
+            ekm_address = cluster_summary.get("ekm_address")
+            ekm_address_display = (
+                ekm_address
+                if ekm_address and ekm_address != "Unknown" and ekm_address != ""
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• EKM Address: {ekm_address_display}", normal_style)
+            )
+
+            ekm_port = cluster_summary.get("ekm_port")
+            ekm_port_display = ekm_port if ekm_port is not None else "Not Configured"
+            content.append(Paragraph(f"• EKM Port: {ekm_port_display}", normal_style))
+
+            ekm_auth_domain = cluster_summary.get("ekm_auth_domain")
+            ekm_auth_domain_display = (
+                ekm_auth_domain
+                if ekm_auth_domain
+                and ekm_auth_domain != "Unknown"
+                and ekm_auth_domain != ""
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(f"• EKM Auth Domain: {ekm_auth_domain_display}", normal_style)
+            )
+
+            # Secondary EKM settings - Always show placeholders
+            secondary_ekm_address = cluster_summary.get("secondary_ekm_address")
+            secondary_ekm_address_display = (
+                secondary_ekm_address
+                if secondary_ekm_address and secondary_ekm_address != "null"
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• Secondary EKM Address: {secondary_ekm_address_display}",
+                    normal_style,
+                )
+            )
+
+            secondary_ekm_port = cluster_summary.get("secondary_ekm_port")
+            secondary_ekm_port_display = (
+                secondary_ekm_port
+                if secondary_ekm_port is not None
+                else "Not Configured"
+            )
+            content.append(
+                Paragraph(
+                    f"• Secondary EKM Port: {secondary_ekm_port_display}", normal_style
                 )
             )
 

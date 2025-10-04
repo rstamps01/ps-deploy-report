@@ -76,6 +76,40 @@ class ClusterSummary:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
+    # Storage capacity and usage metrics
+    usable_capacity_tb: Optional[float] = None
+    free_usable_capacity_tb: Optional[float] = None
+    drr_text: Optional[str] = None
+    physical_space_tb: Optional[float] = None
+    physical_space_in_use_tb: Optional[float] = None
+    free_physical_space_tb: Optional[float] = None
+    physical_space_in_use_percent: Optional[float] = None
+    logical_space_tb: Optional[float] = None
+    logical_space_in_use_tb: Optional[float] = None
+    free_logical_space_tb: Optional[float] = None
+    logical_space_in_use_percent: Optional[float] = None
+    # Encryption configuration
+    enable_encryption: Optional[bool] = None
+    s3_enable_only_aes_ciphers: Optional[bool] = None
+    encryption_type: Optional[str] = None
+    ekm_servers: Optional[str] = None
+    ekm_address: Optional[str] = None
+    ekm_port: Optional[int] = None
+    ekm_auth_domain: Optional[str] = None
+    secondary_ekm_address: Optional[str] = None
+    secondary_ekm_port: Optional[int] = None
+    # Network configuration
+    management_vips: Optional[str] = None
+    external_gateways: Optional[str] = None
+    dns: Optional[str] = None
+    ntp: Optional[str] = None
+    ext_netmask: Optional[str] = None
+    auto_ports_ext_iface: Optional[str] = None
+    b2b_ipmi: Optional[bool] = None
+    eth_mtu: Optional[int] = None
+    ib_mtu: Optional[int] = None
+    ipmi_gateway: Optional[str] = None
+    ipmi_netmask: Optional[str] = None
 
 
 @dataclass
@@ -185,6 +219,48 @@ class VastDataExtractor:
                     "enable_rack_level_resiliency"
                 ),
                 disable_metrics=cluster_info.get("disable_metrics"),
+                # Storage capacity and usage metrics
+                usable_capacity_tb=cluster_info.get("usable_capacity_tb"),
+                free_usable_capacity_tb=cluster_info.get("free_usable_capacity_tb"),
+                drr_text=cluster_info.get("drr_text", "Unknown"),
+                physical_space_tb=cluster_info.get("physical_space_tb"),
+                physical_space_in_use_tb=cluster_info.get("physical_space_in_use_tb"),
+                free_physical_space_tb=cluster_info.get("free_physical_space_tb"),
+                physical_space_in_use_percent=cluster_info.get(
+                    "physical_space_in_use_percent"
+                ),
+                logical_space_tb=cluster_info.get("logical_space_tb"),
+                logical_space_in_use_tb=cluster_info.get("logical_space_in_use_tb"),
+                free_logical_space_tb=cluster_info.get("free_logical_space_tb"),
+                logical_space_in_use_percent=cluster_info.get(
+                    "logical_space_in_use_percent"
+                ),
+                # Encryption configuration
+                enable_encryption=cluster_info.get("enable_encryption"),
+                s3_enable_only_aes_ciphers=cluster_info.get(
+                    "s3_enable_only_aes_ciphers"
+                ),
+                encryption_type=cluster_info.get("encryption_type", "Unknown"),
+                ekm_servers=cluster_info.get("ekm_servers", "Unknown"),
+                ekm_address=cluster_info.get("ekm_address", "Unknown"),
+                ekm_port=cluster_info.get("ekm_port"),
+                ekm_auth_domain=cluster_info.get("ekm_auth_domain", "Unknown"),
+                secondary_ekm_address=cluster_info.get("secondary_ekm_address"),
+                secondary_ekm_port=cluster_info.get("secondary_ekm_port"),
+                # Network configuration
+                management_vips=cluster_info.get("management_vips", "Unknown"),
+                external_gateways=cluster_info.get("external_gateways", "Unknown"),
+                dns=cluster_info.get("dns", "Unknown"),
+                ntp=cluster_info.get("ntp", "Unknown"),
+                ext_netmask=cluster_info.get("ext_netmask", "Unknown"),
+                auto_ports_ext_iface=cluster_info.get(
+                    "auto_ports_ext_iface", "Unknown"
+                ),
+                b2b_ipmi=cluster_info.get("b2b_ipmi"),
+                eth_mtu=cluster_info.get("eth_mtu"),
+                ib_mtu=cluster_info.get("ib_mtu"),
+                ipmi_gateway=cluster_info.get("ipmi_gateway", "Unknown"),
+                ipmi_netmask=cluster_info.get("ipmi_netmask", "Unknown"),
             )
 
             # Validate data completeness

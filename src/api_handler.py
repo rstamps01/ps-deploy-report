@@ -78,6 +78,40 @@ class VastClusterInfo:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
+    # Storage capacity and usage metrics
+    usable_capacity_tb: Optional[float] = None
+    free_usable_capacity_tb: Optional[float] = None
+    drr_text: Optional[str] = None
+    physical_space_tb: Optional[float] = None
+    physical_space_in_use_tb: Optional[float] = None
+    free_physical_space_tb: Optional[float] = None
+    physical_space_in_use_percent: Optional[float] = None
+    logical_space_tb: Optional[float] = None
+    logical_space_in_use_tb: Optional[float] = None
+    free_logical_space_tb: Optional[float] = None
+    logical_space_in_use_percent: Optional[float] = None
+    # Encryption configuration
+    enable_encryption: Optional[bool] = None
+    s3_enable_only_aes_ciphers: Optional[bool] = None
+    encryption_type: Optional[str] = None
+    ekm_servers: Optional[str] = None
+    ekm_address: Optional[str] = None
+    ekm_port: Optional[int] = None
+    ekm_auth_domain: Optional[str] = None
+    secondary_ekm_address: Optional[str] = None
+    secondary_ekm_port: Optional[int] = None
+    # Network configuration
+    management_vips: Optional[str] = None
+    external_gateways: Optional[str] = None
+    dns: Optional[str] = None
+    ntp: Optional[str] = None
+    ext_netmask: Optional[str] = None
+    auto_ports_ext_iface: Optional[str] = None
+    b2b_ipmi: Optional[bool] = None
+    eth_mtu: Optional[int] = None
+    ib_mtu: Optional[int] = None
+    ipmi_gateway: Optional[str] = None
+    ipmi_netmask: Optional[str] = None
 
 
 @dataclass
@@ -952,6 +986,87 @@ class VastApiHandler:
             )
             cluster_info.disable_metrics = cluster_data.get("disable_metrics", None)
 
+            # Extract storage capacity and usage metrics
+            cluster_info.usable_capacity_tb = cluster_data.get(
+                "usable_capacity_tb", None
+            )
+            cluster_info.free_usable_capacity_tb = cluster_data.get(
+                "free_usable_capacity_tb", None
+            )
+            cluster_info.drr_text = cluster_data.get("drr_text", "Unknown")
+            cluster_info.physical_space_tb = cluster_data.get("physical_space_tb", None)
+            cluster_info.physical_space_in_use_tb = cluster_data.get(
+                "physical_space_in_use_tb", None
+            )
+            cluster_info.free_physical_space_tb = cluster_data.get(
+                "free_physical_space_tb", None
+            )
+            cluster_info.physical_space_in_use_percent = cluster_data.get(
+                "physical_space_in_use_percent", None
+            )
+            cluster_info.logical_space_tb = cluster_data.get("logical_space_tb", None)
+            cluster_info.logical_space_in_use_tb = cluster_data.get(
+                "logical_space_in_use_tb", None
+            )
+            cluster_info.free_logical_space_tb = cluster_data.get(
+                "free_logical_space_tb", None
+            )
+            cluster_info.logical_space_in_use_percent = cluster_data.get(
+                "logical_space_in_use_percent", None
+            )
+
+            # Extract encryption configuration
+            cluster_info.enable_encryption = cluster_data.get("enable_encryption", None)
+            cluster_info.s3_enable_only_aes_ciphers = cluster_data.get(
+                "S3_ENABLE_ONLY_AES_CIPHERS", None
+            )
+            cluster_info.encryption_type = cluster_data.get(
+                "encryption_type", "Unknown"
+            )
+            cluster_info.ekm_servers = cluster_data.get("ekm_servers", "Unknown")
+            cluster_info.ekm_address = cluster_data.get("ekm_address", "Unknown")
+            cluster_info.ekm_port = cluster_data.get("ekm_port", None)
+            cluster_info.ekm_auth_domain = cluster_data.get(
+                "ekm_auth_domain", "Unknown"
+            )
+            cluster_info.secondary_ekm_address = cluster_data.get(
+                "secondary_ekm_address", None
+            )
+            cluster_info.secondary_ekm_port = cluster_data.get(
+                "secondary_ekm_port", None
+            )
+
+            # Debug logging for encryption fields
+            self.logger.info(
+                f"Encryption fields extracted - enable_encryption: {cluster_info.enable_encryption}, encryption_type: {cluster_info.encryption_type}, ekm_port: {cluster_info.ekm_port}"
+            )
+
+            # Extract network configuration - Set defaults for fields not available in clusters endpoint
+            cluster_info.management_vips = cluster_data.get(
+                "management_vips", "Not Configured"
+            )
+            cluster_info.external_gateways = cluster_data.get(
+                "external_gateways", "Not Configured"
+            )
+            cluster_info.dns = cluster_data.get("dns", "Not Configured")
+            cluster_info.ntp = cluster_data.get("ntp", "Not Configured")
+            cluster_info.ext_netmask = cluster_data.get("ext_netmask", "Not Configured")
+            cluster_info.auto_ports_ext_iface = cluster_data.get(
+                "auto_ports_ext_iface", "Not Configured"
+            )
+            cluster_info.b2b_ipmi = cluster_data.get("b2b_ipmi", "Not Configured")
+            cluster_info.eth_mtu = cluster_data.get("eth_mtu", "Not Configured")
+            cluster_info.ib_mtu = cluster_data.get("ib_mtu", "Not Configured")
+            cluster_info.ipmi_gateway = cluster_data.get(
+                "ipmi_gateway", "Not Configured"
+            )
+            cluster_info.ipmi_netmask = cluster_data.get(
+                "ipmi_netmask", "Not Configured"
+            )
+
+            # Store cluster_info as instance variable for later updates
+            self._cluster_info = cluster_info
+
             # Log additional valuable information
             if "build" in cluster_data:
                 self.logger.info(f"Cluster build: {cluster_data['build']}")
@@ -1376,6 +1491,27 @@ class VastApiHandler:
             if dns_data:
                 network_config["dns"] = dns_data
                 self.logger.debug("Retrieved DNS configuration")
+
+                # Extract DNS details for cluster summary
+                if isinstance(dns_data, list) and len(dns_data) > 0:
+                    dns_info = dns_data[0]
+                    # Update cluster info with actual DNS data
+                    if hasattr(self, "_cluster_info") and self._cluster_info:
+                        self._cluster_info.dns = dns_info.get("vip", "Not Configured")
+                        self._cluster_info.management_vips = dns_info.get(
+                            "vip", "Not Configured"
+                        )
+                        self._cluster_info.external_gateways = dns_info.get(
+                            "vip_gateway", "Not Configured"
+                        )
+                        self._cluster_info.ext_netmask = (
+                            f"255.255.0.0"
+                            if dns_info.get("vip_subnet_cidr") == 16
+                            else "Not Configured"
+                        )
+                        self.logger.info(
+                            f"Updated cluster network info from DNS: VIP={dns_info.get('vip')}, Gateway={dns_info.get('vip_gateway')}"
+                        )
             else:
                 self.logger.warning("DNS configuration not available")
                 network_config["dns"] = None
@@ -1998,6 +2134,40 @@ class VastApiHandler:
                     "dbox_ha_support": cluster_info.dbox_ha_support,
                     "enable_rack_level_resiliency": cluster_info.enable_rack_level_resiliency,
                     "disable_metrics": cluster_info.disable_metrics,
+                    # Storage capacity and usage metrics
+                    "usable_capacity_tb": cluster_info.usable_capacity_tb,
+                    "free_usable_capacity_tb": cluster_info.free_usable_capacity_tb,
+                    "drr_text": cluster_info.drr_text,
+                    "physical_space_tb": cluster_info.physical_space_tb,
+                    "physical_space_in_use_tb": cluster_info.physical_space_in_use_tb,
+                    "free_physical_space_tb": cluster_info.free_physical_space_tb,
+                    "physical_space_in_use_percent": cluster_info.physical_space_in_use_percent,
+                    "logical_space_tb": cluster_info.logical_space_tb,
+                    "logical_space_in_use_tb": cluster_info.logical_space_in_use_tb,
+                    "free_logical_space_tb": cluster_info.free_logical_space_tb,
+                    "logical_space_in_use_percent": cluster_info.logical_space_in_use_percent,
+                    # Encryption configuration
+                    "enable_encryption": cluster_info.enable_encryption,
+                    "s3_enable_only_aes_ciphers": cluster_info.s3_enable_only_aes_ciphers,
+                    "encryption_type": cluster_info.encryption_type,
+                    "ekm_servers": cluster_info.ekm_servers,
+                    "ekm_address": cluster_info.ekm_address,
+                    "ekm_port": cluster_info.ekm_port,
+                    "ekm_auth_domain": cluster_info.ekm_auth_domain,
+                    "secondary_ekm_address": cluster_info.secondary_ekm_address,
+                    "secondary_ekm_port": cluster_info.secondary_ekm_port,
+                    # Network configuration
+                    "management_vips": cluster_info.management_vips,
+                    "external_gateways": cluster_info.external_gateways,
+                    "dns": cluster_info.dns,
+                    "ntp": cluster_info.ntp,
+                    "ext_netmask": cluster_info.ext_netmask,
+                    "auto_ports_ext_iface": cluster_info.auto_ports_ext_iface,
+                    "b2b_ipmi": cluster_info.b2b_ipmi,
+                    "eth_mtu": cluster_info.eth_mtu,
+                    "ib_mtu": cluster_info.ib_mtu,
+                    "ipmi_gateway": cluster_info.ipmi_gateway,
+                    "ipmi_netmask": cluster_info.ipmi_netmask,
                 }
 
             # Hardware inventory
