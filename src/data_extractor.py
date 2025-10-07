@@ -118,6 +118,8 @@ class HardwareInventory:
 
     cnodes: List[Dict[str, Any]]
     dnodes: List[Dict[str, Any]]
+    cboxes: Dict[str, Any]
+    dboxes: Dict[str, Any]
     total_nodes: int
     rack_positions_available: bool
     physical_layout: Optional[Dict[str, Any]] = None
@@ -353,6 +355,12 @@ class VastDataExtractor:
                 processed_dnode = self._process_hardware_node(dnode, "dnode")
                 dnodes.append(processed_dnode)
 
+            # Process CBoxes
+            cboxes = hardware_data.get("cboxes", {})
+
+            # Process DBoxes
+            dboxes = hardware_data.get("dboxes", {})
+
             # Calculate total nodes
             total_nodes = len(cnodes) + len(dnodes)
 
@@ -369,6 +377,8 @@ class VastDataExtractor:
             inventory = HardwareInventory(
                 cnodes=cnodes,
                 dnodes=dnodes,
+                cboxes=cboxes,
+                dboxes=dboxes,
                 total_nodes=total_nodes,
                 rack_positions_available=rack_positions_available,
                 physical_layout=physical_layout,
@@ -409,6 +419,8 @@ class VastDataExtractor:
             "status": node_data.get("status", "unknown"),
             "rack_position": node_data.get("rack_position"),
             "rack_position_available": node_data.get("rack_position") is not None,
+            "box_vendor": node_data.get("box_vendor", "Unknown"),
+            "cbox_id": node_data.get("cbox_id"),
         }
 
         # Add enhanced information if available
@@ -573,16 +585,24 @@ class VastDataExtractor:
             cluster_network_data = raw_data.get("cluster_network", {})
             cluster_summary = raw_data.get("cluster_summary", {})
 
-            # Process cluster network configuration - prioritize cluster_summary data
+            # Process cluster network configuration - prioritize cluster_network data from API
             processed_data = {
-                "management_vips": cluster_summary.get(
-                    "management_vips", "Not Configured"
+                "management_vips": self._format_network_value(
+                    cluster_network_data.get("management_vips", []),
+                    cluster_summary.get("management_vips", "Not Configured"),
                 ),
-                "external_gateways": cluster_summary.get(
-                    "external_gateways", "Not Configured"
+                "external_gateways": self._format_network_value(
+                    cluster_network_data.get("external_gateways", []),
+                    cluster_summary.get("external_gateways", "Not Configured"),
                 ),
-                "dns": cluster_summary.get("dns", "Not Configured"),
-                "ntp": cluster_summary.get("ntp", "Not Configured"),
+                "dns": self._format_network_value(
+                    cluster_network_data.get("dns", []),
+                    cluster_summary.get("dns", "Not Configured"),
+                ),
+                "ntp": self._format_network_value(
+                    cluster_network_data.get("ntp", []),
+                    cluster_summary.get("ntp", "Not Configured"),
+                ),
                 "mgmt_vip": cluster_summary.get("mgmt_vip", "Not Configured"),
                 "mgmt_inner_vip": cluster_summary.get(
                     "mgmt_inner_vip", "Not Configured"
@@ -590,15 +610,30 @@ class VastDataExtractor:
                 "mgmt_inner_vip_cnode": cluster_summary.get(
                     "mgmt_inner_vip_cnode", "Not Configured"
                 ),
-                "ext_netmask": cluster_summary.get("ext_netmask", "Not Configured"),
-                "auto_ports_ext_iface": cluster_summary.get(
-                    "auto_ports_ext_iface", "Not Configured"
+                "ext_netmask": cluster_network_data.get(
+                    "ext_netmask", cluster_summary.get("ext_netmask", "Not Configured")
                 ),
-                "b2b_ipmi": cluster_summary.get("b2b_ipmi", False),
-                "eth_mtu": cluster_summary.get("eth_mtu", "Not Configured"),
-                "ib_mtu": cluster_summary.get("ib_mtu", "Not Configured"),
-                "ipmi_gateway": cluster_summary.get("ipmi_gateway", "Not Configured"),
-                "ipmi_netmask": cluster_summary.get("ipmi_netmask", "Not Configured"),
+                "auto_ports_ext_iface": cluster_network_data.get(
+                    "auto_ports_ext_iface",
+                    cluster_summary.get("auto_ports_ext_iface", "Not Configured"),
+                ),
+                "b2b_ipmi": cluster_network_data.get(
+                    "b2b_ipmi", cluster_summary.get("b2b_ipmi", False)
+                ),
+                "eth_mtu": cluster_network_data.get(
+                    "eth_mtu", cluster_summary.get("eth_mtu", "Not Configured")
+                ),
+                "ib_mtu": cluster_network_data.get(
+                    "ib_mtu", cluster_summary.get("ib_mtu", "Not Configured")
+                ),
+                "ipmi_gateway": cluster_network_data.get(
+                    "ipmi_gateway",
+                    cluster_summary.get("ipmi_gateway", "Not Configured"),
+                ),
+                "ipmi_netmask": cluster_network_data.get(
+                    "ipmi_netmask",
+                    cluster_summary.get("ipmi_netmask", "Not Configured"),
+                ),
                 "extraction_timestamp": datetime.now().isoformat(),
             }
 
@@ -1294,9 +1329,7 @@ class VastDataExtractor:
                 1 for v in processed_data.values() if v != "Unknown" and v != {}
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1355,9 +1388,7 @@ class VastDataExtractor:
                 1 for v in processed_data.values() if v != "Unknown" and v != []
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1412,9 +1443,7 @@ class VastDataExtractor:
                 1 for v in processed_data.values() if v != {} and v != "Unknown"
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1478,9 +1507,7 @@ class VastDataExtractor:
                 if v != "Unknown" and v != {} and v != []
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1533,9 +1560,7 @@ class VastDataExtractor:
                 1 for v in processed_data.values() if v != [] and v != "Unknown"
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1588,9 +1613,7 @@ class VastDataExtractor:
                 1 for v in processed_data.values() if v != [] and v != "Unknown"
             )
             total_fields = len(processed_data) - 1  # Exclude 'source'
-            completeness = (
-                (available_fields / total_fields) * 100 if total_fields > 0 else 0
-            )
+            completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
             status = (
                 "complete"
@@ -1715,6 +1738,18 @@ class VastDataExtractor:
         if not conditions:
             return 0.0
         return sum(conditions) / len(conditions)
+
+    def _format_network_value(self, api_value: Any, fallback_value: Any) -> str:
+        """Format network value from API, handling arrays and fallbacks."""
+        if api_value and isinstance(api_value, list) and len(api_value) > 0:
+            # Return the first value from the array
+            return str(api_value[0])
+        elif api_value and api_value != "Unknown":
+            # Return the value as-is if it's not unknown
+            return str(api_value)
+        else:
+            # Use fallback value
+            return str(fallback_value)
 
     def _determine_section_status(self, completeness: float) -> str:
         """Determine section status based on completeness."""

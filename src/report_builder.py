@@ -168,16 +168,34 @@ class VastReportBuilder:
     ) -> bool:
         """Generate PDF using ReportLab."""
         try:
-            # Set up document
+            # Set up document with page template
             page_size = A4 if self.config.page_size == "A4" else letter
-            doc = SimpleDocTemplate(
+
+            # Create page template with footer
+            generation_info = {
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "completeness": processed_data.get("metadata", {}).get(
+                    "overall_completeness", 0.0
+                ),
+            }
+            page_template = self.brand_compliance.create_vast_page_template(
+                generation_info
+            )
+
+            # Create document with page template
+            from reportlab.platypus import BaseDocTemplate
+
+            doc = BaseDocTemplate(
                 output_path,
                 pagesize=page_size,
-                rightMargin=self.config.margin_right * inch,
-                leftMargin=self.config.margin_left * inch,
-                topMargin=self.config.margin_top * inch,
-                bottomMargin=self.config.margin_bottom * inch,
+                rightMargin=0.5 * inch,
+                leftMargin=0.5 * inch,
+                topMargin=0.5 * inch,
+                bottomMargin=0.75 * inch,  # Extra space for footer
             )
+
+            # Add page template to document
+            doc.addPageTemplates([page_template])
 
             # Build story (content)
             story = []
@@ -203,20 +221,10 @@ class VastReportBuilder:
             story.extend(self._create_hardware_inventory(processed_data))
             story.append(PageBreak())
 
-            # Add network configuration sections
-            story.extend(self._create_network_configuration(processed_data))
-            story.append(PageBreak())
-
-            # Add cluster network configuration
-            story.extend(self._create_cluster_network_configuration(processed_data))
-            story.append(PageBreak())
-
-            # Add CNodes network configuration
-            story.extend(self._create_cnodes_network_configuration(processed_data))
-            story.append(PageBreak())
-
-            # Add DNodes network configuration
-            story.extend(self._create_dnodes_network_configuration(processed_data))
+            # Add comprehensive network configuration (consolidated)
+            story.extend(
+                self._create_comprehensive_network_configuration(processed_data)
+            )
             story.append(PageBreak())
 
             # Add logical configuration
@@ -239,7 +247,11 @@ class VastReportBuilder:
             # Add appendix
             story.extend(self._create_appendix(processed_data))
 
-            # Build PDF
+            # Build PDF with page template
+            from reportlab.platypus import NextPageTemplate
+
+            # Start with the page template
+            story.insert(0, NextPageTemplate("VastPage"))
             doc.build(story)
 
             self.logger.info(f"PDF report generated successfully: {output_path}")
@@ -283,6 +295,11 @@ class VastReportBuilder:
         # Get cluster information
         cluster_info = data.get("cluster_summary", {})
 
+        # Get hardware information from hardware inventory
+        hardware_inventory = data.get("hardware_inventory", {})
+        cnodes = hardware_inventory.get("cnodes", [])
+        dnodes = hardware_inventory.get("dnodes", [])
+
         # Create VAST brand-compliant header
         title = "VAST As-Built Report"
         subtitle = "Customer Deployment Documentation"
@@ -292,26 +309,65 @@ class VastReportBuilder:
         )
         content.extend(header_elements)
 
-        # Add generation information with VAST styling
-        if self.config.include_timestamp:
-            timestamp = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-            timestamp_para = Paragraph(
-                f"<b>Generated on:</b> {timestamp}",
-                self.brand_compliance.styles["vast_body"],
-            )
-            content.append(timestamp_para)
-            content.append(Spacer(1, 10))
+        # Add hardware information
+        if cnodes or dnodes:
+            hardware_text = ""
 
-        # Add VAST Professional Services footer
-        footer_elements = self.brand_compliance.create_vast_footer(
-            {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "completeness": data.get("metadata", {}).get(
-                    "overall_completeness", 0.0
-                ),
-            }
-        )
-        content.extend(footer_elements)
+            # CBox Hardware (from CNode data using box_vendor)
+            if cnodes:
+                cbox_vendors = set()
+                cbox_ids = set()
+
+                for cnode in cnodes:
+                    # Get box_vendor from the cnode data
+                    box_vendor = cnode.get("box_vendor", "Unknown")
+                    if box_vendor and box_vendor != "Unknown":
+                        cbox_vendors.add(box_vendor)
+
+                    cbox_id = cnode.get("id")
+                    if cbox_id:
+                        cbox_ids.add(str(cbox_id))
+
+                if cbox_vendors:
+                    hardware_text += (
+                        f"<b>CBox Hardware:</b> {', '.join(sorted(cbox_vendors))}<br/>"
+                    )
+
+                hardware_text += f"<b>CBox Quantity:</b> {len(cbox_ids)}<br/>"
+
+            # DBox Hardware (from DBox data using hardware_type)
+            dboxes = hardware_inventory.get("dboxes", {})
+            if dboxes:
+                dbox_hardware_types = set()
+                dbox_ids = set()
+
+                for dbox_name, dbox_data in dboxes.items():
+                    hardware_type = dbox_data.get("hardware_type")
+                    if hardware_type and hardware_type != "Unknown":
+                        dbox_hardware_types.add(hardware_type)
+
+                    dbox_id = dbox_data.get("id")
+                    if dbox_id:
+                        dbox_ids.add(str(dbox_id))
+
+                if dbox_hardware_types:
+                    hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
+
+                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}"
+
+            if hardware_text:
+                # Create centered hardware information
+                hardware_style = ParagraphStyle(
+                    "CenteredHardware",
+                    parent=self.brand_compliance.styles["vast_body"],
+                    alignment=TA_CENTER,
+                )
+                hardware_para = Paragraph(hardware_text, hardware_style)
+                content.append(hardware_para)
+                content.append(Spacer(1, 20))
+
+        # Remove the "Generated on" line as requested
+        # Footer is now handled by page template
 
         return content
 
@@ -411,12 +467,15 @@ class VastReportBuilder:
         switches = len(hardware.get("switches", []))
 
         hardware_overview_data = [
-            ["Total Nodes", str(total_nodes)],
-            ["CNodes", str(cnodes)],
-            ["DNodes", str(dnodes)],
             ["CBoxes", str(cboxes)],
+            ["CNodes", str(cnodes)],
+            ["", ""],  # Empty line
             ["DBoxes", str(dboxes)],
+            ["DNodes", str(dnodes)],
+            ["", ""],  # Empty line
             ["Switches", str(switches)],
+            ["Leaf", "0"],  # Placeholder for Leaf switches
+            ["Spine", "0"],  # Placeholder for Spine switches
         ]
 
         # Create hardware overview table with same style as Cluster Information
@@ -441,6 +500,94 @@ class VastReportBuilder:
         content.extend(table_elements)
 
         return content
+
+    def _create_cbox_inventory_table(
+        self, cboxes: Dict[str, Any], cnodes: List[Dict[str, Any]]
+    ) -> List[Any]:
+        """
+        Create CBox Inventory table using data from both cboxes and cnodes APIs.
+
+        Args:
+            cboxes: CBox data from /api/v1/cboxes/
+            cnodes: CNode data from /api/v7/cnodes/
+
+        Returns:
+            List[Any]: Table elements
+        """
+        if not cboxes or not cnodes:
+            return []
+
+        # Create a mapping of cbox_id to box_vendor and status from cnodes
+        cbox_vendor_map = {}
+        cbox_status_map = {}
+        for cnode in cnodes:
+            cbox_id = cnode.get("cbox_id")
+            box_vendor = cnode.get("box_vendor", "Unknown")
+            status = cnode.get("status", "Unknown")
+            if cbox_id:
+                cbox_vendor_map[cbox_id] = box_vendor
+                cbox_status_map[cbox_id] = status
+
+        # Prepare table data
+        table_data = []
+        headers = ["ID", "Model", "Name/Serial Number", "Status", "Position"]
+
+        for cbox_name, cbox_data in cboxes.items():
+            cbox_id = cbox_data.get("id", "Unknown")
+            name = cbox_data.get("name", "Unknown")
+            rack_unit = cbox_data.get("rack_unit", "Unknown")
+
+            # Get model and status from cnodes data using cbox_id
+            model = cbox_vendor_map.get(cbox_id, "Unknown")
+            status = cbox_status_map.get(cbox_id, "Unknown")
+
+            # Create row data
+            row = [str(cbox_id), model, name, status, rack_unit]
+            table_data.append(row)
+
+        # Sort by ID for consistent ordering
+        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+
+        # Create table with VAST styling
+        return self.brand_compliance.create_vast_hardware_table_with_pagination(
+            table_data, "CBox Inventory (Compute)", headers
+        )
+
+    def _create_dbox_inventory_table(self, dboxes: Dict[str, Any]) -> List[Any]:
+        """
+        Create DBox Inventory table using data from the dboxes API.
+
+        Args:
+            dboxes: DBox data from /api/v7/dboxes/
+
+        Returns:
+            List[Any]: Table elements
+        """
+        if not dboxes:
+            return []
+
+        # Prepare table data
+        table_data = []
+        headers = ["ID", "Model", "Name/SN", "Status", "Position"]
+
+        for dbox_name, dbox_data in dboxes.items():
+            dbox_id = dbox_data.get("id", "Unknown")
+            hardware_type = dbox_data.get("hardware_type", "Unknown")
+            name = dbox_data.get("name", "Unknown")
+            state = dbox_data.get("state", "Unknown")
+            rack_unit = dbox_data.get("rack_unit", "Unknown")
+
+            # Create row data
+            row = [str(dbox_id), hardware_type, name, state, rack_unit]
+            table_data.append(row)
+
+        # Sort by ID for consistent ordering
+        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+
+        # Create table with VAST styling
+        return self.brand_compliance.create_vast_hardware_table_with_pagination(
+            table_data, "DBox Inventory (Data)", headers
+        )
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
         """Create VAST brand-compliant cluster information section."""
@@ -691,27 +838,24 @@ class VastReportBuilder:
                 content.append(Spacer(1, 12))
 
         # CBox Inventory (Compute) table with VAST styling
+        cboxes = hardware.get("cboxes", {})
         cnodes = hardware.get("cnodes", [])
-        if cnodes:
-            cnode_elements = self.brand_compliance.create_vast_hardware_table(
-                cnodes, "CBox Inventory (Compute)"
-            )
-            content.extend(cnode_elements)
+        if cboxes and cnodes:
+            cbox_elements = self._create_cbox_inventory_table(cboxes, cnodes)
+            content.extend(cbox_elements)
 
-            # Add page break if we have many CNodes to prevent layout issues
-            if len(cnodes) > 10:  # Threshold for large inventories
+            # Add page break if we have many CBoxes to prevent layout issues
+            if len(cboxes) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
 
         # DBox Inventory (Data) table with VAST styling
-        dnodes = hardware.get("dnodes", [])
-        if dnodes:
-            dnode_elements = self.brand_compliance.create_vast_hardware_table(
-                dnodes, "DBox Inventory (Data)"
-            )
-            content.extend(dnode_elements)
+        dboxes = hardware.get("dboxes", {})
+        if dboxes:
+            dbox_elements = self._create_dbox_inventory_table(dboxes)
+            content.extend(dbox_elements)
 
-            # Add page break if we have many DNodes to prevent layout issues
-            if len(dnodes) > 10:  # Threshold for large inventories
+            # Add page break if we have many DBoxes to prevent layout issues
+            if len(dboxes) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
 
         # Add page break before Physical Rack Layout to ensure it starts on a new page
@@ -1301,6 +1445,311 @@ class VastReportBuilder:
                     "No DNodes network configuration data available", normal_style
                 )
             )
+
+        return content
+
+    def _create_comprehensive_network_configuration(
+        self, data: Dict[str, Any]
+    ) -> List[Any]:
+        """Create comprehensive network configuration section consolidating all network data."""
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        subheading_style = ParagraphStyle(
+            "Subsection_Heading",
+            parent=styles["Heading2"],
+            fontSize=self.config.heading_font_size - 2,
+            spaceAfter=8,
+        )
+
+        normal_style = ParagraphStyle(
+            "Section_Normal",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=8,
+        )
+
+        content = []
+
+        sections = data.get("sections", {})
+
+        # Add Network Configuration summary table (similar to Storage Capacity)
+        cluster_network_config = sections.get("cluster_network_configuration", {}).get(
+            "data", {}
+        )
+        if cluster_network_config:
+            network_summary_data = []
+
+            # Management and Gateway settings
+            if (
+                cluster_network_config.get("management_vips")
+                and cluster_network_config.get("management_vips") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "Management VIPs",
+                        cluster_network_config.get("management_vips", "Not Configured"),
+                    ]
+                )
+            if (
+                cluster_network_config.get("external_gateways")
+                and cluster_network_config.get("external_gateways") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "External Gateways",
+                        cluster_network_config.get(
+                            "external_gateways", "Not Configured"
+                        ),
+                    ]
+                )
+
+            # DNS and NTP settings
+            if (
+                cluster_network_config.get("dns")
+                and cluster_network_config.get("dns") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    ["DNS Servers", cluster_network_config.get("dns", "Not Configured")]
+                )
+            if (
+                cluster_network_config.get("ntp")
+                and cluster_network_config.get("ntp") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    ["NTP Servers", cluster_network_config.get("ntp", "Not Configured")]
+                )
+
+            # Network interface settings
+            if (
+                cluster_network_config.get("ext_netmask")
+                and cluster_network_config.get("ext_netmask") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "External Netmask",
+                        cluster_network_config.get("ext_netmask", "Not Configured"),
+                    ]
+                )
+            if (
+                cluster_network_config.get("auto_ports_ext_iface")
+                and cluster_network_config.get("auto_ports_ext_iface")
+                != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "Auto Ports Ext Interface",
+                        cluster_network_config.get(
+                            "auto_ports_ext_iface", "Not Configured"
+                        ),
+                    ]
+                )
+
+            # MTU settings
+            if (
+                cluster_network_config.get("eth_mtu")
+                and cluster_network_config.get("eth_mtu") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "Ethernet MTU",
+                        str(cluster_network_config.get("eth_mtu", "Not Configured")),
+                    ]
+                )
+            if (
+                cluster_network_config.get("ib_mtu")
+                and cluster_network_config.get("ib_mtu") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "InfiniBand MTU",
+                        str(cluster_network_config.get("ib_mtu", "Not Configured")),
+                    ]
+                )
+
+            # IPMI settings
+            if (
+                cluster_network_config.get("ipmi_gateway")
+                and cluster_network_config.get("ipmi_gateway") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "IPMI Gateway",
+                        cluster_network_config.get("ipmi_gateway", "Not Configured"),
+                    ]
+                )
+            if (
+                cluster_network_config.get("ipmi_netmask")
+                and cluster_network_config.get("ipmi_netmask") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "IPMI Netmask",
+                        cluster_network_config.get("ipmi_netmask", "Not Configured"),
+                    ]
+                )
+
+            # B2B IPMI setting
+            if cluster_network_config.get("b2b_ipmi") is not None:
+                network_summary_data.append(
+                    ["B2B IPMI", str(cluster_network_config.get("b2b_ipmi", False))]
+                )
+
+            if network_summary_data:
+                network_table_elements = self.brand_compliance.create_vast_table(
+                    network_summary_data, "Network Configuration", ["Setting", "Value"]
+                )
+                content.extend(network_table_elements)
+                content.append(Spacer(1, 16))
+
+        # 1. CNodes Network Configuration
+        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get(
+            "data", {}
+        )
+        cnodes = cnodes_network_config.get("cnodes", [])
+        total_cnodes = cnodes_network_config.get("total_cnodes", 0)
+
+        if cnodes:
+
+            # Create table for CNodes with scale-out support
+            headers = [
+                "ID",
+                "Hostname",
+                "Mgmt IP",
+                "IPMI IP",
+                "VAST OS",
+                "VMS Host",
+                "Net Type",
+            ]
+
+            table_data = []
+            for cnode in cnodes:
+                table_data.append(
+                    [
+                        cnode.get("id", "Unknown"),
+                        cnode.get("hostname", "Unknown"),
+                        cnode.get("mgmt_ip", "Unknown"),
+                        cnode.get("ipmi_ip", "Unknown"),
+                        cnode.get("vast_os", "Unknown"),
+                        str(cnode.get("is_vms_host", False)),
+                        cnode.get("net_type", "Unknown"),
+                    ]
+                )
+
+            # Create table with pagination support
+            table_elements = (
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    table_data, "CBox Network Configuration", headers
+                )
+            )
+            content.extend(table_elements)
+            content.append(Spacer(1, 16))
+
+        # 2. DNodes Network Configuration
+        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get(
+            "data", {}
+        )
+        dnodes = dnodes_network_config.get("dnodes", [])
+
+        if dnodes:
+            # Create table for DNodes with scale-out support
+            headers = [
+                "ID",
+                "Hostname",
+                "Mgmt IP",
+                "IPMI IP",
+                "VAST OS",
+                "Position",
+                "Ceres",
+                "Ceres v2",
+                "Net Type",
+            ]
+
+            table_data = []
+            for dnode in dnodes:
+                table_data.append(
+                    [
+                        dnode.get("id", "Unknown"),
+                        dnode.get("hostname", "Unknown"),
+                        dnode.get("mgmt_ip", "Unknown"),
+                        dnode.get("ipmi_ip", "Unknown"),
+                        dnode.get("vast_os", "Unknown"),
+                        dnode.get("position", "Unknown"),
+                        str(dnode.get("is_ceres", False)),
+                        str(dnode.get("is_ceres_v2", False)),
+                        dnode.get("net_type", "Unknown"),
+                    ]
+                )
+
+            # Create table with pagination support
+            table_elements = (
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    table_data, "DBox Network Configuration", headers
+                )
+            )
+            content.extend(table_elements)
+            content.append(Spacer(1, 16))
+
+        # 3. Additional Network Services (from original network configuration)
+        network_config = sections.get("network_configuration", {}).get("data", {})
+        if network_config:
+            content.append(Paragraph("Network Services", subheading_style))
+            content.append(Spacer(1, 8))
+
+            # DNS Configuration
+            dns = network_config.get("dns")
+            if dns:
+                dns_list = dns.get("dns_servers", []) if isinstance(dns, dict) else dns
+                if dns_list:
+                    dns_servers = (
+                        ", ".join(dns_list)
+                        if isinstance(dns_list, list)
+                        else str(dns_list)
+                    )
+                    content.append(
+                        Paragraph(f"<b>DNS Servers:</b> {dns_servers}", normal_style)
+                    )
+                    content.append(Spacer(1, 8))
+
+            # NTP Configuration
+            ntp = network_config.get("ntp")
+            if ntp:
+                ntp_list = ntp.get("ntp_servers", []) if isinstance(ntp, dict) else ntp
+                if ntp_list:
+                    ntp_servers = (
+                        ", ".join(ntp_list)
+                        if isinstance(ntp_list, list)
+                        else str(ntp_list)
+                    )
+                    content.append(
+                        Paragraph(f"<b>NTP Servers:</b> {ntp_servers}", normal_style)
+                    )
+                    content.append(Spacer(1, 8))
+
+            # VIP Pools
+            vippools = network_config.get("vippools")
+            if vippools:
+                vippool_list = (
+                    vippools.get("pools", [])
+                    if isinstance(vippools, dict)
+                    else vippools
+                )
+                vippool_count = (
+                    len(vippool_list) if isinstance(vippool_list, list) else 0
+                )
+                content.append(
+                    Paragraph(
+                        f"<b>VIP Pools:</b> {vippool_count} pools configured",
+                        normal_style,
+                    )
+                )
+                content.append(Spacer(1, 8))
 
         return content
 

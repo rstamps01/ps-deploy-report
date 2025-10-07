@@ -1,0 +1,1743 @@
+{
+  "metadata": {
+    "extraction_timestamp": "2025-10-05T15:35:52.620555",
+    "overall_completeness": 0.8411172161172161,
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "cluster_version": "5.3.2.1.4147321039570139658",
+    "api_version": "v7"
+  },
+  "cluster_summary": {
+    "name": "selab-var-203",
+    "guid": "93683633-6104-5109-8d9d-2e0dcd10c7f1",
+    "version": "5.3.2.1.4147321039570139658",
+    "state": "ONLINE",
+    "license": "Unknown",
+    "psnt": "selab-var-203",
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "collection_timestamp": "2025-10-05 15:35:41.240677",
+    "cluster_id": "1",
+    "mgmt_vip": "10.143.11.203",
+    "build": "release-5.3.2-sp4-1946523",
+    "uptime": "45 days, 2:49:15.227648",
+    "online_start_time": "2025-08-21T19:46:26.469444Z",
+    "deployment_time": "2025-08-21T19:47:06.031041Z",
+    "url": "https://10.143.11.203/api/v7/clusters/1",
+    "ssd_raid_state": "HEALTHY",
+    "nvram_raid_state": "HEALTHY",
+    "memory_raid_state": "HEALTHY",
+    "leader_state": "UP",
+    "leader_cnode": "cnode-3-7",
+    "mgmt_cnode": "cnode-3-7",
+    "mgmt_inner_vip": "172.16.4.203",
+    "mgmt_inner_vip_cnode": "cnode-3-7",
+    "enabled": true,
+    "enable_similarity": true,
+    "dedup_active": null,
+    "is_wb_raid_enabled": true,
+    "wb_raid_layout": "DATA_6_PARITY_2",
+    "dbox_ha_support": false,
+    "enable_rack_level_resiliency": false,
+    "disable_metrics": false,
+    "usable_capacity_tb": 245.488,
+    "free_usable_capacity_tb": 199.15,
+    "drr_text": "2.8:1",
+    "physical_space_tb": 310.167,
+    "physical_space_in_use_tb": 58.237,
+    "free_physical_space_tb": 251.93,
+    "physical_space_in_use_percent": 18.78,
+    "logical_space_tb": 682.397,
+    "logical_space_in_use_tb": 128.784,
+    "free_logical_space_tb": 553.588,
+    "logical_space_in_use_percent": 18.87,
+    "enable_encryption": false,
+    "s3_enable_only_aes_ciphers": null,
+    "encryption_type": "INTERNAL",
+    "ekm_servers": "",
+    "ekm_address": "",
+    "ekm_port": 5696,
+    "ekm_auth_domain": "",
+    "secondary_ekm_address": null,
+    "secondary_ekm_port": 5696,
+    "management_vips": "Not Configured",
+    "external_gateways": "Not Configured",
+    "dns": "Not Configured",
+    "ntp": "Not Configured",
+    "ext_netmask": "Not Configured",
+    "auto_ports_ext_iface": "Not Configured",
+    "b2b_ipmi": "Not Configured",
+    "eth_mtu": "Not Configured",
+    "ib_mtu": "Not Configured",
+    "ipmi_gateway": "Not Configured",
+    "ipmi_netmask": "Not Configured"
+  },
+  "hardware_inventory": {
+    "cnodes": [
+      {
+        "id": "1",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X5306361",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      },
+      {
+        "id": "2",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X4A16943",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      }
+    ],
+    "dnodes": [
+      {
+        "id": "1",
+        "type": "dnode",
+        "model": "dbox-515-25022100600207",
+        "serial_number": "C15-25022100600268",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "Unknown",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      },
+      {
+        "id": "2",
+        "type": "dnode",
+        "model": "dbox-515-25022100600207",
+        "serial_number": "C15-25022100600410",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "Unknown",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      }
+    ],
+    "cboxes": {
+      "cbox-S929986X4A16943": {
+        "id": 2,
+        "guid": "3004fa4d-27fd-4b9d-81e4-bf6f3a7fd3c7",
+        "name": "cbox-S929986X4A16943",
+        "uid": "S929986X4A16943",
+        "state": "UNKNOWN",
+        "cluster": "selab-var-203",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "rack_name": null
+      },
+      "cbox-S929986X5306361": {
+        "id": 1,
+        "guid": "e073a19a-3c95-499d-9663-e4ddcd9b6960",
+        "name": "cbox-S929986X5306361",
+        "uid": "S929986X5306361",
+        "state": "UNKNOWN",
+        "cluster": "selab-var-203",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "rack_name": null
+      }
+    },
+    "dboxes": {
+      "dbox-515-25022100600207": {
+        "id": 1,
+        "guid": "a80d480a-e4fe-41b5-9913-9b979a9a0995",
+        "name": "dbox-515-25022100600207",
+        "uid": "515-25022100600207",
+        "state": "ACTIVE",
+        "cluster": "selab-var-203",
+        "cluster_id": 1,
+        "drive_type": "ACTIVE_PASSIVE",
+        "description": null,
+        "sync": "SYNCED",
+        "sync_time": "2025-10-05T22:25:00.621960Z",
+        "arch_type": "aarch64",
+        "is_conclude_possible": false,
+        "is_replace_possible": true,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "box_vendor": "BlueField, SoC PCIe Bridge",
+        "is_migrate_target": false,
+        "is_migrate_source": false,
+        "rack_name": null,
+        "hardware_type": "ceres_v2",
+        "failure_domain": ""
+      }
+    },
+    "total_nodes": 4,
+    "rack_positions_available": true,
+    "physical_layout": {
+      "rack_layout": {},
+      "statistics": {
+        "occupied_positions": 0,
+        "min_position": 0,
+        "max_position": 0,
+        "total_cnodes": 2,
+        "total_dnodes": 2
+      },
+      "generated_timestamp": "2025-10-05T15:35:52.618253"
+    }
+  },
+  "sections": {
+    "network_configuration": {
+      "name": "network_configuration",
+      "title": "Network Configuration",
+      "data": {
+        "dns": {
+          "servers": [],
+          "search_domains": [],
+          "enabled": true,
+          "source": "API"
+        },
+        "ntp": null,
+        "vippools": {
+          "pools": [
+            {
+              "id": 15,
+              "guid": "eef51691-0afa-4e1c-a8c5-ee73da9e7b80",
+              "name": "andypern-qos",
+              "url": "https://10.143.11.203/api/v7/vippools/15",
+              "title": "172.200.223.1 - 172.200.223.6",
+              "start_ip": "172.200.223.1",
+              "end_ip": "172.200.223.6",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 3,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "qos",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.223.1",
+                  "172.200.223.6"
+                ]
+              ],
+              "ranges_summary": "172.200.223.[1-6]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.072535Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "andypern-qos",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 21,
+              "guid": "66e06908-f419-4330-9d8d-63703f929b45",
+              "name": "bblake",
+              "url": "https://10.143.11.203/api/v7/vippools/21",
+              "title": "172.200.203.140 - 172.200.203.145",
+              "start_ip": "172.200.203.140",
+              "end_ip": "172.200.203.145",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "bblakelax",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.140",
+                  "172.200.203.145"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[140-145]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.959626Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 17,
+              "guid": "228290a2-378e-45b1-a75f-285eaeb6b6b2",
+              "name": "csnow_vip",
+              "url": "https://10.143.11.203/api/v7/vippools/17",
+              "title": "172.200.203.211 - 172.200.203.212",
+              "start_ip": "172.200.203.211",
+              "end_ip": "172.200.203.212",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.211",
+                  "172.200.203.212"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[211-212]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.095295Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 24,
+              "guid": "0772a31c-e503-442d-a5e2-ec1345ac64b1",
+              "name": "jo-csi-test",
+              "url": "https://10.143.11.203/api/v7/vippools/24",
+              "title": "172.200.205.151 - 172.200.205.155",
+              "start_ip": "172.200.205.151",
+              "end_ip": "172.200.205.155",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 10,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.205.151",
+                  "172.200.205.155"
+                ]
+              ],
+              "ranges_summary": "172.200.205.[151-155]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.933696Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "jortega",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 2,
+              "guid": "008e558c-d811-432b-b675-ec2c36f43e6f",
+              "name": "main",
+              "url": "https://10.143.11.203/api/v7/vippools/2",
+              "title": "172.200.203.1 - 172.200.203.6",
+              "start_ip": "172.200.203.1",
+              "end_ip": "172.200.203.6",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "main",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.1",
+                  "172.200.203.6"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[1-6]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.982858Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 22,
+              "guid": "d1dcce8c-76ea-49b5-bbbe-171f44ce4cfc",
+              "name": "pwags-pool",
+              "url": "https://10.143.11.203/api/v7/vippools/22",
+              "title": "172.200.203.11 - 172.200.203.16",
+              "start_ip": "172.200.203.11",
+              "end_ip": "172.200.203.16",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "pwags",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.11",
+                  "172.200.203.16"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[11-16]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.006492Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 14,
+              "guid": "d914e92a-f36a-484c-a78c-2973cf3106d6",
+              "name": "radVipPool",
+              "url": "https://10.143.11.203/api/v7/vippools/14",
+              "title": "172.200.203.130 - 172.200.203.137",
+              "start_ip": "172.200.203.130",
+              "end_ip": "172.200.203.137",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "radVipPool",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.130",
+                  "172.200.203.137"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[130-137]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.947683Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 3,
+              "guid": "64f42018-19f1-4ed3-aeac-89884959b144",
+              "name": "repl",
+              "url": "https://10.143.11.203/api/v7/vippools/3",
+              "title": "172.200.203.249 - 172.200.203.254",
+              "start_ip": "172.200.203.249",
+              "end_ip": "172.200.203.254",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "REPLICATION",
+              "ip_ranges": [
+                [
+                  "172.200.203.249",
+                  "172.200.203.254"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[249-254]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.019833Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 4,
+              "guid": "ef3b9725-2632-492f-a88a-0a7ee3654321",
+              "name": "vsphere-1",
+              "url": "https://10.143.11.203/api/v7/vippools/4",
+              "title": "172.200.203.31 - 172.200.203.34",
+              "start_ip": "172.200.203.31",
+              "end_ip": "172.200.203.34",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-1",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.31",
+                  "172.200.203.34"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[31-34]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.035332Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 5,
+              "guid": "c47464b2-78dc-43d8-b740-ae0be1a5f3c2",
+              "name": "vsphere-2",
+              "url": "https://10.143.11.203/api/v7/vippools/5",
+              "title": "172.200.203.35 - 172.200.203.38",
+              "start_ip": "172.200.203.35",
+              "end_ip": "172.200.203.38",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-2",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.35",
+                  "172.200.203.38"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[35-38]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.059511Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 6,
+              "guid": "c2ef2984-c8a1-4993-8640-0293eeb830de",
+              "name": "vsphere-3",
+              "url": "https://10.143.11.203/api/v7/vippools/6",
+              "title": "172.200.203.39 - 172.200.203.42",
+              "start_ip": "172.200.203.39",
+              "end_ip": "172.200.203.42",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-3",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.39",
+                  "172.200.203.42"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[39-42]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:01.047821Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 7,
+              "guid": "60ae38ab-02da-4065-a643-658e9c316c0c",
+              "name": "vsphere-4",
+              "url": "https://10.143.11.203/api/v7/vippools/7",
+              "title": "172.200.203.43 - 172.200.203.46",
+              "start_ip": "172.200.203.43",
+              "end_ip": "172.200.203.46",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-4",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.43",
+                  "172.200.203.46"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[43-46]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.971138Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 23,
+              "guid": "2771341b-527b-4c7c-a143-a6d074936a23",
+              "name": "zyxvippool",
+              "url": "https://10.143.11.203/api/v7/vippools/23",
+              "title": "172.200.203.71 - 172.200.203.78",
+              "start_ip": "172.200.203.71",
+              "end_ip": "172.200.203.78",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-203",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": null,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.203.71",
+                  "172.200.203.78"
+                ]
+              ],
+              "ranges_summary": "172.200.203.[71-78]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-05T22:25:00.994914Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 2,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": null,
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            }
+          ],
+          "total_pools": 13,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-05T15:35:52.618569"
+      },
+      "completeness": 0.6666666666666666,
+      "status": "partial"
+    },
+    "cluster_network_configuration": {
+      "name": "cluster_network_configuration",
+      "title": "Cluster Network Configuration",
+      "data": {
+        "management_vips": "10.143.11.203",
+        "external_gateways": "10.143.254.254",
+        "dns": "10.140.3.248",
+        "ntp": "10.140.0.17",
+        "mgmt_vip": "Not Configured",
+        "mgmt_inner_vip": "Not Configured",
+        "mgmt_inner_vip_cnode": "Not Configured",
+        "ext_netmask": "255.255.0.0",
+        "auto_ports_ext_iface": "outband",
+        "b2b_ipmi": false,
+        "eth_mtu": 9000,
+        "ib_mtu": 65520,
+        "ipmi_gateway": "10.143.254.254",
+        "ipmi_netmask": "255.255.0.0",
+        "extraction_timestamp": "2025-10-05T15:35:52.618784"
+      },
+      "completeness": 0.875,
+      "status": "partial"
+    },
+    "cnodes_network_configuration": {
+      "name": "cnodes_network_configuration",
+      "title": "CNodes Network Configuration",
+      "data": {
+        "cnodes": [
+          {
+            "id": 2,
+            "hostname": "se-az-arrow-cb3-cn-1",
+            "mgmt_ip": "10.143.11.71",
+            "ipmi_ip": "10.143.11.72",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.13.22-1715900",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X5306361",
+            "is_vms_host": true,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          },
+          {
+            "id": 1,
+            "hostname": "se-az-arrow-cb3-cn-2",
+            "mgmt_ip": "10.143.11.73",
+            "ipmi_ip": "10.143.11.74",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.13.22-1715900",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X4A16943",
+            "is_vms_host": false,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          }
+        ],
+        "total_cnodes": 2,
+        "extraction_timestamp": "2025-10-05T15:35:52.618980"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "dnodes_network_configuration": {
+      "name": "dnodes_network_configuration",
+      "title": "DNodes Network Configuration",
+      "data": {
+        "dnodes": [
+          {
+            "id": 3,
+            "hostname": "se-az-arrow-db3-dn-1",
+            "mgmt_ip": "10.143.11.31",
+            "ipmi_ip": "10.143.11.32",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.15-1791040",
+            "node_type": "Dnode",
+            "position": "right",
+            "box_name": "dbox-515-25022100600207",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          },
+          {
+            "id": 4,
+            "hostname": "se-az-arrow-db3-dn-2",
+            "mgmt_ip": "10.143.11.33",
+            "ipmi_ip": "10.143.11.34",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.15-1791040",
+            "node_type": "Dnode",
+            "position": "left",
+            "box_name": "dbox-515-25022100600207",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          }
+        ],
+        "total_dnodes": 2,
+        "extraction_timestamp": "2025-10-05T15:35:52.619188"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "logical_configuration": {
+      "name": "logical_configuration",
+      "title": "Logical Configuration",
+      "data": {
+        "tenants": {
+          "tenants": [
+            {
+              "name": "andypern-qos",
+              "id": 3,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-tenant",
+              "id": 5,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jairtenant",
+              "id": 9,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "id": 1,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jortega",
+              "id": 10,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ZYXcompany",
+              "id": 8,
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 6,
+          "source": "API"
+        },
+        "views": {
+          "views": [
+            {
+              "name": "root",
+              "path": "/",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-87",
+              "path": "/",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-19",
+              "path": "/andy-gns",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-84",
+              "path": "/bblake/nfs203",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-33",
+              "path": "/bert",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-45",
+              "path": "/imed/imed1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-79",
+              "path": "/imedNFS",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-128",
+              "path": "/jeno/s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-130",
+              "path": "/jeno/s3pokemon",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-122",
+              "path": "/jwentzell-demo",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-29",
+              "path": "/kyle",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-116",
+              "path": "/markus",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-124",
+              "path": "/mcl/nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-125",
+              "path": "/mcl/nfs2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-127",
+              "path": "/mcl/s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-27",
+              "path": "/michalk/bucket-10",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-38",
+              "path": "/michalk/bucket-20",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-104",
+              "path": "/michalk-endpoint-4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-d063b36d-43e4-406e-828b-814c5f37c86e",
+              "path": "/michalk-endpoint-4/michalk-test2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-109",
+              "path": "/michalk/endpoint-5",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-b85a97d4-972e-41c1-aafc-037b921f7fca",
+              "path": "/michalk/endpoint-5/michalk-test7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-e2620a2f-18d8-49cb-99e4-5c729891381a",
+              "path": "/michalk/endpoint-5/michalk-test8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-18c3e56e-0743-4a33-8aa5-fa75c49b5972",
+              "path": "/michalk/endpoint-5/michalk-test9",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-96",
+              "path": "/michalk/s3sync/bucket-21",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-98",
+              "path": "/michalk/s3sync/bucket-22",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-35",
+              "path": "/mj-nfs02",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-20",
+              "path": "/nireny",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-117",
+              "path": "/pwags-gns-smb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-113",
+              "path": "/rad-readdirplus-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-40",
+              "path": "/russ1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-86",
+              "path": "/scotth/data",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "shaddow-block",
+              "path": "/shaddow-block",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-123",
+              "path": "/soto/gns",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-41",
+              "path": "/stamps/nfs01-clone2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-3",
+              "path": "/vperfsanity",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 35,
+          "source": "API"
+        },
+        "view_policies": {
+          "policies": [
+            {
+              "name": "bblakenfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "bblakesmb",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dummy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jairtenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jairtenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jeno-s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jortega__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jortega__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jwentzell-demo-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mclnfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mcls3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "michalk-nfs-policy1",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "michalk-s3-policy1",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "nosquash",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-smb",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-tenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-tenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "shaddow-block",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "SMB",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "vperfsanity",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ZYXcompany__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ZYXcompany__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 27,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-05T15:35:52.619459"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "security_configuration": {
+      "name": "security_configuration",
+      "title": "Security & Authentication",
+      "data": {
+        "active_directory": {
+          "enabled": true,
+          "domain": "Unknown",
+          "servers": [],
+          "source": "API"
+        },
+        "ldap": null,
+        "nis": null,
+        "extraction_timestamp": "2025-10-05T15:35:52.619665"
+      },
+      "completeness": 0.3333333333333333,
+      "status": "missing"
+    },
+    "data_protection_configuration": {
+      "name": "data_protection_configuration",
+      "title": "Data Protection",
+      "data": {
+        "snapshot_programs": null,
+        "protection_policies": {
+          "policies": [
+            {
+              "name": "dchan-pp",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "Imedtest",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "jf_async_policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "Kyle_test",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "markus_repl_policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "mcl_5min",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "michalk-203-204",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "pkg-usr2",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "stamps-replication-01",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "test",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "var203-204-5-min",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "wildcard",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            }
+          ],
+          "total_count": 12,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-05T15:35:52.619855"
+      },
+      "completeness": 0.5,
+      "status": "partial"
+    },
+    "performance_metrics": {
+      "name": "performance_metrics",
+      "title": "Performance Metrics & Capacity Analysis",
+      "data": {
+        "total_capacity": "Unknown",
+        "used_capacity": "Unknown",
+        "available_capacity": "Unknown",
+        "utilization_percentage": 0.0,
+        "iops_rating": "Unknown",
+        "throughput_rating": "Unknown",
+        "latency_metrics": {},
+        "performance_tier": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.25,
+      "status": "missing"
+    },
+    "licensing_info": {
+      "name": "licensing_info",
+      "title": "Licensing & Compliance Information",
+      "data": {
+        "license_type": "Unknown",
+        "license_key": "Unknown",
+        "expiration_date": "Unknown",
+        "licensed_features": [],
+        "compliance_status": "Unknown",
+        "support_level": "Unknown",
+        "maintenance_expiry": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.14285714285714285,
+      "status": "missing"
+    },
+    "monitoring_configuration": {
+      "name": "monitoring_config",
+      "title": "Monitoring & Alerting Configuration",
+      "data": {
+        "snmp_config": null,
+        "syslog_config": null,
+        "alert_policies": null,
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "customer_integration": {
+      "name": "customer_integration",
+      "title": "Customer Environment Integration",
+      "data": {
+        "network_topology": "Switch-to-switch MLAG connections",
+        "vlan_configuration": {
+          "customer_vlan": "100 (Production Data)",
+          "internal_vlan": "69 (VAST internal traffic)"
+        },
+        "firewall_rules": [
+          {
+            "service": "NFS",
+            "port": "2049",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SMB",
+            "port": "445",
+            "protocol": "TCP"
+          },
+          {
+            "service": "S3",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "iSCSI",
+            "port": "3260",
+            "protocol": "TCP"
+          },
+          {
+            "service": "Management",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SNMP",
+            "port": "161",
+            "protocol": "UDP"
+          },
+          {
+            "service": "Syslog",
+            "port": "514",
+            "protocol": "UDP"
+          }
+        ],
+        "load_balancer_config": {
+          "method": "Round-robin across available CNodes",
+          "redundancy": "Dual-path connectivity for high availability"
+        },
+        "customer_requirements": [
+          "1.3M IOPS performance requirement",
+          "264 GB/s throughput requirement",
+          "1.17 PB usable capacity",
+          "NFS, SMB, S3, iSCSI protocol support",
+          "Active Directory integration",
+          "SNMP and syslog monitoring integration",
+          "Snapshot backup policies"
+        ],
+        "integration_timeline": "6-week deployment timeline",
+        "source": "API"
+      },
+      "completeness": 1.1666666666666667,
+      "status": "missing"
+    },
+    "deployment_timeline": {
+      "name": "deployment_timeline",
+      "title": "Deployment Timeline & Milestones",
+      "data": {
+        "deployment_phases": [
+          {
+            "phase": "Phase 1 - Planning",
+            "duration": "Week 1",
+            "description": "Requirements gathering, design review"
+          },
+          {
+            "phase": "Phase 2 - Hardware Installation",
+            "duration": "Week 2",
+            "description": "Rack mounting, cabling"
+          },
+          {
+            "phase": "Phase 3 - Software Configuration",
+            "duration": "Week 3",
+            "description": "Cluster setup, network config"
+          },
+          {
+            "phase": "Phase 4 - Integration",
+            "duration": "Week 4",
+            "description": "Customer network integration, testing"
+          },
+          {
+            "phase": "Phase 5 - Validation",
+            "duration": "Week 5",
+            "description": "Performance testing, user acceptance"
+          },
+          {
+            "phase": "Phase 6 - Go-Live",
+            "duration": "Week 6",
+            "description": "Production cutover, documentation"
+          }
+        ],
+        "key_milestones": [
+          {
+            "milestone": "Hardware Delivery",
+            "date": "September 1, 2025"
+          },
+          {
+            "milestone": "Rack Installation Complete",
+            "date": "September 5, 2025"
+          },
+          {
+            "milestone": "Cluster Initialization",
+            "date": "September 8, 2025"
+          },
+          {
+            "milestone": "Network Integration",
+            "date": "September 12, 2025"
+          },
+          {
+            "milestone": "Performance Validation",
+            "date": "September 15, 2025"
+          },
+          {
+            "milestone": "Production Go-Live",
+            "date": "September 18, 2025"
+          }
+        ],
+        "testing_results": [
+          {
+            "test": "Functional Testing",
+            "status": "Passed",
+            "description": "All protocols tested and validated"
+          },
+          {
+            "test": "Performance Testing",
+            "status": "Passed",
+            "description": "Exceeded IOPS and throughput requirements"
+          },
+          {
+            "test": "Failover Testing",
+            "status": "Passed",
+            "description": "CNode and DNode failover tested successfully"
+          },
+          {
+            "test": "Backup Testing",
+            "status": "Passed",
+            "description": "Snapshot and replication policies validated"
+          },
+          {
+            "test": "Security Testing",
+            "status": "Passed",
+            "description": "Authentication and authorization verified"
+          },
+          {
+            "test": "Integration Testing",
+            "status": "Passed",
+            "description": "Customer applications tested successfully"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "future_recommendations": {
+      "name": "future_recommendations",
+      "title": "Future Recommendations & Roadmap",
+      "data": {
+        "short_term": [
+          {
+            "category": "Capacity Planning",
+            "description": "Monitor utilization and plan for growth"
+          },
+          {
+            "category": "Performance Tuning",
+            "description": "Optimize workload placement and QoS policies"
+          },
+          {
+            "category": "Backup Testing",
+            "description": "Regular DR testing and backup validation"
+          },
+          {
+            "category": "Monitoring Enhancement",
+            "description": "Implement custom dashboards and alerts"
+          },
+          {
+            "category": "Documentation Updates",
+            "description": "Keep operational procedures current"
+          }
+        ],
+        "medium_term": [
+          {
+            "category": "Capacity Expansion",
+            "description": "Add DBoxes for increased storage capacity"
+          },
+          {
+            "category": "Performance Scaling",
+            "description": "Add CNodes for increased IOPS and throughput"
+          },
+          {
+            "category": "Feature Adoption",
+            "description": "Implement advanced features like replication"
+          },
+          {
+            "category": "Automation",
+            "description": "Implement automated provisioning and management"
+          },
+          {
+            "category": "Integration",
+            "description": "Expand integration with customer applications"
+          }
+        ],
+        "long_term": [
+          {
+            "category": "Multi-Site Deployment",
+            "description": "Consider secondary site for DR"
+          },
+          {
+            "category": "Cloud Integration",
+            "description": "Hybrid cloud storage capabilities"
+          },
+          {
+            "category": "AI/ML Integration",
+            "description": "Leverage VAST's AI capabilities"
+          },
+          {
+            "category": "Edge Computing",
+            "description": "Deploy edge storage nodes if needed"
+          },
+          {
+            "category": "Technology Refresh",
+            "description": "Plan for hardware refresh cycles"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    }
+  }
+}

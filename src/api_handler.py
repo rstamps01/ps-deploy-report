@@ -136,6 +136,7 @@ class VastHardwareInfo:
     # Hardware details
     cores: Optional[int] = None
     box_id: Optional[int] = None
+    cbox_id: Optional[int] = None
     box_vendor: Optional[str] = None
     bios_version: Optional[str] = None
     cpld_version: Optional[str] = None
@@ -1123,6 +1124,7 @@ class VastApiHandler:
                     # Hardware details
                     cores=cnode.get("cores"),
                     box_id=cnode.get("box_id"),
+                    cbox_id=cnode.get("cbox_id"),
                     box_vendor=cnode.get("box_vendor"),
                     bios_version=cnode.get("bios_version"),
                     cpld_version=cnode.get("cpld"),
@@ -1572,39 +1574,37 @@ class VastApiHandler:
             return {}
 
     def get_cluster_network_configuration(self) -> Dict[str, Any]:
-        """Get cluster-wide network configuration from /api/v7/clusters/ endpoint."""
+        """Get cluster-wide network configuration from /api/v7/vms/1/network_settings/ endpoint."""
         try:
             self.logger.info("Collecting cluster-wide network configuration...")
 
-            # Get cluster configuration
-            cluster_data = self._make_api_request("clusters/")
-            if not cluster_data:
+            # Get network configuration from vms/1/network_settings/ endpoint
+            network_data = self._make_api_request("vms/1/network_settings/")
+            if not network_data:
                 self.logger.warning(
-                    "No cluster data available for network configuration"
+                    "No network data available from vms/1/network_settings/ endpoint"
                 )
                 return {}
 
-            # Handle both single object and array responses
-            if isinstance(cluster_data, list) and len(cluster_data) > 0:
-                cluster_info = cluster_data[0]
-            else:
-                cluster_info = cluster_data
+            # Extract network configuration from the data field
+            data = network_data.get("data", {})
+            if not data:
+                self.logger.warning("No data field found in network settings response")
+                return {}
 
             # Extract cluster network configuration
             network_config = {
-                "management_vips": cluster_info.get("management_vips", []),
-                "external_gateways": cluster_info.get("external_gateways", []),
-                "dns": cluster_info.get("dns", []),
-                "ntp": cluster_info.get("ntp", []),
-                "ext_netmask": cluster_info.get("ext_netmask", "Unknown"),
-                "auto_ports_ext_iface": cluster_info.get(
-                    "auto_ports_ext_iface", "Unknown"
-                ),
-                "b2b_ipmi": cluster_info.get("b2b_ipmi", False),
-                "eth_mtu": cluster_info.get("eth_mtu", "Unknown"),
-                "ib_mtu": cluster_info.get("ib_mtu", "Unknown"),
-                "ipmi_gateway": cluster_info.get("ipmi_gateway", "Unknown"),
-                "ipmi_netmask": cluster_info.get("ipmi_netmask", "Unknown"),
+                "management_vips": data.get("management_vips", []),
+                "external_gateways": data.get("external_gateways", []),
+                "dns": data.get("dns", []),
+                "ntp": data.get("ntp", []),
+                "ext_netmask": data.get("ext_netmask", "Unknown"),
+                "auto_ports_ext_iface": data.get("auto_ports_ext_iface", "Unknown"),
+                "b2b_ipmi": data.get("b2b_ipmi", False),
+                "eth_mtu": data.get("eth_mtu", "Unknown"),
+                "ib_mtu": data.get("ib_mtu", "Unknown"),
+                "ipmi_gateway": data.get("ipmi_gateway", "Unknown"),
+                "ipmi_netmask": data.get("ipmi_netmask", "Unknown"),
             }
 
             self.logger.info(
@@ -2343,6 +2343,8 @@ class VastApiHandler:
             # Hardware inventory
             cnodes = self.get_cnode_details()
             dnodes = self.get_dnode_details()
+            cboxes = self.get_cbox_details()
+            dboxes = self.get_dbox_details()
             all_data["hardware"] = {
                 "cnodes": [
                     {
@@ -2352,6 +2354,8 @@ class VastApiHandler:
                         "serial_number": cnode.serial_number,
                         "rack_position": cnode.rack_position,
                         "status": cnode.status,
+                        "box_vendor": cnode.box_vendor,
+                        "cbox_id": cnode.cbox_id,
                     }
                     for cnode in cnodes
                 ],
@@ -2366,6 +2370,8 @@ class VastApiHandler:
                     }
                     for dnode in dnodes
                 ],
+                "cboxes": cboxes,
+                "dboxes": dboxes,
             }
 
             # Configuration sections

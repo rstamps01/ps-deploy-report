@@ -10,6 +10,31 @@ Contains the latest, production-ready reports for reference:
   - Features: Properly centered Model column text in CBox/DBox inventory tables
   - Status: ✅ Production Ready
 
+- **`latest_network_config_fix.pdf/`** - Latest report with Network Configuration fix
+  - Generated: 2025-10-04 09:26
+  - Features: Properly populated Network Configuration data from `/api/v7/vms/1/network_settings/` endpoint
+  - Status: ✅ Production Ready
+
+- **`latest_network_config_with_table.pdf/`** - Latest report with Network Configuration summary table
+  - Generated: 2025-10-04 09:33
+  - Features: Network Configuration data in summary table format matching Storage Capacity table styling
+  - Status: ✅ Production Ready
+
+- **`latest_cbox_table_cleanup.pdf/`** - Latest report with cleaned up CBox Network Configuration table
+  - Generated: 2025-10-04 09:42
+  - Features: Removed duplicate header row, TPM Support and Box Vendor columns, optimized column widths
+  - Status: ✅ Production Ready
+
+- **`latest_cbox_table_no_single_nic.pdf/`** - Latest report with further optimized CBox Network Configuration table
+  - Generated: 2025-10-04 09:45
+  - Features: Removed Single NIC column, resized all columns to eliminate header overlap
+  - Status: ✅ Production Ready
+
+- **`latest_network_cleanup.pdf/`** - Latest report with comprehensive Network Configuration cleanup
+  - Generated: 2025-10-04 09:59
+  - Features: Reduced CBox column widths, removed DBox Box Vendor column, eliminated duplicate headers, removed repetitive headings and total lines
+  - Status: ✅ Production Ready
+
 ### `/archive/`
 Contains all previous test reports and revisions:
 

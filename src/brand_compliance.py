@@ -216,30 +216,63 @@ class VastBrandCompliance:
         """
         elements = []
 
-        # Main title with VAST Light effect
-        title_para = Paragraph(f"<b>{title}</b>", self.styles["vast_title"])
+        # Main title with VAST Light effect (centered)
+        title_style = ParagraphStyle(
+            "CenteredTitle",
+            parent=self.styles["vast_title"],
+            alignment=TA_CENTER,
+        )
+        title_para = Paragraph(f"<b>{title}</b>", title_style)
         elements.append(title_para)
         elements.append(Spacer(1, 10))
 
-        # Subtitle
+        # Add VAST logo
+        try:
+            from reportlab.platypus import Image
+
+            logo_path = "reports/VAST_Logo.png"
+            # Load image with preserved aspect ratio
+            logo = Image(
+                logo_path, width=2 * inch, height=1 * inch, kind="proportional"
+            )
+            logo.hAlign = "CENTER"
+            elements.append(logo)
+            elements.append(Spacer(1, 10))
+        except Exception as e:
+            # If logo fails to load, continue without it
+            pass
+
+        # Subtitle (centered)
         if subtitle:
-            subtitle_para = Paragraph(subtitle, self.styles["vast_subtitle"])
+            subtitle_style = ParagraphStyle(
+                "CenteredSubtitle",
+                parent=self.styles["vast_subtitle"],
+                alignment=TA_CENTER,
+            )
+            subtitle_para = Paragraph(subtitle, subtitle_style)
             elements.append(subtitle_para)
             elements.append(Spacer(1, 15))
 
-        # Cluster information
+        # Cluster information (centered)
         if cluster_info:
             cluster_name = cluster_info.get("name", "Unknown Cluster")
-            cluster_version = cluster_info.get("version", "Unknown Version")
             psnt = cluster_info.get("psnt", "Not Available")
+            build = cluster_info.get("build", "Unknown Build")
+            mgmt_vip = cluster_info.get("mgmt_vip", "Unknown IP")
 
-            # Cluster details with VAST styling
+            # Cluster details with VAST styling (centered)
             cluster_text = f"<b>Cluster:</b> {cluster_name}<br/>"
-            cluster_text += f"<b>Version:</b> {cluster_version}<br/>"
             if psnt != "Not Available":
-                cluster_text += f"<b>PSNT:</b> {psnt}"
+                cluster_text += f"<b>PSNT:</b> {psnt}<br/>"
+            cluster_text += f"<b>Release:</b> {build}<br/>"
+            cluster_text += f"<b>Management IP:</b> {mgmt_vip}"
 
-            cluster_para = Paragraph(cluster_text, self.styles["vast_body"])
+            cluster_style = ParagraphStyle(
+                "CenteredCluster",
+                parent=self.styles["vast_body"],
+                alignment=TA_CENTER,
+            )
+            cluster_para = Paragraph(cluster_text, cluster_style)
             elements.append(cluster_para)
             elements.append(Spacer(1, 20))
 
@@ -334,7 +367,7 @@ class VastBrandCompliance:
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
-                    [self.colors.VAST_BLUE_LIGHTEST, self.colors.PURE_WHITE],
+                    [self.colors.PURE_WHITE, self.colors.VAST_BLUE_LIGHTEST],
                 ),
                 ("PADDING", (0, 0), (-1, -1), 8),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
@@ -441,15 +474,48 @@ class VastBrandCompliance:
         num_cols = len(headers)
 
         # Define column width ratios based on typical content length
-        # ID: narrow, Model: medium, Serial Number: medium, Status: narrow, Rack Height: wider
-        if num_cols == 5:  # CNodes/DNodes
+        # ID: narrow, Model: wide, Serial Number: medium, Status: narrow, Rack Height: wider
+        if num_cols == 5:  # CNodes/DNodes/CBox Inventory
             col_ratios = [
-                0.08,
-                0.35,
-                0.25,
-                0.12,
-                0.2,
+                0.06,  # ID
+                0.45,  # Model (increased for long text)
+                0.25,  # Serial Number
+                0.12,  # Status
+                0.12,  # Rack Height
             ]  # ID, Model, Serial, Status, Rack Height
+        elif num_cols == 7:  # CBox/DBox Network Configuration (without Single NIC)
+            col_ratios = [
+                0.06,  # ID
+                0.18,  # Hostname
+                0.15,  # Mgmt IP
+                0.15,  # IPMI IP
+                0.20,  # VAST OS
+                0.12,  # VMS Host
+                0.14,  # Net Type
+            ]
+        elif num_cols == 8:  # CBox/DBox Network Configuration (with Single NIC)
+            col_ratios = [
+                0.08,  # ID
+                0.20,  # Hostname
+                0.15,  # Mgmt IP
+                0.15,  # IPMI IP
+                0.15,  # VAST OS
+                0.08,  # VMS Host
+                0.09,  # Single NIC
+                0.10,  # Net Type
+            ]
+        elif num_cols == 9:  # DBox Network Configuration (without Box Vendor)
+            col_ratios = [
+                0.06,  # ID
+                0.16,  # Hostname
+                0.14,  # Mgmt IP
+                0.14,  # IPMI IP
+                0.18,  # VAST OS
+                0.10,  # Position
+                0.08,  # Ceres
+                0.08,  # Ceres v2
+                0.06,  # Net Type
+            ]
         else:  # Other hardware types
             col_ratios = [
                 0.15,
@@ -507,7 +573,7 @@ class VastBrandCompliance:
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
-                    [self.colors.VAST_BLUE_LIGHTEST, self.colors.PURE_WHITE],
+                    [self.colors.PURE_WHITE, self.colors.VAST_BLUE_LIGHTEST],
                 ),
                 ("PADDING", (0, 0), (-1, -1), 8),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
@@ -620,12 +686,19 @@ class VastBrandCompliance:
         # Simple divider using spacing and text
         return Paragraph("─" * 50, self.styles["vast_caption"])
 
-    def create_vast_footer(self, generation_info: Dict[str, Any]) -> List[Any]:
+    def create_vast_footer(
+        self,
+        generation_info: Dict[str, Any],
+        current_page: int = 1,
+        total_pages: int = 1,
+    ) -> List[Any]:
         """
-        Create VAST brand-compliant footer.
+        Create VAST brand-compliant footer with centered content and page numbers.
 
         Args:
             generation_info (Dict[str, Any]): Report generation information
+            current_page (int): Current page number
+            total_pages (int): Total number of pages
 
         Returns:
             List[Any]: Footer elements
@@ -637,23 +710,200 @@ class VastBrandCompliance:
         elements.append(self._create_vast_divider())
         elements.append(Spacer(1, 10))
 
-        # Footer content
-        footer_text = "VAST Professional Services | Automated As-Built Documentation"
-        footer_para = Paragraph(footer_text, self.styles["vast_caption"])
-        elements.append(footer_para)
-
-        # Generation details
+        # Create centered footer content
         if generation_info:
             timestamp = generation_info.get("timestamp", "Unknown")
             completeness = generation_info.get("completeness", 0.0)
 
-            details_text = (
+            # Combined footer text with centered alignment
+            footer_text = (
+                f"VAST Professional Services | Automated As-Built Documentation<br/>"
                 f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
             )
-            details_para = Paragraph(details_text, self.styles["vast_caption"])
-            elements.append(details_para)
+        else:
+            footer_text = (
+                "VAST Professional Services | Automated As-Built Documentation"
+            )
+
+        # Create centered footer paragraph
+        footer_style = ParagraphStyle(
+            "CenteredFooter",
+            parent=self.styles["vast_caption"],
+            alignment=TA_CENTER,
+        )
+        footer_para = Paragraph(footer_text, footer_style)
+        elements.append(footer_para)
+
+        # Add page numbers (right aligned)
+        page_style = ParagraphStyle(
+            "PageNumbers",
+            parent=self.styles["vast_caption"],
+            alignment=TA_RIGHT,
+        )
+        page_text = f"Page {current_page} of {total_pages}"
+        page_para = Paragraph(page_text, page_style)
+        elements.append(page_para)
 
         return elements
+
+    def create_vast_footer_with_pages(
+        self,
+        generation_info: Dict[str, Any],
+        current_page: int = 1,
+        total_pages: int = 1,
+    ) -> List[Any]:
+        """
+        Create VAST brand-compliant footer with centered content and page numbers.
+
+        Args:
+            generation_info (Dict[str, Any]): Report generation information
+            current_page (int): Current page number
+            total_pages (int): Total number of pages
+
+        Returns:
+            List[Any]: Footer elements
+        """
+        elements = []
+
+        # Add divider
+        elements.append(Spacer(1, 20))
+        elements.append(self._create_vast_divider())
+        elements.append(Spacer(1, 10))
+
+        # Create centered footer content
+        if generation_info:
+            timestamp = generation_info.get("timestamp", "Unknown")
+            completeness = generation_info.get("completeness", 0.0)
+
+            # Combined footer text with centered alignment
+            footer_text = (
+                f"VAST Professional Services | Automated As-Built Documentation<br/>"
+                f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
+            )
+        else:
+            footer_text = (
+                "VAST Professional Services | Automated As-Built Documentation"
+            )
+
+        # Create centered footer paragraph
+        footer_style = ParagraphStyle(
+            "CenteredFooter",
+            parent=self.styles["vast_caption"],
+            alignment=TA_CENTER,
+        )
+        footer_para = Paragraph(footer_text, footer_style)
+        elements.append(footer_para)
+
+        # Add page numbers (right aligned)
+        page_style = ParagraphStyle(
+            "PageNumbers",
+            parent=self.styles["vast_caption"],
+            alignment=TA_RIGHT,
+        )
+        page_text = f"Page {current_page} of {total_pages}"
+        page_para = Paragraph(page_text, page_style)
+        elements.append(page_para)
+
+        return elements
+
+    def create_vast_page_template(self, generation_info: Dict[str, Any]) -> Any:
+        """
+        Create VAST brand-compliant page template with footer that repeats on all pages.
+
+        Args:
+            generation_info (Dict[str, Any]): Report generation information
+
+        Returns:
+            Any: Page template with footer
+        """
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.units import inch
+        from reportlab.platypus import Frame, PageTemplate
+
+        # Define page size and margins
+        page_width, page_height = letter
+        left_margin = 0.5 * inch
+        right_margin = 0.5 * inch
+        top_margin = 0.5 * inch
+        bottom_margin = 0.75 * inch  # Extra space for footer
+
+        # Calculate frame dimensions
+        frame_width = page_width - left_margin - right_margin
+        frame_height = page_height - top_margin - bottom_margin
+
+        # Create main frame for content
+        main_frame = Frame(
+            left_margin,
+            bottom_margin,
+            frame_width,
+            frame_height,
+            leftPadding=0,
+            bottomPadding=0,
+            rightPadding=0,
+            topPadding=0,
+        )
+
+        def footer_canvas(canvas, doc):
+            """Draw footer on every page."""
+            # Get page number
+            page_num = canvas.getPageNumber()
+
+            # Footer content
+            if generation_info:
+                timestamp = generation_info.get("timestamp", "Unknown")
+                completeness = generation_info.get("completeness", 0.0)
+
+                # Footer text
+                footer_text = (
+                    f"VAST Professional Services | Automated As-Built Documentation\n"
+                    f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
+                )
+            else:
+                footer_text = (
+                    "VAST Professional Services | Automated As-Built Documentation"
+                )
+
+            # Draw horizontal line
+            canvas.setStrokeColor(self.colors.VAST_BLUE_DARKER)
+            canvas.setLineWidth(1)
+            canvas.line(
+                left_margin,
+                bottom_margin - 0.1 * inch,
+                page_width - right_margin,
+                bottom_margin - 0.1 * inch,
+            )
+
+            # Draw centered footer text
+            canvas.setFont(self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
+            canvas.setFillColor(self.colors.DARK_GRAY)
+
+            # Split footer text into lines
+            lines = footer_text.split("\n")
+            y_position = bottom_margin - 0.3 * inch
+
+            for line in lines:
+                # Calculate text width for centering
+                text_width = canvas.stringWidth(
+                    line, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
+                )
+                x_position = (page_width - text_width) / 2
+                canvas.drawString(x_position, y_position, line)
+                y_position -= 0.15 * inch
+
+            # Draw page number (right aligned)
+            page_text = f"Page {page_num}"
+            canvas.drawRightString(
+                page_width - right_margin, bottom_margin - 0.3 * inch, page_text
+            )
+
+        # Create page template
+        page_template = PageTemplate(
+            id="VastPage",
+            frames=[main_frame],
+            onPage=footer_canvas,
+        )
+
+        return page_template
 
     def get_vast_page_style(self) -> Dict[str, Any]:
         """
