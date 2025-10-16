@@ -47,11 +47,13 @@ class VastColorPalette:
     DEEP_BLUE_DARK = HexColor("#0F2042")  # Deep Blue Dark
     DEEP_BLUE_DARKER = HexColor("#081636")  # Deep Blue Darker
     DEEP_BLUE_DARKEST = HexColor("#0E142C")  # Deep Blue Darkest
+    BACKGROUND_DARK = HexColor("#2F2042")  # Background Dark
 
     # Whites
     WARM_WHITE = HexColor("#FAF7F7")  # Warm White
     PURE_WHITE = HexColor("#FFFFFF")  # Pure White
     COOL_WHITE = HexColor("#F2F2F7")  # Cool White
+    ALTERNATING_ROW = HexColor("#F2F2F7")  # Alternating Row Color
 
     # Functional Colors
     SUCCESS_GREEN = HexColor("#28A745")
@@ -121,7 +123,7 @@ class VastBrandCompliance:
             "VastTitle",
             fontName=self.typography.PRIMARY_FONT,
             fontSize=self.typography.TITLE_SIZE,
-            textColor=self.colors.VAST_BLUE_PRIMARY,
+            textColor=self.colors.BACKGROUND_DARK,
             alignment=TA_CENTER,
             spaceAfter=20,
             spaceBefore=10,
@@ -146,7 +148,7 @@ class VastBrandCompliance:
             "VastHeading",
             fontName=self.typography.PRIMARY_FONT,
             fontSize=self.typography.HEADING_SIZE,
-            textColor=self.colors.DEEP_BLUE_DARK,
+            textColor=self.colors.BACKGROUND_DARK,
             spaceAfter=12,
             spaceBefore=15,
             leading=self.typography.HEADING_SIZE * self.typography.HEADING_LINE_SPACING,
@@ -157,7 +159,7 @@ class VastBrandCompliance:
             "VastSubheading",
             fontName=self.typography.SECONDARY_FONT,
             fontSize=self.typography.SUBHEADING_SIZE,
-            textColor=self.colors.VAST_BLUE_DARKER,
+            textColor=self.colors.BACKGROUND_DARK,
             spaceAfter=8,
             spaceBefore=10,
             leading=self.typography.SUBHEADING_SIZE
@@ -299,12 +301,7 @@ class VastBrandCompliance:
         else:
             style = self.styles["vast_emphasis"]
 
-        # Add horizontal line above heading (VAST style)
-        elements.append(Spacer(1, 5))
-        elements.append(self._create_vast_divider())
-        elements.append(Spacer(1, 5))
-
-        # Heading text
+        # Heading text (no horizontal line above)
         heading_para = Paragraph(f"<b>{title}</b>", style)
         elements.append(heading_para)
         elements.append(Spacer(1, 8))
@@ -350,7 +347,7 @@ class VastBrandCompliance:
         table_style = TableStyle(
             [
                 # Header row styling
-                ("BACKGROUND", (0, 0), (-1, 0), self.colors.VAST_BLUE_PRIMARY),
+                ("BACKGROUND", (0, 0), (-1, 0), self.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.colors.PURE_WHITE),
                 ("FONTNAME", (0, 0), (-1, 0), self.typography.PRIMARY_FONT),
                 ("FONTSIZE", (0, 0), (-1, 0), self.typography.BODY_SIZE),
@@ -362,12 +359,12 @@ class VastBrandCompliance:
                 ("FONTNAME", (0, 1), (-1, -1), self.typography.BODY_FONT),
                 ("FONTSIZE", (0, 1), (-1, -1), self.typography.BODY_SIZE),
                 # Borders and spacing
-                ("GRID", (0, 0), (-1, -1), 1, self.colors.VAST_BLUE_DARKER),
+                ("GRID", (0, 0), (-1, -1), 1, self.colors.BACKGROUND_DARK),
                 (
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
-                    [self.colors.PURE_WHITE, self.colors.VAST_BLUE_LIGHTEST],
+                    [self.colors.PURE_WHITE, self.colors.ALTERNATING_ROW],
                 ),
                 ("PADDING", (0, 0), (-1, -1), 8),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
@@ -483,38 +480,14 @@ class VastBrandCompliance:
                 0.12,  # Status
                 0.12,  # Rack Height
             ]  # ID, Model, Serial, Status, Rack Height
-        elif num_cols == 7:  # CBox/DBox Network Configuration (without Single NIC)
-            col_ratios = [
-                0.06,  # ID
-                0.18,  # Hostname
-                0.15,  # Mgmt IP
-                0.15,  # IPMI IP
-                0.20,  # VAST OS
-                0.12,  # VMS Host
-                0.14,  # Net Type
-            ]
-        elif num_cols == 8:  # CBox/DBox Network Configuration (with Single NIC)
+        elif num_cols == 6:  # CBox/DBox Network Configuration (without Net Type)
             col_ratios = [
                 0.08,  # ID
                 0.20,  # Hostname
-                0.15,  # Mgmt IP
-                0.15,  # IPMI IP
-                0.15,  # VAST OS
-                0.08,  # VMS Host
-                0.09,  # Single NIC
-                0.10,  # Net Type
-            ]
-        elif num_cols == 9:  # DBox Network Configuration (without Box Vendor)
-            col_ratios = [
-                0.06,  # ID
-                0.16,  # Hostname
-                0.14,  # Mgmt IP
-                0.14,  # IPMI IP
-                0.18,  # VAST OS
-                0.10,  # Position
-                0.08,  # Ceres
-                0.08,  # Ceres v2
-                0.06,  # Net Type
+                0.18,  # Mgmt IP
+                0.18,  # IPMI IP
+                0.20,  # VAST OS
+                0.16,  # VMS Host/Position
             ]
         else:  # Other hardware types
             col_ratios = [
@@ -554,7 +527,7 @@ class VastBrandCompliance:
         table_style = TableStyle(
             [
                 # Header row styling
-                ("BACKGROUND", (0, 0), (-1, 0), self.colors.VAST_BLUE_PRIMARY),
+                ("BACKGROUND", (0, 0), (-1, 0), self.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.colors.PURE_WHITE),
                 ("FONTNAME", (0, 0), (-1, 0), self.typography.PRIMARY_FONT),
                 ("FONTSIZE", (0, 0), (-1, 0), self.typography.BODY_SIZE),
@@ -568,12 +541,12 @@ class VastBrandCompliance:
                 ("FONTNAME", (0, 1), (-1, -1), self.typography.BODY_FONT),
                 ("FONTSIZE", (0, 1), (-1, -1), self.typography.BODY_SIZE),
                 # Borders and spacing
-                ("GRID", (0, 0), (-1, -1), 1, self.colors.VAST_BLUE_DARKER),
+                ("GRID", (0, 0), (-1, -1), 1, self.colors.BACKGROUND_DARK),
                 (
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
-                    [self.colors.PURE_WHITE, self.colors.VAST_BLUE_LIGHTEST],
+                    [self.colors.PURE_WHITE, self.colors.ALTERNATING_ROW],
                 ),
                 ("PADDING", (0, 0), (-1, -1), 8),
                 ("LEFTPADDING", (0, 0), (-1, -1), 12),
@@ -864,7 +837,7 @@ class VastBrandCompliance:
                 )
 
             # Draw horizontal line
-            canvas.setStrokeColor(self.colors.VAST_BLUE_DARKER)
+            canvas.setStrokeColor(self.colors.BACKGROUND_DARK)
             canvas.setLineWidth(1)
             canvas.line(
                 left_margin,

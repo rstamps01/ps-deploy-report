@@ -1601,6 +1601,18 @@ class VastReportBuilder:
                     ["B2B IPMI", str(cluster_network_config.get("b2b_ipmi", False))]
                 )
 
+            # Net Type setting
+            if (
+                cluster_network_config.get("net_type")
+                and cluster_network_config.get("net_type") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "Net Type",
+                        cluster_network_config.get("net_type", "Not Configured"),
+                    ]
+                )
+
             if network_summary_data:
                 network_table_elements = self.brand_compliance.create_vast_table(
                     network_summary_data, "Network Configuration", ["Setting", "Value"]
@@ -1625,7 +1637,6 @@ class VastReportBuilder:
                 "IPMI IP",
                 "VAST OS",
                 "VMS Host",
-                "Net Type",
             ]
 
             table_data = []
@@ -1638,7 +1649,6 @@ class VastReportBuilder:
                         cnode.get("ipmi_ip", "Unknown"),
                         cnode.get("vast_os", "Unknown"),
                         str(cnode.get("is_vms_host", False)),
-                        cnode.get("net_type", "Unknown"),
                     ]
                 )
 
@@ -1666,9 +1676,6 @@ class VastReportBuilder:
                 "IPMI IP",
                 "VAST OS",
                 "Position",
-                "Ceres",
-                "Ceres v2",
-                "Net Type",
             ]
 
             table_data = []
@@ -1681,9 +1688,6 @@ class VastReportBuilder:
                         dnode.get("ipmi_ip", "Unknown"),
                         dnode.get("vast_os", "Unknown"),
                         dnode.get("position", "Unknown"),
-                        str(dnode.get("is_ceres", False)),
-                        str(dnode.get("is_ceres_v2", False)),
-                        dnode.get("net_type", "Unknown"),
                     ]
                 )
 
@@ -1764,13 +1768,6 @@ class VastReportBuilder:
             spaceAfter=12,
         )
 
-        normal_style = ParagraphStyle(
-            "Section_Normal",
-            parent=styles["Normal"],
-            fontSize=self.config.font_size,
-            spaceAfter=8,
-        )
-
         content = []
 
         content.append(Paragraph("Logical Configuration", heading_style))
@@ -1779,6 +1776,9 @@ class VastReportBuilder:
         sections = data.get("sections", {})
         logical_config = sections.get("logical_configuration", {}).get("data", {})
 
+        # Prepare table data
+        table_data = []
+
         # Tenants
         tenants = logical_config.get("tenants")
         if tenants:
@@ -1786,22 +1786,14 @@ class VastReportBuilder:
                 tenants.get("tenants", []) if isinstance(tenants, dict) else tenants
             )
             tenant_count = len(tenant_list) if isinstance(tenant_list, list) else 0
-            content.append(
-                Paragraph(
-                    f"<b>Tenants:</b> {tenant_count} tenants configured", normal_style
-                )
-            )
-            content.append(Spacer(1, 8))
+            table_data.append(["Tenants", f"{tenant_count} tenants configured"])
 
         # Views
         views = logical_config.get("views")
         if views:
             view_list = views.get("views", []) if isinstance(views, dict) else views
             view_count = len(view_list) if isinstance(view_list, list) else 0
-            content.append(
-                Paragraph(f"<b>Views:</b> {view_count} views configured", normal_style)
-            )
-            content.append(Spacer(1, 8))
+            table_data.append(["Views", f"{view_count} views configured"])
 
         # View Policies
         policies = logical_config.get("view_policies")
@@ -1810,10 +1802,53 @@ class VastReportBuilder:
                 policies.get("policies", []) if isinstance(policies, dict) else policies
             )
             policy_count = len(policy_list) if isinstance(policy_list, list) else 0
+            table_data.append(["View Policies", f"{policy_count} policies configured"])
+
+        # Protection Policies
+        protection_policies = logical_config.get("protection_policies")
+        if protection_policies:
+            protection_policy_list = (
+                protection_policies.get("policies", [])
+                if isinstance(protection_policies, dict)
+                else protection_policies
+            )
+            protection_policy_count = (
+                len(protection_policy_list)
+                if isinstance(protection_policy_list, list)
+                else 0
+            )
+            table_data.append(
+                [
+                    "Protection Policies",
+                    f"{protection_policy_count} policies configured",
+                ]
+            )
+
+        # VIP Pools
+        vippools = logical_config.get("vippools")
+        if vippools:
+            vippool_list = (
+                vippools.get("pools", []) if isinstance(vippools, dict) else vippools
+            )
+            vippool_count = len(vippool_list) if isinstance(vippool_list, list) else 0
+            table_data.append(["VIP Pools", f"{vippool_count} pools configured"])
+
+        # Create table if we have data
+        if table_data:
+            table_elements = self.brand_compliance.create_vast_table(
+                table_data, None, ["Resource", "Value"]
+            )
+            content.extend(table_elements)
+        else:
+            # Fallback if no data
             content.append(
                 Paragraph(
-                    f"<b>View Policies:</b> {policy_count} policies configured",
-                    normal_style,
+                    "No logical configuration data available.",
+                    ParagraphStyle(
+                        "Normal",
+                        parent=styles["Normal"],
+                        fontSize=self.config.font_size,
+                    ),
                 )
             )
 
@@ -1830,13 +1865,6 @@ class VastReportBuilder:
             spaceAfter=12,
         )
 
-        normal_style = ParagraphStyle(
-            "Section_Normal",
-            parent=styles["Normal"],
-            fontSize=self.config.font_size,
-            spaceAfter=8,
-        )
-
         content = []
 
         content.append(Paragraph("Security & Authentication", heading_style))
@@ -1845,60 +1873,64 @@ class VastReportBuilder:
         sections = data.get("sections", {})
         security_config = sections.get("security_configuration", {}).get("data", {})
 
+        # Prepare table data
+        table_data = []
+
         # Active Directory
         ad_config = security_config.get("active_directory")
         if ad_config:
-            content.append(Paragraph("<b>Active Directory:</b>", normal_style))
-            content.append(
-                Paragraph(f"• Enabled: {ad_config.get('enabled', False)}", normal_style)
+            table_data.append(
+                [
+                    "Security",
+                    "Active Directory",
+                    "Enabled",
+                    str(ad_config.get("enabled", False)),
+                ]
             )
             if ad_config.get("domain"):
-                content.append(
-                    Paragraph(f"• Domain: {ad_config.get('domain')}", normal_style)
+                table_data.append(
+                    ["Security", "Active Directory", "Domain", ad_config.get("domain")]
                 )
             servers = ad_config.get("servers", [])
             if servers:
-                content.append(
-                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
+                table_data.append(
+                    ["Security", "Active Directory", "Servers", ", ".join(servers)]
                 )
-            content.append(Spacer(1, 8))
 
         # LDAP
         ldap_config = security_config.get("ldap")
         if ldap_config:
-            content.append(Paragraph("<b>LDAP:</b>", normal_style))
-            content.append(
-                Paragraph(
-                    f"• Enabled: {ldap_config.get('enabled', False)}", normal_style
-                )
+            table_data.append(
+                [
+                    "Authentication",
+                    "LDAP",
+                    "Enabled",
+                    str(ldap_config.get("enabled", False)),
+                ]
             )
-            content.append(Spacer(1, 8))
 
         # NIS
         nis_config = security_config.get("nis")
         if nis_config:
-            content.append(Paragraph("<b>NIS:</b>", normal_style))
-            content.append(
-                Paragraph(
-                    f"• Enabled: {nis_config.get('enabled', False)}", normal_style
-                )
+            table_data.append(
+                [
+                    "Authentication",
+                    "NIS",
+                    "Enabled",
+                    str(nis_config.get("enabled", False)),
+                ]
             )
-            content.append(Spacer(1, 8))
 
         # Encryption Configuration
         cluster_summary = data.get("cluster_summary", {})
         if cluster_summary:
-            content.append(Paragraph("<b>Encryption Configuration:</b>", normal_style))
-
-            # Basic encryption settings - Always show placeholders
+            # Basic encryption settings
             enable_encryption = cluster_summary.get("enable_encryption")
             enable_encryption_display = (
                 enable_encryption if enable_encryption is not None else "Not Configured"
             )
-            content.append(
-                Paragraph(
-                    f"• Encryption Enabled: {enable_encryption_display}", normal_style
-                )
+            table_data.append(
+                ["Security", "Encryption", "Enabled", str(enable_encryption_display)]
             )
 
             encryption_type = cluster_summary.get("encryption_type")
@@ -1907,30 +1939,31 @@ class VastReportBuilder:
                 if encryption_type and encryption_type != "Unknown"
                 else "Not Configured"
             )
-            content.append(
-                Paragraph(f"• Encryption Type: {encryption_type_display}", normal_style)
+            table_data.append(
+                ["Security", "Encryption", "Type", encryption_type_display]
             )
 
             s3_aes_ciphers = cluster_summary.get("s3_enable_only_aes_ciphers")
             s3_aes_ciphers_display = (
                 s3_aes_ciphers if s3_aes_ciphers is not None else "Not Configured"
             )
-            content.append(
-                Paragraph(
-                    f"• S3 AES Ciphers Only: {s3_aes_ciphers_display}", normal_style
-                )
+            table_data.append(
+                [
+                    "Security",
+                    "Encryption",
+                    "S3 AES Ciphers Only",
+                    str(s3_aes_ciphers_display),
+                ]
             )
 
-            # External Key Management (EKM) settings - Always show placeholders
+            # External Key Management (EKM) settings
             ekm_servers = cluster_summary.get("ekm_servers")
             ekm_servers_display = (
                 ekm_servers
                 if ekm_servers and ekm_servers != "Unknown" and ekm_servers != ""
                 else "Not Configured"
             )
-            content.append(
-                Paragraph(f"• EKM Servers: {ekm_servers_display}", normal_style)
-            )
+            table_data.append(["Security", "EKM", "Servers", ekm_servers_display])
 
             ekm_address = cluster_summary.get("ekm_address")
             ekm_address_display = (
@@ -1938,13 +1971,11 @@ class VastReportBuilder:
                 if ekm_address and ekm_address != "Unknown" and ekm_address != ""
                 else "Not Configured"
             )
-            content.append(
-                Paragraph(f"• EKM Address: {ekm_address_display}", normal_style)
-            )
+            table_data.append(["Security", "EKM", "Address", ekm_address_display])
 
             ekm_port = cluster_summary.get("ekm_port")
             ekm_port_display = ekm_port if ekm_port is not None else "Not Configured"
-            content.append(Paragraph(f"• EKM Port: {ekm_port_display}", normal_style))
+            table_data.append(["Security", "EKM", "Port", str(ekm_port_display)])
 
             ekm_auth_domain = cluster_summary.get("ekm_auth_domain")
             ekm_auth_domain_display = (
@@ -1954,22 +1985,19 @@ class VastReportBuilder:
                 and ekm_auth_domain != ""
                 else "Not Configured"
             )
-            content.append(
-                Paragraph(f"• EKM Auth Domain: {ekm_auth_domain_display}", normal_style)
+            table_data.append(
+                ["Security", "EKM", "Auth Domain", ekm_auth_domain_display]
             )
 
-            # Secondary EKM settings - Always show placeholders
+            # Secondary EKM settings
             secondary_ekm_address = cluster_summary.get("secondary_ekm_address")
             secondary_ekm_address_display = (
                 secondary_ekm_address
                 if secondary_ekm_address and secondary_ekm_address != "null"
                 else "Not Configured"
             )
-            content.append(
-                Paragraph(
-                    f"• Secondary EKM Address: {secondary_ekm_address_display}",
-                    normal_style,
-                )
+            table_data.append(
+                ["Security", "Secondary EKM", "Address", secondary_ekm_address_display]
             )
 
             secondary_ekm_port = cluster_summary.get("secondary_ekm_port")
@@ -1978,9 +2006,28 @@ class VastReportBuilder:
                 if secondary_ekm_port is not None
                 else "Not Configured"
             )
+            table_data.append(
+                ["Security", "Secondary EKM", "Port", str(secondary_ekm_port_display)]
+            )
+
+        # Create table if we have data
+        if table_data:
+            table_elements = self.brand_compliance.create_vast_table(
+                table_data,
+                None,
+                ["Type", "Description", "Function", "Value"],
+            )
+            content.extend(table_elements)
+        else:
+            # Fallback if no data
             content.append(
                 Paragraph(
-                    f"• Secondary EKM Port: {secondary_ekm_port_display}", normal_style
+                    "No security configuration data available.",
+                    ParagraphStyle(
+                        "Normal",
+                        parent=styles["Normal"],
+                        fontSize=self.config.font_size,
+                    ),
                 )
             )
 
