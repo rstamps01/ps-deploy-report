@@ -28,6 +28,9 @@ from typing import Any, Dict, List, Optional, Tuple
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Import rack diagram module
+from rack_diagram import RackDiagram
+
 from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
 from utils.logger import get_logger
 
@@ -235,18 +238,6 @@ class VastReportBuilder:
             story.extend(self._create_security_configuration(processed_data))
             story.append(PageBreak())
 
-            # Add data protection configuration
-            story.extend(self._create_data_protection_configuration(processed_data))
-            story.append(PageBreak())
-
-            # Add enhanced features section
-            if self.config.include_enhanced_features:
-                story.extend(self._create_enhanced_features_section(processed_data))
-                story.append(PageBreak())
-
-            # Add appendix
-            story.extend(self._create_appendix(processed_data))
-
             # Build PDF with page template
             from reportlab.platypus import NextPageTemplate
 
@@ -424,6 +415,27 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "This VAST As-Built Report provides a comprehensive technical documentation of the deployed VAST Data cluster infrastructure, configuration, and operational status. The report serves as a critical reference for system administrators, storage engineers, and technical stakeholders to understand the current state of the cluster deployment, validate configuration compliance, and support ongoing operations and troubleshooting. The Executive Summary consolidates key operational metrics, hardware inventory, and cluster health indicators into high-level overview tables that enable rapid assessment of cluster status and capacity utilization.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
         # Cluster overview table - resequenced to match screenshot order
         cluster_info = data.get("cluster_summary", {})
         cluster_id = cluster_info.get("cluster_id", "Unknown")
@@ -599,6 +611,27 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Cluster Information section provides detailed operational status and configuration parameters for the VAST Data cluster. This section captures essential cluster metadata including cluster identification, operational state, management network configuration, and feature flags that define the cluster's capabilities and current operational mode. The information presented here is critical for understanding the cluster's current operational status, validating proper configuration, and supporting troubleshooting activities. This data is collected directly from the cluster's management API and represents the real-time operational state of the system.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
         cluster_info = data.get("cluster_summary", {})
 
         # Create cluster info table with VAST styling - reorganized per requirements
@@ -720,6 +753,27 @@ class VastReportBuilder:
             "Hardware Summary", level=1
         )
         content.extend(heading_elements)
+
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Hardware Summary section provides comprehensive inventory and operational status of all physical hardware components within the VAST Data cluster. This section includes detailed information about storage capacity utilization, compute nodes (CNodes), data nodes (DNodes), and their respective hardware specifications, operational status, and physical rack positioning. The capacity metrics show both logical and physical storage utilization, enabling capacity planning and performance optimization. Hardware inventory data is essential for understanding cluster scale, identifying hardware failures, planning maintenance windows, and ensuring proper rack organization for optimal cooling and cable management.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
 
         hardware = data.get("hardware_inventory", {})
 
@@ -864,12 +918,74 @@ class VastReportBuilder:
             # Force page break to move Physical Rack Layout to next page
             content.append(PageBreak())
 
-            # Add physical layout diagram placeholder anchored to top of new page
-            layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
-                "Physical Rack Layout",
-                "Visual representation of hardware positioning in the rack with U-number assignments.",
+            # Add section heading
+            heading_elements = self.brand_compliance.create_vast_section_heading(
+                "Physical Rack Layout", level=2
             )
-            content.extend(layout_elements)
+            content.extend(heading_elements)
+
+            # Generate rack diagram
+            try:
+                # Extract CBox and DBox data for rack diagram
+                cboxes_data = []
+                dboxes_data = []
+
+                # Get CBox information
+                sections = data.get("sections", {})
+                cnodes = sections.get("cnodes_network_configuration", {}).get("data", {}).get("cnodes", [])
+                
+                # Also check hardware inventory for CBox data
+                hw_cnodes = hardware.get("cnodes", [])
+                
+                # Combine data from both sources, prefer hardware inventory
+                for cnode in hw_cnodes:
+                    cbox_data = {
+                        "id": cnode.get("id"),
+                        "model": cnode.get("model", cnode.get("box_vendor", "")),
+                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
+                        "state": cnode.get("state", cnode.get("status", "ACTIVE")),
+                    }
+                    if cbox_data["rack_unit"]:  # Only add if has position
+                        cboxes_data.append(cbox_data)
+
+                # Get DBox information
+                hw_dnodes = hardware.get("dnodes", [])
+                
+                for dnode in hw_dnodes:
+                    dbox_data = {
+                        "id": dnode.get("id"),
+                        "model": dnode.get("hardware_type", dnode.get("model", "")),
+                        "rack_unit": dnode.get("rack_u", dnode.get("rack_unit", dnode.get("position", ""))),
+                        "state": dnode.get("state", dnode.get("status", "ACTIVE")),
+                    }
+                    if dbox_data["rack_unit"]:  # Only add if has position
+                        dboxes_data.append(dbox_data)
+
+                # Create rack diagram
+                if cboxes_data or dboxes_data:
+                    rack_gen = RackDiagram()
+                    rack_drawing = rack_gen.generate_rack_diagram(cboxes_data, dboxes_data)
+                    content.append(rack_drawing)
+                    self.logger.info(
+                        f"Added rack diagram with {len(cboxes_data)} CBoxes and {len(dboxes_data)} DBoxes"
+                    )
+                else:
+                    # Fallback to placeholder if no position data
+                    layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
+                        "Physical Rack Layout",
+                        "Rack position data not available for this cluster.",
+                    )
+                    content.extend(layout_elements)
+                    self.logger.warning("No rack position data available for diagram")
+
+            except Exception as e:
+                self.logger.error(f"Error generating rack diagram: {e}", exc_info=True)
+                # Fallback to placeholder on error
+                layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
+                    "Physical Rack Layout",
+                    "Visual representation of hardware positioning in the rack with U-number assignments.",
+                )
+                content.extend(layout_elements)
 
         return content
 
@@ -1477,6 +1593,32 @@ class VastReportBuilder:
 
         content = []
 
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Network Configuration", level=1
+        )
+        content.extend(heading_elements)
+
+        # Section Overview
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Network Configuration section provides comprehensive documentation of all network-related settings and connectivity parameters for the VAST Data cluster. This section includes cluster-wide network configuration, individual node network settings for both compute nodes (CNodes) and data nodes (DNodes), and network service configurations such as DNS and NTP. The network configuration data is essential for understanding cluster connectivity, troubleshooting network issues, validating network security settings, and ensuring proper network segmentation. This information supports network administrators in maintaining optimal network performance and security posture for the storage infrastructure.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
         sections = data.get("sections", {})
 
         # Add Network Configuration summary table (similar to Storage Capacity)
@@ -1655,7 +1797,7 @@ class VastReportBuilder:
             # Create table with pagination support
             table_elements = (
                 self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    table_data, "CBox Network Configuration", headers
+                    table_data, "CNode Network Configuration", headers
                 )
             )
             content.extend(table_elements)
@@ -1694,66 +1836,11 @@ class VastReportBuilder:
             # Create table with pagination support
             table_elements = (
                 self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    table_data, "DBox Network Configuration", headers
+                    table_data, "DNode Network Configuration", headers
                 )
             )
             content.extend(table_elements)
             content.append(Spacer(1, 16))
-
-        # 3. Additional Network Services (from original network configuration)
-        network_config = sections.get("network_configuration", {}).get("data", {})
-        if network_config:
-            content.append(Paragraph("Network Services", subheading_style))
-            content.append(Spacer(1, 8))
-
-            # DNS Configuration
-            dns = network_config.get("dns")
-            if dns:
-                dns_list = dns.get("dns_servers", []) if isinstance(dns, dict) else dns
-                if dns_list:
-                    dns_servers = (
-                        ", ".join(dns_list)
-                        if isinstance(dns_list, list)
-                        else str(dns_list)
-                    )
-                    content.append(
-                        Paragraph(f"<b>DNS Servers:</b> {dns_servers}", normal_style)
-                    )
-                    content.append(Spacer(1, 8))
-
-            # NTP Configuration
-            ntp = network_config.get("ntp")
-            if ntp:
-                ntp_list = ntp.get("ntp_servers", []) if isinstance(ntp, dict) else ntp
-                if ntp_list:
-                    ntp_servers = (
-                        ", ".join(ntp_list)
-                        if isinstance(ntp_list, list)
-                        else str(ntp_list)
-                    )
-                    content.append(
-                        Paragraph(f"<b>NTP Servers:</b> {ntp_servers}", normal_style)
-                    )
-                    content.append(Spacer(1, 8))
-
-            # VIP Pools
-            vippools = network_config.get("vippools")
-            if vippools:
-                vippool_list = (
-                    vippools.get("pools", [])
-                    if isinstance(vippools, dict)
-                    else vippools
-                )
-                vippool_count = (
-                    len(vippool_list) if isinstance(vippool_list, list) else 0
-                )
-                content.append(
-                    Paragraph(
-                        f"<b>VIP Pools:</b> {vippool_count} pools configured",
-                        normal_style,
-                    )
-                )
-                content.append(Spacer(1, 8))
 
         return content
 
@@ -1772,6 +1859,26 @@ class VastReportBuilder:
 
         content.append(Paragraph("Logical Configuration", heading_style))
         content.append(Spacer(1, 12))
+
+        # Section Overview
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Logical Configuration section documents the logical organization and data protection policies configured within the VAST Data cluster. This section provides visibility into tenant configurations, data views, access policies, VIP pools, and data protection settings including snapshot programs and protection policies. Understanding the logical configuration is crucial for data governance, access control validation, backup and recovery planning, and ensuring compliance with organizational data protection requirements. This information enables administrators to verify proper data isolation, validate backup schedules, and ensure that data protection policies align with business continuity objectives.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
 
         sections = data.get("sections", {})
         logical_config = sections.get("logical_configuration", {}).get("data", {})
@@ -1824,14 +1931,84 @@ class VastReportBuilder:
                 ]
             )
 
-        # VIP Pools
-        vippools = logical_config.get("vippools")
-        if vippools:
-            vippool_list = (
-                vippools.get("pools", []) if isinstance(vippools, dict) else vippools
+        # Network Services (VIP Pools, DNS and NTP from network configuration)
+        network_config = sections.get("network_configuration", {}).get("data", {})
+        if network_config:
+            # VIP Pools
+            vippools = network_config.get("vippools")
+            if vippools:
+                vippool_list = (
+                    vippools.get("pools", [])
+                    if isinstance(vippools, dict)
+                    else vippools
+                )
+                vippool_count = (
+                    len(vippool_list) if isinstance(vippool_list, list) else 0
+                )
+                table_data.append(["VIP Pools", f"{vippool_count} pools configured"])
+            # DNS Configuration
+            dns = network_config.get("dns")
+            if dns:
+                dns_list = dns.get("dns_servers", []) if isinstance(dns, dict) else dns
+                if dns_list:
+                    dns_servers = (
+                        ", ".join(dns_list)
+                        if isinstance(dns_list, list)
+                        else str(dns_list)
+                    )
+                    table_data.append(["DNS Servers", dns_servers])
+
+            # NTP Configuration
+            ntp = network_config.get("ntp")
+            if ntp:
+                ntp_list = ntp.get("ntp_servers", []) if isinstance(ntp, dict) else ntp
+                if ntp_list:
+                    ntp_servers = (
+                        ", ".join(ntp_list)
+                        if isinstance(ntp_list, list)
+                        else str(ntp_list)
+                    )
+                    table_data.append(["NTP Servers", ntp_servers])
+
+        # Data Protection information
+        protection_config = sections.get("data_protection_configuration", {}).get(
+            "data", {}
+        )
+
+        # Snapshot Programs
+        snapshots = protection_config.get("snapshot_programs")
+        if snapshots:
+            snapshot_list = (
+                snapshots.get("programs", [])
+                if isinstance(snapshots, dict)
+                else snapshots
             )
-            vippool_count = len(vippool_list) if isinstance(vippool_list, list) else 0
-            table_data.append(["VIP Pools", f"{vippool_count} pools configured"])
+            snapshot_count = (
+                len(snapshot_list) if isinstance(snapshot_list, list) else 0
+            )
+            table_data.append(
+                ["Snapshot Programs", f"{snapshot_count} programs configured"]
+            )
+
+        # Data Protection Protection Policies (from data protection configuration)
+        data_protection_policies = protection_config.get("protection_policies")
+        if data_protection_policies:
+            data_protection_policy_list = (
+                data_protection_policies.get("policies", [])
+                if isinstance(data_protection_policies, dict)
+                else data_protection_policies
+            )
+            data_protection_policy_count = (
+                len(data_protection_policy_list)
+                if isinstance(data_protection_policy_list, list)
+                else 0
+            )
+            table_data.append(
+                [
+                    "Data Protection Policies",
+                    f"{data_protection_policy_count} policies configured",
+                ]
+            )
 
         # Create table if we have data
         if table_data:
@@ -1870,6 +2047,26 @@ class VastReportBuilder:
         content.append(Paragraph("Security & Authentication", heading_style))
         content.append(Spacer(1, 12))
 
+        # Section Overview
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Security & Authentication section provides comprehensive documentation of all security-related configurations and authentication mechanisms implemented within the VAST Data cluster. This section covers authentication services including Active Directory, LDAP, and NIS integration, as well as security features such as data encryption settings, external key management (EKM) configuration, and security policy enforcement. Understanding the security configuration is essential for compliance auditing, security posture assessment, access control validation, and ensuring that the storage infrastructure meets organizational security requirements and industry best practices. This information supports security administrators in maintaining a robust security framework for the storage environment.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
         sections = data.get("sections", {})
         security_config = sections.get("security_configuration", {}).get("data", {})
 
@@ -1881,7 +2078,7 @@ class VastReportBuilder:
         if ad_config:
             table_data.append(
                 [
-                    "Security",
+                    "Authentication",
                     "Active Directory",
                     "Enabled",
                     str(ad_config.get("enabled", False)),
@@ -1889,12 +2086,22 @@ class VastReportBuilder:
             )
             if ad_config.get("domain"):
                 table_data.append(
-                    ["Security", "Active Directory", "Domain", ad_config.get("domain")]
+                    [
+                        "Authentication",
+                        "Active Directory",
+                        "Domain",
+                        ad_config.get("domain"),
+                    ]
                 )
             servers = ad_config.get("servers", [])
             if servers:
                 table_data.append(
-                    ["Security", "Active Directory", "Servers", ", ".join(servers)]
+                    [
+                        "Authentication",
+                        "Active Directory",
+                        "Servers",
+                        ", ".join(servers),
+                    ]
                 )
 
         # LDAP

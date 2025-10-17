@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "extraction_timestamp": "2025-10-16T06:45:44.960457",
+    "extraction_timestamp": "2025-10-17T12:34:04.492829",
     "overall_completeness": 0.8411172161172161,
     "enhanced_features": {
       "rack_height_supported": true,
@@ -20,11 +20,11 @@
       "rack_height_supported": true,
       "psnt_supported": true
     },
-    "collection_timestamp": "2025-10-16 06:45:30.671155",
+    "collection_timestamp": "2025-10-17 12:33:52.018621",
     "cluster_id": "1",
     "mgmt_vip": "10.143.11.204",
     "build": "release-5.3.1-sp3-1898015",
-    "uptime": "8 days, 12:42:33.725460",
+    "uptime": "9 days, 18:30:54.910393",
     "online_start_time": "2025-10-08T01:02:57.509200Z",
     "deployment_time": "2025-08-07T18:57:44.259621Z",
     "url": "https://10.143.11.204/api/v7/clusters/1",
@@ -44,17 +44,17 @@
     "dbox_ha_support": false,
     "enable_rack_level_resiliency": false,
     "disable_metrics": false,
-    "usable_capacity_tb": 245.432,
-    "free_usable_capacity_tb": 66.805,
+    "usable_capacity_tb": 245.389,
+    "free_usable_capacity_tb": 59.608,
     "drr_text": "1.6:1",
     "physical_space_tb": 310.167,
-    "physical_space_in_use_tb": 225.17,
-    "free_physical_space_tb": 84.996,
-    "physical_space_in_use_percent": 72.6,
-    "logical_space_tb": 390.312,
-    "logical_space_in_use_tb": 286.477,
-    "free_logical_space_tb": 106.242,
-    "logical_space_in_use_percent": 73.4,
+    "physical_space_in_use_tb": 234.298,
+    "free_physical_space_tb": 75.868,
+    "physical_space_in_use_percent": 75.54,
+    "logical_space_tb": 384.977,
+    "logical_space_in_use_tb": 292.842,
+    "free_logical_space_tb": 93.516,
+    "logical_space_in_use_percent": 76.07,
     "enable_encryption": false,
     "s3_enable_only_aes_ciphers": null,
     "encryption_type": "INTERNAL",
@@ -205,7 +205,7 @@
         "drive_type": "ACTIVE_PASSIVE",
         "description": null,
         "sync": "SYNCED",
-        "sync_time": "2025-10-16T13:32:50.734392Z",
+        "sync_time": "2025-10-17T19:32:51.059169Z",
         "arch_type": "aarch64",
         "is_conclude_possible": false,
         "is_replace_possible": true,
@@ -318,7 +318,7 @@
         "total_cnodes": 3,
         "total_dnodes": 2
       },
-      "generated_timestamp": "2025-10-16T06:45:44.957304"
+      "generated_timestamp": "2025-10-17T12:34:04.490433"
     }
   },
   "sections": {
@@ -364,7 +364,7 @@
               ],
               "ranges_summary": "172.200.204.[140-145]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.607834Z",
+              "sync_time": "2025-10-17T19:32:52.180674Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -375,6 +375,59 @@
               "tenant_name": "default",
               "enable_weighted_balancing": false,
               "kafka_view_id": 743,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 59,
+              "guid": "7b86c8f7-5c66-4dff-99c4-32202df85d69",
+              "name": "bob",
+              "url": "https://10.143.11.204/api/v7/vippools/59",
+              "title": "172.200.204.7 - 172.200.204.10",
+              "start_ip": "172.200.204.7",
+              "end_ip": "172.200.204.10",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-204",
+              "cluster_id": 1,
+              "active_cnode_ids": [
+                6,
+                2
+              ],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 32,
+              "cnode_ids": [
+                2,
+                6
+              ],
+              "cnodes": [
+                "cnode-3-10",
+                "cnode-3-11"
+              ],
+              "domain_name": "bob",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.204.7",
+                  "172.200.204.10"
+                ]
+              ],
+              "ranges_summary": "172.200.204.[7-10]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-17T19:32:52.081846Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "bob",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
               "bgp_config_id": null,
               "bgp_config_guid": null,
               "bgp_config_name": null
@@ -408,7 +461,7 @@
               ],
               "ranges_summary": "172.200.204.[244-245]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.596705Z",
+              "sync_time": "2025-10-17T19:32:52.166812Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -452,7 +505,7 @@
               ],
               "ranges_summary": "172.200.204.[97-98]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.635090Z",
+              "sync_time": "2025-10-17T19:32:52.921634Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -496,7 +549,7 @@
               ],
               "ranges_summary": "172.200.204.[211-212]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.696902Z",
+              "sync_time": "2025-10-17T19:32:52.280543Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -540,7 +593,7 @@
               ],
               "ranges_summary": "172.200.204.[50-52]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.654787Z",
+              "sync_time": "2025-10-17T19:32:53.028147Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -584,7 +637,7 @@
               ],
               "ranges_summary": "172.200.204.[123-124]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.584208Z",
+              "sync_time": "2025-10-17T19:32:52.133494Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -595,6 +648,59 @@
               "tenant_name": "default",
               "enable_weighted_balancing": false,
               "kafka_view_id": 792,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 60,
+              "guid": "8f60e102-69e8-4d30-9582-2d7b92b1c310",
+              "name": "david",
+              "url": "https://10.143.11.204/api/v7/vippools/60",
+              "title": "172.200.204.17 - 172.200.204.20",
+              "start_ip": "172.200.204.17",
+              "end_ip": "172.200.204.20",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-204",
+              "cluster_id": 1,
+              "active_cnode_ids": [
+                2,
+                3
+              ],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 33,
+              "cnode_ids": [
+                2,
+                3
+              ],
+              "cnodes": [
+                "cnode-3-11",
+                "cnode-3-12"
+              ],
+              "domain_name": "david",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.204.17",
+                  "172.200.204.20"
+                ]
+              ],
+              "ranges_summary": "172.200.204.[17-20]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-17T19:32:52.115441Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "david",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
               "bgp_config_id": null,
               "bgp_config_guid": null,
               "bgp_config_name": null
@@ -628,7 +734,7 @@
               ],
               "ranges_summary": "192.168.88.[1-6]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.305215Z",
+              "sync_time": "2025-10-17T19:32:52.614024Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -672,7 +778,7 @@
               ],
               "ranges_summary": "172.200.204.[114-116]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.714508Z",
+              "sync_time": "2025-10-17T19:32:53.060231Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -716,7 +822,7 @@
               ],
               "ranges_summary": "10.10.10.[101-108]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.813757Z",
+              "sync_time": "2025-10-17T19:32:52.267239Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -760,7 +866,7 @@
               ],
               "ranges_summary": "172.200.204.[111-113]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.937328Z",
+              "sync_time": "2025-10-17T19:32:52.993758Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -804,7 +910,7 @@
               ],
               "ranges_summary": "172.200.205.[1-8]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.902477Z",
+              "sync_time": "2025-10-17T19:32:52.976693Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -857,7 +963,7 @@
               ],
               "ranges_summary": "172.200.204.[198-199]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.087338Z",
+              "sync_time": "2025-10-17T19:32:52.846803Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "LEFT",
@@ -901,7 +1007,7 @@
               ],
               "ranges_summary": "172.200.204.[190-197]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.944189Z",
+              "sync_time": "2025-10-17T19:32:52.694561Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -945,7 +1051,7 @@
               ],
               "ranges_summary": "172.200.204.[90-92]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.683508Z",
+              "sync_time": "2025-10-17T19:32:53.044548Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -989,7 +1095,7 @@
               ],
               "ranges_summary": "172.200.203.[203-206]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.521832Z",
+              "sync_time": "2025-10-17T19:32:52.882993Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1033,7 +1139,7 @@
               ],
               "ranges_summary": "172.200.100.[111-115]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.631680Z",
+              "sync_time": "2025-10-17T19:32:52.217288Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1077,7 +1183,7 @@
               ],
               "ranges_summary": "10.10.10.[10-20]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.789890Z",
+              "sync_time": "2025-10-17T19:32:53.094338Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1121,7 +1227,7 @@
               ],
               "ranges_summary": "172.200.100.[100-110]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.648342Z",
+              "sync_time": "2025-10-17T19:32:52.292799Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1165,7 +1271,7 @@
               ],
               "ranges_summary": "172.200.204.[220-221]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.152570Z",
+              "sync_time": "2025-10-17T19:32:52.474190Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1209,7 +1315,7 @@
               ],
               "ranges_summary": "172.200.203.[200-202]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.617023Z",
+              "sync_time": "2025-10-17T19:32:52.907792Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1253,7 +1359,7 @@
               ],
               "ranges_summary": "172.200.204.[200-210]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.027483Z",
+              "sync_time": "2025-10-17T19:32:52.788495Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1297,7 +1403,7 @@
               ],
               "ranges_summary": "172.200.204.[1-6]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.958280Z",
+              "sync_time": "2025-10-17T19:32:53.010911Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1345,7 +1451,7 @@
               ],
               "ranges_summary": "172.200.204.[99, 240-241]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.854599Z",
+              "sync_time": "2025-10-17T19:32:52.947367Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1389,7 +1495,7 @@
               ],
               "ranges_summary": "172.200.204.[100-110]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.836218Z",
+              "sync_time": "2025-10-17T19:32:52.398602Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1433,7 +1539,7 @@
               ],
               "ranges_summary": "172.200.204.[121-122]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.685265Z",
+              "sync_time": "2025-10-17T19:32:52.413302Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1477,7 +1583,7 @@
               ],
               "ranges_summary": "172.200.204.[117-118]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.457410Z",
+              "sync_time": "2025-10-17T19:32:52.859472Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1521,7 +1627,7 @@
               ],
               "ranges_summary": "172.200.204.[55-58]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.672772Z",
+              "sync_time": "2025-10-17T19:32:52.347988Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1565,7 +1671,7 @@
               ],
               "ranges_summary": "172.200.204.[60-63]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.858890Z",
+              "sync_time": "2025-10-17T19:32:52.521479Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1609,7 +1715,7 @@
               ],
               "ranges_summary": "172.200.204.[11-16]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.980165Z",
+              "sync_time": "2025-10-17T19:32:52.726201Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1653,7 +1759,7 @@
               ],
               "ranges_summary": "172.200.204.[138-139]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.874763Z",
+              "sync_time": "2025-10-17T19:32:52.629898Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1697,7 +1803,7 @@
               ],
               "ranges_summary": "172.200.204.[130-137]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.223771Z",
+              "sync_time": "2025-10-17T19:32:52.497310Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1741,7 +1847,7 @@
               ],
               "ranges_summary": "172.200.204.[247-252]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.058677Z",
+              "sync_time": "2025-10-17T19:32:52.823795Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1785,7 +1891,7 @@
               ],
               "ranges_summary": "172.200.204.[21-26]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.358296Z",
+              "sync_time": "2025-10-17T19:32:52.582105Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1829,7 +1935,7 @@
               ],
               "ranges_summary": "172.200.204.[214-215]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.720032Z",
+              "sync_time": "2025-10-17T19:32:52.373241Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1873,7 +1979,7 @@
               ],
               "ranges_summary": "172.200.204.[48-49]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.012474Z",
+              "sync_time": "2025-10-17T19:32:52.770988Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1917,7 +2023,7 @@
               ],
               "ranges_summary": "172.200.204.[94-96]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.243791Z",
+              "sync_time": "2025-10-17T19:32:52.741919Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1961,7 +2067,7 @@
               ],
               "ranges_summary": "172.200.204.[31-34]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.744434Z",
+              "sync_time": "2025-10-17T19:32:52.320765Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -2005,7 +2111,7 @@
               ],
               "ranges_summary": "172.200.204.[35-38]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.796882Z",
+              "sync_time": "2025-10-17T19:32:52.253029Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -2049,7 +2155,7 @@
               ],
               "ranges_summary": "172.200.204.[39-42]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:51.769388Z",
+              "sync_time": "2025-10-17T19:32:52.447286Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -2093,7 +2199,7 @@
               ],
               "ranges_summary": "172.200.204.[43-46]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-16T13:32:52.431803Z",
+              "sync_time": "2025-10-17T19:32:52.547466Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -2109,10 +2215,10 @@
               "bgp_config_name": null
             }
           ],
-          "total_pools": 40,
+          "total_pools": 42,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-16T06:45:44.957619"
+        "extraction_timestamp": "2025-10-17T12:34:04.491735"
       },
       "completeness": 0.6666666666666666,
       "status": "partial"
@@ -2135,7 +2241,7 @@
         "ib_mtu": 65520,
         "ipmi_gateway": "10.143.254.254",
         "ipmi_netmask": "255.255.0.0",
-        "extraction_timestamp": "2025-10-16T06:45:44.957829"
+        "extraction_timestamp": "2025-10-17T12:34:04.491840"
       },
       "completeness": 0.875,
       "status": "partial"
@@ -2192,7 +2298,7 @@
           }
         ],
         "total_cnodes": 3,
-        "extraction_timestamp": "2025-10-16T06:45:44.958007"
+        "extraction_timestamp": "2025-10-17T12:34:04.491922"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -2232,7 +2338,7 @@
           }
         ],
         "total_dnodes": 2,
-        "extraction_timestamp": "2025-10-16T06:45:44.958189"
+        "extraction_timestamp": "2025-10-17T12:34:04.492002"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -2243,6 +2349,12 @@
       "data": {
         "tenants": {
           "tenants": [
+            {
+              "name": "paulh",
+              "id": 24,
+              "state": "Unknown",
+              "source": "API"
+            },
             {
               "name": "shaddow",
               "id": 22,
@@ -2256,44 +2368,14 @@
               "source": "API"
             },
             {
-              "name": "paulh",
-              "id": 24,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "scotth-snia",
-              "id": 15,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "jairtenant",
-              "id": 16,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
               "name": "pjb-tenant",
               "id": 5,
               "state": "Unknown",
               "source": "API"
             },
             {
-              "name": "test",
-              "id": 20,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "bcg-tenant",
-              "id": 12,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "pkanakia-H200",
-              "id": 10,
+              "name": "astack-T1",
+              "id": 26,
               "state": "Unknown",
               "source": "API"
             },
@@ -2304,8 +2386,8 @@
               "source": "API"
             },
             {
-              "name": "astack-T1",
-              "id": 26,
+              "name": "pkanakia-H200",
+              "id": 10,
               "state": "Unknown",
               "source": "API"
             },
@@ -2328,20 +2410,32 @@
               "source": "API"
             },
             {
+              "name": "jairtenant",
+              "id": 16,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "scotth-snia",
+              "id": 15,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "h200",
               "id": 30,
               "state": "Unknown",
               "source": "API"
             },
             {
-              "name": "markus-tenant",
-              "id": 9,
+              "name": "test",
+              "id": 20,
               "state": "Unknown",
               "source": "API"
             },
             {
-              "name": "shumov",
-              "id": 4,
+              "name": "bcg-tenant",
+              "id": 12,
               "state": "Unknown",
               "source": "API"
             },
@@ -2358,25 +2452,55 @@
               "source": "API"
             },
             {
+              "name": "markus-tenant",
+              "id": 9,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "shumov",
+              "id": 4,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "jono",
               "id": 6,
               "state": "Unknown",
               "source": "API"
+            },
+            {
+              "name": "david",
+              "id": 33,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "bob",
+              "id": 32,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jo-delete",
+              "id": 31,
+              "state": "Unknown",
+              "source": "API"
             }
           ],
-          "total_count": 20,
+          "total_count": 23,
           "source": "API"
         },
         "views": {
           "views": [
             {
-              "name": "view-71",
+              "name": "view-605",
               "path": "/",
               "state": "Unknown",
               "source": "API"
             },
             {
-              "name": "view-605",
+              "name": "view-71",
               "path": "/",
               "state": "Unknown",
               "source": "API"
@@ -2508,6 +2632,30 @@
               "source": "API"
             },
             {
+              "name": "view-829",
+              "path": "/bgolliher/dest",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-835",
+              "path": "/bgolliher/s3-dest",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-836",
+              "path": "/bgolliher/s3-source",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-828",
+              "path": "/bgolliher/source",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "view-735",
               "path": "/bg/visalatency",
               "state": "Unknown",
@@ -2522,6 +2670,18 @@
             {
               "name": "view-147",
               "path": "/chrisk",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-840",
+              "path": "/chrisk-n",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-843",
+              "path": "/chrisk-s3",
               "state": "Unknown",
               "source": "API"
             },
@@ -2790,6 +2950,12 @@
               "source": "API"
             },
             {
+              "name": "view-842",
+              "path": "/drozdowski/endpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "view-489",
               "path": "/fazzari",
               "state": "Unknown",
@@ -2808,12 +2974,6 @@
               "source": "API"
             },
             {
-              "name": "view-678",
-              "path": "/fouad/test",
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
               "name": "view-166",
               "path": "/gomke/nfs",
               "state": "Unknown",
@@ -2822,6 +2982,18 @@
             {
               "name": "view-479",
               "path": "/gomke-nfss3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-837",
+              "path": "/home",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-838",
+              "path": "/home",
               "state": "Unknown",
               "source": "API"
             },
@@ -3024,12 +3196,6 @@
               "source": "API"
             },
             {
-              "name": "view-814",
-              "path": "/jeremy-bucket/jeremy-bucket619d96ac-5728-484c-9a7e-6aafc4755a6c",
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
               "name": "view-761",
               "path": "/jgorski/lab1-processed",
               "state": "Unknown",
@@ -3090,6 +3256,24 @@
               "source": "API"
             },
             {
+              "name": "view-826",
+              "path": "/jo-k8s/pvc-691b3c37-74b1-4eaf-ad26-06ecf765278d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-827",
+              "path": "/jo-k8s/pvc-6e425e2f-5f95-441b-8d4d-213674bf6897",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-849",
+              "path": "/jo-k8s/pvc-fa8e4075-e06b-48db-acb8-696ad535553c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "view-650",
               "path": "/jonas/lab1-processed",
               "state": "Unknown",
@@ -3110,6 +3294,30 @@
             {
               "name": "view-620",
               "path": "/jonas/lab2-raw-data",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-833",
+              "path": "/jonas/lab4-analysis",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-832",
+              "path": "/jonas/lab4-processed",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-834",
+              "path": "/jonas/lab4-published",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-831",
+              "path": "/jonas/lab4-raw",
               "state": "Unknown",
               "source": "API"
             },
@@ -3140,6 +3348,12 @@
             {
               "name": "view-822",
               "path": "/jono-pve",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-841",
+              "path": "/jono-pve-clone",
               "state": "Unknown",
               "source": "API"
             },
@@ -3690,6 +3904,12 @@
               "source": "API"
             },
             {
+              "name": "view-850",
+              "path": "/pwags-smb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "view-146",
               "path": "/radfoo",
               "state": "Unknown",
@@ -3710,6 +3930,12 @@
             {
               "name": "view-67",
               "path": "/radView",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-844",
+              "path": "/rcs/test-database",
               "state": "Unknown",
               "source": "API"
             },
@@ -3920,6 +4146,12 @@
             {
               "name": "view-802",
               "path": "/SS2020_META2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-830",
+              "path": "/SS2020_WR",
               "state": "Unknown",
               "source": "API"
             },
@@ -4242,7 +4474,7 @@
               "source": "API"
             }
           ],
-          "total_count": 312,
+          "total_count": 330,
           "source": "API"
         },
         "view_policies": {
@@ -4326,7 +4558,25 @@
               "source": "API"
             },
             {
+              "name": "bob__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "bob__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "chris-cisco",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "chrisk-s3-policy",
               "type": "Unknown",
               "state": "Unknown",
               "source": "API"
@@ -4345,6 +4595,18 @@
             },
             {
               "name": "data-pipelines",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "david__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "david__s3_default_policy",
               "type": "Unknown",
               "state": "Unknown",
               "source": "API"
@@ -4477,6 +4739,18 @@
             },
             {
               "name": "JGOR_SMB_Only",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jo-delete__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jo-delete__s3_default_policy",
               "type": "Unknown",
               "state": "Unknown",
               "source": "API"
@@ -4962,10 +5236,10 @@
               "source": "API"
             }
           ],
-          "total_count": 119,
+          "total_count": 126,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-16T06:45:44.959248"
+        "extraction_timestamp": "2025-10-17T12:34:04.492380"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -4982,7 +5256,7 @@
         },
         "ldap": null,
         "nis": null,
-        "extraction_timestamp": "2025-10-16T06:45:44.959607"
+        "extraction_timestamp": "2025-10-17T12:34:04.492464"
       },
       "completeness": 0.3333333333333333,
       "status": "missing"
@@ -5044,6 +5318,13 @@
               "source": "API"
             },
             {
+              "name": "jono-daily",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
               "name": "junhyukhong-local-protection-policy",
               "type": "Unknown",
               "retention": "Unknown",
@@ -5052,6 +5333,41 @@
             },
             {
               "name": "Kyle_test",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "lab4-analysis_results-policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "lab4-critical_research-policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "lab4-processed_data-policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "lab4-published_datasets-policy",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "lab4-raw_data-policy",
               "type": "Unknown",
               "retention": "Unknown",
               "enabled": false,
@@ -5135,10 +5451,10 @@
               "source": "API"
             }
           ],
-          "total_count": 20,
+          "total_count": 26,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-16T06:45:44.959863"
+        "extraction_timestamp": "2025-10-17T12:34:04.492546"
       },
       "completeness": 0.5,
       "status": "partial"
