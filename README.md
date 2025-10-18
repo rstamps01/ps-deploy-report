@@ -147,7 +147,7 @@ For production deployments, consider the following additional steps:
 
 3. **Set up log rotation:**
    ```bash
-   sudo cp config/logrotate.conf /etc/logrotate.d/vast-reporter
+   sudo cp config/logrotate.conf /etc/logrotate.d/vast-asbuilt-reporter
    ```
 
 ## Configuration
@@ -215,7 +215,7 @@ api:
 ```yaml
 logging:
   level: "INFO"
-  file_path: "/var/log/vast-reporter/vast_report_generator.log"
+  file_path: "/var/log/vast-asbuilt-reporter/vast_report_generator.log"
 
 security:
   prompt_for_credentials: true
@@ -473,8 +473,8 @@ To update an existing installation to the latest version:
 
 **Quick Update (Recommended)**:
 ```bash
-cd ~/vast-reporter
-git pull origin develop
+cd ~/vast-asbuilt-reporter
+git pull origin main
 source venv/bin/activate  # Mac/Linux
 # .\venv\Scripts\Activate  # Windows
 pip install --upgrade -r requirements.txt
