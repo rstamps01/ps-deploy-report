@@ -283,27 +283,27 @@ function Setup-Project {
     # Clone or update repository based on installation mode
     if (Test-Path ".git") {
         Write-Status "Updating repository..."
-        git pull origin main
+        git pull origin $script:InstallBranch
     } else {
-        Write-Status "Cloning repository..."
-
+        Write-Status "Cloning repository from '$($script:InstallBranch)' branch..."
+        
         if ($script:InstallMode -eq "minimal") {
             # Minimal: Download source archive only (no git)
             Write-Status "Downloading source archive (no Git history)..."
-            Invoke-WebRequest -Uri "https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/main.zip" -OutFile "repo.zip"
+            Invoke-WebRequest -Uri "https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/$($script:InstallBranch).zip" -OutFile "repo.zip"
             Expand-Archive -Path "repo.zip" -DestinationPath "." -Force
-            Get-ChildItem -Path "ps-deploy-report-main" | Move-Item -Destination "." -Force
-            Remove-Item -Recurse -Force "ps-deploy-report-main"
+            Get-ChildItem -Path "ps-deploy-report-$($script:InstallBranch)" | Move-Item -Destination "." -Force
+            Remove-Item -Recurse -Force "ps-deploy-report-$($script:InstallBranch)"
             Remove-Item -Force "repo.zip"
             Write-Success "Source code downloaded"
         } else {
             # Full or Production: Clone with Git
             if ($script:InstallMode -eq "production") {
                 Write-Status "Cloning repository with shallow history..."
-                git clone --depth 1 -b main https://github.com/rstamps01/ps-deploy-report.git .
+                git clone --depth 1 -b $script:InstallBranch https://github.com/rstamps01/ps-deploy-report.git .
             } else {
                 Write-Status "Cloning repository with full history..."
-                git clone -b main https://github.com/rstamps01/ps-deploy-report.git .
+                git clone -b $script:InstallBranch https://github.com/rstamps01/ps-deploy-report.git .
             }
         }
     }
@@ -644,8 +644,9 @@ function Show-InstallationSummary {
     Write-Host "==================================================================" -ForegroundColor $Blue
 }
 
-# Global variable for installation mode
+# Global variables for installation
 $script:InstallMode = "full"
+$script:InstallBranch = if ($env:VAST_INSTALL_BRANCH) { $env:VAST_INSTALL_BRANCH } else { "main" }
 
 # Function to display installation menu
 function Show-InstallationMenu {

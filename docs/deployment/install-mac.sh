@@ -250,27 +250,27 @@ setup_project() {
     # Clone or update repository based on installation mode
     if [ -d ".git" ]; then
         print_status "Updating repository..."
-        git pull origin main
+        git pull origin "$INSTALL_BRANCH"
     else
-        print_status "Cloning repository..."
-
+        print_status "Cloning repository from '$INSTALL_BRANCH' branch..."
+        
         if [ "$INSTALL_MODE" = "minimal" ]; then
             # Minimal: Download source archive only (no git)
             print_status "Downloading source archive (no Git history)..."
-            curl -L https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/main.zip -o repo.zip
+            curl -L "https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/$INSTALL_BRANCH.zip" -o repo.zip
             unzip -q repo.zip
-            mv ps-deploy-report-main/* .
-            mv ps-deploy-report-main/.* . 2>/dev/null || true
-            rm -rf ps-deploy-report-main repo.zip
+            mv "ps-deploy-report-$INSTALL_BRANCH"/* .
+            mv "ps-deploy-report-$INSTALL_BRANCH"/.* . 2>/dev/null || true
+            rm -rf "ps-deploy-report-$INSTALL_BRANCH" repo.zip
             print_success "Source code downloaded"
         else
             # Full or Production: Clone with Git
             if [ "$INSTALL_MODE" = "production" ]; then
                 print_status "Cloning repository with shallow history..."
-                git clone --depth 1 -b main https://github.com/rstamps01/ps-deploy-report.git .
+                git clone --depth 1 -b "$INSTALL_BRANCH" https://github.com/rstamps01/ps-deploy-report.git .
             else
                 print_status "Cloning repository with full history..."
-                git clone -b main https://github.com/rstamps01/ps-deploy-report.git .
+                git clone -b "$INSTALL_BRANCH" https://github.com/rstamps01/ps-deploy-report.git .
             fi
         fi
     fi
@@ -548,8 +548,9 @@ display_installation_summary() {
     echo
 }
 
-# Global variable for installation mode
+# Global variables for installation
 INSTALL_MODE="full"
+INSTALL_BRANCH="${VAST_INSTALL_BRANCH:-main}"  # Allow override via environment variable
 
 # Function to display installation menu
 show_installation_menu() {
