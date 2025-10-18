@@ -247,13 +247,39 @@ setup_project() {
 
     cd "$project_dir"
 
-    # Clone or update repository
+    # Clone or update repository based on installation mode
     if [ -d ".git" ]; then
         print_status "Updating repository..."
-        git pull origin develop
+        git pull origin main
     else
         print_status "Cloning repository..."
-        git clone -b develop https://github.com/rstamps01/ps-deploy-report.git .
+        
+        if [ "$INSTALL_MODE" = "minimal" ]; then
+            # Minimal: Download source archive only (no git)
+            print_status "Downloading source archive (no Git history)..."
+            curl -L https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/main.zip -o repo.zip
+            unzip -q repo.zip
+            mv ps-deploy-report-main/* .
+            mv ps-deploy-report-main/.* . 2>/dev/null || true
+            rm -rf ps-deploy-report-main repo.zip
+            print_success "Source code downloaded"
+        else
+            # Full or Production: Clone with Git
+            if [ "$INSTALL_MODE" = "production" ]; then
+                print_status "Cloning repository with shallow history..."
+                git clone --depth 1 -b main https://github.com/rstamps01/ps-deploy-report.git .
+            else
+                print_status "Cloning repository with full history..."
+                git clone -b main https://github.com/rstamps01/ps-deploy-report.git .
+            fi
+        fi
+    fi
+    
+    # Remove .git folder for production mode
+    if [ "$INSTALL_MODE" = "production" ] && [ -d ".git" ]; then
+        print_status "Removing Git repository (production mode)..."
+        rm -rf .git
+        print_success "Git repository removed (saved ~101 MB)"
     fi
 
     print_success "Project setup completed"
@@ -261,6 +287,13 @@ setup_project() {
 
 # Function to create virtual environment
 create_virtual_environment() {
+    # Skip virtual environment for minimal installation
+    if [ "$INSTALL_MODE" = "minimal" ]; then
+        print_warning "Skipping virtual environment creation (minimal mode)"
+        print_warning "Using system Python packages"
+        return 0
+    fi
+    
     print_status "Creating Python virtual environment..."
 
     # Remove existing virtual environment if it exists
@@ -285,11 +318,16 @@ create_virtual_environment() {
 install_python_dependencies() {
     print_status "Installing Python dependencies..."
 
-    # Activate virtual environment
-    source venv/bin/activate
-
-    # Install dependencies
-    pip install -r requirements.txt
+    # Handle installation based on mode
+    if [ "$INSTALL_MODE" = "minimal" ]; then
+        # Minimal: Install to system Python
+        print_warning "Installing to system Python (minimal mode)"
+        pip3 install -r requirements.txt --user
+    else
+        # Full or Production: Install to virtual environment
+        source venv/bin/activate
+        pip install -r requirements.txt
+    fi
 
     print_success "Python dependencies installed successfully"
 }
@@ -451,11 +489,45 @@ display_installation_summary() {
     echo
     print_success "Installation completed successfully!"
     echo
+    
+    # Display installation mode and approximate size
+    case "$INSTALL_MODE" in
+        "full")
+            echo "📦 Installation Type: Full Installation (Development)"
+            echo "💾 Approximate Size: ~215 MB"
+            echo "   • Application code: ~7 MB"
+            echo "   • Virtual environment: ~107 MB"
+            echo "   • Git repository: ~101 MB"
+            echo "🔄 Update Method: git pull origin main"
+            ;;
+        "production")
+            echo "📦 Installation Type: Production Deployment"
+            echo "💾 Approximate Size: ~114 MB (47% smaller)"
+            echo "   • Application code: ~7 MB"
+            echo "   • Virtual environment: ~107 MB"
+            echo "   • Git repository: Removed"
+            echo "🔄 Update Method: Manual download"
+            ;;
+        "minimal")
+            echo "📦 Installation Type: Minimal Installation"
+            echo "💾 Approximate Size: ~20 MB (91% smaller)"
+            echo "   • Application code: ~7 MB"
+            echo "   • System Python packages: ~13 MB"
+            echo "   • Virtual environment: Not created"
+            echo "🔄 Update Method: Manual download"
+            ;;
+    esac
+    echo
     echo "📁 Installation Location: $project_dir"
     echo "📋 Log File: $LOG_FILE"
     echo "🐍 Python Version: $(python3 --version 2>/dev/null || echo 'Not found')"
     echo "🍺 Homebrew Version: $(brew --version 2>/dev/null | head -n1 || echo 'Not found')"
-    echo "📦 Virtual Environment: $project_dir/venv"
+    
+    if [ "$INSTALL_MODE" = "minimal" ]; then
+        echo "📦 Virtual Environment: Not created (using system Python)"
+    else
+        echo "📦 Virtual Environment: $project_dir/venv"
+    fi
     echo "⚙️  Configuration: $project_dir/config/config.yaml"
     echo "📊 Output Directory: $project_dir/output"
     echo "📝 Logs Directory: $project_dir/logs"
@@ -476,10 +548,113 @@ display_installation_summary() {
     echo
 }
 
-# Main installation function
-main() {
+# Global variable for installation mode
+INSTALL_MODE="full"
+
+# Function to display installation menu
+show_installation_menu() {
+    clear
     echo "=================================================================="
     echo "VAST AS-BUILT REPORT GENERATOR - macOS INSTALLATION"
+    echo "=================================================================="
+    echo
+    echo -e "${BLUE}Select Installation Type:${NC}"
+    echo
+    echo "  1) Full Installation (Development)"
+    echo "     • Complete with Git repository for easy updates"
+    echo "     • Includes version control and update capabilities"
+    echo "     • Installation size: ~215 MB"
+    echo "     • Best for: Development, testing, frequent updates"
+    echo
+    echo "  2) Production Deployment (Recommended)"
+    echo "     • Optimized for production without Git history"
+    echo "     • Cleaner deployment, smaller footprint"
+    echo "     • Installation size: ~114 MB (47% smaller)"
+    echo "     • Best for: Production servers, one-time deployments"
+    echo
+    echo "  3) Minimal Installation (Advanced)"
+    echo "     • Uses system Python packages"
+    echo "     • Smallest footprint, no virtual environment"
+    echo "     • Installation size: ~20 MB"
+    echo "     • Best for: Containerized deployments"
+    echo "     • Warning: May conflict with system packages"
+    echo
+    echo "  4) Exit Installation"
+    echo
+    echo "=================================================================="
+    echo
+}
+
+# Function to get user selection
+get_installation_choice() {
+    while true; do
+        show_installation_menu
+        read -p "$(echo -e ${YELLOW}Enter your choice [1-4]:${NC} )" choice
+        
+        case $choice in
+            1)
+                INSTALL_MODE="full"
+                print_status "Selected: Full Installation (~215 MB)"
+                echo
+                echo "This installation includes:"
+                echo "  ✓ Application code and assets (~7 MB)"
+                echo "  ✓ Python virtual environment (~107 MB)"
+                echo "  ✓ Git repository with full history (~101 MB)"
+                echo
+                echo "You will be able to update using: git pull origin main"
+                echo
+                read -p "$(echo -e ${YELLOW}Continue with Full Installation? [y/N]:${NC} )" confirm
+                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                ;;
+            2)
+                INSTALL_MODE="production"
+                print_status "Selected: Production Deployment (~114 MB)"
+                echo
+                echo "This installation includes:"
+                echo "  ✓ Application code and assets (~7 MB)"
+                echo "  ✓ Python virtual environment (~107 MB)"
+                echo "  ✗ Git repository removed (saves ~101 MB)"
+                echo
+                echo "Note: Updates require manual download of new version"
+                echo
+                read -p "$(echo -e ${YELLOW}Continue with Production Deployment? [y/N]:${NC} )" confirm
+                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                ;;
+            3)
+                INSTALL_MODE="minimal"
+                print_warning "Selected: Minimal Installation (~20 MB)"
+                echo
+                echo "This installation includes:"
+                echo "  ✓ Application code and assets (~7 MB)"
+                echo "  ✓ System Python packages (~13 MB)"
+                echo "  ✗ Virtual environment not created"
+                echo "  ✗ Git repository not included"
+                echo
+                print_warning "WARNING: This method may cause package conflicts!"
+                print_warning "Not recommended for production use."
+                echo
+                read -p "$(echo -e ${YELLOW}Are you sure you want to continue? [y/N]:${NC} )" confirm
+                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                ;;
+            4)
+                print_status "Installation cancelled by user."
+                exit 0
+                ;;
+            *)
+                print_error "Invalid choice. Please enter 1, 2, 3, or 4."
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Main installation function
+main() {
+    # Show installation menu and get user choice
+    get_installation_choice
+    
+    echo "=================================================================="
+    echo "STARTING INSTALLATION - $INSTALL_MODE MODE"
     echo "=================================================================="
     echo
     echo "This script will install the VAST As-Built Report Generator on your Mac."

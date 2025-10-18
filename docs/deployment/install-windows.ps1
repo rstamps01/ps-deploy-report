@@ -280,13 +280,39 @@ function Setup-Project {
 
     Set-Location $projectDir
 
-    # Clone or update repository
+    # Clone or update repository based on installation mode
     if (Test-Path ".git") {
         Write-Status "Updating repository..."
-        git pull origin develop
+        git pull origin main
     } else {
         Write-Status "Cloning repository..."
-        git clone -b develop https://github.com/rstamps01/ps-deploy-report.git .
+        
+        if ($script:InstallMode -eq "minimal") {
+            # Minimal: Download source archive only (no git)
+            Write-Status "Downloading source archive (no Git history)..."
+            Invoke-WebRequest -Uri "https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/main.zip" -OutFile "repo.zip"
+            Expand-Archive -Path "repo.zip" -DestinationPath "." -Force
+            Get-ChildItem -Path "ps-deploy-report-main" | Move-Item -Destination "." -Force
+            Remove-Item -Recurse -Force "ps-deploy-report-main"
+            Remove-Item -Force "repo.zip"
+            Write-Success "Source code downloaded"
+        } else {
+            # Full or Production: Clone with Git
+            if ($script:InstallMode -eq "production") {
+                Write-Status "Cloning repository with shallow history..."
+                git clone --depth 1 -b main https://github.com/rstamps01/ps-deploy-report.git .
+            } else {
+                Write-Status "Cloning repository with full history..."
+                git clone -b main https://github.com/rstamps01/ps-deploy-report.git .
+            }
+        }
+    }
+    
+    # Remove .git folder for production mode
+    if ($script:InstallMode -eq "production" -and (Test-Path ".git")) {
+        Write-Status "Removing Git repository (production mode)..."
+        Remove-Item -Recurse -Force ".git"
+        Write-Success "Git repository removed (saved ~101 MB)"
     }
 
     Write-Success "Project setup completed"
@@ -294,6 +320,13 @@ function Setup-Project {
 
 # Function to create virtual environment
 function New-VirtualEnvironment {
+    # Skip virtual environment for minimal installation
+    if ($script:InstallMode -eq "minimal") {
+        Write-Warning "Skipping virtual environment creation (minimal mode)"
+        Write-Warning "Using system Python packages"
+        return
+    }
+    
     Write-Status "Creating Python virtual environment..."
 
     # Remove existing virtual environment if it exists
@@ -318,11 +351,16 @@ function New-VirtualEnvironment {
 function Install-PythonDependencies {
     Write-Status "Installing Python dependencies..."
 
-    # Activate virtual environment
-    & ".\venv\Scripts\Activate.ps1"
-
-    # Install dependencies
-    pip install -r requirements.txt
+    # Handle installation based on mode
+    if ($script:InstallMode -eq "minimal") {
+        # Minimal: Install to system Python
+        Write-Warning "Installing to system Python (minimal mode)"
+        python -m pip install -r requirements.txt --user
+    } else {
+        # Full or Production: Install to virtual environment
+        & ".\venv\Scripts\Activate.ps1"
+        pip install -r requirements.txt
+    }
 
     Write-Success "Python dependencies installed successfully"
 }
@@ -546,11 +584,45 @@ function Show-InstallationSummary {
     Write-Host ""
     Write-Success "Installation completed successfully!"
     Write-Host ""
+    
+    # Display installation mode and approximate size
+    switch ($script:InstallMode) {
+        "full" {
+            Write-Host "📦 Installation Type: Full Installation (Development)" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~215 MB" -ForegroundColor $Cyan
+            Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
+            Write-Host "   • Virtual environment: ~107 MB" -ForegroundColor $Gray
+            Write-Host "   • Git repository: ~101 MB" -ForegroundColor $Gray
+            Write-Host "🔄 Update Method: git pull origin main" -ForegroundColor $Yellow
+        }
+        "production" {
+            Write-Host "📦 Installation Type: Production Deployment" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~114 MB (47% smaller)" -ForegroundColor $Cyan
+            Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
+            Write-Host "   • Virtual environment: ~107 MB" -ForegroundColor $Gray
+            Write-Host "   • Git repository: Removed" -ForegroundColor $Gray
+            Write-Host "🔄 Update Method: Manual download" -ForegroundColor $Yellow
+        }
+        "minimal" {
+            Write-Host "📦 Installation Type: Minimal Installation" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~20 MB (91% smaller)" -ForegroundColor $Cyan
+            Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
+            Write-Host "   • System Python packages: ~13 MB" -ForegroundColor $Gray
+            Write-Host "   • Virtual environment: Not created" -ForegroundColor $Gray
+            Write-Host "🔄 Update Method: Manual download" -ForegroundColor $Yellow
+        }
+    }
+    Write-Host ""
     Write-Host "📁 Installation Location: $projectDir" -ForegroundColor $Green
     Write-Host "📋 Log File: $LogPath" -ForegroundColor $Green
     Write-Host "🐍 Python Version: $(try { python --version 2>$null } catch { 'Not found' })" -ForegroundColor $Green
     Write-Host "🍫 Chocolatey Version: $(try { choco --version 2>$null } catch { 'Not found' })" -ForegroundColor $Green
-    Write-Host "📦 Virtual Environment: $projectDir\venv" -ForegroundColor $Green
+    
+    if ($script:InstallMode -eq "minimal") {
+        Write-Host "📦 Virtual Environment: Not created (using system Python)" -ForegroundColor $Green
+    } else {
+        Write-Host "📦 Virtual Environment: $projectDir\venv" -ForegroundColor $Green
+    }
     Write-Host "⚙️  Configuration: $projectDir\config\config.yaml" -ForegroundColor $Green
     Write-Host "📊 Output Directory: $projectDir\output" -ForegroundColor $Green
     Write-Host "📝 Logs Directory: $projectDir\logs" -ForegroundColor $Green
@@ -572,10 +644,113 @@ function Show-InstallationSummary {
     Write-Host "==================================================================" -ForegroundColor $Blue
 }
 
-# Main installation function
-function Main {
+# Global variable for installation mode
+$script:InstallMode = "full"
+
+# Function to display installation menu
+function Show-InstallationMenu {
+    Clear-Host
     Write-Host "==================================================================" -ForegroundColor $Blue
     Write-Host "VAST AS-BUILT REPORT GENERATOR - WINDOWS INSTALLATION" -ForegroundColor $Blue
+    Write-Host "==================================================================" -ForegroundColor $Blue
+    Write-Host ""
+    Write-Host "Select Installation Type:" -ForegroundColor $Blue
+    Write-Host ""
+    Write-Host "  1) Full Installation (Development)" -ForegroundColor $White
+    Write-Host "     • Complete with Git repository for easy updates" -ForegroundColor $Gray
+    Write-Host "     • Includes version control and update capabilities" -ForegroundColor $Gray
+    Write-Host "     • Installation size: ~215 MB" -ForegroundColor $Gray
+    Write-Host "     • Best for: Development, testing, frequent updates" -ForegroundColor $Gray
+    Write-Host ""
+    Write-Host "  2) Production Deployment (Recommended)" -ForegroundColor $White
+    Write-Host "     • Optimized for production without Git history" -ForegroundColor $Gray
+    Write-Host "     • Cleaner deployment, smaller footprint" -ForegroundColor $Gray
+    Write-Host "     • Installation size: ~114 MB (47% smaller)" -ForegroundColor $Gray
+    Write-Host "     • Best for: Production servers, one-time deployments" -ForegroundColor $Gray
+    Write-Host ""
+    Write-Host "  3) Minimal Installation (Advanced)" -ForegroundColor $White
+    Write-Host "     • Uses system Python packages" -ForegroundColor $Gray
+    Write-Host "     • Smallest footprint, no virtual environment" -ForegroundColor $Gray
+    Write-Host "     • Installation size: ~20 MB" -ForegroundColor $Gray
+    Write-Host "     • Best for: Containerized deployments" -ForegroundColor $Gray
+    Write-Host "     • Warning: May conflict with system packages" -ForegroundColor $Yellow
+    Write-Host ""
+    Write-Host "  4) Exit Installation" -ForegroundColor $White
+    Write-Host ""
+    Write-Host "==================================================================" -ForegroundColor $Blue
+    Write-Host ""
+}
+
+# Function to get user selection
+function Get-InstallationChoice {
+    while ($true) {
+        Show-InstallationMenu
+        $choice = Read-Host "Enter your choice [1-4]"
+        
+        switch ($choice) {
+            "1" {
+                $script:InstallMode = "full"
+                Write-Log "Selected: Full Installation (~215 MB)" "INFO" "Green"
+                Write-Host ""
+                Write-Host "This installation includes:" -ForegroundColor $White
+                Write-Host "  ✓ Application code and assets (~7 MB)" -ForegroundColor $Green
+                Write-Host "  ✓ Python virtual environment (~107 MB)" -ForegroundColor $Green
+                Write-Host "  ✓ Git repository with full history (~101 MB)" -ForegroundColor $Green
+                Write-Host ""
+                Write-Host "You will be able to update using: git pull origin main" -ForegroundColor $Yellow
+                Write-Host ""
+                $confirm = Read-Host "Continue with Full Installation? (Y/n)"
+                if ($confirm -match "^[Yy]$" -or $confirm -eq "") { return }
+            }
+            "2" {
+                $script:InstallMode = "production"
+                Write-Log "Selected: Production Deployment (~114 MB)" "INFO" "Green"
+                Write-Host ""
+                Write-Host "This installation includes:" -ForegroundColor $White
+                Write-Host "  ✓ Application code and assets (~7 MB)" -ForegroundColor $Green
+                Write-Host "  ✓ Python virtual environment (~107 MB)" -ForegroundColor $Green
+                Write-Host "  ✗ Git repository removed (saves ~101 MB)" -ForegroundColor $Red
+                Write-Host ""
+                Write-Host "Note: Updates require manual download of new version" -ForegroundColor $Yellow
+                Write-Host ""
+                $confirm = Read-Host "Continue with Production Deployment? (Y/n)"
+                if ($confirm -match "^[Yy]$" -or $confirm -eq "") { return }
+            }
+            "3" {
+                $script:InstallMode = "minimal"
+                Write-Log "Selected: Minimal Installation (~20 MB)" "WARNING" "Yellow"
+                Write-Host ""
+                Write-Host "This installation includes:" -ForegroundColor $White
+                Write-Host "  ✓ Application code and assets (~7 MB)" -ForegroundColor $Green
+                Write-Host "  ✓ System Python packages (~13 MB)" -ForegroundColor $Green
+                Write-Host "  ✗ Virtual environment not created" -ForegroundColor $Red
+                Write-Host "  ✗ Git repository not included" -ForegroundColor $Red
+                Write-Host ""
+                Write-Host "WARNING: This method may cause package conflicts!" -ForegroundColor $Red
+                Write-Host "Not recommended for production use." -ForegroundColor $Red
+                Write-Host ""
+                $confirm = Read-Host "Are you sure you want to continue? (Y/n)"
+                if ($confirm -match "^[Yy]$" -or $confirm -eq "") { return }
+            }
+            "4" {
+                Write-Log "Installation cancelled by user" "INFO" "Yellow"
+                exit 0
+            }
+            default {
+                Write-Log "Invalid choice. Please enter 1, 2, 3, or 4." "ERROR" "Red"
+                Start-Sleep -Seconds 2
+            }
+        }
+    }
+}
+
+# Main installation function
+function Main {
+    # Show installation menu and get user choice
+    Get-InstallationChoice
+    
+    Write-Host "==================================================================" -ForegroundColor $Blue
+    Write-Host "STARTING INSTALLATION - $($script:InstallMode.ToUpper()) MODE" -ForegroundColor $Blue
     Write-Host "==================================================================" -ForegroundColor $Blue
     Write-Host ""
     Write-Host "This script will install the VAST As-Built Report Generator on your Windows PC." -ForegroundColor $Green
