@@ -70,7 +70,7 @@ This is the **recommended method** for most updates. It preserves your installat
 
 **Step 1: Navigate to installation directory**
 ```bash
-cd ~/vast-reporter
+cd ~/vast-asbuilt-reporter
 # Or your custom installation path
 ```
 
@@ -80,7 +80,7 @@ cd ~/vast-reporter
 git tag backup-$(date +%Y%m%d_%H%M%S)
 
 # Or create a full backup
-cp -r ~/vast-reporter ~/vast-reporter-backup-$(date +%Y%m%d)
+cp -r ~/vast-asbuilt-reporter ~/vast-asbuilt-reporter-backup-$(date +%Y%m%d)
 ```
 
 **Step 3: Backup your configuration and data**
@@ -158,7 +158,7 @@ git stash pop
 
 **Step 1: Navigate to installation directory**
 ```powershell
-cd $env:USERPROFILE\vast-reporter
+cd $env:USERPROFILE\vast-asbuilt-reporter
 ```
 
 **Step 2: Backup current installation**
@@ -167,7 +167,7 @@ cd $env:USERPROFILE\vast-reporter
 git tag "backup-$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 
 # Or full backup
-Copy-Item -Path "$env:USERPROFILE\vast-reporter" -Destination "$env:USERPROFILE\vast-reporter-backup-$(Get-Date -Format 'yyyyMMdd')" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-backup-$(Get-Date -Format 'yyyyMMdd')" -Recurse
 ```
 
 **Step 3: Backup configuration and data**
@@ -231,10 +231,10 @@ python -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <P
 **Create update script (Mac/Linux):**
 ```bash
 #!/bin/bash
-# save as: update-vast-reporter.sh
+# save as: update-vast-asbuilt-reporter.sh
 
-INSTALL_DIR="$HOME/vast-reporter"
-BACKUP_DIR="$HOME/vast-reporter-backups"
+INSTALL_DIR="$HOME/vast-asbuilt-reporter"
+BACKUP_DIR="$HOME/vast-asbuilt-reporter-backups"
 DATE_STAMP=$(date +%Y%m%d_%H%M%S)
 
 cd "$INSTALL_DIR" || exit 1
@@ -262,12 +262,12 @@ python3 -m src.main --version
 
 **Make it executable:**
 ```bash
-chmod +x update-vast-reporter.sh
+chmod +x update-vast-asbuilt-reporter.sh
 ```
 
 **Run it:**
 ```bash
-./update-vast-reporter.sh
+./update-vast-asbuilt-reporter.sh
 ```
 
 ---
@@ -281,27 +281,27 @@ Recommended for **major version upgrades** or when git history is corrupted.
 **Step 1: Backup everything**
 ```bash
 # Mac/Linux
-cp -r ~/vast-reporter ~/vast-reporter-old
-tar -czf ~/vast-reporter-complete-backup-$(date +%Y%m%d).tar.gz ~/vast-reporter
+cp -r ~/vast-asbuilt-reporter ~/vast-asbuilt-reporter-old
+tar -czf ~/vast-asbuilt-reporter-complete-backup-$(date +%Y%m%d).tar.gz ~/vast-asbuilt-reporter
 
 # Windows
-Copy-Item -Path "$env:USERPROFILE\vast-reporter" -Destination "$env:USERPROFILE\vast-reporter-old" -Recurse
-Compress-Archive -Path "$env:USERPROFILE\vast-reporter" -DestinationPath "$env:USERPROFILE\vast-reporter-backup-$(Get-Date -Format 'yyyyMMdd').zip"
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-old" -Recurse
+Compress-Archive -Path "$env:USERPROFILE\vast-asbuilt-reporter" -DestinationPath "$env:USERPROFILE\vast-asbuilt-reporter-backup-$(Get-Date -Format 'yyyyMMdd').zip"
 ```
 
 **Step 2: Extract important data**
 ```bash
 # Mac/Linux
 mkdir -p ~/vast-data-backup
-cp -r ~/vast-reporter/reports ~/vast-data-backup/
-cp -r ~/vast-reporter/output ~/vast-data-backup/
-cp ~/vast-reporter/config/config.yaml ~/vast-data-backup/
+cp -r ~/vast-asbuilt-reporter/reports ~/vast-data-backup/
+cp -r ~/vast-asbuilt-reporter/output ~/vast-data-backup/
+cp ~/vast-asbuilt-reporter/config/config.yaml ~/vast-data-backup/
 
 # Windows
 New-Item -ItemType Directory -Path "$env:USERPROFILE\vast-data-backup" -Force
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\reports" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\output" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-data-backup\"
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\reports" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\output" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-data-backup\"
 ```
 
 **Step 3: Uninstall old version**
@@ -315,14 +315,14 @@ Follow the [Installation Guide](INSTALLATION-GUIDE.md)
 **Step 5: Restore data**
 ```bash
 # Mac/Linux
-cp -r ~/vast-data-backup/reports ~/vast-reporter/
-cp -r ~/vast-data-backup/output ~/vast-reporter/
-cp ~/vast-data-backup/config.yaml ~/vast-reporter/config/
+cp -r ~/vast-data-backup/reports ~/vast-asbuilt-reporter/
+cp -r ~/vast-data-backup/output ~/vast-asbuilt-reporter/
+cp ~/vast-data-backup/config.yaml ~/vast-asbuilt-reporter/config/
 
 # Windows
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\reports" -Destination "$env:USERPROFILE\vast-reporter\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\output" -Destination "$env:USERPROFILE\vast-reporter\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\config.yaml" -Destination "$env:USERPROFILE\vast-reporter\config\"
+Copy-Item -Path "$env:USERPROFILE\vast-data-backup\reports" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-data-backup\output" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-data-backup\config.yaml" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\config\"
 ```
 
 **Step 6: Verify**
@@ -363,7 +363,7 @@ Copy-Item -Path "config\config.yaml" -Destination "$env:USERPROFILE\config-backu
 **Step 3: Copy new files (skip data directories)**
 ```bash
 # Mac/Linux
-cd ~/vast-reporter
+cd ~/vast-asbuilt-reporter
 rsync -av --exclude='reports' --exclude='output' --exclude='logs' --exclude='venv' --exclude='.git' --exclude='config/config.yaml' /tmp/ps-deploy-report-develop/ ./
 
 # Windows (manual copy)
@@ -400,8 +400,8 @@ Create a comprehensive update script:
 
 set -e
 
-INSTALL_DIR="${VAST_INSTALL_DIR:-$HOME/vast-reporter}"
-BACKUP_DIR="$HOME/vast-reporter-backups"
+INSTALL_DIR="${VAST_INSTALL_DIR:-$HOME/vast-asbuilt-reporter}"
+BACKUP_DIR="$HOME/vast-asbuilt-reporter-backups"
 DATE_STAMP=$(date +%Y%m%d_%H%M%S)
 
 echo "═══════════════════════════════════════════════════════════════"
@@ -465,8 +465,8 @@ echo ""
 ```powershell
 #Requires -Version 5.1
 
-$INSTALL_DIR = if ($env:VAST_INSTALL_DIR) { $env:VAST_INSTALL_DIR } else { "$env:USERPROFILE\vast-reporter" }
-$BACKUP_DIR = "$env:USERPROFILE\vast-reporter-backups"
+$INSTALL_DIR = if ($env:VAST_INSTALL_DIR) { $env:VAST_INSTALL_DIR } else { "$env:USERPROFILE\vast-asbuilt-reporter" }
+$BACKUP_DIR = "$env:USERPROFILE\vast-asbuilt-reporter-backups"
 $DATE_STAMP = Get-Date -Format "yyyyMMdd_HHmmss"
 
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
@@ -535,7 +535,7 @@ If an update causes issues, you can rollback to the previous version.
 
 ```bash
 # Mac/Linux
-cd ~/vast-reporter
+cd ~/vast-asbuilt-reporter
 
 # List available backups
 git tag | grep pre-update
@@ -550,7 +550,7 @@ pip install -r requirements.txt
 
 ```powershell
 # Windows
-cd $env:USERPROFILE\vast-reporter
+cd $env:USERPROFILE\vast-asbuilt-reporter
 
 # List available backups
 git tag | Select-String "pre-update"
@@ -567,17 +567,17 @@ pip install -r requirements.txt
 
 ```bash
 # Mac/Linux
-rm -rf ~/vast-reporter
-cp -r ~/vast-reporter-backup-20251017 ~/vast-reporter
-cd ~/vast-reporter
+rm -rf ~/vast-asbuilt-reporter
+cp -r ~/vast-asbuilt-reporter-backup-20251017 ~/vast-asbuilt-reporter
+cd ~/vast-asbuilt-reporter
 source venv/bin/activate
 ```
 
 ```powershell
 # Windows
-Remove-Item -Path "$env:USERPROFILE\vast-reporter" -Recurse -Force
-Copy-Item -Path "$env:USERPROFILE\vast-reporter-backup-20251017" -Destination "$env:USERPROFILE\vast-reporter" -Recurse
-cd $env:USERPROFILE\vast-reporter
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse -Force
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter-backup-20251017" -Destination "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse
+cd $env:USERPROFILE\vast-asbuilt-reporter
 .\venv\Scripts\Activate
 ```
 
@@ -635,7 +635,7 @@ If your configuration was overwritten:
 
 ```bash
 # Restore from backup
-cp ~/vast-reporter-backups/config-YYYYMMDD_HHMMSS.yaml config/config.yaml
+cp ~/vast-asbuilt-reporter-backups/config-YYYYMMDD_HHMMSS.yaml config/config.yaml
 
 # Or restore from git stash
 git stash list

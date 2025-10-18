@@ -43,21 +43,21 @@ You can optionally preserve:
 **Reports and Output**:
 ```bash
 # Mac/Linux
-cp -r ~/vast-reporter/reports ~/vast-reporter-backup/
-cp -r ~/vast-reporter/output ~/vast-reporter-backup/
+cp -r ~/vast-asbuilt-reporter/reports ~/vast-asbuilt-reporter-backup/
+cp -r ~/vast-asbuilt-reporter/output ~/vast-asbuilt-reporter-backup/
 
 # Windows PowerShell
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\reports" -Destination "$env:USERPROFILE\vast-reporter-backup\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\output" -Destination "$env:USERPROFILE\vast-reporter-backup\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\reports" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-backup\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\output" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-backup\" -Recurse
 ```
 
 **Configuration Files**:
 ```bash
 # Mac/Linux
-cp ~/vast-reporter/config/config.yaml ~/vast-reporter-backup/
+cp ~/vast-asbuilt-reporter/config/config.yaml ~/vast-asbuilt-reporter-backup/
 
 # Windows PowerShell
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-reporter-backup\"
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-backup\"
 ```
 
 ### 2. Stop Running Processes
@@ -160,7 +160,7 @@ deactivate
 **Step 3: Remove installation directory**
 ```bash
 # Default location
-rm -rf ~/vast-reporter
+rm -rf ~/vast-asbuilt-reporter
 
 # Or custom location
 rm -rf /path/to/custom/installation

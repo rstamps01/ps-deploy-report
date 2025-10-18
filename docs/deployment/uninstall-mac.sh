@@ -24,7 +24,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default installation directory
-DEFAULT_INSTALL_DIR="$HOME/vast-reporter"
+DEFAULT_INSTALL_DIR="$HOME/vast-asbuilt-reporter"
 
 ################################################################################
 # Helper Functions
@@ -167,7 +167,7 @@ backup_data() {
         print_warning "Found user data (reports, logs, config)"
 
         if confirm_action "Create backup before uninstalling?"; then
-            local backup_dir="$HOME/vast-reporter-backup-$(date +%Y%m%d_%H%M%S)"
+            local backup_dir="$HOME/vast-asbuilt-reporter-backup-$(date +%Y%m%d_%H%M%S)"
             mkdir -p "$backup_dir"
 
             # Backup reports
@@ -247,9 +247,9 @@ remove_shell_configurations() {
 
     # Check and clean .bashrc
     if [ -f "$HOME/.bashrc" ]; then
-        if grep -q "vast-reporter" "$HOME/.bashrc" 2>/dev/null; then
+        if grep -q "vast-asbuilt-reporter" "$HOME/.bashrc" 2>/dev/null; then
             if confirm_action "Remove VAST reporter entries from .bashrc?"; then
-                sed -i.bak '/vast-reporter/d' "$HOME/.bashrc"
+                sed -i.bak '/vast-asbuilt-reporter/d' "$HOME/.bashrc"
                 print_success "Cleaned .bashrc"
                 modified=true
             fi
@@ -258,9 +258,9 @@ remove_shell_configurations() {
 
     # Check and clean .bash_profile
     if [ -f "$HOME/.bash_profile" ]; then
-        if grep -q "vast-reporter" "$HOME/.bash_profile" 2>/dev/null; then
+        if grep -q "vast-asbuilt-reporter" "$HOME/.bash_profile" 2>/dev/null; then
             if confirm_action "Remove VAST reporter entries from .bash_profile?"; then
-                sed -i.bak '/vast-reporter/d' "$HOME/.bash_profile"
+                sed -i.bak '/vast-asbuilt-reporter/d' "$HOME/.bash_profile"
                 print_success "Cleaned .bash_profile"
                 modified=true
             fi
@@ -269,9 +269,9 @@ remove_shell_configurations() {
 
     # Check and clean .zshrc
     if [ -f "$HOME/.zshrc" ]; then
-        if grep -q "vast-reporter" "$HOME/.zshrc" 2>/dev/null; then
+        if grep -q "vast-asbuilt-reporter" "$HOME/.zshrc" 2>/dev/null; then
             if confirm_action "Remove VAST reporter entries from .zshrc?"; then
-                sed -i.bak '/vast-reporter/d' "$HOME/.zshrc"
+                sed -i.bak '/vast-asbuilt-reporter/d' "$HOME/.zshrc"
                 print_success "Cleaned .zshrc"
                 modified=true
             fi
@@ -296,9 +296,9 @@ remove_symlinks() {
     )
 
     for bin_dir in "${bin_dirs[@]}"; do
-        if [ -L "$bin_dir/vast-reporter" ]; then
+        if [ -L "$bin_dir/vast-asbuilt-reporter" ]; then
             if confirm_action "Remove symlink from $bin_dir?"; then
-                rm -f "$bin_dir/vast-reporter"
+                rm -f "$bin_dir/vast-asbuilt-reporter"
                 print_success "Removed symlink from $bin_dir"
                 removed=true
             fi
@@ -314,9 +314,9 @@ clean_system_logs() {
     print_section "Cleaning System Logs"
 
     # Check for system-wide logs
-    if [ -d "/var/log/vast-reporter" ]; then
-        if confirm_action "Remove system logs from /var/log/vast-reporter?"; then
-            sudo rm -rf "/var/log/vast-reporter"
+    if [ -d "/var/log/vast-asbuilt-reporter" ]; then
+        if confirm_action "Remove system logs from /var/log/vast-asbuilt-reporter?"; then
+            sudo rm -rf "/var/log/vast-asbuilt-reporter"
             print_success "System logs removed"
         fi
     else

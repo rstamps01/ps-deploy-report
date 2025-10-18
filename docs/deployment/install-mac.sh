@@ -253,7 +253,7 @@ setup_project() {
         git pull origin main
     else
         print_status "Cloning repository..."
-        
+
         if [ "$INSTALL_MODE" = "minimal" ]; then
             # Minimal: Download source archive only (no git)
             print_status "Downloading source archive (no Git history)..."
@@ -274,7 +274,7 @@ setup_project() {
             fi
         fi
     fi
-    
+
     # Remove .git folder for production mode
     if [ "$INSTALL_MODE" = "production" ] && [ -d ".git" ]; then
         print_status "Removing Git repository (production mode)..."
@@ -293,7 +293,7 @@ create_virtual_environment() {
         print_warning "Using system Python packages"
         return 0
     fi
-    
+
     print_status "Creating Python virtual environment..."
 
     # Remove existing virtual environment if it exists
@@ -489,7 +489,7 @@ display_installation_summary() {
     echo
     print_success "Installation completed successfully!"
     echo
-    
+
     # Display installation mode and approximate size
     case "$INSTALL_MODE" in
         "full")
@@ -522,7 +522,7 @@ display_installation_summary() {
     echo "📋 Log File: $LOG_FILE"
     echo "🐍 Python Version: $(python3 --version 2>/dev/null || echo 'Not found')"
     echo "🍺 Homebrew Version: $(brew --version 2>/dev/null | head -n1 || echo 'Not found')"
-    
+
     if [ "$INSTALL_MODE" = "minimal" ]; then
         echo "📦 Virtual Environment: Not created (using system Python)"
     else
@@ -590,7 +590,7 @@ get_installation_choice() {
     while true; do
         show_installation_menu
         read -p "$(echo -e ${YELLOW}Enter your choice [1-4]:${NC} )" choice
-        
+
         case $choice in
             1)
                 INSTALL_MODE="full"
@@ -652,7 +652,7 @@ get_installation_choice() {
 main() {
     # Show installation menu and get user choice
     get_installation_choice
-    
+
     echo "=================================================================="
     echo "STARTING INSTALLATION - $INSTALL_MODE MODE"
     echo "=================================================================="

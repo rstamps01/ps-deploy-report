@@ -286,7 +286,7 @@ function Setup-Project {
         git pull origin main
     } else {
         Write-Status "Cloning repository..."
-        
+
         if ($script:InstallMode -eq "minimal") {
             # Minimal: Download source archive only (no git)
             Write-Status "Downloading source archive (no Git history)..."
@@ -307,7 +307,7 @@ function Setup-Project {
             }
         }
     }
-    
+
     # Remove .git folder for production mode
     if ($script:InstallMode -eq "production" -and (Test-Path ".git")) {
         Write-Status "Removing Git repository (production mode)..."
@@ -326,7 +326,7 @@ function New-VirtualEnvironment {
         Write-Warning "Using system Python packages"
         return
     }
-    
+
     Write-Status "Creating Python virtual environment..."
 
     # Remove existing virtual environment if it exists
@@ -584,7 +584,7 @@ function Show-InstallationSummary {
     Write-Host ""
     Write-Success "Installation completed successfully!"
     Write-Host ""
-    
+
     # Display installation mode and approximate size
     switch ($script:InstallMode) {
         "full" {
@@ -617,7 +617,7 @@ function Show-InstallationSummary {
     Write-Host "📋 Log File: $LogPath" -ForegroundColor $Green
     Write-Host "🐍 Python Version: $(try { python --version 2>$null } catch { 'Not found' })" -ForegroundColor $Green
     Write-Host "🍫 Chocolatey Version: $(try { choco --version 2>$null } catch { 'Not found' })" -ForegroundColor $Green
-    
+
     if ($script:InstallMode -eq "minimal") {
         Write-Host "📦 Virtual Environment: Not created (using system Python)" -ForegroundColor $Green
     } else {
@@ -686,7 +686,7 @@ function Get-InstallationChoice {
     while ($true) {
         Show-InstallationMenu
         $choice = Read-Host "Enter your choice [1-4]"
-        
+
         switch ($choice) {
             "1" {
                 $script:InstallMode = "full"
@@ -748,7 +748,7 @@ function Get-InstallationChoice {
 function Main {
     # Show installation menu and get user choice
     Get-InstallationChoice
-    
+
     Write-Host "==================================================================" -ForegroundColor $Blue
     Write-Host "STARTING INSTALLATION - $($script:InstallMode.ToUpper()) MODE" -ForegroundColor $Blue
     Write-Host "==================================================================" -ForegroundColor $Blue
