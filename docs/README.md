@@ -14,10 +14,15 @@ All development documentation, design guides, and implementation references have
 docs/
 ├── README.md (this file)
 └── deployment/
-    ├── DEPLOYMENT.md           # Deployment guide
+    ├── DEPLOYMENT.md           # Production deployment guide
     ├── INSTALLATION-GUIDE.md   # Installation instructions
+    ├── UPDATE-GUIDE.md         # Update/upgrade procedures
+    ├── UNINSTALL-GUIDE.md      # Uninstallation procedures
+    ├── PERMISSIONS-GUIDE.md    # API permissions & requirements
     ├── install-mac.sh          # Mac installation script
-    └── install-windows.ps1     # Windows installation script
+    ├── install-windows.ps1     # Windows installation script
+    ├── uninstall-mac.sh        # Mac uninstall script
+    └── uninstall-windows.ps1   # Windows uninstall script
 ```
 
 ---
@@ -49,7 +54,8 @@ python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <
 
 Example:
 ```bash
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir reports
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
+# Note: Use 'support' username for full API permissions
 ```
 
 ---
@@ -70,9 +76,29 @@ python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654
 - Dependency management
 - Verification procedures
 
+**UPDATE-GUIDE.md**
+- Update existing installations
+- Version upgrade procedures
+- Rollback strategies
+- Automated update scripts
+
+**UNINSTALL-GUIDE.md**
+- Complete removal procedures
+- Manual and automated uninstall
+- Data backup and preservation
+- Cleanup verification
+
+**PERMISSIONS-GUIDE.md**
+- Required API permissions
+- Support username requirements
+- Troubleshooting permission errors
+- Security best practices
+
 **Installation Scripts**
 - `install-mac.sh` - Automated Mac/Linux installation
 - `install-windows.ps1` - Automated Windows installation
+- `uninstall-mac.sh` - Automated Mac/Linux uninstall
+- `uninstall-windows.ps1` - Automated Windows uninstall
 
 ---
 
@@ -102,8 +128,15 @@ All development-related documentation has been moved to:
 
 **Report Generation Issues**:
 - Verify cluster connectivity
-- Check credentials
+- **Use 'support' username for full API access**
+- Check credentials and permissions
 - Review API version compatibility
+- Ensure elevated read permissions for all endpoints
+
+**Permission Errors**:
+- Standard user accounts may lack sufficient API permissions
+- Report generation requires comprehensive read access
+- Use `support` user or equivalent elevated account
 
 **For detailed troubleshooting**: See deployment documentation
 

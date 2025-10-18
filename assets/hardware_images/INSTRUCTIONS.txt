@@ -20,7 +20,7 @@ ls -l assets/hardware_images/supermicro_gen5_cbox_1u.png
 
 STEP 3: Generate Report
 ------------------------
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
 
 STEP 4: Check the Result
 -------------------------

@@ -21,7 +21,7 @@ if [ -f "$TARGET_FILE" ]; then
     echo ""
     echo "To regenerate the report with this image:"
     echo "  cd /Users/ray.stamps/Documents/as-built-report/ps-deploy-report"
-    echo "  python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321"
+    echo "  python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports"
     exit 0
 fi
 

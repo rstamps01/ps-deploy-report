@@ -232,9 +232,9 @@ python3 -m src.main --version
 
 ```bash
 python3 -m src.main \
-  --cluster-ip 10.143.11.204 \
-  --username support \
-  --password 654321 \
+  --cluster-ip <CLUSTER_IP> \
+  --username <USERNAME> \
+  --password <PASSWORD> \
   --output-dir reports
 ```
 
@@ -251,9 +251,9 @@ python3 -m src.main \
 
 ```bash
 python3 -m src.main \
-  --cluster-ip 10.143.11.204 \
-  --username support \
-  --password 654321 \
+  --cluster-ip <CLUSTER_IP> \
+  --username <USERNAME> \
+  --password <PASSWORD> \
   --output-dir reports \
   --verbose
 ```
@@ -316,9 +316,9 @@ python3 -m src.main --help
 ```bash
 # Generate test report
 python3 -m src.main \
-  --cluster-ip 10.143.11.204 \
-  --username support \
-  --password 654321 \
+  --cluster-ip <CLUSTER_IP> \
+  --username <USERNAME> \
+  --password <PASSWORD> \
   --output-dir reports
 
 # Check output

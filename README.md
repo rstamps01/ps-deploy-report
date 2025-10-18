@@ -46,9 +46,11 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 - **SSL/TLS**: Support for SSL certificate verification (configurable for self-signed certs)
 
 ### Authentication Requirements
-- **VAST Credentials**: Valid VAST cluster credentials with read access
-- **Permissions**: Read-only access to cluster configuration and status information
+- **VAST Credentials**: Valid VAST cluster credentials with elevated read access
+- **Required Username**: `support` user or equivalent with full read permissions
+- **Permissions**: Comprehensive read access to cluster configuration, hardware, and status information
 - **API Access**: VAST REST API v7 support (VAST cluster version 5.3+)
+- **Note**: Standard user accounts may have insufficient permissions for complete report generation
 
 ### Dependencies
 - All Python dependencies are listed in `requirements.txt`
@@ -105,12 +107,20 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
    python3 src/main.py --version
    ```
 
-### Platform-Specific Installation Guides
+### Documentation & Guides
 
-- **📖 [Complete Installation Guide](docs/deployment/INSTALLATION-GUIDE.md)**: Comprehensive installation instructions for Mac and Windows
+- **📖 [Installation Guide](docs/deployment/INSTALLATION-GUIDE.md)**: Complete installation instructions for Mac and Windows
+- **🔄 [Update Guide](docs/deployment/UPDATE-GUIDE.md)**: Update existing installations to latest version
+- **🗑️ [Uninstall Guide](docs/deployment/UNINSTALL-GUIDE.md)**: Complete removal instructions and procedures
+- **🔐 [Permissions Guide](docs/deployment/PERMISSIONS-GUIDE.md)**: API permissions and support user requirements
 - **🚀 [Deployment Guide](docs/deployment/DEPLOYMENT.md)**: Production deployment and configuration
-- **🍎 [macOS Installation Script](docs/deployment/install-mac.sh)**: Automated installation for Mac users
-- **🪟 [Windows Installation Script](docs/deployment/install-windows.ps1)**: Automated installation for Windows users
+
+### Installation Scripts
+
+- **🍎 [macOS Install](docs/deployment/install-mac.sh)**: Automated installation for Mac
+- **🪟 [Windows Install](docs/deployment/install-windows.ps1)**: Automated installation for Windows
+- **🍎 [macOS Uninstall](docs/deployment/uninstall-mac.sh)**: Automated uninstallation for Mac
+- **🪟 [Windows Uninstall](docs/deployment/uninstall-windows.ps1)**: Automated uninstallation for Windows
 
 ### Production Installation
 
@@ -245,13 +255,15 @@ python3 -m src.main [OPTIONS]
 
 **1. Interactive credential entry (recommended for security):**
 ```bash
-python3 -m src.main --cluster-ip 10.143.11.204 --output-dir ./reports
+python3 -m src.main --cluster-ip <CLUSTER_IP> --output-dir ./reports
 # Tool will prompt for username and password securely
+# Use 'support' username for full API access
 ```
 
 **2. Using command-line credentials:**
 ```bash
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir ./reports
+# Note: Use 'support' username or equivalent for full report generation
 ```
 
 **3. Using API token (recommended for automation):**
@@ -266,15 +278,15 @@ python3 -m src.main --cluster-ip 10.143.11.204 --output-dir ./reports --config /
 
 **5. Verbose output for debugging:**
 ```bash
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports --verbose
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir ./reports --verbose
 ```
 
 **6. Batch processing with script:**
 ```bash
 #!/bin/bash
 # Process multiple clusters
-for cluster in 10.143.11.203 10.143.11.204 10.143.11.205; do
-    python3 -m src.main --cluster-ip $cluster --username support --password 654321 --output-dir ./reports
+for cluster in cluster1.example.com cluster2.example.com cluster3.example.com; do
+    python3 -m src.main --cluster-ip $cluster --username $VAST_USERNAME --password $VAST_PASSWORD --output-dir ./reports
 done
 ```
 
@@ -351,7 +363,24 @@ grep "ERROR" logs/vast_report_generator.log
 
 #### Common Issues
 
-**1. Connection Timeout**
+**1. Insufficient API Permissions**
+```
+Error: API request failed with 403 Forbidden
+Error: Incomplete data - missing hardware/network information
+```
+
+**Solution**: Use the `support` username or an account with equivalent elevated read permissions:
+```bash
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username support --password <PASSWORD> --output-dir ./reports
+```
+
+**Required Permissions**:
+- Read access to `/api/v7/clusters/`
+- Read access to `/api/v7/cnodes/`, `/api/v7/dnodes/`
+- Read access to `/api/v1/cboxes/`, `/api/v7/dboxes/`
+- Read access to network, tenant, and policy endpoints
+
+**2. Connection Timeout**
 ```bash
 # Increase timeout in config.yaml
 api:
@@ -359,14 +388,14 @@ api:
   max_retries: 5
 ```
 
-**2. SSL Certificate Issues**
+**3. SSL Certificate Issues**
 ```bash
 # Disable SSL verification for self-signed certs
 api:
   verify_ssl: false
 ```
 
-**3. WeasyPrint Dependencies Missing**
+**4. WeasyPrint Dependencies Missing**
 ```bash
 # Install system dependencies
 # Ubuntu/Debian:
@@ -376,7 +405,7 @@ sudo apt-get install libpango1.0-dev libharfbuzz-dev libffi-dev libxml2-dev libx
 brew install pango harfbuzz libffi libxml2 libxslt
 ```
 
-**4. Permission Issues**
+**5. File Permission Issues**
 ```bash
 # Ensure proper permissions
 chmod +x src/main.py
@@ -387,7 +416,7 @@ chmod 755 logs/
 #### Debug Mode
 ```bash
 # Enable verbose logging
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports --verbose
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir ./reports --verbose
 
 # Check version
 python3 -m src.main --version
@@ -437,6 +466,40 @@ data_collection:
 - **Adjust concurrent request limits based on cluster size**
 - **Implement proper cleanup of temporary files**
 - **Consider scheduling during off-peak hours**
+
+### Updating
+
+To update an existing installation to the latest version:
+
+**Quick Update (Recommended)**:
+```bash
+cd ~/vast-reporter
+git pull origin develop
+source venv/bin/activate  # Mac/Linux
+# .\venv\Scripts\Activate  # Windows
+pip install --upgrade -r requirements.txt
+```
+
+**For detailed update procedures**, see the [Update Guide](docs/deployment/UPDATE-GUIDE.md).
+
+### Uninstalling
+
+To remove the VAST As-Built Report Generator:
+
+**Automated Uninstall (Mac)**:
+```bash
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-mac.sh
+chmod +x uninstall-mac.sh
+./uninstall-mac.sh
+```
+
+**Automated Uninstall (Windows)**:
+```powershell
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
+.\uninstall-windows.ps1
+```
+
+**For manual uninstall procedures**, see the [Uninstall Guide](docs/deployment/UNINSTALL-GUIDE.md).
 
 ### Backup and Recovery
 

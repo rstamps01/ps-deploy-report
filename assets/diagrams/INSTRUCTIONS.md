@@ -15,7 +15,7 @@
 3. **Regenerate the report**:
    ```bash
    cd /Users/ray.stamps/Documents/as-built-report/ps-deploy-report
-   python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321
+   python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
    ```
 
 4. **Check Page 8** of the generated report to see your network topology diagram!

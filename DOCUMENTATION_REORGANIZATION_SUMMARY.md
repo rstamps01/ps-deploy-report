@@ -285,7 +285,7 @@ chmod +x install-mac.sh
 
 **Generate Report**:
 ```bash
-python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir reports
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
 ```
 
 ### Developer References
