@@ -286,7 +286,7 @@ function Setup-Project {
         git pull origin $script:InstallBranch
     } else {
         Write-Status "Cloning repository from '$($script:InstallBranch)' branch..."
-        
+
         if ($script:InstallMode -eq "minimal") {
             # Minimal: Download source archive only (no git)
             Write-Status "Downloading source archive (no Git history)..."

@@ -1,7 +1,7 @@
 # Installing from Different Branches
 
-**Version**: 1.0.0  
-**Date**: October 18, 2025  
+**Version**: 1.0.0
+**Date**: October 18, 2025
 **Status**: ✅ Available on `develop` branch
 
 ---
@@ -446,6 +446,5 @@ $env:VAST_INSTALL_BRANCH = "develop"
 
 ---
 
-**Feature Available**: `develop` branch (commit `780f578`)  
+**Feature Available**: `develop` branch (commit `780f578`)
 **Coming to `main`**: Next release (v1.0.1+)
-

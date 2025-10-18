@@ -253,7 +253,7 @@ setup_project() {
         git pull origin "$INSTALL_BRANCH"
     else
         print_status "Cloning repository from '$INSTALL_BRANCH' branch..."
-        
+
         if [ "$INSTALL_MODE" = "minimal" ]; then
             # Minimal: Download source archive only (no git)
             print_status "Downloading source archive (no Git history)..."
