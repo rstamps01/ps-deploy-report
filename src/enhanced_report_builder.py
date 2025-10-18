@@ -190,8 +190,8 @@ class EnhancedReportBuilder:
 
     def _extract_metadata(self, processed_data: Dict[str, Any]) -> ReportMetadata:
         """Extract report metadata from processed data."""
-        cluster_summary = processed_data.get("cluster_summary", {})
-        metadata_info = processed_data.get("metadata", {})
+        cluster_summary = processed_data.get("cluster_summary") or {}
+        metadata_info = processed_data.get("metadata") or {}
 
         return ReportMetadata(
             cluster_name=cluster_summary.get("name", "Unknown"),
@@ -199,7 +199,7 @@ class EnhancedReportBuilder:
             cluster_version=cluster_summary.get("version", "Unknown"),
             generation_timestamp=datetime.now(),
             api_version=metadata_info.get("api_version", "v7"),
-            enhanced_features_enabled=metadata_info.get("enhanced_features", {}).get(
+            enhanced_features_enabled=(metadata_info.get("enhanced_features") or {}).get(
                 "rack_height_supported", False
             ),
             data_completeness=metadata_info.get("overall_completeness", 0.0),
@@ -209,7 +209,7 @@ class EnhancedReportBuilder:
         self, processed_data: Dict[str, Any]
     ) -> ClusterOverview:
         """Extract cluster overview information."""
-        cluster_summary = processed_data.get("cluster_summary", {})
+        cluster_summary = processed_data.get("cluster_summary") or {}
 
         return ClusterOverview(
             name=cluster_summary.get("name", "Unknown"),
@@ -237,7 +237,7 @@ class EnhancedReportBuilder:
         self, processed_data: Dict[str, Any]
     ) -> Dict[str, List[HardwareComponent]]:
         """Extract hardware components from processed data."""
-        hardware_inventory = processed_data.get("hardware_inventory", {})
+        hardware_inventory = processed_data.get("hardware_inventory") or {}
 
         cnodes = []
         dnodes = []
@@ -330,8 +330,8 @@ class EnhancedReportBuilder:
         self, processed_data: Dict[str, Any]
     ) -> NetworkConfiguration:
         """Extract network configuration from processed data."""
-        sections = processed_data.get("sections", {})
-        network_section = sections.get("network_configuration", {}).get("data", {})
+        sections = processed_data.get("sections") or {}
+        network_section = (sections.get("network_configuration") or {}).get("data") or {}
 
         return NetworkConfiguration(
             dns_servers=network_section.get("dns", {}).get(
@@ -363,17 +363,17 @@ class EnhancedReportBuilder:
         self, processed_data: Dict[str, Any]
     ) -> DeploymentConfiguration:
         """Extract deployment configuration from processed data."""
-        sections = processed_data.get("sections", {})
+        sections = processed_data.get("sections") or {}
 
         # Extract security configuration
-        security_section = sections.get("security_configuration", {}).get("data", {})
-        ad_config = security_section.get("active_directory", {})
-        ldap_config = security_section.get("ldap", {})
+        security_section = (sections.get("security_configuration") or {}).get("data") or {}
+        ad_config = security_section.get("active_directory") or {}
+        ldap_config = security_section.get("ldap") or {}
 
         # Extract data protection configuration
-        protection_section = sections.get("data_protection_configuration", {}).get(
-            "data", {}
-        )
+        protection_section = (sections.get("data_protection_configuration") or {}).get(
+            "data"
+        ) or {}
 
         return DeploymentConfiguration(
             cluster_services={
