@@ -62,7 +62,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -70,7 +70,7 @@ chmod +x install-mac.sh
 **For Windows Users:**
 ```powershell
 # Download and run the automated installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -107,10 +107,10 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ### Platform-Specific Installation Guides
 
-- **📖 [Complete Installation Guide](INSTALLATION-GUIDE.md)**: Comprehensive installation instructions for Mac and Windows
-- **🍎 [macOS Installation Script](install-mac.sh)**: Automated installation for Mac users
-- **🪟 [Windows Installation Script](install-windows.ps1)**: Automated installation for Windows users
-- **🔗 [API Reference](API-REFERENCE.md)**: Complete API documentation with curl examples
+- **📖 [Complete Installation Guide](docs/deployment/INSTALLATION-GUIDE.md)**: Comprehensive installation instructions for Mac and Windows
+- **🚀 [Deployment Guide](docs/deployment/DEPLOYMENT.md)**: Production deployment and configuration
+- **🍎 [macOS Installation Script](docs/deployment/install-mac.sh)**: Automated installation for Mac users
+- **🪟 [Windows Installation Script](docs/deployment/install-windows.ps1)**: Automated installation for Windows users
 
 ### Production Installation
 
@@ -220,62 +220,61 @@ The VAST As-Built Report Generator provides a comprehensive command-line interfa
 
 #### Basic Usage
 ```bash
-python3 src/main.py --cluster 192.168.1.100 --output ./output
+python3 -m src.main --cluster-ip 192.168.1.100 --output-dir ./reports
 ```
 
 #### Advanced Usage Options
 
 **Full command syntax:**
 ```bash
-python3 src/main.py [OPTIONS]
+python3 -m src.main [OPTIONS]
 ```
 
 **Available options:**
-- `--cluster, --cluster-ip CLUSTER_IP`: IP address of the VAST Management Service (required)
-- `--output, --output-dir OUTPUT_DIR`: Output directory for generated reports (required)
-- `--username, -u USERNAME`: VAST username (will prompt if not provided)
-- `--password, -p PASSWORD`: VAST password (will prompt if not provided)
-- `--config, -c CONFIG`: Path to configuration file (default: config/config.yaml)
-- `--verbose, -v`: Enable verbose output for debugging
+- `--cluster-ip CLUSTER_IP`: IP address of the VAST Management Service (required)
+- `--output-dir OUTPUT_DIR`: Output directory for generated reports (required)
+- `--username USERNAME`: VAST username (will prompt if not provided)
+- `--password PASSWORD`: VAST password (will prompt if not provided)
+- `--token TOKEN`: API token for authentication (alternative to username/password)
+- `--config CONFIG`: Path to configuration file (optional)
+- `--verbose`: Enable verbose output for debugging
 - `--version`: Show program version and exit
-- `--help, -h`: Show help message and exit
+- `--help`: Show help message and exit
 
 #### Usage Examples
 
 **1. Interactive credential entry (recommended for security):**
 ```bash
-python3 src/main.py --cluster 192.168.1.100 --output ./reports
+python3 -m src.main --cluster-ip 10.143.11.204 --output-dir ./reports
 # Tool will prompt for username and password securely
 ```
 
-**2. Using environment variables:**
+**2. Using command-line credentials:**
 ```bash
-export VAST_USERNAME=admin
-export VAST_PASSWORD=your_password
-python3 src/main.py --cluster 192.168.1.100 --output ./reports
+python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports
 ```
 
-**3. Command-line credentials (not recommended for production):**
+**3. Using API token (recommended for automation):**
 ```bash
-python3 src/main.py --cluster 192.168.1.100 --username admin --password your_password --output ./reports
+python3 -m src.main --cluster-ip 10.143.11.204 --token YOUR_API_TOKEN --output-dir ./reports
 ```
 
 **4. Custom configuration file:**
 ```bash
-python3 src/main.py --cluster 192.168.1.100 --output ./reports --config /path/to/custom_config.yaml
+python3 -m src.main --cluster-ip 10.143.11.204 --output-dir ./reports --config /path/to/custom_config.yaml
 ```
 
 **5. Verbose output for debugging:**
 ```bash
-python3 src/main.py --cluster 192.168.1.100 --output ./reports --verbose
+python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports --verbose
 ```
 
 **6. Batch processing with script:**
 ```bash
 #!/bin/bash
 # Process multiple clusters
-for cluster in 192.168.1.100 192.168.1.101 192.168.1.102; do
-    python3 src/main.py --cluster $cluster --output ./reports/$cluster
+for cluster in 10.143.11.203 10.143.11.204 10.143.11.205; do
+    python3 -m src.main --cluster-ip $cluster --username support --password 654321 --output-dir ./reports
 done
 ```
 
@@ -284,17 +283,18 @@ done
 The tool generates comprehensive output in multiple formats:
 
 #### 1. PDF Report (`vast_asbuilt_report_{cluster_name}_{timestamp}.pdf`)
-- **Professional customer-facing document**
+- **Professional customer-facing document** with VAST brand styling
 - **Comprehensive sections:**
-  - Executive Summary with cluster overview and statistics
-  - Cluster Information with detailed configuration
-  - Hardware Inventory with rack positioning and U-numbers
-  - Network Configuration (DNS, NTP, VIP pools)
-  - Logical Configuration (tenants, views, policies)
-  - Security & Authentication settings
-  - Data Protection configuration
-  - Enhanced Features (rack positioning, PSNT tracking)
-  - Appendix with metadata and physical layout
+  1. Title Page with cluster identity and PSNT
+  2. Executive Summary with cluster and hardware overview
+  3. Cluster Information with configuration and feature flags
+  4. Hardware Summary with storage capacity metrics
+  5. Hardware Inventory with CBox/DBox tables and images
+  6. Physical Rack Layout with visual 42U rack diagram
+  7. Network Configuration with detailed network settings
+  8. Logical Network Diagram with topology visualization
+  9. Logical Configuration (VIP pools, tenants, views, policies)
+  10. Security & Authentication settings
 
 #### 2. JSON Data File (`vast_data_{cluster_name}_{timestamp}.json`)
 - **Machine-readable structured data**
@@ -387,10 +387,14 @@ chmod 755 logs/
 #### Debug Mode
 ```bash
 # Enable verbose logging
-python3 src/main.py --cluster 192.168.1.100 --output ./reports --verbose
+python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir ./reports --verbose
 
-# Check configuration
-python3 -c "import yaml; print(yaml.safe_load(open('config/config.yaml')))"
+# Check version
+python3 -m src.main --version
+
+# Validate environment
+python3 -c "import sys; print(f'Python {sys.version}')"
+python3 -c "import reportlab; print(f'ReportLab {reportlab.Version}')"
 ```
 
 ### Security Considerations
@@ -462,35 +466,53 @@ tar -xzf logs_backup_20250927.tar.gz
 ```
 ps-deploy-report/
 ├── README.md                    # This documentation
-├── STATUS.md                    # Development status tracking
-├── API-REFERENCE.md             # Complete API documentation
 ├── requirements.txt             # Python dependencies
+├── .gitignore                   # Git ignore rules
+├── *SUMMARY.md                  # Project cleanup summaries
+├── assets/                      # Production assets
+│   ├── diagrams/               # Network topology diagrams
+│   └── hardware_images/        # Hardware images (CBox, DBox)
 ├── config/                      # Configuration files
-│   ├── config.yaml             # Main configuration
 │   └── config.yaml.template    # Configuration template
+├── docs/                        # User documentation
+│   ├── README.md               # Documentation overview
+│   └── deployment/             # Installation & deployment
+│       ├── DEPLOYMENT.md       # Deployment guide
+│       ├── INSTALLATION-GUIDE.md # Installation instructions
+│       ├── install-mac.sh      # macOS installation script
+│       └── install-windows.ps1 # Windows installation script
+├── logs/                        # Application logs (runtime)
+├── output/                      # Report output (runtime)
+├── reports/                     # Production reports
+│   ├── MVP/                    # MVP baseline report
+│   └── [latest reports]        # Current production reports
 ├── src/                         # Source code
 │   ├── main.py                 # Main CLI application
 │   ├── api_handler.py          # VAST API client
 │   ├── data_extractor.py       # Data processing module
-│   ├── report_builder.py       # PDF report generation
+│   ├── report_builder.py       # Report generation
+│   ├── rack_diagram.py         # Rack diagram generator
+│   ├── brand_compliance.py     # VAST brand styling
 │   └── utils/                  # Utility modules
 │       └── logger.py           # Logging infrastructure
-├── tests/                       # Unit and integration tests
-│   ├── test_main.py            # Main application tests
-│   ├── test_api_handler.py     # API handler tests
-│   ├── test_data_extractor.py  # Data extractor tests
-│   └── test_report_builder.py  # Report builder tests
-├── templates/                   # Report templates
-│   └── config.yaml.template    # Configuration template
-├── docs/                        # Documentation
-│   └── design-guide/           # Design documentation
-├── logs/                        # Application logs
-└── output/                      # Generated reports
+├── templates/                   # Configuration templates
+│   └── config.yaml.template    # Config template
+└── tests/                       # Unit tests
+    ├── test_*.py               # Test files
+    └── data/                   # Test data
 ```
+
+**Note**: Development documentation and archived reports are in `.archive/` (local only, not in Git).
+See `.archive/README.md` for development materials.
 
 ## Development
 
-This project follows the development guidelines outlined in the AI Development Reference Guide. See `STATUS.md` for current development status and next steps.
+This project follows Python best practices and VAST brand guidelines. All development documentation is preserved in `.archive/development_docs/` including:
+
+- **Design Guidelines**: `.archive/development_docs/design-guide/`
+- **Implementation Guides**: `.archive/development_docs/guides/`
+- **Technical Analysis**: `.archive/development_docs/analysis/`
+- **API Reference**: `.archive/development_docs/design-guide/10-API-Reference.pdf`
 
 ### Testing
 ```bash
@@ -540,8 +562,8 @@ For issues, questions, or contributions, please refer to the project's GitHub re
 
 ---
 
-**Version**: 1.0.0-dev
+**Version**: 1.0.0
 **Target VAST Version**: 5.3+
-**API Version**: 7
-**Development Status**: 95% Complete
-**Last Updated**: September 27, 2025
+**API Version**: v7 (with v1 fallback)
+**Status**: Production Ready
+**Last Updated**: October 17, 2025

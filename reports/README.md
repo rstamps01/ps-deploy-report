@@ -1,82 +1,148 @@
 # VAST As-Built Report Generator - Reports Directory
 
-## Directory Structure
+## Overview
 
-### `/reference/`
-Contains the latest, production-ready reports for reference:
+This directory contains **active** VAST As-Built reports. All development iterations and test reports have been archived to maintain a clean working structure.
 
-- **`latest_model_centering_fix.pdf/`** - Latest report with Model column centering fix
-  - Generated: 2025-10-04 09:06
-  - Features: Properly centered Model column text in CBox/DBox inventory tables
-  - Status: ✅ Production Ready
+## Active Reports
 
-- **`latest_network_config_fix.pdf/`** - Latest report with Network Configuration fix
-  - Generated: 2025-10-04 09:26
-  - Features: Properly populated Network Configuration data from `/api/v7/vms/1/network_settings/` endpoint
-  - Status: ✅ Production Ready
+### Current Production Report
+**Latest Report**: `vast_asbuilt_report_selab-var-204_YYYYMMDD_HHMMSS.pdf`
+- Most recent production-ready report
+- Includes all latest features and improvements
+- Automatically replaces previous version on new generation
 
-- **`latest_network_config_with_table.pdf/`** - Latest report with Network Configuration summary table
-  - Generated: 2025-10-04 09:33
-  - Features: Network Configuration data in summary table format matching Storage Capacity table styling
-  - Status: ✅ Production Ready
+### MVP Baseline Report
+**Location**: `MVP/vast_asbuilt_report_MVP_baseline_selab-var-204/`
+- Reference baseline for minimum viable product
+- Preserved for comparison and rollback purposes
+- Generated: October 17, 2025
 
-- **`latest_cbox_table_cleanup.pdf/`** - Latest report with cleaned up CBox Network Configuration table
-  - Generated: 2025-10-04 09:42
-  - Features: Removed duplicate header row, TPM Support and Box Vendor columns, optimized column widths
-  - Status: ✅ Production Ready
+## Features in Latest Report
 
-- **`latest_cbox_table_no_single_nic.pdf/`** - Latest report with further optimized CBox Network Configuration table
-  - Generated: 2025-10-04 09:45
-  - Features: Removed Single NIC column, resized all columns to eliminate header overlap
-  - Status: ✅ Production Ready
+✅ **Physical Rack Layout (Page 6)**:
+- 42U rack diagram with actual hardware images
+- Precise U-position placement
+- Supermicro CBox and Ceres DBox hardware images
+- Green status indicators
 
-- **`latest_network_cleanup.pdf/`** - Latest report with comprehensive Network Configuration cleanup
-  - Generated: 2025-10-04 09:59
-  - Features: Reduced CBox column widths, removed DBox Box Vendor column, eliminated duplicate headers, removed repetitive headings and total lines
-  - Status: ✅ Production Ready
+✅ **Logical Network Diagram (Page 8)**:
+- Complete network topology visualization
+- CBoxes, DBoxes, Switch A, Switch B connectivity
+- Customer Network integration
+- Color-coded network paths
 
-### `/archive/`
-Contains all previous test reports and revisions:
+✅ **Professional Styling**:
+- VAST brand color scheme (#2F2042)
+- Centered tables with alternating row colors
+- Repeating footers with page numbers
+- Section overviews for context
 
-- **`test_consistent_table_sizing.pdf/`** - Initial table sizing improvements
-- **`test_executive_summary_tables.pdf/`** - Executive summary table implementation
-- **`test_executive_summary_tables_v2.pdf/`** - Executive summary table v2
-- **`test_executive_summary_tables_v3.pdf/`** - Executive summary table v3
-- **`test_final_pagination.pdf/`** - Pagination implementation
-- **`test_fixed_table_titles.pdf/`** - Table title fixes
-- **`test_hardware_summary_updates.pdf/`** - Hardware summary updates
-- **`test_html_rendering_fix.pdf/`** - HTML rendering fixes
-- **`test_model_column_centering.pdf/`** - Initial Model column centering attempt
-- **`test_model_paragraph_centering.pdf/`** - Model column centering with Paragraph alignment
-- **`test_network_config_report.pdf/`** - Network configuration report
-- **`test_network_config_report_v2.pdf/`** - Network configuration report v2
-- **`test_pagination.pdf/`** - Pagination testing
-- **`test_reverted_formatting.pdf/` - Reverted formatting changes
-- **`test_status_colors.pdf/`** - Status color implementation
-- **`test_status_colors_fixed.pdf/`** - Status color fixes
-- **`test_updated_sections.pdf/`** - Updated sections
-- **`test_updated_sections_v2.pdf/`** - Updated sections v2
+✅ **Comprehensive Data**:
+- Cluster information and configuration
+- Hardware inventory with images
+- Network configuration tables
+- Logical configuration details
+- Security and authentication settings
 
-## Report Generation
+## Report Types
 
-To generate a new report, use:
+- **PDF Reports**: Formatted reports ready for distribution
+- **JSON Reports**: Raw data in JSON format for programmatic access
 
-```bash
-python3 src/main.py --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output reports/<REPORT_NAME>
+## File Naming Convention
+
+```
+vast_asbuilt_report_<cluster-name>_<timestamp>.pdf
+vast_data_<cluster-name>_<timestamp>.json
 ```
 
-## Latest Features
+Where:
+- `<cluster-name>`: Name of the VAST cluster (e.g., selab-var-204)
+- `<timestamp>`: Generation timestamp (YYYYMMDD_HHMMSS)
 
-The latest report (`latest_model_centering_fix.pdf/`) includes:
+## Generating New Reports
 
-- ✅ **Model Column Centering**: Properly centered text in CBox and DBox inventory tables
-- ✅ **HTML Support**: Line breaks and text wrapping in Model column
-- ✅ **Professional Layout**: Consistent table styling and alignment
-- ✅ **Multi-page Support**: Automatic pagination for large inventories
-- ✅ **VAST Brand Compliance**: Full brand guidelines implementation
+### Basic Generation
+```bash
+cd /Users/ray.stamps/Documents/as-built-report/ps-deploy-report
+python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
+```
+
+### Example
+```bash
+python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321 --output-dir reports
+```
+
+## Archived Reports
+
+All development iterations, test reports, and reference reports have been moved to:
+```
+.archive/development_reports/
+```
+
+This directory is **not tracked in Git** (excluded via `.gitignore`) and includes:
+- Rack diagram development iterations
+- Network diagram integration phases
+- Table formatting tests
+- Color scheme tests
+- All historical test reports
+
+See `.archive/README.md` for detailed archive information.
+
+## Directory Structure
+
+```
+reports/
+├── README.md (this file)
+├── VAST_Logo.png (used in report generation)
+├── MVP/
+│   └── vast_asbuilt_report_MVP_baseline_selab-var-204/
+│       ├── vast_asbuilt_report_selab-var-204_20251017_084623.pdf
+│       └── vast_data_selab-var-204_20251017_084623.json
+├── vast_asbuilt_report_selab-var-204_20251017_180708.pdf (latest)
+└── vast_data_selab-var-204_20251017_180708.json (latest)
+```
+
+## Report Sections
+
+1. **Title Page**: Cluster identity, PSNT, hardware summary
+2. **Executive Summary**: Cluster and hardware overview tables
+3. **Cluster Information**: Configuration and feature flags
+4. **Hardware Summary**: Inventory and capacity metrics
+5. **Hardware Inventory**: CBox and DBox detailed tables
+6. **Physical Rack Layout**: Visual 42U rack diagram
+7. **Network Configuration**: Detailed network settings
+8. **Logical Network Diagram**: Network topology visualization
+9. **Logical Configuration**: VIP pools, tenants, views, policies
+10. **Security & Authentication**: Security settings
+
+## Data Completeness
+
+Current reports achieve **84.1% data completeness**:
+- ✅ Complete: Network configuration, logical configuration
+- ⚠️ Partial: Cluster network (87.5%), data protection (50.0%)
+- ❌ Missing: Performance metrics, licensing (cluster-specific)
 
 ## Archive Policy
 
-- **Reference reports**: Keep latest production-ready versions
-- **Test reports**: Archive all test iterations for historical reference
-- **Cleanup**: Remove test reports older than 30 days (manual process)
+### Keep Active
+- ✅ MVP baseline report (always)
+- ✅ Latest production report (current version only)
+
+### Archive Automatically
+- ✅ Development iterations
+- ✅ Test reports
+- ✅ Old production reports (superseded)
+
+### Manual Cleanup
+To free disk space, delete archived reports older than 30 days:
+```bash
+find ../.archive/development_reports -name "*.pdf" -mtime +30 -delete
+```
+
+---
+
+**Last Updated**: October 17, 2025
+**Report Version**: Production with Network Diagram
+**Maintained By**: VAST Professional Services

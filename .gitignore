@@ -152,3 +152,5 @@ secrets.yaml
 .env.local
 .env.production
 
+# Local archive directory (not tracked in git)
+.archive/

@@ -1,4 +1,0 @@
-cnode_id,cnode_name,cnode_model,cnode_serial,cnode_status,cnode_rack_position,cnode_rack_u,cnode_ip,cnode_mac,cnode_vendor,cnode_firmware
-6,cnode-3-10,Unknown,Unknown,Unknown,Unknown,Unknown,172.16.3.10,Unknown,"supermicro_gen5_cbox, two dual-port NICs",Unknown
-2,cnode-3-11,Unknown,Unknown,Unknown,Unknown,Unknown,172.16.3.11,Unknown,"supermicro_gen5_cbox, two dual-port NICs",Unknown
-3,cnode-3-12,Unknown,Unknown,Unknown,Unknown,Unknown,172.16.3.12,Unknown,"supermicro_gen5_cbox, two dual-port NICs",Unknown
