@@ -1,0 +1,12 @@
+Please save the network topology diagram image as:
+  network_topology_placeholder.png
+
+This diagram shows:
+- CBox nodes (blue)
+- DBox nodes (green)
+- Switch A (red) and Switch B (orange)
+- Customer Network connectivity
+- Inter-switch links
+- Connection topology between all components
+
+The image will be displayed on Page 8 of the report under "Logical Network Diagram" section.

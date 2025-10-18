@@ -1,0 +1,49 @@
+INSTRUCTIONS: How to Add the Supermicro Gen5 CBox Image
+
+The image you provided in the conversation needs to be saved to this directory.
+
+STEP 1: Save the Image
+-----------------------
+1. The Supermicro Gen5 CBox image you provided shows a front panel view of a 1U server
+2. Save that image file to this location:
+
+   /Users/ray.stamps/Documents/as-built-report/ps-deploy-report/assets/hardware_images/supermicro_gen5_cbox_1u.png
+
+3. Make sure the filename is exactly: supermicro_gen5_cbox_1u.png
+
+STEP 2: Verify the Image
+-------------------------
+Run this command to verify the image is in place:
+
+cd /Users/ray.stamps/Documents/as-built-report/ps-deploy-report
+ls -l assets/hardware_images/supermicro_gen5_cbox_1u.png
+
+STEP 3: Generate Report
+------------------------
+python3 -m src.main --cluster-ip 10.143.11.204 --username support --password 654321
+
+STEP 4: Check the Result
+-------------------------
+- Open the PDF report
+- Go to Page 6 (Physical Rack Layout)
+- The CBoxes should now display the actual Supermicro hardware image instead of blue rectangles
+
+Expected Log Output:
+-------------------
+You should see in the logs:
+[INFO] Loaded hardware image for supermicro_gen5_cbox: .../supermicro_gen5_cbox_1u.png
+[DEBUG] Using hardware image for cbox-6: .../supermicro_gen5_cbox_1u.png
+[DEBUG] Using hardware image for cbox-2: .../supermicro_gen5_cbox_1u.png
+[DEBUG] Using hardware image for cbox-3: .../supermicro_gen5_cbox_1u.png
+
+If You See Fallback Messages:
+-----------------------------
+If you see "No image found" messages, check:
+1. Filename is exactly correct (case-sensitive)
+2. File is in the correct directory
+3. File format is PNG
+4. File is not corrupted
+
+Alternative: If you have the image in a different location, you can copy it:
+---------------------------------------------------------------------------
+cp /path/to/your/supermicro_image.png assets/hardware_images/supermicro_gen5_cbox_1u.png

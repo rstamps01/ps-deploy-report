@@ -423,6 +423,10 @@ class VastDataExtractor:
             "cbox_id": node_data.get("cbox_id"),
         }
 
+        # For dnodes, also capture hardware_type for rack diagram
+        if node_type == "dnode":
+            processed_node["hardware_type"] = node_data.get("hardware_type", "Unknown")
+
         # Add enhanced information if available
         if processed_node["rack_position"] is not None:
             processed_node["rack_u"] = f"U{processed_node['rack_position']}"

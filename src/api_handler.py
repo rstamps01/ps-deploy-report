@@ -1254,7 +1254,9 @@ class VastApiHandler:
                     # DTray information
                     dtray_name=dtray_name,
                     dtray_position=dtray_info.get("position"),
-                    hardware_type=dtray_info.get("hardware_type"),
+                    hardware_type=dbox_info.get(
+                        "hardware_type", dtray_info.get("hardware_type")
+                    ),
                     mcu_state=dtray_info.get("mcu_state"),
                     mcu_version=dtray_info.get("mcu_version"),
                     pcie_switch_version=dtray_info.get("pcie_switch_firmware_version"),
@@ -2364,6 +2366,7 @@ class VastApiHandler:
                         "id": dnode.node_id,
                         "type": dnode.node_type,
                         "model": dnode.model,
+                        "hardware_type": dnode.hardware_type,
                         "serial_number": dnode.serial_number,
                         "rack_position": dnode.rack_position,
                         "status": dnode.status,

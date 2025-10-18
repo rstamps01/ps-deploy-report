@@ -28,10 +28,10 @@ from typing import Any, Dict, List, Optional, Tuple
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
+from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
+
 # Import rack diagram module
 from rack_diagram import RackDiagram
-
-from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
 from utils.logger import get_logger
 
 try:
@@ -220,14 +220,19 @@ class VastReportBuilder:
             story.extend(self._create_cluster_information(processed_data))
             story.append(PageBreak())
 
-            # Add hardware inventory
+            # Add hardware inventory (includes Physical Rack Layout on Page 6)
             story.extend(self._create_hardware_inventory(processed_data))
-            story.append(PageBreak())
+            # Note: PageBreak is handled within hardware inventory for rack layout
+            # Do not add extra PageBreak here to keep rack on Page 6
 
             # Add comprehensive network configuration (consolidated)
             story.extend(
                 self._create_comprehensive_network_configuration(processed_data)
             )
+            story.append(PageBreak())
+
+            # Add logical network diagram (Page 8)
+            story.extend(self._create_logical_network_diagram(processed_data))
             story.append(PageBreak())
 
             # Add logical configuration
@@ -912,17 +917,20 @@ class VastReportBuilder:
             if len(dboxes) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
 
-        # Add page break before Physical Rack Layout to ensure it starts on a new page
+        # Add Physical Rack Layout - force to start at top of Page 6
         rack_positions = hardware.get("rack_positions_available", False)
         if rack_positions:
-            # Force page break to move Physical Rack Layout to next page
+            # Force page break to move heading to top of Page 6
             content.append(PageBreak())
 
-            # Add section heading
+            # Add section heading at top of new page
             heading_elements = self.brand_compliance.create_vast_section_heading(
                 "Physical Rack Layout", level=2
             )
             content.extend(heading_elements)
+
+            # Add spacer after heading before diagram
+            content.append(Spacer(1, 0.3 * inch))
 
             # Generate rack diagram
             try:
@@ -932,17 +940,23 @@ class VastReportBuilder:
 
                 # Get CBox information
                 sections = data.get("sections", {})
-                cnodes = sections.get("cnodes_network_configuration", {}).get("data", {}).get("cnodes", [])
-                
+                cnodes = (
+                    sections.get("cnodes_network_configuration", {})
+                    .get("data", {})
+                    .get("cnodes", [])
+                )
+
                 # Also check hardware inventory for CBox data
                 hw_cnodes = hardware.get("cnodes", [])
-                
+
                 # Combine data from both sources, prefer hardware inventory
                 for cnode in hw_cnodes:
                     cbox_data = {
                         "id": cnode.get("id"),
                         "model": cnode.get("model", cnode.get("box_vendor", "")),
-                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
+                        "rack_unit": cnode.get(
+                            "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
+                        ),
                         "state": cnode.get("state", cnode.get("status", "ACTIVE")),
                     }
                     if cbox_data["rack_unit"]:  # Only add if has position
@@ -950,12 +964,19 @@ class VastReportBuilder:
 
                 # Get DBox information
                 hw_dnodes = hardware.get("dnodes", [])
-                
+
                 for dnode in hw_dnodes:
+                    # Prefer hardware_type over model for rack diagram
+                    model = dnode.get("hardware_type")
+                    if not model or model == "Unknown":
+                        model = dnode.get("model", "")
+
                     dbox_data = {
                         "id": dnode.get("id"),
-                        "model": dnode.get("hardware_type", dnode.get("model", "")),
-                        "rack_unit": dnode.get("rack_u", dnode.get("rack_unit", dnode.get("position", ""))),
+                        "model": model,
+                        "rack_unit": dnode.get(
+                            "rack_u", dnode.get("rack_unit", dnode.get("position", ""))
+                        ),
                         "state": dnode.get("state", dnode.get("status", "ACTIVE")),
                     }
                     if dbox_data["rack_unit"]:  # Only add if has position
@@ -964,16 +985,41 @@ class VastReportBuilder:
                 # Create rack diagram
                 if cboxes_data or dboxes_data:
                     rack_gen = RackDiagram()
-                    rack_drawing = rack_gen.generate_rack_diagram(cboxes_data, dboxes_data)
-                    content.append(rack_drawing)
+                    rack_drawing = rack_gen.generate_rack_diagram(
+                        cboxes_data, dboxes_data
+                    )
+
+                    # Center the rack diagram on the page using a table
+                    from reportlab.platypus import Table as RLTable
+
+                    # Use letter page width (8.5 inches)
+                    page_width = 8.5 * inch
+                    rack_table = RLTable(
+                        [[rack_drawing]],
+                        colWidths=[
+                            page_width - (2 * 0.5 * inch)
+                        ],  # Page width minus margins
+                    )
+                    rack_table.setStyle(
+                        TableStyle(
+                            [
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                            ]
+                        )
+                    )
+                    content.append(rack_table)
+
                     self.logger.info(
                         f"Added rack diagram with {len(cboxes_data)} CBoxes and {len(dboxes_data)} DBoxes"
                     )
                 else:
                     # Fallback to placeholder if no position data
-                    layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
-                        "Physical Rack Layout",
-                        "Rack position data not available for this cluster.",
+                    layout_elements = (
+                        self.brand_compliance.create_vast_2d_diagram_placeholder(
+                            "Physical Rack Layout",
+                            "Rack position data not available for this cluster.",
+                        )
                     )
                     content.extend(layout_elements)
                     self.logger.warning("No rack position data available for diagram")
@@ -1593,6 +1639,9 @@ class VastReportBuilder:
 
         content = []
 
+        # Start on new page (Page 7)
+        content.append(PageBreak())
+
         # Add section heading with VAST styling
         heading_elements = self.brand_compliance.create_vast_section_heading(
             "Network Configuration", level=1
@@ -1841,6 +1890,155 @@ class VastReportBuilder:
             )
             content.extend(table_elements)
             content.append(Spacer(1, 16))
+
+        return content
+
+    def _create_logical_network_diagram(self, data: Dict[str, Any]) -> List[Any]:
+        """
+        Create logical network diagram section.
+
+        Args:
+            data: Processed cluster data
+
+        Returns:
+            List of reportlab flowables for the section
+        """
+        content = []
+
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Logical Network Diagram", level=1
+        )
+        content.extend(heading_elements)
+
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Logical Network Diagram provides a visual "
+                "representation of the cluster's network topology, "
+                "illustrating the connectivity between compute nodes "
+                "(CBoxes), data nodes (DBoxes), network switches, "
+                "and the customer network. This diagram shows the "
+                "redundant network paths, switch interconnections, "
+                "and how data flows through the storage infrastructure. "
+                "Understanding the logical network topology "
+                "is essential for network planning, troubleshooting "
+                "connectivity issues, validating redundancy "
+                "configurations, and ensuring optimal network performance "
+                "across the storage cluster.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 16))
+
+        # Check if network diagram image exists (try PNG first, then JPG)
+        diagram_path_png = (
+            Path(__file__).parent.parent
+            / "assets"
+            / "diagrams"
+            / "network_topology_placeholder.png"
+        )
+        diagram_path_jpg = (
+            Path(__file__).parent.parent
+            / "assets"
+            / "diagrams"
+            / "network_topology_placeholder.jpg"
+        )
+
+        diagram_path = None
+        if diagram_path_png.exists():
+            diagram_path = diagram_path_png
+        elif diagram_path_jpg.exists():
+            diagram_path = diagram_path_jpg
+
+        if diagram_path:
+            try:
+                # Add diagram title
+                title_style = ParagraphStyle(
+                    "Diagram_Title",
+                    parent=styles["Normal"],
+                    fontSize=self.config.font_size + 2,
+                    textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+                    alignment=TA_CENTER,
+                    fontName="Helvetica-Bold",
+                    spaceAfter=12,
+                )
+                content.append(Paragraph("Placeholder", title_style))
+                content.append(Spacer(1, 8))
+
+                # Calculate image size to fit on page
+                # A4 width in points
+                if self.config.page_size == "Letter":
+                    page_width = 8.5 * inch
+                else:
+                    page_width = 595.27
+
+                available_width = page_width - (2 * 0.5 * inch)
+                max_height = 5.5 * inch
+
+                # Load and add the network diagram image
+                img = Image(
+                    str(diagram_path),
+                    width=available_width * 0.9,
+                    height=max_height,
+                    kind="proportional",
+                )
+
+                # Center the image using a table
+                from reportlab.platypus import Table as RLTable
+
+                image_table = RLTable(
+                    [[img]],
+                    colWidths=[available_width],
+                )
+                image_table.setStyle(
+                    TableStyle(
+                        [
+                            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ]
+                    )
+                )
+                content.append(image_table)
+
+                self.logger.info(f"Added network topology diagram from {diagram_path}")
+
+            except Exception as e:
+                self.logger.error(f"Error loading network diagram: {e}", exc_info=True)
+                # Add placeholder text if image fails to load
+                content.append(
+                    Paragraph(
+                        "<i>[Network topology diagram placeholder - "
+                        "Image failed to load]</i>",
+                        styles["Normal"],
+                    )
+                )
+        else:
+            # Add placeholder if image doesn't exist
+            placeholder_elements = (
+                self.brand_compliance.create_vast_2d_diagram_placeholder(
+                    "Network Topology Diagram",
+                    "Visual representation of cluster network connectivity "
+                    "showing CBoxes, DBoxes, switches, and customer network "
+                    "connections.",
+                )
+            )
+            content.extend(placeholder_elements)
+            self.logger.info(
+                f"Network diagram not found at {diagram_path}, " "using placeholder"
+            )
 
         return content
 
