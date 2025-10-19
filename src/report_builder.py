@@ -2200,32 +2200,53 @@ class VastReportBuilder:
             content.extend(switch_info_elements)
             content.append(Spacer(1, 12))
             
-            # Port speed distribution
-            if port_speeds:
-                speed_info = ", ".join([f"{speed}: {count} ports" for speed, count in sorted(port_speeds.items())])
-                content.append(
-                    Paragraph(f"<b>Port Speed Distribution:</b> {speed_info}", styles["Normal"])
-                )
-                content.append(Spacer(1, 8))
-            
-            # Create detailed port table
+            # Create port summary table
             if ports:
-                port_table_data = []
-                headers = ["Port", "State", "Speed", "MTU"]
+                # Aggregate ports by state, speed, and MTU
+                port_summary = {}
                 
                 for port in ports:
-                    port_name = port.get("name", "Unknown")
-                    state = port.get("state", "Unknown")
+                    state = port.get("state", "Unknown").lower()
                     speed = port.get("speed") or "Unconfigured"
                     port_mtu = port.get("mtu", "Unknown")
                     
-                    port_table_data.append([port_name, state, speed, port_mtu])
+                    # Create key for grouping
+                    if state == "up":
+                        key = (state, speed, port_mtu)
+                    else:
+                        # For down ports, group all together regardless of speed/MTU
+                        key = (state, "N/A", "N/A")
+                    
+                    if key not in port_summary:
+                        port_summary[key] = 0
+                    port_summary[key] += 1
                 
-                # Create port table with VAST styling
-                port_table_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    port_table_data, f"{switch_name} Ports", headers
+                # Create summary table
+                summary_table_data = []
+                headers = ["Port Qty", "State", "Speed", "MTU"]
+                
+                # Sort by state (up first), then by speed
+                sorted_summary = sorted(
+                    port_summary.items(),
+                    key=lambda x: (
+                        0 if x[0][0] == "up" else 1,  # up ports first
+                        0 if x[0][1] == "200G" else 1 if x[0][1] == "100G" else 2  # speed order
+                    )
                 )
-                content.extend(port_table_elements)
+                
+                for (state, speed, port_mtu), count in sorted_summary:
+                    summary_table_data.append([
+                        str(count),
+                        state.upper(),
+                        speed,
+                        port_mtu
+                    ])
+                
+                # Create port summary table with VAST styling
+                port_summary_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    summary_table_data, f"{switch_name} Port Summary", headers
+                )
+                content.extend(port_summary_elements)
                 content.append(Spacer(1, 12))
         
         return content
