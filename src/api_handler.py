@@ -2255,14 +2255,27 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting switch port information")
             
-            # Use v1 API for ports endpoint
-            ports_data = self._make_api_request("ports/", api_version="v1")
+            # The ports endpoint is only available in v1 API
+            # Construct the full v1 API URL
+            base_url = f"https://{self.cluster_ip}/api/v1"
+            ports_url = f"{base_url}/ports/"
             
-            if ports_data:
-                self.logger.info(f"Retrieved {len(ports_data)} port entries")
-                return ports_data
+            response = self.session.get(
+                ports_url,
+                verify=False,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                ports_data = response.json()
+                if ports_data:
+                    self.logger.info(f"Retrieved {len(ports_data)} port entries")
+                    return ports_data
+                else:
+                    self.logger.warning("No switch port data available")
+                    return []
             else:
-                self.logger.warning("No switch port data available")
+                self.logger.warning(f"Failed to retrieve ports data: HTTP {response.status_code}")
                 return []
                 
         except Exception as e:
