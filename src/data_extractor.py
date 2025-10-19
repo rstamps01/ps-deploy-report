@@ -123,6 +123,7 @@ class HardwareInventory:
     total_nodes: int
     rack_positions_available: bool
     physical_layout: Optional[Dict[str, Any]] = None
+    switches: Optional[List[Dict[str, Any]]] = None
 
 
 class DataExtractionError(Exception):
@@ -360,6 +361,10 @@ class VastDataExtractor:
 
             # Process DBoxes
             dboxes = hardware_data.get("dboxes", {})
+            
+            # Process Switches
+            switch_inventory = raw_data.get("switch_inventory", {})
+            switches = switch_inventory.get("switches", [])
 
             # Calculate total nodes
             total_nodes = len(cnodes) + len(dnodes)
@@ -382,6 +387,7 @@ class VastDataExtractor:
                 total_nodes=total_nodes,
                 rack_positions_available=rack_positions_available,
                 physical_layout=physical_layout,
+                switches=switches,
             )
 
             self.logger.info(f"Hardware inventory extracted: {total_nodes} total nodes")

@@ -2245,6 +2245,120 @@ class VastApiHandler:
             )
             return {}
 
+    def get_switch_ports(self) -> List[Dict[str, Any]]:
+        """
+        Get switch port information from the VAST cluster.
+
+        Returns:
+            List[Dict[str, Any]]: List of all switch ports with their configurations
+        """
+        try:
+            self.logger.info("Collecting switch port information")
+            
+            # Use v1 API for ports endpoint
+            ports_data = self._make_api_request("ports/", api_version="v1")
+            
+            if ports_data:
+                self.logger.info(f"Retrieved {len(ports_data)} port entries")
+                return ports_data
+            else:
+                self.logger.warning("No switch port data available")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error collecting switch port data: {e}")
+            return []
+
+    def get_switch_inventory(self) -> Dict[str, Any]:
+        """
+        Get aggregated switch inventory from port data.
+
+        Returns:
+            Dict[str, Any]: Switch inventory summary with parsed switch details
+        """
+        try:
+            self.logger.info("Processing switch inventory from port data")
+            ports_data = self.get_switch_ports()
+            
+            if not ports_data:
+                return {}
+            
+            # Aggregate by switch
+            switches = {}
+            for port in ports_data:
+                switch_str = port.get("switch", "")
+                if not switch_str or switch_str == "null":
+                    continue
+                    
+                if switch_str not in switches:
+                    # Parse switch string: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
+                    switch_name = "Unknown"
+                    switch_model = "Unknown"
+                    switch_serial = "Unknown"
+                    
+                    if ":" in switch_str:
+                        name_part = switch_str.split(":")[0].strip()
+                        rest = switch_str.split(":", 1)[1].strip()
+                        switch_name = name_part
+                        
+                        # Extract model and serial from rest
+                        if "(" in rest and ")" in rest:
+                            model_part = rest.split("(")[0].strip()
+                            serial_part = rest.split("(")[1].split(")")[0].strip()
+                            
+                            # Remove "switch-" prefix if present
+                            if model_part.startswith("switch-"):
+                                switch_model = model_part.replace("switch-", "", 1)
+                            elif model_part.startswith("-"):
+                                switch_model = model_part[1:]
+                            else:
+                                switch_model = model_part
+                                
+                            switch_serial = serial_part
+                    
+                    switches[switch_str] = {
+                        "name": switch_name,
+                        "model": switch_model,
+                        "serial": switch_serial,
+                        "total_ports": 0,
+                        "active_ports": 0,
+                        "port_speeds": {},
+                        "mtu": port.get("mtu", "Unknown"),
+                        "ports": []
+                    }
+                
+                switches[switch_str]["total_ports"] += 1
+                if port.get("state", "").lower() == "up":
+                    switches[switch_str]["active_ports"] += 1
+                
+                speed = port.get("speed") or "unconfigured"
+                switches[switch_str]["port_speeds"][speed] = \
+                    switches[switch_str]["port_speeds"].get(speed, 0) + 1
+                
+                # Store port details
+                switches[switch_str]["ports"].append({
+                    "name": port.get("name", "Unknown"),
+                    "state": port.get("state", "Unknown"),
+                    "speed": port.get("speed", "Unknown"),
+                    "mtu": port.get("mtu", "Unknown")
+                })
+            
+            switch_list = list(switches.values())
+            
+            inventory_summary = {
+                "switch_count": len(switch_list),
+                "switches": switch_list,
+                "total_ports": sum(s["total_ports"] for s in switch_list),
+                "total_active_ports": sum(s["active_ports"] for s in switch_list)
+            }
+            
+            self.logger.info(f"Processed {inventory_summary['switch_count']} switches with {inventory_summary['total_ports']} total ports")
+            return inventory_summary
+            
+        except Exception as e:
+            self.logger.error(f"Error processing switch inventory: {e}")
+            return {}
+
     def get_all_data(self) -> Dict[str, Any]:
         """
         Collect all available data from the VAST cluster.
@@ -2393,6 +2507,9 @@ class VastApiHandler:
             all_data["customer_integration"] = self.get_customer_integration_info()
             all_data["deployment_timeline"] = self.get_deployment_timeline()
             all_data["future_recommendations"] = self.get_future_recommendations()
+            
+            # Switch/network hardware information
+            all_data["switch_inventory"] = self.get_switch_inventory()
 
             self.logger.info("Comprehensive data collection completed successfully")
             return all_data

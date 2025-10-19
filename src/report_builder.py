@@ -230,6 +230,10 @@ class VastReportBuilder:
                 self._create_comprehensive_network_configuration(processed_data)
             )
             story.append(PageBreak())
+            
+            # Add switch configuration section
+            story.extend(self._create_switch_configuration(processed_data))
+            story.append(PageBreak())
 
             # Add logical network diagram (Page 8)
             story.extend(self._create_logical_network_diagram(processed_data))
@@ -349,7 +353,23 @@ class VastReportBuilder:
                 if dbox_hardware_types:
                     hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
 
-                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}"
+                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
+            
+            # Switch Hardware (from switch inventory)
+            switches = hardware_inventory.get("switches", [])
+            if switches:
+                switch_models = set()
+                switch_count = len(switches)
+                
+                for switch in switches:
+                    model = switch.get("model", "Unknown")
+                    if model and model != "Unknown":
+                        switch_models.add(model)
+                
+                if switch_models:
+                    hardware_text += f"<b>Switch Hardware:</b> {', '.join(sorted(switch_models))}<br/>"
+                
+                hardware_text += f"<b>Switch Quantity:</b> {switch_count}"
 
             if hardware_text:
                 # Create centered hardware information
@@ -481,7 +501,23 @@ class VastReportBuilder:
         dnodes = len(hardware.get("dnodes", []))
         cboxes = len(hardware.get("cboxes", []))
         dboxes = len(hardware.get("dboxes", []))
-        switches = len(hardware.get("switches", []))
+        switches_list = hardware.get("switches", [])
+        total_switches = len(switches_list)
+        
+        # Calculate leaf and spine switches
+        # Logic: If 2 switches = 2 leaf, if 4 = 2 leaf + 2 spine, if >4 = 2 spine + rest are leaf
+        if total_switches == 2:
+            leaf_switches = 2
+            spine_switches = 0
+        elif total_switches == 4:
+            leaf_switches = 2
+            spine_switches = 2
+        elif total_switches > 4:
+            spine_switches = 2
+            leaf_switches = total_switches - 2
+        else:
+            leaf_switches = total_switches
+            spine_switches = 0
 
         hardware_overview_data = [
             ["CBoxes", str(cboxes)],
@@ -490,9 +526,9 @@ class VastReportBuilder:
             ["DBoxes", str(dboxes)],
             ["DNodes", str(dnodes)],
             ["", ""],  # Empty line
-            ["Switches", str(switches)],
-            ["Leaf", "0"],  # Placeholder for Leaf switches
-            ["Spine", "0"],  # Placeholder for Spine switches
+            ["Switches", str(total_switches)],
+            ["Leaf", str(leaf_switches)],
+            ["Spine", str(spine_switches)],
         ]
 
         # Create hardware overview table with same style as Cluster Information
@@ -604,6 +640,51 @@ class VastReportBuilder:
         # Create table with VAST styling
         return self.brand_compliance.create_vast_hardware_table_with_pagination(
             table_data, "DBox Inventory (Data)", headers
+        )
+
+    def _create_switch_inventory_table(self, switches: List[Dict[str, Any]]) -> List[Any]:
+        """
+        Create Switch Inventory table using data from the switch inventory API.
+
+        Args:
+            switches: Switch data from switch inventory
+
+        Returns:
+            List[Any]: Table elements
+        """
+        if not switches:
+            return []
+
+        # Prepare table data
+        table_data = []
+        headers = ["Switch", "Model", "Serial Number", "Status"]
+
+        for switch in switches:
+            switch_name = switch.get("name", "Unknown")
+            model = switch.get("model", "Unknown")
+            serial = switch.get("serial", "Unknown")
+            
+            # Status based on active ports vs total ports
+            active_ports = switch.get("active_ports", 0)
+            total_ports = switch.get("total_ports", 0)
+            
+            if active_ports == total_ports and total_ports > 0:
+                status = "HEALTHY"
+            elif active_ports > 0:
+                status = "PARTIAL"
+            else:
+                status = "DOWN"
+            
+            # Create row data
+            row = [switch_name, model, serial, status]
+            table_data.append(row)
+
+        # Sort by switch name for consistent ordering
+        table_data.sort(key=lambda x: x[0])
+
+        # Create table with VAST styling
+        return self.brand_compliance.create_vast_hardware_table_with_pagination(
+            table_data, "Switch Inventory", headers
         )
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
@@ -915,6 +996,16 @@ class VastReportBuilder:
 
             # Add page break if we have many DBoxes to prevent layout issues
             if len(dboxes) > 10:  # Threshold for large inventories
+                content.append(PageBreak())
+        
+        # Switch Inventory table with VAST styling
+        switches = hardware.get("switches", [])
+        if switches:
+            switch_elements = self._create_switch_inventory_table(switches)
+            content.extend(switch_elements)
+            
+            # Add page break if we have many switches to prevent layout issues
+            if len(switches) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
 
         # Add Physical Rack Layout - force to start at top of Page 6
@@ -2040,6 +2131,103 @@ class VastReportBuilder:
                 f"Network diagram not found at {diagram_path}, " "using placeholder"
             )
 
+        return content
+
+    def _create_switch_configuration(self, data: Dict[str, Any]) -> List[Any]:
+        """Create switch configuration section with port details."""
+        content = []
+        
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Switch Configuration", level=1
+        )
+        content.extend(heading_elements)
+        
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+        
+        content.append(
+            Paragraph(
+                "The Switch Configuration section provides detailed information about the network switches that form the fabric interconnecting the VAST cluster nodes. This section documents switch hardware specifications, port configurations, operational status, and connectivity details. Understanding the switch topology is critical for network troubleshooting, capacity planning, and validating proper network segmentation. The port-level details enable network administrators to trace physical connectivity, identify unused ports, and plan for cluster expansion.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+        
+        # Get switch data
+        hardware = data.get("hardware_inventory", {})
+        switches = hardware.get("switches", [])
+        
+        if not switches:
+            content.append(Paragraph("No switch data available", styles["Normal"]))
+            return content
+        
+        # For each switch, create a detailed port configuration table
+        for switch in switches:
+            switch_name = switch.get("name", "Unknown")
+            model = switch.get("model", "Unknown")
+            serial = switch.get("serial", "Unknown")
+            total_ports = switch.get("total_ports", 0)
+            active_ports = switch.get("active_ports", 0)
+            mtu = switch.get("mtu", "Unknown")
+            port_speeds = switch.get("port_speeds", {})
+            ports = switch.get("ports", [])
+            
+            # Switch header info
+            switch_info_data = [
+                ["Switch Name", switch_name],
+                ["Model", model],
+                ["Serial Number", serial],
+                ["Total Ports", str(total_ports)],
+                ["Active Ports", str(active_ports)],
+                ["MTU", mtu],
+            ]
+            
+            # Create switch info table
+            switch_info_elements = self._create_cluster_info_table(
+                switch_info_data, f"{switch_name} Configuration"
+            )
+            content.extend(switch_info_elements)
+            content.append(Spacer(1, 12))
+            
+            # Port speed distribution
+            if port_speeds:
+                speed_info = ", ".join([f"{speed}: {count} ports" for speed, count in sorted(port_speeds.items())])
+                content.append(
+                    Paragraph(f"<b>Port Speed Distribution:</b> {speed_info}", styles["Normal"])
+                )
+                content.append(Spacer(1, 8))
+            
+            # Create detailed port table
+            if ports:
+                port_table_data = []
+                headers = ["Port", "State", "Speed", "MTU"]
+                
+                for port in ports:
+                    port_name = port.get("name", "Unknown")
+                    state = port.get("state", "Unknown")
+                    speed = port.get("speed") or "Unconfigured"
+                    port_mtu = port.get("mtu", "Unknown")
+                    
+                    port_table_data.append([port_name, state, speed, port_mtu])
+                
+                # Create port table with VAST styling
+                port_table_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    port_table_data, f"{switch_name} Ports", headers
+                )
+                content.extend(port_table_elements)
+                content.append(Spacer(1, 12))
+        
         return content
 
     def _create_logical_configuration(self, data: Dict[str, Any]) -> List[Any]:
