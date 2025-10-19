@@ -1,8 +1,8 @@
 # Documentation Validation & Corrections
 
-**Date**: October 18, 2025  
-**Branch**: `develop`  
-**Status**: ✅ Validated and Corrected  
+**Date**: October 18, 2025
+**Branch**: `develop`
+**Status**: ✅ Validated and Corrected
 
 ---
 
@@ -84,7 +84,7 @@ Cross-reference all documentation to ensure:
 https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-mac.sh
 → https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/docs/deployment/install-mac.sh
 
-# Line 75 - Windows install script  
+# Line 75 - Windows install script
 https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-windows.ps1
 → https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/docs/deployment/install-windows.ps1
 
@@ -271,7 +271,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
    ```bash
    # Before
    sudo cp config/logrotate.conf /etc/logrotate.d/vast-reporter
-   
+
    # After
    sudo cp config/logrotate.conf /etc/logrotate.d/vast-asbuilt-reporter
    ```
@@ -280,7 +280,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
    ```yaml
    # Before
    file_path: "/var/log/vast-reporter/vast_report_generator.log"
-   
+
    # After
    file_path: "/var/log/vast-asbuilt-reporter/vast_report_generator.log"
    ```
@@ -290,7 +290,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
    # Before
    cd ~/vast-reporter
    git pull origin develop
-   
+
    # After
    cd ~/vast-asbuilt-reporter
    git pull origin main
@@ -376,7 +376,6 @@ All documentation now accurately reflects the actual installation process and di
 
 ---
 
-**Validated**: October 18, 2025  
-**Branch**: `develop`  
+**Validated**: October 18, 2025
+**Branch**: `develop`
 **Status**: ✅ Ready for use
-

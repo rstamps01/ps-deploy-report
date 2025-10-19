@@ -199,9 +199,9 @@ class EnhancedReportBuilder:
             cluster_version=cluster_summary.get("version", "Unknown"),
             generation_timestamp=datetime.now(),
             api_version=metadata_info.get("api_version", "v7"),
-            enhanced_features_enabled=(metadata_info.get("enhanced_features") or {}).get(
-                "rack_height_supported", False
-            ),
+            enhanced_features_enabled=(
+                metadata_info.get("enhanced_features") or {}
+            ).get("rack_height_supported", False),
             data_completeness=metadata_info.get("overall_completeness", 0.0),
         )
 
@@ -331,7 +331,9 @@ class EnhancedReportBuilder:
     ) -> NetworkConfiguration:
         """Extract network configuration from processed data."""
         sections = processed_data.get("sections") or {}
-        network_section = (sections.get("network_configuration") or {}).get("data") or {}
+        network_section = (sections.get("network_configuration") or {}).get(
+            "data"
+        ) or {}
 
         return NetworkConfiguration(
             dns_servers=network_section.get("dns", {}).get(
@@ -366,7 +368,9 @@ class EnhancedReportBuilder:
         sections = processed_data.get("sections") or {}
 
         # Extract security configuration
-        security_section = (sections.get("security_configuration") or {}).get("data") or {}
+        security_section = (sections.get("security_configuration") or {}).get(
+            "data"
+        ) or {}
         ad_config = security_section.get("active_directory") or {}
         ldap_config = security_section.get("ldap") or {}
 

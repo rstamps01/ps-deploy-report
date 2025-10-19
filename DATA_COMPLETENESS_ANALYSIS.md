@@ -1,8 +1,8 @@
 # Data Completeness Analysis: Missing 15.9%
 
-**Date**: October 18, 2025  
-**Current Completeness**: 84.1%  
-**Missing Data**: 15.9%  
+**Date**: October 18, 2025
+**Current Completeness**: 84.1%
+**Missing Data**: 15.9%
 **Status**: Analysis Complete
 
 ---
@@ -52,8 +52,8 @@ Section Completeness = (Available Fields / Total Fields) × 100%
 These sections are fully populated from VAST API data:
 
 #### 1. **Network Configuration** (~100%)
-**Status**: Complete  
-**Data Source**: `/api/v7/dns/`, `/api/v7/ntp/`, `/api/v7/vippools/`  
+**Status**: Complete
+**Data Source**: `/api/v7/dns/`, `/api/v7/ntp/`, `/api/v7/vippools/`
 **Fields Collected**:
 - DNS servers
 - NTP servers
@@ -61,8 +61,8 @@ These sections are fully populated from VAST API data:
 - Management network
 
 #### 2. **Cluster Network Configuration** (~100%)
-**Status**: Complete  
-**Data Source**: `/api/v7/clusters/`  
+**Status**: Complete
+**Data Source**: `/api/v7/clusters/`
 **Fields Collected**:
 - Use NIC label as cnode name
 - NIC failover mode
@@ -70,8 +70,8 @@ These sections are fully populated from VAST API data:
 - Remote replication IP limit
 
 #### 3. **CNodes Network Configuration** (~100%)
-**Status**: Complete  
-**Data Source**: `/api/v7/vms/1/network_settings/`  
+**Status**: Complete
+**Data Source**: `/api/v7/vms/1/network_settings/`
 **Fields Collected** (per CNode):
 - ID, Hostname, Management IP
 - IPMI address
@@ -80,8 +80,8 @@ These sections are fully populated from VAST API data:
 - Box vendor
 
 #### 4. **DNodes Network Configuration** (~100%)
-**Status**: Complete  
-**Data Source**: `/api/v7/vms/1/network_settings/`  
+**Status**: Complete
+**Data Source**: `/api/v7/vms/1/network_settings/`
 **Fields Collected** (per DNode):
 - ID, Hostname, Management IP
 - IPMI address
@@ -89,8 +89,8 @@ These sections are fully populated from VAST API data:
 - Gateway
 
 #### 5. **Logical Configuration** (~95%)
-**Status**: Nearly Complete  
-**Data Source**: Multiple endpoints  
+**Status**: Nearly Complete
+**Data Source**: Multiple endpoints
 **Fields Collected**:
 - VIP Pools (count)
 - Tenants (count)
@@ -99,16 +99,16 @@ These sections are fully populated from VAST API data:
 - Protection Policies (count)
 
 #### 6. **Security Configuration** (~90%)
-**Status**: Mostly Complete  
-**Data Source**: `/api/v7/activedirectory/`, `/api/v7/ldap/`, `/api/v7/nis/`  
+**Status**: Mostly Complete
+**Data Source**: `/api/v7/activedirectory/`, `/api/v7/ldap/`, `/api/v7/nis/`
 **Fields Collected**:
 - Active Directory config
 - LDAP config
 - NIS config (if configured)
 
 #### 7. **Data Protection Configuration** (~90%)
-**Status**: Mostly Complete  
-**Data Source**: `/api/v7/protectionpolicies/`  
+**Status**: Mostly Complete
+**Data Source**: `/api/v7/protectionpolicies/`
 **Fields Collected**:
 - Protection policies
 - Snapshot schedules
@@ -125,9 +125,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 8. **Performance Metrics** (~40% complete)
-**Status**: Partial - Missing Real-Time Data  
-**Target Fields**: 8 fields  
-**Available**: ~3 fields  
+**Status**: Partial - Missing Real-Time Data
+**Target Fields**: 8 fields
+**Available**: ~3 fields
 **Missing**: ~5 fields (62.5%)
 
 **Available Data** (from cluster info):
@@ -153,9 +153,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 9. **Licensing Info** (~28% complete)
-**Status**: Mostly Missing  
-**Target Fields**: 7 fields  
-**Available**: ~2 fields  
+**Status**: Mostly Missing
+**Target Fields**: 7 fields
+**Available**: ~2 fields
 **Missing**: ~5 fields (71%)
 
 **Available Data**:
@@ -181,9 +181,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 10. **Monitoring Configuration** (~33% complete)
-**Status**: Partial  
-**Target Fields**: 3 fields  
-**Available**: ~1 field  
+**Status**: Partial
+**Target Fields**: 3 fields
+**Available**: ~1 field
 **Missing**: ~2 fields (67%)
 
 **Available Data**:
@@ -205,9 +205,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 11. **Customer Integration** (~17% complete)
-**Status**: Mostly Mock Data  
-**Target Fields**: 6 fields  
-**Available**: ~1 field  
+**Status**: Mostly Mock Data
+**Target Fields**: 6 fields
+**Available**: ~1 field
 **Missing**: ~5 fields (83%)
 
 **Available Data**:
@@ -233,9 +233,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 12. **Deployment Timeline** (~0% complete)
-**Status**: Mock Data Only  
-**Target Fields**: 3 fields  
-**Available**: 0 fields (real data)  
+**Status**: Mock Data Only
+**Target Fields**: 3 fields
+**Available**: 0 fields (real data)
 **Missing**: 3 fields (100%)
 
 **All Fields Missing** (hardcoded mock data):
@@ -267,9 +267,9 @@ These sections contribute to the missing 15.9%:
 ---
 
 #### 13. **Future Recommendations** (~0% complete)
-**Status**: Mock Data Only  
-**Target Fields**: 3 fields  
-**Available**: 0 fields (real data)  
+**Status**: Mock Data Only
+**Target Fields**: 3 fields
+**Available**: 0 fields (real data)
 **Missing**: 3 fields (100%)
 
 **All Fields Missing** (hardcoded mock data):
@@ -483,7 +483,7 @@ Despite the 15.9% missing, the report **excels** in core areas:
 - The current 84.1% provides a **comprehensive as-built report**
 - Most missing data is external to the VAST cluster itself
 
-**Recommendation**: 
+**Recommendation**:
 - Accept 84-87% as realistic for automated collection
 - Add manual input option for customer-specific fields
 - Research additional VAST API endpoints for performance/licensing
@@ -491,6 +491,5 @@ Despite the 15.9% missing, the report **excels** in core areas:
 
 ---
 
-**Status**: ✅ **84.1% is actually quite good for fully automated collection!**  
+**Status**: ✅ **84.1% is actually quite good for fully automated collection!**
 **Next Steps**: Consider quick wins to reach ~87%, then evaluate if additional API endpoints exist.
-
