@@ -554,139 +554,105 @@ class VastReportBuilder:
 
         return content
 
-    def _create_cbox_inventory_table(
-        self, cboxes: Dict[str, Any], cnodes: List[Dict[str, Any]]
+    def _create_consolidated_inventory_table(
+        self,
+        cboxes: Dict[str, Any],
+        cnodes: List[Dict[str, Any]],
+        dboxes: Dict[str, Any],
+        switches: List[Dict[str, Any]]
     ) -> List[Any]:
         """
-        Create CBox Inventory table using data from both cboxes and cnodes APIs.
+        Create consolidated hardware inventory table with CBoxes, DBoxes, and Switches.
 
         Args:
             cboxes: CBox data from /api/v1/cboxes/
             cnodes: CNode data from /api/v7/cnodes/
-
-        Returns:
-            List[Any]: Table elements
-        """
-        if not cboxes or not cnodes:
-            return []
-
-        # Create a mapping of cbox_id to box_vendor and status from cnodes
-        cbox_vendor_map = {}
-        cbox_status_map = {}
-        for cnode in cnodes:
-            cbox_id = cnode.get("cbox_id")
-            box_vendor = cnode.get("box_vendor", "Unknown")
-            status = cnode.get("status", "Unknown")
-            if cbox_id:
-                cbox_vendor_map[cbox_id] = box_vendor
-                cbox_status_map[cbox_id] = status
-
-        # Prepare table data
-        table_data = []
-        headers = ["ID", "Model", "Name/Serial Number", "Status", "Position"]
-
-        for cbox_name, cbox_data in cboxes.items():
-            cbox_id = cbox_data.get("id", "Unknown")
-            name = cbox_data.get("name", "Unknown")
-            rack_unit = cbox_data.get("rack_unit", "Unknown")
-
-            # Get model and status from cnodes data using cbox_id
-            model = cbox_vendor_map.get(cbox_id, "Unknown")
-            status = cbox_status_map.get(cbox_id, "Unknown")
-
-            # Create row data
-            row = [str(cbox_id), model, name, status, rack_unit]
-            table_data.append(row)
-
-        # Sort by ID for consistent ordering
-        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
-
-        # Create table with VAST styling
-        return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "CBox Inventory (Compute)", headers
-        )
-
-    def _create_dbox_inventory_table(self, dboxes: Dict[str, Any]) -> List[Any]:
-        """
-        Create DBox Inventory table using data from the dboxes API.
-
-        Args:
             dboxes: DBox data from /api/v7/dboxes/
-
-        Returns:
-            List[Any]: Table elements
-        """
-        if not dboxes:
-            return []
-
-        # Prepare table data
-        table_data = []
-        headers = ["ID", "Model", "Name/SN", "Status", "Position"]
-
-        for dbox_name, dbox_data in dboxes.items():
-            dbox_id = dbox_data.get("id", "Unknown")
-            hardware_type = dbox_data.get("hardware_type", "Unknown")
-            name = dbox_data.get("name", "Unknown")
-            state = dbox_data.get("state", "Unknown")
-            rack_unit = dbox_data.get("rack_unit", "Unknown")
-
-            # Create row data
-            row = [str(dbox_id), hardware_type, name, state, rack_unit]
-            table_data.append(row)
-
-        # Sort by ID for consistent ordering
-        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
-
-        # Create table with VAST styling
-        return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "DBox Inventory (Data)", headers
-        )
-
-    def _create_switch_inventory_table(
-        self, switches: List[Dict[str, Any]]
-    ) -> List[Any]:
-        """
-        Create Switch Inventory table using data from the switch inventory API.
-
-        Args:
             switches: Switch data from switch inventory
 
         Returns:
             List[Any]: Table elements
         """
-        if not switches:
-            return []
-
         # Prepare table data
         table_data = []
-        headers = ["Switch", "Model", "Serial Number", "Status"]
+        headers = ["ID", "Model", "Name/Serial Number", "Status", "Position"]
 
-        for switch in switches:
-            switch_name = switch.get("name", "Unknown")
-            model = switch.get("model", "Unknown")
-            serial = switch.get("serial", "Unknown")
+        # Add CBoxes
+        if cboxes and cnodes:
+            # Create a mapping of cbox_id to box_vendor and status from cnodes
+            cbox_vendor_map = {}
+            cbox_status_map = {}
+            for cnode in cnodes:
+                cbox_id = cnode.get("cbox_id")
+                box_vendor = cnode.get("box_vendor", "Unknown")
+                status = cnode.get("status", "Unknown")
+                if cbox_id:
+                    cbox_vendor_map[cbox_id] = box_vendor
+                    cbox_status_map[cbox_id] = status
 
-            # Status based on active ports vs total ports
-            active_ports = switch.get("active_ports", 0)
-            total_ports = switch.get("total_ports", 0)
+            cbox_rows = []
+            for cbox_name, cbox_data in cboxes.items():
+                cbox_id = cbox_data.get("id", "Unknown")
+                name = cbox_data.get("name", "Unknown")
+                rack_unit = cbox_data.get("rack_unit", "Unknown")
 
-            if active_ports == total_ports and total_ports > 0:
-                status = "HEALTHY"
-            elif active_ports > 0:
-                status = "PARTIAL"
-            else:
-                status = "DOWN"
+                # Get model and status from cnodes data using cbox_id
+                model = cbox_vendor_map.get(cbox_id, "Unknown")
+                status = cbox_status_map.get(cbox_id, "Unknown")
 
-            # Create row data
-            row = [switch_name, model, serial, status]
-            table_data.append(row)
+                # Create row data with CB- prefix
+                row = [f"CB-{cbox_id}", model, name, status, rack_unit]
+                cbox_rows.append((cbox_id, row))
 
-        # Sort by switch name for consistent ordering
-        table_data.sort(key=lambda x: x[0])
+            # Sort by numeric ID
+            cbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+            table_data.extend([row for _, row in cbox_rows])
+
+        # Add DBoxes
+        if dboxes:
+            dbox_rows = []
+            for dbox_name, dbox_data in dboxes.items():
+                dbox_id = dbox_data.get("id", "Unknown")
+                hardware_type = dbox_data.get("hardware_type", "Unknown")
+                name = dbox_data.get("name", "Unknown")
+                state = dbox_data.get("state", "Unknown")
+                rack_unit = dbox_data.get("rack_unit", "Unknown")
+
+                # Create row data with DB- prefix
+                row = [f"DB-{dbox_id}", hardware_type, name, state, rack_unit]
+                dbox_rows.append((dbox_id, row))
+
+            # Sort by numeric ID
+            dbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+            table_data.extend([row for _, row in dbox_rows])
+
+        # Add Switches
+        if switches:
+            switch_rows = []
+            for switch in switches:
+                switch_name = switch.get("name", "Unknown")
+                hostname = switch.get("hostname", switch_name)
+                model = switch.get("model", "Unknown")
+                serial = switch.get("serial", "Unknown")
+                state = switch.get("state", "Unknown")
+
+                # Position is blank for switches (to be added later)
+                position = ""
+
+                # Create row data with SW- prefix using hostname
+                row = [f"SW-{hostname}", model, serial, state, position]
+                switch_rows.append((hostname, row))
+
+            # Sort by hostname
+            switch_rows.sort(key=lambda x: x[0])
+            table_data.extend([row for _, row in switch_rows])
+
+        if not table_data:
+            return []
 
         # Create table with VAST styling
         return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "Switch Inventory", headers
+            table_data, "Hardware Inventory", headers
         )
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
@@ -979,35 +945,21 @@ class VastReportBuilder:
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
 
-        # CBox Inventory (Compute) table with VAST styling
+        # Consolidated Hardware Inventory table with VAST styling
         cboxes = hardware.get("cboxes", {})
         cnodes = hardware.get("cnodes", [])
-        if cboxes and cnodes:
-            cbox_elements = self._create_cbox_inventory_table(cboxes, cnodes)
-            content.extend(cbox_elements)
-
-            # Add page break if we have many CBoxes to prevent layout issues
-            if len(cboxes) > 10:  # Threshold for large inventories
-                content.append(PageBreak())
-
-        # DBox Inventory (Data) table with VAST styling
         dboxes = hardware.get("dboxes", {})
-        if dboxes:
-            dbox_elements = self._create_dbox_inventory_table(dboxes)
-            content.extend(dbox_elements)
-
-            # Add page break if we have many DBoxes to prevent layout issues
-            if len(dboxes) > 10:  # Threshold for large inventories
-                content.append(PageBreak())
-
-        # Switch Inventory table with VAST styling
         switches = hardware.get("switches", [])
-        if switches:
-            switch_elements = self._create_switch_inventory_table(switches)
-            content.extend(switch_elements)
 
-            # Add page break if we have many switches to prevent layout issues
-            if len(switches) > 10:  # Threshold for large inventories
+        if cboxes or dboxes or switches:
+            inventory_elements = self._create_consolidated_inventory_table(
+                cboxes, cnodes, dboxes, switches
+            )
+            content.extend(inventory_elements)
+
+            # Add page break if we have many devices to prevent layout issues
+            total_devices = len(cboxes) + len(dboxes) + len(switches)
+            if total_devices > 15:  # Threshold for large inventories
                 content.append(PageBreak())
 
         # Add Physical Rack Layout - force to start at top of Page 6
