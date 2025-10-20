@@ -2179,30 +2179,52 @@ class VastReportBuilder:
             # Add page break before each switch (except the first)
             if switch_num > 1:
                 content.append(PageBreak())
-            
+
             # Add "Switch # Details" heading
             switch_details_heading = self.brand_compliance.create_vast_section_heading(
                 f"Switch {switch_num} Details", level=2
             )
             content.extend(switch_details_heading)
-            
+
             switch_name = switch.get("name", "Unknown")
+            hostname = switch.get("hostname", "Unknown")
             model = switch.get("model", "Unknown")
             serial = switch.get("serial", "Unknown")
+            firmware_version = switch.get("firmware_version", "Unknown")
+            mgmt_ip = switch.get("mgmt_ip", "Unknown")
+            switch_type = switch.get("switch_type", "Unknown")
+            state = switch.get("state", "Unknown")
+            configured = switch.get("configured", False)
+            role = switch.get("role", "Unknown")
             total_ports = switch.get("total_ports", 0)
             active_ports = switch.get("active_ports", 0)
             mtu = switch.get("mtu", "Unknown")
             port_speeds = switch.get("port_speeds", {})
             ports = switch.get("ports", [])
 
+            # Capitalize switch type for display
+            if switch_type.lower() == "cumulus":
+                switch_type_display = "Cumulus Linux"
+            else:
+                switch_type_display = switch_type
+
+            # Format configuration status
+            config_status = "Configured" if configured else "Not Configured"
+
             # Switch header info
             switch_info_data = [
-                ["Switch Name", switch_name],
+                ["Hostname", hostname],
                 ["Model", model],
                 ["Serial Number", serial],
+                ["Firmware Version", firmware_version],
+                ["Management IP", mgmt_ip],
+                ["Switch Type", switch_type_display],
+                ["State", state],
+                ["Configuration Status", config_status],
+                ["Role", role if role else "Not Assigned"],
                 ["Total Ports", str(total_ports)],
                 ["Active Ports", str(active_ports)],
-                ["MTU", mtu],
+                ["Port MTU", mtu],
             ]
 
             # Create switch info table

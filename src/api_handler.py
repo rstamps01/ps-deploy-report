@@ -2245,6 +2245,43 @@ class VastApiHandler:
             )
             return {}
 
+    def get_switches_detail(self) -> List[Dict[str, Any]]:
+        """
+        Get detailed switch information from the VAST cluster.
+
+        Returns:
+            List[Dict[str, Any]]: List of switches with detailed metadata
+        """
+        try:
+            self.logger.info("Collecting detailed switch information")
+            
+            # The switches endpoint is only available in v1 API
+            # Construct the full v1 API URL
+            base_url = f"https://{self.cluster_ip}/api/v1"
+            switches_url = f"{base_url}/switches/"
+            
+            response = self.session.get(
+                switches_url,
+                verify=False,
+                timeout=self.timeout
+            )
+            
+            if response.status_code == 200:
+                switches_data = response.json()
+                if switches_data:
+                    self.logger.info(f"Retrieved {len(switches_data)} switch details")
+                    return switches_data
+                else:
+                    self.logger.warning("No switch detail data available")
+                    return []
+            else:
+                self.logger.warning(f"Failed to retrieve switches: HTTP {response.status_code}")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"Error collecting switch details: {e}")
+            return []
+
     def get_switch_ports(self) -> List[Dict[str, Any]]:
         """
         Get switch port information from the VAST cluster.
@@ -2284,55 +2321,33 @@ class VastApiHandler:
 
     def get_switch_inventory(self) -> Dict[str, Any]:
         """
-        Get aggregated switch inventory from port data.
+        Get comprehensive switch inventory by merging data from switches and ports endpoints.
 
         Returns:
-            Dict[str, Any]: Switch inventory summary with parsed switch details
+            Dict[str, Any]: Switch inventory summary with detailed metadata and port information
         """
         try:
-            self.logger.info("Processing switch inventory from port data")
+            self.logger.info("Processing comprehensive switch inventory")
+            
+            # Get detailed switch information
+            switches_detail = self.get_switches_detail()
+            
+            # Get port information
             ports_data = self.get_switch_ports()
             
-            if not ports_data:
+            if not ports_data and not switches_detail:
+                self.logger.warning("No switch or port data available")
                 return {}
             
-            # Aggregate by switch
-            switches = {}
+            # Aggregate ports by switch
+            port_aggregation = {}
             for port in ports_data:
                 switch_str = port.get("switch", "")
                 if not switch_str or switch_str == "null":
                     continue
                     
-                if switch_str not in switches:
-                    # Parse switch string: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
-                    switch_name = "Unknown"
-                    switch_model = "Unknown"
-                    switch_serial = "Unknown"
-                    
-                    if ":" in switch_str:
-                        name_part = switch_str.split(":")[0].strip()
-                        rest = switch_str.split(":", 1)[1].strip()
-                        switch_name = name_part
-                        
-                        # Extract model and serial from rest
-                        if "(" in rest and ")" in rest:
-                            model_part = rest.split("(")[0].strip()
-                            serial_part = rest.split("(")[1].split(")")[0].strip()
-                            
-                            # Remove "switch-" prefix if present
-                            if model_part.startswith("switch-"):
-                                switch_model = model_part.replace("switch-", "", 1)
-                            elif model_part.startswith("-"):
-                                switch_model = model_part[1:]
-                            else:
-                                switch_model = model_part
-                                
-                            switch_serial = serial_part
-                    
-                    switches[switch_str] = {
-                        "name": switch_name,
-                        "model": switch_model,
-                        "serial": switch_serial,
+                if switch_str not in port_aggregation:
+                    port_aggregation[switch_str] = {
                         "total_ports": 0,
                         "active_ports": 0,
                         "port_speeds": {},
@@ -2340,32 +2355,66 @@ class VastApiHandler:
                         "ports": []
                     }
                 
-                switches[switch_str]["total_ports"] += 1
+                port_aggregation[switch_str]["total_ports"] += 1
                 if port.get("state", "").lower() == "up":
-                    switches[switch_str]["active_ports"] += 1
+                    port_aggregation[switch_str]["active_ports"] += 1
                 
                 speed = port.get("speed") or "unconfigured"
-                switches[switch_str]["port_speeds"][speed] = \
-                    switches[switch_str]["port_speeds"].get(speed, 0) + 1
+                port_aggregation[switch_str]["port_speeds"][speed] = \
+                    port_aggregation[switch_str]["port_speeds"].get(speed, 0) + 1
                 
                 # Store port details
-                switches[switch_str]["ports"].append({
+                port_aggregation[switch_str]["ports"].append({
                     "name": port.get("name", "Unknown"),
                     "state": port.get("state", "Unknown"),
                     "speed": port.get("speed", "Unknown"),
                     "mtu": port.get("mtu", "Unknown")
                 })
             
-            switch_list = list(switches.values())
+            # Build comprehensive switch list by merging detailed info with port data
+            switches = []
+            for switch_detail in switches_detail:
+                hostname = switch_detail.get("hostname", "Unknown")
+                serial = switch_detail.get("sn", "Unknown")
+                
+                # Find matching port aggregation by hostname or serial
+                port_data = None
+                for switch_str, port_info in port_aggregation.items():
+                    if hostname in switch_str or serial in switch_str:
+                        port_data = port_info
+                        break
+                
+                # Build comprehensive switch entry
+                switch_entry = {
+                    "name": hostname,
+                    "hostname": hostname,
+                    "model": switch_detail.get("model", "Unknown"),
+                    "serial": serial,
+                    "firmware_version": switch_detail.get("fw_version", "Unknown"),
+                    "mgmt_ip": switch_detail.get("mgmt_ip", "Unknown"),
+                    "state": switch_detail.get("state", "Unknown"),
+                    "switch_type": switch_detail.get("switch_type", "Unknown"),
+                    "configured": switch_detail.get("configured", False),
+                    "role": switch_detail.get("role", "Unknown"),
+                    "total_ports": port_data["total_ports"] if port_data else 0,
+                    "active_ports": port_data["active_ports"] if port_data else 0,
+                    "port_speeds": port_data["port_speeds"] if port_data else {},
+                    "mtu": port_data["mtu"] if port_data else "Unknown",
+                    "ports": port_data["ports"] if port_data else []
+                }
+                switches.append(switch_entry)
             
             inventory_summary = {
-                "switch_count": len(switch_list),
-                "switches": switch_list,
-                "total_ports": sum(s["total_ports"] for s in switch_list),
-                "total_active_ports": sum(s["active_ports"] for s in switch_list)
+                "switch_count": len(switches),
+                "switches": switches,
+                "total_ports": sum(s["total_ports"] for s in switches),
+                "total_active_ports": sum(s["active_ports"] for s in switches)
             }
             
-            self.logger.info(f"Processed {inventory_summary['switch_count']} switches with {inventory_summary['total_ports']} total ports")
+            self.logger.info(
+                f"Processed {inventory_summary['switch_count']} switches with enhanced metadata "
+                f"and {inventory_summary['total_ports']} total ports"
+            )
             return inventory_summary
             
         except Exception as e:
