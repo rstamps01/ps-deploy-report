@@ -341,7 +341,8 @@ class VastBrandCompliance:
         num_cols = len(table_data[0]) if table_data else 1
         col_width = page_width / num_cols if num_cols > 0 else page_width
 
-        table = Table(table_data, colWidths=[col_width] * num_cols)
+        # Create table with repeat headers on page breaks
+        table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
 
         # Apply VAST brand table styling
         table_style = TableStyle(
@@ -520,8 +521,8 @@ class VastBrandCompliance:
                         processed_row.append(str(cell))
                 processed_table_data.append(processed_row)
 
-        # Create table with calculated column widths
-        table = Table(processed_table_data, colWidths=col_widths)
+        # Create table with calculated column widths and repeat headers on page breaks
+        table = Table(processed_table_data, colWidths=col_widths, repeatRows=1)
 
         # Apply VAST brand table styling with text wrapping - match create_vast_table styling
         table_style = TableStyle(
