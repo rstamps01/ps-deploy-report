@@ -122,6 +122,7 @@ class VastReportBuilder:
         """
         self.logger = get_logger(__name__)
         self.config = config or ReportConfig()
+        self.switch_positions = {}  # Will store calculated switch U positions
 
         # Check for required libraries
         if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
@@ -636,8 +637,11 @@ class VastReportBuilder:
                 serial = switch.get("serial", "Unknown")
                 state = switch.get("state", "Unknown")
 
-                # Position is blank for switches (to be added later)
+                # Get calculated position from rack diagram (if available)
                 position = ""
+                if hasattr(self, 'switch_positions') and switch_num in self.switch_positions:
+                    u_pos = self.switch_positions[switch_num]
+                    position = f"U{u_pos}"
 
                 # Create row data with SW- prefix using switch number
                 row = [f"SW-{switch_num}", model, serial, state, position]
@@ -646,9 +650,13 @@ class VastReportBuilder:
             # Sort by hostname before numbering
             switch_rows.sort(key=lambda x: x[0])
             
-            # Re-number switches sequentially after sorting
+            # Re-number switches sequentially after sorting and update positions
             for idx, (hostname, row) in enumerate(switch_rows, start=1):
                 row[0] = f"SW-{idx}"
+                # Update position if available for this switch number
+                if hasattr(self, 'switch_positions') and idx in self.switch_positions:
+                    u_pos = self.switch_positions[idx]
+                    row[4] = f"U{u_pos}"  # Position is at index 4
             
             table_data.extend([row for _, row in switch_rows])
 
@@ -950,12 +958,57 @@ class VastReportBuilder:
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
 
-        # Consolidated Hardware Inventory table with VAST styling
+        # Calculate switch positions early (before creating inventory table)
+        # This allows us to populate the Position column for switches
         cboxes = hardware.get("cboxes", {})
         cnodes = hardware.get("cnodes", [])
         dboxes = hardware.get("dboxes", {})
         switches = hardware.get("switches", [])
 
+        # Pre-calculate switch positions for rack diagram
+        if switches and len(switches) == 2:
+            # Prepare CBox and DBox data for calculation
+            from rack_diagram import RackDiagram
+            temp_rack_gen = RackDiagram()
+            
+            cboxes_data = []
+            for cbox_name, cbox_data in cboxes.items():
+                cbox_id = cbox_data.get("id")
+                rack_unit = cbox_data.get("rack_unit", "")
+                if rack_unit:
+                    # Get model from cnodes
+                    model = "Unknown"
+                    for cnode in cnodes:
+                        if cnode.get("cbox_id") == cbox_id:
+                            model = cnode.get("box_vendor", "Unknown")
+                            break
+                    cboxes_data.append({
+                        "id": cbox_id,
+                        "model": model,
+                        "rack_unit": rack_unit,
+                        "state": "ACTIVE"
+                    })
+            
+            dboxes_data = []
+            for dbox_name, dbox_data in dboxes.items():
+                rack_unit = dbox_data.get("rack_unit", "")
+                if rack_unit:
+                    dboxes_data.append({
+                        "id": dbox_data.get("id"),
+                        "model": dbox_data.get("hardware_type", "Unknown"),
+                        "rack_unit": rack_unit,
+                        "state": "ACTIVE"
+                    })
+            
+            # Calculate switch positions
+            calculated_positions = temp_rack_gen._calculate_switch_positions(
+                cboxes_data, dboxes_data, len(switches)
+            )
+            if calculated_positions:
+                self.switch_positions = {idx: u_pos for idx, u_pos in enumerate(calculated_positions, start=1)}
+                self.logger.info(f"Pre-calculated switch positions: {self.switch_positions}")
+
+        # Consolidated Hardware Inventory table with VAST styling
         if cboxes or dboxes or switches:
             inventory_elements = self._create_consolidated_inventory_table(
                 cboxes, cnodes, dboxes, switches
@@ -1032,12 +1085,26 @@ class VastReportBuilder:
                     if dbox_data["rack_unit"]:  # Only add if has position
                         dboxes_data.append(dbox_data)
 
+                # Get switch data for rack diagram
+                switches_data = []
+                switches = hardware.get("switches", [])
+                for switch in switches:
+                    switch_data = {
+                        "id": switch.get("name", "Unknown"),  # Use name as ID
+                        "model": switch.get("model", "switch"),
+                        "state": switch.get("state", "ACTIVE"),
+                    }
+                    switches_data.append(switch_data)
+
                 # Create rack diagram
                 if cboxes_data or dboxes_data:
                     rack_gen = RackDiagram()
-                    rack_drawing = rack_gen.generate_rack_diagram(
-                        cboxes_data, dboxes_data
+                    rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
+                        cboxes_data, dboxes_data, switches_data if switches_data else None
                     )
+
+                    # Store switch positions for use in inventory table
+                    self.switch_positions = switch_positions_map
 
                     # Center the rack diagram on the page using a table
                     from reportlab.platypus import Table as RLTable
@@ -1060,8 +1127,9 @@ class VastReportBuilder:
                     )
                     content.append(rack_table)
 
+                    switch_msg = f", {len(switches_data)} Switches" if switches_data else ""
                     self.logger.info(
-                        f"Added rack diagram with {len(cboxes_data)} CBoxes and {len(dboxes_data)} DBoxes"
+                        f"Added rack diagram with {len(cboxes_data)} CBoxes, {len(dboxes_data)} DBoxes{switch_msg}"
                     )
                 else:
                     # Fallback to placeholder if no position data
