@@ -639,7 +639,10 @@ class VastReportBuilder:
 
                 # Get calculated position from rack diagram (if available)
                 position = ""
-                if hasattr(self, 'switch_positions') and switch_num in self.switch_positions:
+                if (
+                    hasattr(self, "switch_positions")
+                    and switch_num in self.switch_positions
+                ):
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
@@ -649,15 +652,15 @@ class VastReportBuilder:
 
             # Sort by hostname before numbering
             switch_rows.sort(key=lambda x: x[0])
-            
+
             # Re-number switches sequentially after sorting and update positions
             for idx, (hostname, row) in enumerate(switch_rows, start=1):
                 row[0] = f"SW-{idx}"
                 # Update position if available for this switch number
-                if hasattr(self, 'switch_positions') and idx in self.switch_positions:
+                if hasattr(self, "switch_positions") and idx in self.switch_positions:
                     u_pos = self.switch_positions[idx]
                     row[4] = f"U{u_pos}"  # Position is at index 4
-            
+
             table_data.extend([row for _, row in switch_rows])
 
         if not table_data:
@@ -969,8 +972,9 @@ class VastReportBuilder:
         if switches and len(switches) == 2:
             # Prepare CBox and DBox data for calculation
             from rack_diagram import RackDiagram
+
             temp_rack_gen = RackDiagram()
-            
+
             cboxes_data = []
             for cbox_name, cbox_data in cboxes.items():
                 cbox_id = cbox_data.get("id")
@@ -982,31 +986,40 @@ class VastReportBuilder:
                         if cnode.get("cbox_id") == cbox_id:
                             model = cnode.get("box_vendor", "Unknown")
                             break
-                    cboxes_data.append({
-                        "id": cbox_id,
-                        "model": model,
-                        "rack_unit": rack_unit,
-                        "state": "ACTIVE"
-                    })
-            
+                    cboxes_data.append(
+                        {
+                            "id": cbox_id,
+                            "model": model,
+                            "rack_unit": rack_unit,
+                            "state": "ACTIVE",
+                        }
+                    )
+
             dboxes_data = []
             for dbox_name, dbox_data in dboxes.items():
                 rack_unit = dbox_data.get("rack_unit", "")
                 if rack_unit:
-                    dboxes_data.append({
-                        "id": dbox_data.get("id"),
-                        "model": dbox_data.get("hardware_type", "Unknown"),
-                        "rack_unit": rack_unit,
-                        "state": "ACTIVE"
-                    })
-            
+                    dboxes_data.append(
+                        {
+                            "id": dbox_data.get("id"),
+                            "model": dbox_data.get("hardware_type", "Unknown"),
+                            "rack_unit": rack_unit,
+                            "state": "ACTIVE",
+                        }
+                    )
+
             # Calculate switch positions
             calculated_positions = temp_rack_gen._calculate_switch_positions(
                 cboxes_data, dboxes_data, len(switches)
             )
             if calculated_positions:
-                self.switch_positions = {idx: u_pos for idx, u_pos in enumerate(calculated_positions, start=1)}
-                self.logger.info(f"Pre-calculated switch positions: {self.switch_positions}")
+                self.switch_positions = {
+                    idx: u_pos
+                    for idx, u_pos in enumerate(calculated_positions, start=1)
+                }
+                self.logger.info(
+                    f"Pre-calculated switch positions: {self.switch_positions}"
+                )
 
         # Consolidated Hardware Inventory table with VAST styling
         if cboxes or dboxes or switches:
@@ -1100,7 +1113,9 @@ class VastReportBuilder:
                 if cboxes_data or dboxes_data:
                     rack_gen = RackDiagram()
                     rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
-                        cboxes_data, dboxes_data, switches_data if switches_data else None
+                        cboxes_data,
+                        dboxes_data,
+                        switches_data if switches_data else None,
                     )
 
                     # Store switch positions for use in inventory table
@@ -1127,7 +1142,9 @@ class VastReportBuilder:
                     )
                     content.append(rack_table)
 
-                    switch_msg = f", {len(switches_data)} Switches" if switches_data else ""
+                    switch_msg = (
+                        f", {len(switches_data)} Switches" if switches_data else ""
+                    )
                     self.logger.info(
                         f"Added rack diagram with {len(cboxes_data)} CBoxes, {len(dboxes_data)} DBoxes{switch_msg}"
                     )
@@ -2258,6 +2275,44 @@ class VastReportBuilder:
             )
             content.extend(switch_info_elements)
             content.append(Spacer(1, 12))
+
+            # Create port speed configuration summary table
+            if ports:
+                # Count ports by speed configuration
+                speed_summary = {}
+                for port in ports:
+                    speed = port.get("speed")
+                    if not speed or speed == "":
+                        speed = "Unconfigured"
+                    
+                    if speed not in speed_summary:
+                        speed_summary[speed] = 0
+                    speed_summary[speed] += 1
+                
+                # Create speed summary table data
+                speed_table_data = []
+                speed_headers = ["Speed", "Port Count"]
+                
+                # Sort by speed (200G, 100G, then others)
+                speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
+                sorted_speeds = sorted(
+                    speed_summary.items(),
+                    key=lambda x: speed_order.get(x[0], 3)
+                )
+                
+                for speed, count in sorted_speeds:
+                    speed_table_data.append([speed, str(count)])
+                
+                # Create port speed summary table with VAST styling
+                speed_summary_elements = (
+                    self.brand_compliance.create_vast_hardware_table_with_pagination(
+                        speed_table_data, 
+                        f"{switch_name} Port Speed Configuration",
+                        speed_headers
+                    )
+                )
+                content.extend(speed_summary_elements)
+                content.append(Spacer(1, 12))
 
             # Create port summary table
             if ports:
