@@ -230,7 +230,7 @@ class VastReportBuilder:
                 self._create_comprehensive_network_configuration(processed_data)
             )
             story.append(PageBreak())
-            
+
             # Add switch configuration section
             story.extend(self._create_switch_configuration(processed_data))
             story.append(PageBreak())
@@ -354,21 +354,21 @@ class VastReportBuilder:
                     hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
 
                 hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
-            
+
             # Switch Hardware (from switch inventory)
             switches = hardware_inventory.get("switches", [])
             if switches:
                 switch_models = set()
                 switch_count = len(switches)
-                
+
                 for switch in switches:
                     model = switch.get("model", "Unknown")
                     if model and model != "Unknown":
                         switch_models.add(model)
-                
+
                 if switch_models:
                     hardware_text += f"<b>Switch Hardware:</b> {', '.join(sorted(switch_models))}<br/>"
-                
+
                 hardware_text += f"<b>Switch Quantity:</b> {switch_count}"
 
             if hardware_text:
@@ -503,7 +503,7 @@ class VastReportBuilder:
         dboxes = len(hardware.get("dboxes", []))
         switches_list = hardware.get("switches", [])
         total_switches = len(switches_list)
-        
+
         # Calculate leaf and spine switches
         # Logic: If 2 switches = 2 leaf, if 4 = 2 leaf + 2 spine, if >4 = 2 spine + rest are leaf
         if total_switches == 2:
@@ -642,7 +642,9 @@ class VastReportBuilder:
             table_data, "DBox Inventory (Data)", headers
         )
 
-    def _create_switch_inventory_table(self, switches: List[Dict[str, Any]]) -> List[Any]:
+    def _create_switch_inventory_table(
+        self, switches: List[Dict[str, Any]]
+    ) -> List[Any]:
         """
         Create Switch Inventory table using data from the switch inventory API.
 
@@ -663,18 +665,18 @@ class VastReportBuilder:
             switch_name = switch.get("name", "Unknown")
             model = switch.get("model", "Unknown")
             serial = switch.get("serial", "Unknown")
-            
+
             # Status based on active ports vs total ports
             active_ports = switch.get("active_ports", 0)
             total_ports = switch.get("total_ports", 0)
-            
+
             if active_ports == total_ports and total_ports > 0:
                 status = "HEALTHY"
             elif active_ports > 0:
                 status = "PARTIAL"
             else:
                 status = "DOWN"
-            
+
             # Create row data
             row = [switch_name, model, serial, status]
             table_data.append(row)
@@ -997,13 +999,13 @@ class VastReportBuilder:
             # Add page break if we have many DBoxes to prevent layout issues
             if len(dboxes) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
-        
+
         # Switch Inventory table with VAST styling
         switches = hardware.get("switches", [])
         if switches:
             switch_elements = self._create_switch_inventory_table(switches)
             content.extend(switch_elements)
-            
+
             # Add page break if we have many switches to prevent layout issues
             if len(switches) > 10:  # Threshold for large inventories
                 content.append(PageBreak())
@@ -2136,13 +2138,13 @@ class VastReportBuilder:
     def _create_switch_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create switch configuration section with port details."""
         content = []
-        
+
         # Add section heading with VAST styling
         heading_elements = self.brand_compliance.create_vast_section_heading(
             "Switch Configuration", level=1
         )
         content.extend(heading_elements)
-        
+
         # Section Overview
         styles = getSampleStyleSheet()
         overview_style = ParagraphStyle(
@@ -2155,7 +2157,7 @@ class VastReportBuilder:
             leftIndent=12,
             rightIndent=12,
         )
-        
+
         content.append(
             Paragraph(
                 "The Switch Configuration section provides detailed information about the network switches that form the fabric interconnecting the VAST cluster nodes. This section documents switch hardware specifications, port configurations, operational status, and connectivity details. Understanding the switch topology is critical for network troubleshooting, capacity planning, and validating proper network segmentation. The port-level details enable network administrators to trace physical connectivity, identify unused ports, and plan for cluster expansion.",
@@ -2163,17 +2165,27 @@ class VastReportBuilder:
             )
         )
         content.append(Spacer(1, 8))
-        
+
         # Get switch data
         hardware = data.get("hardware_inventory", {})
         switches = hardware.get("switches", [])
-        
+
         if not switches:
             content.append(Paragraph("No switch data available", styles["Normal"]))
             return content
-        
-        # For each switch, create a detailed port configuration table
-        for switch in switches:
+
+        # For each switch, create a detailed port configuration table on separate page
+        for switch_num, switch in enumerate(switches, start=1):
+            # Add page break before each switch (except the first)
+            if switch_num > 1:
+                content.append(PageBreak())
+            
+            # Add "Switch # Details" heading
+            switch_details_heading = self.brand_compliance.create_vast_section_heading(
+                f"Switch {switch_num} Details", level=2
+            )
+            content.extend(switch_details_heading)
+            
             switch_name = switch.get("name", "Unknown")
             model = switch.get("model", "Unknown")
             serial = switch.get("serial", "Unknown")
@@ -2182,7 +2194,7 @@ class VastReportBuilder:
             mtu = switch.get("mtu", "Unknown")
             port_speeds = switch.get("port_speeds", {})
             ports = switch.get("ports", [])
-            
+
             # Switch header info
             switch_info_data = [
                 ["Switch Name", switch_name],
@@ -2192,63 +2204,64 @@ class VastReportBuilder:
                 ["Active Ports", str(active_ports)],
                 ["MTU", mtu],
             ]
-            
+
             # Create switch info table
             switch_info_elements = self._create_cluster_info_table(
                 switch_info_data, f"{switch_name} Configuration"
             )
             content.extend(switch_info_elements)
             content.append(Spacer(1, 12))
-            
+
             # Create port summary table
             if ports:
                 # Aggregate ports by state, speed, and MTU
                 port_summary = {}
-                
+
                 for port in ports:
                     state = port.get("state", "Unknown").lower()
                     speed = port.get("speed") or "Unconfigured"
                     port_mtu = port.get("mtu", "Unknown")
-                    
+
                     # Create key for grouping
                     if state == "up":
                         key = (state, speed, port_mtu)
                     else:
                         # For down ports, group all together regardless of speed/MTU
                         key = (state, "N/A", "N/A")
-                    
+
                     if key not in port_summary:
                         port_summary[key] = 0
                     port_summary[key] += 1
-                
+
                 # Create summary table
                 summary_table_data = []
                 headers = ["Port Qty", "State", "Speed", "MTU"]
-                
+
                 # Sort by state (up first), then by speed
                 sorted_summary = sorted(
                     port_summary.items(),
                     key=lambda x: (
                         0 if x[0][0] == "up" else 1,  # up ports first
-                        0 if x[0][1] == "200G" else 1 if x[0][1] == "100G" else 2  # speed order
-                    )
+                        (
+                            0 if x[0][1] == "200G" else 1 if x[0][1] == "100G" else 2
+                        ),  # speed order
+                    ),
                 )
-                
+
                 for (state, speed, port_mtu), count in sorted_summary:
-                    summary_table_data.append([
-                        str(count),
-                        state.upper(),
-                        speed,
-                        port_mtu
-                    ])
-                
+                    summary_table_data.append(
+                        [str(count), state.upper(), speed, port_mtu]
+                    )
+
                 # Create port summary table with VAST styling
-                port_summary_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    summary_table_data, f"{switch_name} Port Summary", headers
+                port_summary_elements = (
+                    self.brand_compliance.create_vast_hardware_table_with_pagination(
+                        summary_table_data, f"{switch_name} Port Summary", headers
+                    )
                 )
                 content.extend(port_summary_elements)
                 content.append(Spacer(1, 12))
-        
+
         return content
 
     def _create_logical_configuration(self, data: Dict[str, Any]) -> List[Any]:
