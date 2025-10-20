@@ -1,9 +1,9 @@
 # Switches API Analysis: `/api/v1/switches/`
 
-**Date**: October 20, 2025  
-**Cluster**: 10.143.11.202  
-**API Endpoint**: `/api/v1/switches/`  
-**Status**: ✅ Successfully Retrieved  
+**Date**: October 20, 2025
+**Cluster**: 10.143.11.202
+**API Endpoint**: `/api/v1/switches/`
+**Status**: ✅ Successfully Retrieved
 
 ---
 
@@ -209,22 +209,22 @@ Add new method:
 def get_switches_detail(self) -> List[Dict[str, Any]]:
     """
     Get detailed switch information from VAST cluster.
-    
+
     Returns:
         List[Dict[str, Any]]: List of switches with detailed info
     """
     try:
         self.logger.info("Collecting detailed switch information")
-        
+
         base_url = f"https://{self.cluster_ip}/api/v1"
         switches_url = f"{base_url}/switches/"
-        
+
         response = self.session.get(
             switches_url,
             verify=False,
             timeout=self.timeout
         )
-        
+
         if response.status_code == 200:
             switches_data = response.json()
             if switches_data:
@@ -236,7 +236,7 @@ def get_switches_detail(self) -> List[Dict[str, Any]]:
         else:
             self.logger.warning(f"Failed to retrieve switches: HTTP {response.status_code}")
             return []
-            
+
     except Exception as e:
         self.logger.error(f"Error collecting switch details: {e}")
         return []
@@ -249,10 +249,10 @@ Combine data from both endpoints:
 def get_switch_inventory(self) -> Dict[str, Any]:
     # Get detailed switch info
     switches_detail = self.get_switches_detail()
-    
+
     # Get port info
     ports_data = self.get_switch_ports()
-    
+
     # Merge data by matching serial numbers or hostnames
     # Add firmware, mgmt_ip, state, etc. to switch inventory
 ```
@@ -323,7 +323,6 @@ Add new fields to switch configuration tables:
 
 ---
 
-**Status**: ✅ **Analysis Complete - Ready for Implementation**  
-**Impact**: High value addition to switch documentation  
+**Status**: ✅ **Analysis Complete - Ready for Implementation**
+**Impact**: High value addition to switch documentation
 **Effort**: Low (single API endpoint, straightforward data merge)
-
