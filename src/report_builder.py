@@ -961,65 +961,62 @@ class VastReportBuilder:
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
 
-        # Calculate switch positions early (before creating inventory table)
-        # This allows us to populate the Position column for switches
-        cboxes = hardware.get("cboxes", {})
-        cnodes = hardware.get("cnodes", [])
-        dboxes = hardware.get("dboxes", {})
-        switches = hardware.get("switches", [])
+            # Calculate switch positions early (before creating inventory table)
+            # This allows us to populate the Position column for switches
+            cboxes = hardware.get("cboxes", {})
+            cnodes = hardware.get("cnodes", [])
+            dboxes = hardware.get("dboxes", {})
+            switches = hardware.get("switches", [])
 
-        # Pre-calculate switch positions for rack diagram
-        if switches and len(switches) == 2:
-            # Prepare CBox and DBox data for calculation
-            from rack_diagram import RackDiagram
+            # Pre-calculate switch positions for rack diagram
+            if switches and len(switches) == 2:
+                # Prepare CBox and DBox data for calculation
+                from rack_diagram import RackDiagram
 
-            temp_rack_gen = RackDiagram()
+                temp_rack_gen = RackDiagram()
 
-            cboxes_data = []
-            for cbox_name, cbox_data in cboxes.items():
-                cbox_id = cbox_data.get("id")
-                rack_unit = cbox_data.get("rack_unit", "")
-                if rack_unit:
-                    # Get model from cnodes
-                    model = "Unknown"
-                    for cnode in cnodes:
-                        if cnode.get("cbox_id") == cbox_id:
-                            model = cnode.get("box_vendor", "Unknown")
-                            break
-                    cboxes_data.append(
-                        {
-                            "id": cbox_id,
-                            "model": model,
+                # Build CBox data for switch calculation
+                cboxes_data = []
+                hw_cnodes = hardware.get("cnodes", [])
+                for cnode in hw_cnodes:
+                    cbox_data = {
+                        "id": cnode.get("id"),
+                        "model": cnode.get("model", cnode.get("box_vendor", "")),
+                        "rack_unit": cnode.get(
+                            "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
+                        ),
+                        "state": cnode.get("state", cnode.get("status", "ACTIVE")),
+                    }
+                    if cbox_data["rack_unit"]:  # Only add if has position
+                        cboxes_data.append(cbox_data)
+
+                # Build DBox data for switch calculation
+                # Use dboxes (physical chassis) not dnodes (individual nodes)
+                dboxes_data = []
+                hw_dboxes = hardware.get("dboxes", {})
+                for dbox_name, dbox_info in hw_dboxes.items():
+                    rack_unit = dbox_info.get("rack_unit", "")
+                    if rack_unit:
+                        dbox_data = {
+                            "id": dbox_info.get("id"),
+                            "model": dbox_info.get("hardware_type", "Unknown"),
                             "rack_unit": rack_unit,
-                            "state": "ACTIVE",
+                            "state": dbox_info.get("state", "ACTIVE"),
                         }
-                    )
+                        dboxes_data.append(dbox_data)
 
-            dboxes_data = []
-            for dbox_name, dbox_data in dboxes.items():
-                rack_unit = dbox_data.get("rack_unit", "")
-                if rack_unit:
-                    dboxes_data.append(
-                        {
-                            "id": dbox_data.get("id"),
-                            "model": dbox_data.get("hardware_type", "Unknown"),
-                            "rack_unit": rack_unit,
-                            "state": "ACTIVE",
-                        }
-                    )
-
-            # Calculate switch positions
-            calculated_positions = temp_rack_gen._calculate_switch_positions(
-                cboxes_data, dboxes_data, len(switches)
-            )
-            if calculated_positions:
-                self.switch_positions = {
-                    idx: u_pos
-                    for idx, u_pos in enumerate(calculated_positions, start=1)
-                }
-                self.logger.info(
-                    f"Pre-calculated switch positions: {self.switch_positions}"
+                # Calculate switch positions
+                calculated_positions = temp_rack_gen._calculate_switch_positions(
+                    cboxes_data, dboxes_data, len(switches)
                 )
+                if calculated_positions:
+                    self.switch_positions = {
+                        idx: u_pos
+                        for idx, u_pos in enumerate(calculated_positions, start=1)
+                    }
+                    self.logger.info(
+                        f"Pre-calculated switch positions: {self.switch_positions}"
+                    )
 
         # Consolidated Hardware Inventory table with VAST styling
         if cboxes or dboxes or switches:
@@ -1078,24 +1075,18 @@ class VastReportBuilder:
                     if cbox_data["rack_unit"]:  # Only add if has position
                         cboxes_data.append(cbox_data)
 
-                # Get DBox information
-                hw_dnodes = hardware.get("dnodes", [])
+                # Get DBox information (physical chassis, not individual nodes)
+                hw_dboxes = hardware.get("dboxes", {})
 
-                for dnode in hw_dnodes:
-                    # Prefer hardware_type over model for rack diagram
-                    model = dnode.get("hardware_type")
-                    if not model or model == "Unknown":
-                        model = dnode.get("model", "")
-
-                    dbox_data = {
-                        "id": dnode.get("id"),
-                        "model": model,
-                        "rack_unit": dnode.get(
-                            "rack_u", dnode.get("rack_unit", dnode.get("position", ""))
-                        ),
-                        "state": dnode.get("state", dnode.get("status", "ACTIVE")),
-                    }
-                    if dbox_data["rack_unit"]:  # Only add if has position
+                for dbox_name, dbox_info in hw_dboxes.items():
+                    rack_unit = dbox_info.get("rack_unit", "")
+                    if rack_unit:
+                        dbox_data = {
+                            "id": dbox_info.get("id"),
+                            "model": dbox_info.get("hardware_type", "Unknown"),
+                            "rack_unit": rack_unit,
+                            "state": dbox_info.get("state", "ACTIVE"),
+                        }
                         dboxes_data.append(dbox_data)
 
                 # Get switch data for rack diagram
@@ -2285,7 +2276,7 @@ class VastReportBuilder:
                     speed = port.get("speed")
                     if not speed or speed == "":
                         speed = "Unconfigured"
-                    
+
                     port_name = port.get("name", "Unknown")
 
                     if speed not in port_summary:
@@ -2299,8 +2290,7 @@ class VastReportBuilder:
                 # Sort by speed (200G, 100G, Unconfigured, then others)
                 speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
                 sorted_summary = sorted(
-                    port_summary.items(),
-                    key=lambda x: speed_order.get(x[0], 3)
+                    port_summary.items(), key=lambda x: speed_order.get(x[0], 3)
                 )
 
                 for speed, port_list in sorted_summary:
@@ -2308,21 +2298,25 @@ class VastReportBuilder:
                     try:
                         sorted_ports = sorted(
                             port_list,
-                            key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0
+                            key=lambda x: (
+                                int("".join(filter(str.isdigit, x)))
+                                if any(c.isdigit() for c in x)
+                                else 0
+                            ),
                         )
                     except:
                         sorted_ports = sorted(port_list)
-                    
+
                     # Join ports with comma separation
                     ports_str = ", ".join(sorted_ports)
-                    
+
                     # Use Paragraph for port numbers to enable text wrapping
                     port_style = ParagraphStyle(
                         "PortNumbers",
                         parent=styles["Normal"],
                         fontSize=9,
                         alignment=0,  # Left alignment
-                        wordWrap='CJK',  # Enable word wrapping
+                        wordWrap="CJK",  # Enable word wrapping
                     )
                     port_para = Paragraph(ports_str, port_style)
                     summary_table_data.append([speed, port_para])
