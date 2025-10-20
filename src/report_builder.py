@@ -559,7 +559,7 @@ class VastReportBuilder:
         cboxes: Dict[str, Any],
         cnodes: List[Dict[str, Any]],
         dboxes: Dict[str, Any],
-        switches: List[Dict[str, Any]]
+        switches: List[Dict[str, Any]],
     ) -> List[Any]:
         """
         Create consolidated hardware inventory table with CBoxes, DBoxes, and Switches.
@@ -629,7 +629,7 @@ class VastReportBuilder:
         # Add Switches
         if switches:
             switch_rows = []
-            for switch in switches:
+            for switch_num, switch in enumerate(switches, start=1):
                 switch_name = switch.get("name", "Unknown")
                 hostname = switch.get("hostname", switch_name)
                 model = switch.get("model", "Unknown")
@@ -639,12 +639,17 @@ class VastReportBuilder:
                 # Position is blank for switches (to be added later)
                 position = ""
 
-                # Create row data with SW- prefix using hostname
-                row = [f"SW-{hostname}", model, serial, state, position]
+                # Create row data with SW- prefix using switch number
+                row = [f"SW-{switch_num}", model, serial, state, position]
                 switch_rows.append((hostname, row))
 
-            # Sort by hostname
+            # Sort by hostname before numbering
             switch_rows.sort(key=lambda x: x[0])
+            
+            # Re-number switches sequentially after sorting
+            for idx, (hostname, row) in enumerate(switch_rows, start=1):
+                row[0] = f"SW-{idx}"
+            
             table_data.extend([row for _, row in switch_rows])
 
         if not table_data:
