@@ -2276,90 +2276,62 @@ class VastReportBuilder:
             content.extend(switch_info_elements)
             content.append(Spacer(1, 12))
 
-            # Create port speed configuration summary table
+            # Create port summary table with port numbers
             if ports:
-                # Count ports by speed configuration
-                speed_summary = {}
+                # Aggregate ports by speed, collecting port names
+                port_summary = {}
+
                 for port in ports:
                     speed = port.get("speed")
                     if not speed or speed == "":
                         speed = "Unconfigured"
                     
-                    if speed not in speed_summary:
-                        speed_summary[speed] = 0
-                    speed_summary[speed] += 1
-                
-                # Create speed summary table data
-                speed_table_data = []
-                speed_headers = ["Speed", "Port Count"]
-                
-                # Sort by speed (200G, 100G, then others)
-                speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
-                sorted_speeds = sorted(
-                    speed_summary.items(),
-                    key=lambda x: speed_order.get(x[0], 3)
-                )
-                
-                for speed, count in sorted_speeds:
-                    speed_table_data.append([speed, str(count)])
-                
-                # Create port speed summary table with VAST styling
-                speed_summary_elements = (
-                    self.brand_compliance.create_vast_hardware_table_with_pagination(
-                        speed_table_data, 
-                        f"{switch_name} Port Speed Configuration",
-                        speed_headers
-                    )
-                )
-                content.extend(speed_summary_elements)
-                content.append(Spacer(1, 12))
+                    port_name = port.get("name", "Unknown")
 
-            # Create port summary table
-            if ports:
-                # Aggregate ports by state, speed, and MTU
-                port_summary = {}
+                    if speed not in port_summary:
+                        port_summary[speed] = []
+                    port_summary[speed].append(port_name)
 
-                for port in ports:
-                    state = port.get("state", "Unknown").lower()
-                    speed = port.get("speed") or "Unconfigured"
-                    port_mtu = port.get("mtu", "Unknown")
-
-                    # Create key for grouping
-                    if state == "up":
-                        key = (state, speed, port_mtu)
-                    else:
-                        # For down ports, group all together regardless of speed/MTU
-                        key = (state, "N/A", "N/A")
-
-                    if key not in port_summary:
-                        port_summary[key] = 0
-                    port_summary[key] += 1
-
-                # Create summary table
+                # Create summary table with port numbers
                 summary_table_data = []
-                headers = ["Port Qty", "State", "Speed", "MTU"]
+                headers = ["Speed", "Port Numbers"]
 
-                # Sort by state (up first), then by speed
+                # Sort by speed (200G, 100G, Unconfigured, then others)
+                speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
                 sorted_summary = sorted(
                     port_summary.items(),
-                    key=lambda x: (
-                        0 if x[0][0] == "up" else 1,  # up ports first
-                        (
-                            0 if x[0][1] == "200G" else 1 if x[0][1] == "100G" else 2
-                        ),  # speed order
-                    ),
+                    key=lambda x: speed_order.get(x[0], 3)
                 )
 
-                for (state, speed, port_mtu), count in sorted_summary:
-                    summary_table_data.append(
-                        [str(count), state.upper(), speed, port_mtu]
+                for speed, port_list in sorted_summary:
+                    # Sort port names naturally (swp1, swp2, ..., swp10, swp11, ...)
+                    try:
+                        sorted_ports = sorted(
+                            port_list,
+                            key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0
+                        )
+                    except:
+                        sorted_ports = sorted(port_list)
+                    
+                    # Join ports with comma separation
+                    ports_str = ", ".join(sorted_ports)
+                    
+                    # Use Paragraph for port numbers to enable text wrapping
+                    port_style = ParagraphStyle(
+                        "PortNumbers",
+                        parent=styles["Normal"],
+                        fontSize=9,
+                        alignment=0,  # Left alignment
+                        wordWrap='CJK',  # Enable word wrapping
                     )
+                    port_para = Paragraph(ports_str, port_style)
+                    summary_table_data.append([speed, port_para])
 
-                # Create port summary table with VAST styling
-                port_summary_elements = (
-                    self.brand_compliance.create_vast_hardware_table_with_pagination(
-                        summary_table_data, f"{switch_name} Port Summary", headers
-                    )
+                # Create custom port summary table with proper column widths
+                # Use create_vast_table instead to have better control over wrapping
+                table_title = f"{switch_name} Port Summary"
+                port_summary_elements = self.brand_compliance.create_vast_table(
+                    summary_table_data, table_title, headers
                 )
                 content.extend(port_summary_elements)
                 content.append(Spacer(1, 12))
