@@ -155,3 +155,5 @@ secrets.yaml
 # Local archive directory (not tracked in git)
 .archive/
 .DS_Store
+# VNetMap tool (contains AWS credentials - keep local only)
+src/vnetmap.py
