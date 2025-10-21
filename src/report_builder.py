@@ -2168,6 +2168,55 @@ class VastReportBuilder:
 
         return content
 
+    def _classify_port_purpose(
+        self, port_name: str, speed: str, total_switches: int
+    ) -> str:
+        """
+        Classify port purpose based on speed, port number, and cluster topology.
+
+        Args:
+            port_name: Port name (e.g., "swp1", "eth1/1")
+            speed: Port speed (e.g., "200G", "100G", None)
+            total_switches: Total number of switches in cluster
+
+        Returns:
+            Port classification string
+        """
+        # Extract port number from name (handles swp1, eth1/1, etc.)
+        try:
+            port_num = int("".join(filter(str.isdigit, port_name)))
+        except (ValueError, TypeError):
+            port_num = 0
+
+        # Classification logic based on speed and port position
+        if speed == "200G":
+            # 200G ports are typically data plane connections
+            if 1 <= port_num <= 14:
+                return "Data Plane (CNode)"
+            elif 15 <= port_num <= 28:
+                return "Data Plane (DNode)"
+            else:
+                return "Data Plane"
+
+        elif speed == "100G":
+            # 100G ports are typically IPLs, uplinks, or standard data plane
+            if port_num in [29, 30]:
+                # Ports 29-30 typically used for MLAG IPL (Inter-Peer Link)
+                return "IPL (Inter-Peer Link)" if total_switches > 1 else "Reserved"
+            elif port_num in [31, 32]:
+                # Ports 31-32 typically used for uplinks to spine/core
+                return "Uplink (Spine/Core)"
+            else:
+                return "Data Plane"
+
+        elif speed == "Unconfigured" or not speed:
+            # Unconfigured ports are unused or reserved
+            return "Unused/Reserved"
+
+        else:
+            # Other speeds (40G, 10G, etc.)
+            return "Data Plane"
+
     def _create_switch_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create switch configuration section with port details."""
         content = []
@@ -2329,6 +2378,103 @@ class VastReportBuilder:
                 )
                 content.extend(port_summary_elements)
                 content.append(Spacer(1, 12))
+
+                # Create port classification summary table
+                classification_summary = {}
+                total_switches = len(switches)
+
+                for port in ports:
+                    speed = port.get("speed")
+                    if not speed or speed == "":
+                        speed = "Unconfigured"
+
+                    port_name = port.get("name", "Unknown")
+                    purpose = self._classify_port_purpose(port_name, speed, total_switches)
+
+                    if purpose not in classification_summary:
+                        classification_summary[purpose] = {
+                            "ports": [],
+                            "count": 0,
+                            "status": {"up": 0, "down": 0},
+                        }
+
+                    classification_summary[purpose]["ports"].append(port_name)
+                    classification_summary[purpose]["count"] += 1
+
+                    # Count port status
+                    port_state = port.get("state", "").lower()
+                    if port_state == "up":
+                        classification_summary[purpose]["status"]["up"] += 1
+                    else:
+                        classification_summary[purpose]["status"]["down"] += 1
+
+                # Create classification table
+                if classification_summary:
+                    classification_table_data = []
+                    classification_headers = ["Purpose", "Port Count", "Status", "Example Ports"]
+
+                    # Sort by purpose (Data Plane first, then IPL, Uplink, Unused/Reserved)
+                    purpose_order = {
+                        "Data Plane (CNode)": 0,
+                        "Data Plane (DNode)": 1,
+                        "Data Plane": 2,
+                        "IPL (Inter-Peer Link)": 3,
+                        "Uplink (Spine/Core)": 4,
+                        "Reserved": 5,
+                        "Unused/Reserved": 6,
+                    }
+
+                    sorted_classification = sorted(
+                        classification_summary.items(),
+                        key=lambda x: purpose_order.get(x[0], 99),
+                    )
+
+                    for purpose, info in sorted_classification:
+                        port_count = info["count"]
+                        up_count = info["status"]["up"]
+                        down_count = info["status"]["down"]
+
+                        # Status summary
+                        if down_count > 0:
+                            status_str = f"{up_count} Up, {down_count} Down"
+                        else:
+                            status_str = f"All Up ({up_count})"
+
+                        # Example ports (show first 3)
+                        example_ports = sorted(
+                            info["ports"][:3],
+                            key=lambda x: (
+                                int("".join(filter(str.isdigit, x)))
+                                if any(c.isdigit() for c in x)
+                                else 0
+                            ),
+                        )
+                        if len(info["ports"]) > 3:
+                            example_str = f"{', '.join(example_ports)}, ..."
+                        else:
+                            example_str = ", ".join(example_ports)
+
+                        # Use Paragraph for example ports to enable wrapping
+                        example_style = ParagraphStyle(
+                            "ExamplePorts",
+                            parent=styles["Normal"],
+                            fontSize=9,
+                            alignment=0,
+                            wordWrap="CJK",
+                        )
+                        example_para = Paragraph(example_str, example_style)
+
+                        classification_table_data.append(
+                            [purpose, str(port_count), status_str, example_para]
+                        )
+
+                    # Create classification table
+                    classification_title = f"{switch_name} Port Classification"
+                    classification_elements = self.brand_compliance.create_vast_table(
+                        classification_table_data, classification_title, classification_headers
+                    )
+                    content.extend(classification_elements)
+                    content.append(Spacer(1, 12))
 
         return content
 
