@@ -2574,6 +2574,9 @@ class VastApiHandler:
             # Switch/network hardware information
             all_data["switch_inventory"] = self.get_switch_inventory()
 
+            # Raw switch ports data (needed for IPL/MLAG detection)
+            all_data["switch_ports"] = self.get_switch_ports()
+
             self.logger.info("Comprehensive data collection completed successfully")
             return all_data
 

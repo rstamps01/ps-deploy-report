@@ -10,6 +10,11 @@ PyYAML>=6.0.1
 reportlab>=4.0.0
 weasyprint>=60.0
 
+# Dynamic diagram generation (PNG conversion)
+rl-renderPM>=4.0.3
+cairocffi>=1.7.0
+pycairo>=1.28.0
+
 # CLI argument parsing (built-in argparse is sufficient, but click is an alternative)
 click>=8.1.0
 
@@ -33,4 +38,3 @@ jsonschema>=4.19.0
 
 # Environment variable management
 python-dotenv>=1.0.0
-

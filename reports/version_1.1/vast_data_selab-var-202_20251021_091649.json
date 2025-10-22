@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "extraction_timestamp": "2025-10-20T08:22:16.768535",
-    "overall_completeness": 0.8411172161172161,
+    "extraction_timestamp": "2025-10-21T09:16:49.309561",
+    "overall_completeness": 0.8524659863945578,
     "enhanced_features": {
       "rack_height_supported": true,
       "psnt_supported": true
@@ -20,11 +20,11 @@
       "rack_height_supported": true,
       "psnt_supported": true
     },
-    "collection_timestamp": "2025-10-20 08:21:32.043913",
+    "collection_timestamp": "2025-10-21 09:16:32.964612",
     "cluster_id": "1",
     "mgmt_vip": "10.143.11.202",
     "build": "release-5.3.2-sp6-1980891",
-    "uptime": "12 days, 16:15:59.701436",
+    "uptime": "13 days, 17:10:59.551257",
     "online_start_time": "2025-10-07T23:05:33.766226Z",
     "deployment_time": "2025-08-07T17:27:50.188871Z",
     "url": "https://10.143.11.202/api/v7/clusters/1",
@@ -44,17 +44,17 @@
     "dbox_ha_support": false,
     "enable_rack_level_resiliency": false,
     "disable_metrics": false,
-    "usable_capacity_tb": 222.914,
-    "free_usable_capacity_tb": 88.831,
+    "usable_capacity_tb": 222.889,
+    "free_usable_capacity_tb": 87.65,
     "drr_text": "1.3:1",
     "physical_space_tb": 282.095,
-    "physical_space_in_use_tb": 169.238,
-    "free_physical_space_tb": 112.857,
-    "physical_space_in_use_percent": 59.99,
-    "logical_space_tb": 297.661,
-    "logical_space_in_use_tb": 179.075,
-    "free_logical_space_tb": 118.618,
-    "logical_space_in_use_percent": 60.16,
+    "physical_space_in_use_tb": 170.732,
+    "free_physical_space_tb": 111.363,
+    "physical_space_in_use_percent": 60.52,
+    "logical_space_tb": 296.966,
+    "logical_space_in_use_tb": 180.218,
+    "free_logical_space_tb": 116.781,
+    "logical_space_in_use_percent": 60.69,
     "enable_encryption": false,
     "s3_enable_only_aes_ciphers": null,
     "encryption_type": "INTERNAL",
@@ -179,7 +179,7 @@
         "drive_type": "ACTIVE_PASSIVE",
         "description": null,
         "sync": "SYNCED",
-        "sync_time": "2025-10-20T15:08:27.808573Z",
+        "sync_time": "2025-10-21T16:11:15.601604Z",
         "arch_type": "aarch64",
         "is_conclude_possible": false,
         "is_replace_possible": true,
@@ -276,7 +276,7 @@
         "total_cnodes": 2,
         "total_dnodes": 2
       },
-      "generated_timestamp": "2025-10-20T08:22:16.766157"
+      "generated_timestamp": "2025-10-21T09:16:49.294914"
     },
     "switches": [
       {
@@ -752,7 +752,7 @@
               ],
               "ranges_summary": "172.200.202.[105-108]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.109690Z",
+              "sync_time": "2025-10-21T16:11:16.093301Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -796,7 +796,7 @@
               ],
               "ranges_summary": "172.200.202.[1-6]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.051436Z",
+              "sync_time": "2025-10-21T16:11:16.194030Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -840,7 +840,7 @@
               ],
               "ranges_summary": "172.200.202.[7-8]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:31.987077Z",
+              "sync_time": "2025-10-21T16:11:16.105500Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -884,7 +884,7 @@
               ],
               "ranges_summary": "172.200.202.[150-155]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.232698Z",
+              "sync_time": "2025-10-21T16:11:16.121287Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -928,7 +928,7 @@
               ],
               "ranges_summary": "172.200.202.[130-137]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.170710Z",
+              "sync_time": "2025-10-21T16:11:16.231116Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -972,7 +972,7 @@
               ],
               "ranges_summary": "172.200.202.[250-255]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.077162Z",
+              "sync_time": "2025-10-21T16:11:16.206336Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1016,7 +1016,7 @@
               ],
               "ranges_summary": "172.200.202.[156-159]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.026938Z",
+              "sync_time": "2025-10-21T16:11:16.181829Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1060,7 +1060,7 @@
               ],
               "ranges_summary": "172.200.202.[181-184]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:31.934163Z",
+              "sync_time": "2025-10-21T16:11:16.145233Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1104,7 +1104,7 @@
               ],
               "ranges_summary": "172.200.202.[101-104]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.006414Z",
+              "sync_time": "2025-10-21T16:11:16.133699Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1148,7 +1148,7 @@
               ],
               "ranges_summary": "172.200.202.[47-52]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.303497Z",
+              "sync_time": "2025-10-21T16:11:16.169841Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1192,7 +1192,7 @@
               ],
               "ranges_summary": "172.200.202.[31-34]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.256296Z",
+              "sync_time": "2025-10-21T16:11:16.218866Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1236,7 +1236,7 @@
               ],
               "ranges_summary": "172.200.202.[35-38]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.200161Z",
+              "sync_time": "2025-10-21T16:11:16.157758Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1280,7 +1280,7 @@
               ],
               "ranges_summary": "172.200.202.[39-42]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.139967Z",
+              "sync_time": "2025-10-21T16:11:16.056902Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1324,7 +1324,7 @@
               ],
               "ranges_summary": "172.200.202.[43-46]",
               "sync": "SYNCED",
-              "sync_time": "2025-10-20T15:08:32.278215Z",
+              "sync_time": "2025-10-21T16:11:16.076853Z",
               "vms_preferred": false,
               "enabled": true,
               "port_membership": "ALL",
@@ -1343,7 +1343,7 @@
           "total_pools": 14,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-20T08:22:16.766431"
+        "extraction_timestamp": "2025-10-21T09:16:49.295310"
       },
       "completeness": 0.6666666666666666,
       "status": "partial"
@@ -1366,7 +1366,7 @@
         "ib_mtu": 65520,
         "ipmi_gateway": "10.143.254.254",
         "ipmi_netmask": "255.255.0.0",
-        "extraction_timestamp": "2025-10-20T08:22:16.766619"
+        "extraction_timestamp": "2025-10-21T09:16:49.295529"
       },
       "completeness": 0.875,
       "status": "partial"
@@ -1408,7 +1408,7 @@
           }
         ],
         "total_cnodes": 2,
-        "extraction_timestamp": "2025-10-20T08:22:16.766777"
+        "extraction_timestamp": "2025-10-21T09:16:49.295728"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -1448,7 +1448,7 @@
           }
         ],
         "total_dnodes": 2,
-        "extraction_timestamp": "2025-10-20T08:22:16.766943"
+        "extraction_timestamp": "2025-10-21T09:16:49.295925"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -1460,80 +1460,8 @@
         "tenants": {
           "tenants": [
             {
-              "name": "dchan-tenant",
-              "id": 5,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
               "name": "tom-tenant2",
               "id": 17,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "default",
-              "id": 1,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "tom-tenant1",
-              "id": 16,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "mcltenant",
-              "id": 25,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "Hawthorn",
-              "id": 20,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "test-tenant",
-              "id": 27,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "sbunch-tenant",
-              "id": 3,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "eelmasry-tenant1",
-              "id": 26,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "tenant1",
-              "id": 4,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "sli",
-              "id": 13,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "tom-tenant3",
-              "id": 18,
-              "state": "Unknown",
-              "source": "API"
-            },
-            {
-              "name": "test123",
-              "id": 24,
               "state": "Unknown",
               "source": "API"
             },
@@ -1544,14 +1472,86 @@
               "source": "API"
             },
             {
+              "name": "mcltenant",
+              "id": 25,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test123",
+              "id": 24,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Hawthorn",
+              "id": 20,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "eelmasry-tenant1",
+              "id": 26,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "id": 1,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sbunch-tenant",
+              "id": 3,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant1",
+              "id": 16,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "ddrozdow-s3-tenant",
               "id": 21,
               "state": "Unknown",
               "source": "API"
             },
             {
+              "name": "sli",
+              "id": 13,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "ddrozdow-s3-tenant-2",
               "id": 22,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test-tenant",
+              "id": 27,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant3",
+              "id": 18,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tenant1",
+              "id": 4,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-tenant",
+              "id": 5,
               "state": "Unknown",
               "source": "API"
             }
@@ -2702,6 +2702,12 @@
               "source": "API"
             },
             {
+              "name": "view-1579",
+              "path": "/pohseng-demo",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
               "name": "view-41",
               "path": "/pwags-mixed",
               "state": "Unknown",
@@ -2734,6 +2740,12 @@
             {
               "name": "view-1548",
               "path": "/ram-db",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1578",
+              "path": "/robg/vmware/datastore-test",
               "state": "Unknown",
               "source": "API"
             },
@@ -2966,7 +2978,7 @@
               "source": "API"
             }
           ],
-          "total_count": 234,
+          "total_count": 236,
           "source": "API"
         },
         "view_policies": {
@@ -3443,7 +3455,7 @@
           "total_count": 78,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-20T08:22:16.767577"
+        "extraction_timestamp": "2025-10-21T09:16:49.297488"
       },
       "completeness": 1.0,
       "status": "complete"
@@ -3460,7 +3472,7 @@
         },
         "ldap": null,
         "nis": null,
-        "extraction_timestamp": "2025-10-20T08:22:16.767754"
+        "extraction_timestamp": "2025-10-21T09:16:49.297641"
       },
       "completeness": 0.3333333333333333,
       "status": "missing"
@@ -3525,7 +3537,7 @@
           "total_count": 7,
           "source": "API"
         },
-        "extraction_timestamp": "2025-10-20T08:22:16.767944"
+        "extraction_timestamp": "2025-10-21T09:16:49.297908"
       },
       "completeness": 0.5,
       "status": "partial"
@@ -3813,6 +3825,443 @@
       },
       "completeness": 1.3333333333333333,
       "status": "missing"
+    },
+    "port_mapping": {
+      "name": "port_mapping",
+      "title": "Port Mapping",
+      "data": {
+        "available": true,
+        "port_map": [
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-R",
+            "node_type": "cnode",
+            "interface": "enp129s0f0",
+            "mac": "c4:70:bd:fa:45:0a",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f1",
+            "mac": "c4:70:bd:fa:45:0b",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f2",
+            "mac": "be:ef:0a:8f:0b:3d",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f3",
+            "mac": "be:ef:0a:8f:0b:3d",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-R",
+            "node_type": "cnode",
+            "interface": "enp129s0f0",
+            "mac": "b8:e9:24:d6:e6:30",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f1",
+            "mac": "b8:e9:24:d6:e6:31",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f2",
+            "mac": "be:ef:0a:8f:0b:3f",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f3",
+            "mac": "be:ef:0a:8f:0b:3f",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-R",
+            "node_type": "dnode",
+            "interface": "enp3s0f0",
+            "mac": "7c:8c:09:f2:0f:66",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f2",
+            "mac": "be:ef:0a:8f:0b:15",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f3",
+            "mac": "be:ef:0a:8f:0b:15",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-R",
+            "node_type": "dnode",
+            "interface": "enp3s0f0",
+            "mac": "c4:70:bd:f6:e2:f2",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f2",
+            "mac": "be:ef:0a:8f:0b:17",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f3",
+            "mac": "be:ef:0a:8f:0b:17",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          }
+        ],
+        "connections_by_switch": {
+          "10.143.11.153": [
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp5",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f2",
+              "mac": "be:ef:0a:8f:0b:15",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp5",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f3",
+              "mac": "be:ef:0a:8f:0b:15",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp6",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f2",
+              "mac": "be:ef:0a:8f:0b:17",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp6",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f3",
+              "mac": "be:ef:0a:8f:0b:17",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f0",
+              "mac": "c4:70:bd:fa:45:0a",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f2",
+              "mac": "be:ef:0a:8f:0b:3d",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f3",
+              "mac": "be:ef:0a:8f:0b:3d",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f0",
+              "mac": "b8:e9:24:d6:e6:30",
+              "network": "A"
+            }
+          ],
+          "10.143.11.154": [
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp5",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f0",
+              "mac": "c4:70:bd:f6:e2:f2",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.154",
+              "port": "swp6",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f0",
+              "mac": "7c:8c:09:f2:0f:66",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.154",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f1",
+              "mac": "c4:70:bd:fa:45:0b",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f1",
+              "mac": "b8:e9:24:d6:e6:31",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f2",
+              "mac": "be:ef:0a:8f:0b:3f",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f3",
+              "mac": "be:ef:0a:8f:0b:3f",
+              "network": "B"
+            }
+          ]
+        },
+        "cross_connections": [],
+        "has_cross_connections": false,
+        "cross_connection_summary": "No cross-connections detected. All cabling is correct.",
+        "cross_connection_count": 0,
+        "total_connections": 14,
+        "ipl_ports": [
+          {
+            "port": "swp29",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp30",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp31",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp32",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp29",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp30",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp31",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp32",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          }
+        ],
+        "total_ipl_ports": 8,
+        "data_source": "External SSH collection (clush + switch CLI)",
+        "designation_format": {
+          "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
+          "switch_side": "SWA-P12 (Switch-1/Port-12)",
+          "port_mapping": "R = Network A (Port-A), L = Network B (Port-B)"
+        }
+      },
+      "completeness": 1.0,
+      "status": "complete"
     }
   }
 }
