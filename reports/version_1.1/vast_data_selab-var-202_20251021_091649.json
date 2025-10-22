@@ -1,0 +1,4267 @@
+{
+  "metadata": {
+    "extraction_timestamp": "2025-10-21T09:16:49.309561",
+    "overall_completeness": 0.8524659863945578,
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "cluster_version": "5.3.2.1.4147321039570139658",
+    "api_version": "v7"
+  },
+  "cluster_summary": {
+    "name": "selab-var-202",
+    "guid": "c25e594c-cc58-5c4c-abe8-72e8a29873f9",
+    "version": "5.3.2.1.4147321039570139658",
+    "state": "ONLINE",
+    "license": "Unknown",
+    "psnt": "selab-var-202",
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "collection_timestamp": "2025-10-21 09:16:32.964612",
+    "cluster_id": "1",
+    "mgmt_vip": "10.143.11.202",
+    "build": "release-5.3.2-sp6-1980891",
+    "uptime": "13 days, 17:10:59.551257",
+    "online_start_time": "2025-10-07T23:05:33.766226Z",
+    "deployment_time": "2025-08-07T17:27:50.188871Z",
+    "url": "https://10.143.11.202/api/v7/clusters/1",
+    "ssd_raid_state": "HEALTHY",
+    "nvram_raid_state": "HEALTHY",
+    "memory_raid_state": "HEALTHY",
+    "leader_state": "UP",
+    "leader_cnode": "cnode-3-5",
+    "mgmt_cnode": "cnode-3-5",
+    "mgmt_inner_vip": "172.16.4.202",
+    "mgmt_inner_vip_cnode": "cnode-3-5",
+    "enabled": true,
+    "enable_similarity": false,
+    "dedup_active": null,
+    "is_wb_raid_enabled": true,
+    "wb_raid_layout": "DATA_6_PARITY_2",
+    "dbox_ha_support": false,
+    "enable_rack_level_resiliency": false,
+    "disable_metrics": false,
+    "usable_capacity_tb": 222.889,
+    "free_usable_capacity_tb": 87.65,
+    "drr_text": "1.3:1",
+    "physical_space_tb": 282.095,
+    "physical_space_in_use_tb": 170.732,
+    "free_physical_space_tb": 111.363,
+    "physical_space_in_use_percent": 60.52,
+    "logical_space_tb": 296.966,
+    "logical_space_in_use_tb": 180.218,
+    "free_logical_space_tb": 116.781,
+    "logical_space_in_use_percent": 60.69,
+    "enable_encryption": false,
+    "s3_enable_only_aes_ciphers": null,
+    "encryption_type": "INTERNAL",
+    "ekm_servers": "",
+    "ekm_address": "",
+    "ekm_port": 5696,
+    "ekm_auth_domain": "",
+    "secondary_ekm_address": null,
+    "secondary_ekm_port": 5696,
+    "management_vips": "Not Configured",
+    "external_gateways": "Not Configured",
+    "dns": "Not Configured",
+    "ntp": "Not Configured",
+    "ext_netmask": "Not Configured",
+    "auto_ports_ext_iface": "Not Configured",
+    "b2b_ipmi": "Not Configured",
+    "eth_mtu": "Not Configured",
+    "ib_mtu": "Not Configured",
+    "ipmi_gateway": "Not Configured",
+    "ipmi_netmask": "Not Configured"
+  },
+  "hardware_inventory": {
+    "cnodes": [
+      {
+        "id": "1",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X4A20495",
+        "status": "ACTIVE",
+        "rack_position": 23,
+        "rack_position_available": true,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "cbox_id": 1,
+        "rack_u": "U23",
+        "positioning_note": "Automated via API"
+      },
+      {
+        "id": "2",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X5306345",
+        "status": "ACTIVE",
+        "rack_position": 24,
+        "rack_position_available": true,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "cbox_id": 2,
+        "rack_u": "U24",
+        "positioning_note": "Automated via API"
+      }
+    ],
+    "dnodes": [
+      {
+        "id": "1",
+        "type": "dnode",
+        "model": "dbox-515-25032600200191",
+        "serial_number": "C15-25032600200322",
+        "status": "ACTIVE",
+        "rack_position": 18,
+        "rack_position_available": true,
+        "box_vendor": "Unknown",
+        "cbox_id": null,
+        "hardware_type": "ceres_v2",
+        "rack_u": "U18",
+        "positioning_note": "Automated via API"
+      },
+      {
+        "id": "2",
+        "type": "dnode",
+        "model": "dbox-515-25032600200191",
+        "serial_number": "C15-25032600200257",
+        "status": "ACTIVE",
+        "rack_position": 18,
+        "rack_position_available": true,
+        "box_vendor": "Unknown",
+        "cbox_id": null,
+        "hardware_type": "ceres_v2",
+        "rack_u": "U18",
+        "positioning_note": "Automated via API"
+      }
+    ],
+    "cboxes": {
+      "cbox-S929986X4A20495": {
+        "id": 1,
+        "guid": "f776cbfb-698f-4663-aae4-839c51f4328e",
+        "name": "cbox-S929986X4A20495",
+        "uid": "S929986X4A20495",
+        "state": "UNKNOWN",
+        "cluster": "selab-var-202",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": 1,
+        "rack_unit": "U23",
+        "rack_name": "Rack"
+      },
+      "cbox-S929986X5306345": {
+        "id": 2,
+        "guid": "4d13752d-8538-4467-9cc0-a036ed3cf9a7",
+        "name": "cbox-S929986X5306345",
+        "uid": "S929986X5306345",
+        "state": "UNKNOWN",
+        "cluster": "selab-var-202",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": 1,
+        "rack_unit": "U24",
+        "rack_name": "Rack"
+      }
+    },
+    "dboxes": {
+      "dbox-515-25032600200191": {
+        "id": 1,
+        "guid": "95aefd14-a8f3-488d-b0e7-683850819e4e",
+        "name": "dbox-515-25032600200191",
+        "uid": "515-25032600200191",
+        "state": "ACTIVE",
+        "cluster": "selab-var-202",
+        "cluster_id": 1,
+        "drive_type": "ACTIVE_PASSIVE",
+        "description": null,
+        "sync": "SYNCED",
+        "sync_time": "2025-10-21T16:11:15.601604Z",
+        "arch_type": "aarch64",
+        "is_conclude_possible": false,
+        "is_replace_possible": true,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": 1,
+        "rack_unit": "U18",
+        "box_vendor": "BlueField, SoC PCIe Bridge",
+        "is_migrate_target": false,
+        "is_migrate_source": false,
+        "rack_name": "Rack",
+        "hardware_type": "ceres_v2",
+        "failure_domain": ""
+      }
+    },
+    "total_nodes": 4,
+    "rack_positions_available": true,
+    "physical_layout": {
+      "rack_layout": {
+        "23": {
+          "cnodes": [
+            {
+              "id": "1",
+              "type": "cnode",
+              "model": "supermicro_gen5_cbox, two dual-port NICs",
+              "serial_number": "S929986X4A20495",
+              "status": "ACTIVE",
+              "rack_position": 23,
+              "rack_position_available": true,
+              "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+              "cbox_id": 1,
+              "rack_u": "U23",
+              "positioning_note": "Automated via API"
+            }
+          ],
+          "dnodes": []
+        },
+        "24": {
+          "cnodes": [
+            {
+              "id": "2",
+              "type": "cnode",
+              "model": "supermicro_gen5_cbox, two dual-port NICs",
+              "serial_number": "S929986X5306345",
+              "status": "ACTIVE",
+              "rack_position": 24,
+              "rack_position_available": true,
+              "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+              "cbox_id": 2,
+              "rack_u": "U24",
+              "positioning_note": "Automated via API"
+            }
+          ],
+          "dnodes": []
+        },
+        "18": {
+          "cnodes": [],
+          "dnodes": [
+            {
+              "id": "1",
+              "type": "dnode",
+              "model": "dbox-515-25032600200191",
+              "serial_number": "C15-25032600200322",
+              "status": "ACTIVE",
+              "rack_position": 18,
+              "rack_position_available": true,
+              "box_vendor": "Unknown",
+              "cbox_id": null,
+              "hardware_type": "ceres_v2",
+              "rack_u": "U18",
+              "positioning_note": "Automated via API"
+            },
+            {
+              "id": "2",
+              "type": "dnode",
+              "model": "dbox-515-25032600200191",
+              "serial_number": "C15-25032600200257",
+              "status": "ACTIVE",
+              "rack_position": 18,
+              "rack_position_available": true,
+              "box_vendor": "Unknown",
+              "cbox_id": null,
+              "hardware_type": "ceres_v2",
+              "rack_u": "U18",
+              "positioning_note": "Automated via API"
+            }
+          ]
+        }
+      },
+      "statistics": {
+        "occupied_positions": 3,
+        "min_position": 18,
+        "max_position": 24,
+        "total_cnodes": 2,
+        "total_dnodes": 2
+      },
+      "generated_timestamp": "2025-10-21T09:16:49.294914"
+    },
+    "switches": [
+      {
+        "name": "se-var-1-1",
+        "hostname": "se-var-1-1",
+        "model": "MSN3700-VS2FC",
+        "serial": "MT2450J01JQ7",
+        "firmware_version": "5.13.1.1001",
+        "mgmt_ip": "10.143.11.153",
+        "state": "OK",
+        "switch_type": "cumulus",
+        "configured": true,
+        "role": "switch",
+        "total_ports": 32,
+        "active_ports": 32,
+        "port_speeds": {
+          "200G": 18,
+          "unconfigured": 10,
+          "100G": 4
+        },
+        "mtu": "9216",
+        "ports": [
+          {
+            "name": "swp1",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp10",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp11",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp12",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp13",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp14",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp15",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp16",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp17",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp18",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp19",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp2",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp20",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp21",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp22",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp23",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp24",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp25",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp26",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp27",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp28",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp29",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp3",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp30",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp31",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp32",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp4",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp5",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp6",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp7",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp8",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp9",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          }
+        ]
+      },
+      {
+        "name": "se-var-1-2",
+        "hostname": "se-var-1-2",
+        "model": "MSN3700-VS2FC",
+        "serial": "MT2450J01JPY",
+        "firmware_version": "5.13.1.1001",
+        "mgmt_ip": "10.143.11.154",
+        "state": "OK",
+        "switch_type": "cumulus",
+        "configured": false,
+        "role": null,
+        "total_ports": 32,
+        "active_ports": 32,
+        "port_speeds": {
+          "200G": 18,
+          "unconfigured": 10,
+          "100G": 4
+        },
+        "mtu": "9216",
+        "ports": [
+          {
+            "name": "swp1",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp10",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp11",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp12",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp13",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp14",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp15",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp16",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp17",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp18",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp19",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp2",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp20",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp21",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp22",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp23",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp24",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp25",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp26",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp27",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp28",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp29",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp3",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp30",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp31",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp32",
+            "state": "up",
+            "speed": "100G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp4",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp5",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp6",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          },
+          {
+            "name": "swp7",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp8",
+            "state": "up",
+            "speed": null,
+            "mtu": "9216"
+          },
+          {
+            "name": "swp9",
+            "state": "up",
+            "speed": "200G",
+            "mtu": "9216"
+          }
+        ]
+      }
+    ]
+  },
+  "sections": {
+    "network_configuration": {
+      "name": "network_configuration",
+      "title": "Network Configuration",
+      "data": {
+        "dns": {
+          "servers": [],
+          "search_domains": [],
+          "enabled": true,
+          "source": "API"
+        },
+        "ntp": null,
+        "vippools": {
+          "pools": [
+            {
+              "id": 20,
+              "guid": "486e08e4-b0cc-4493-9b6d-fb3ed9339859",
+              "name": "junhyukhong-cosi-vip-pool",
+              "url": "https://10.143.11.202/api/v7/vippools/20",
+              "title": "172.200.202.105 - 172.200.202.108",
+              "start_ip": "172.200.202.105",
+              "end_ip": "172.200.202.108",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.105",
+                  "172.200.202.108"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[105-108]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.093301Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 2,
+              "guid": "68aa2b8e-35e5-41a2-8aea-84010d2b0ea0",
+              "name": "main",
+              "url": "https://10.143.11.202/api/v7/vippools/2",
+              "title": "172.200.202.1 - 172.200.202.6",
+              "start_ip": "172.200.202.1",
+              "end_ip": "172.200.202.6",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "main",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.1",
+                  "172.200.202.6"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[1-6]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.194030Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": 43,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 23,
+              "guid": "bf991a96-3250-4679-8aac-80986fbc515d",
+              "name": "mmito-vip",
+              "url": "https://10.143.11.202/api/v7/vippools/23",
+              "title": "172.200.202.7 - 172.200.202.8",
+              "start_ip": "172.200.202.7",
+              "end_ip": "172.200.202.8",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": null,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.7",
+                  "172.200.202.8"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[7-8]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.105500Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": null,
+              "enable_weighted_balancing": false,
+              "kafka_view_id": 1562,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 11,
+              "guid": "a9c75b55-08ba-433f-96dc-5e4dd67d1a5f",
+              "name": "peca-dr-VipPool",
+              "url": "https://10.143.11.202/api/v7/vippools/11",
+              "title": "172.200.202.150 - 172.200.202.155",
+              "start_ip": "172.200.202.150",
+              "end_ip": "172.200.202.155",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 6,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.150",
+                  "172.200.202.155"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[150-155]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.121287Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "peca-dr",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 10,
+              "guid": "725e46e9-f729-43e3-98d0-0e4bde55c5dd",
+              "name": "radVipPool",
+              "url": "https://10.143.11.202/api/v7/vippools/10",
+              "title": "172.200.202.130 - 172.200.202.137",
+              "start_ip": "172.200.202.130",
+              "end_ip": "172.200.202.137",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "radVipPool",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.130",
+                  "172.200.202.137"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[130-137]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.231116Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 9,
+              "guid": "b29fb61e-0de6-44fd-a978-e140f9415e7b",
+              "name": "repl",
+              "url": "https://10.143.11.202/api/v7/vippools/9",
+              "title": "172.200.202.250 - 172.200.202.255",
+              "start_ip": "172.200.202.250",
+              "end_ip": "172.200.202.255",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "REPLICATION",
+              "ip_ranges": [
+                [
+                  "172.200.202.250",
+                  "172.200.202.255"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[250-255]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.206336Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 15,
+              "guid": "a8dba53c-e673-4a5e-ac76-ce8c2e51a09c",
+              "name": "sli-pool",
+              "url": "https://10.143.11.202/api/v7/vippools/15",
+              "title": "172.200.202.156 - 172.200.202.159",
+              "start_ip": "172.200.202.156",
+              "end_ip": "172.200.202.159",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 13,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "sli",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.156",
+                  "172.200.202.159"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[156-159]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.181829Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "sli",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 21,
+              "guid": "6d299e09-6bf9-4a7e-bee9-b8b34bba3dfa",
+              "name": "test123-vip",
+              "url": "https://10.143.11.202/api/v7/vippools/21",
+              "title": "172.200.202.181 - 172.200.202.184",
+              "start_ip": "172.200.202.181",
+              "end_ip": "172.200.202.184",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 24,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.181",
+                  "172.200.202.184"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[181-184]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.145233Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "test123",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 19,
+              "guid": "180de0c9-936a-4a0b-beff-5cdbe3da6218",
+              "name": "tomtenants",
+              "url": "https://10.143.11.202/api/v7/vippools/19",
+              "title": "172.200.202.101 - 172.200.202.104",
+              "start_ip": "172.200.202.101",
+              "end_ip": "172.200.202.104",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": null,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "tomtenants",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.101",
+                  "172.200.202.104"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[101-104]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.133699Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": null,
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 22,
+              "guid": "20259d29-87af-493f-a613-2237d3a78788",
+              "name": "videosearch",
+              "url": "https://10.143.11.202/api/v7/vippools/22",
+              "title": "172.200.202.47 - 172.200.202.52",
+              "start_ip": "172.200.202.47",
+              "end_ip": "172.200.202.52",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "videosearch",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.47",
+                  "172.200.202.52"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[47-52]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.169841Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 4,
+              "guid": "e075c0b7-f2b6-40d2-befb-6364610ad927",
+              "name": "vsphere-1",
+              "url": "https://10.143.11.202/api/v7/vippools/4",
+              "title": "172.200.202.31 - 172.200.202.34",
+              "start_ip": "172.200.202.31",
+              "end_ip": "172.200.202.34",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-1",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.31",
+                  "172.200.202.34"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[31-34]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.218866Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 5,
+              "guid": "4807b994-a483-4a70-8ead-d8ab20d233c5",
+              "name": "vsphere-2",
+              "url": "https://10.143.11.202/api/v7/vippools/5",
+              "title": "172.200.202.35 - 172.200.202.38",
+              "start_ip": "172.200.202.35",
+              "end_ip": "172.200.202.38",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-2",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.35",
+                  "172.200.202.38"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[35-38]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.157758Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 6,
+              "guid": "9c7c4030-4d85-4940-b874-17f4001ba05d",
+              "name": "vsphere-3",
+              "url": "https://10.143.11.202/api/v7/vippools/6",
+              "title": "172.200.202.39 - 172.200.202.42",
+              "start_ip": "172.200.202.39",
+              "end_ip": "172.200.202.42",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-3",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.39",
+                  "172.200.202.42"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[39-42]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.056902Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            },
+            {
+              "id": 8,
+              "guid": "ab336a3b-d0cc-463a-bd2e-0996f4f59d77",
+              "name": "vsphere-4",
+              "url": "https://10.143.11.202/api/v7/vippools/8",
+              "title": "172.200.202.43 - 172.200.202.46",
+              "start_ip": "172.200.202.43",
+              "end_ip": "172.200.202.46",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "selab-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "vsphere-4",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.43",
+                  "172.200.202.46"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[43-46]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-21T16:11:16.076853Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null
+            }
+          ],
+          "total_pools": 14,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-21T09:16:49.295310"
+      },
+      "completeness": 0.6666666666666666,
+      "status": "partial"
+    },
+    "cluster_network_configuration": {
+      "name": "cluster_network_configuration",
+      "title": "Cluster Network Configuration",
+      "data": {
+        "management_vips": "10.143.11.202",
+        "external_gateways": "10.143.254.254",
+        "dns": "10.140.3.248",
+        "ntp": "10.140.0.17",
+        "mgmt_vip": "Not Configured",
+        "mgmt_inner_vip": "Not Configured",
+        "mgmt_inner_vip_cnode": "Not Configured",
+        "ext_netmask": "255.255.0.0",
+        "auto_ports_ext_iface": "outband",
+        "b2b_ipmi": false,
+        "eth_mtu": 9000,
+        "ib_mtu": 65520,
+        "ipmi_gateway": "10.143.254.254",
+        "ipmi_netmask": "255.255.0.0",
+        "extraction_timestamp": "2025-10-21T09:16:49.295529"
+      },
+      "completeness": 0.875,
+      "status": "partial"
+    },
+    "cnodes_network_configuration": {
+      "name": "cnodes_network_configuration",
+      "title": "CNodes Network Configuration",
+      "data": {
+        "cnodes": [
+          {
+            "id": 1,
+            "hostname": "se-az-arrow-cb2-cn-1",
+            "mgmt_ip": "10.143.11.61",
+            "ipmi_ip": "10.143.11.62",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X4A20495",
+            "is_vms_host": false,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          },
+          {
+            "id": 2,
+            "hostname": "se-az-arrow-cb2-cn-2",
+            "mgmt_ip": "10.143.11.63",
+            "ipmi_ip": "10.143.11.64",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X5306345",
+            "is_vms_host": true,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          }
+        ],
+        "total_cnodes": 2,
+        "extraction_timestamp": "2025-10-21T09:16:49.295728"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "dnodes_network_configuration": {
+      "name": "dnodes_network_configuration",
+      "title": "DNodes Network Configuration",
+      "data": {
+        "dnodes": [
+          {
+            "id": 3,
+            "hostname": "se-az-arrow-db2-dn-1",
+            "mgmt_ip": "10.143.11.21",
+            "ipmi_ip": "10.143.11.22",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Dnode",
+            "position": "right",
+            "box_name": "dbox-515-25032600200191",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          },
+          {
+            "id": 4,
+            "hostname": "se-az-arrow-db2-dn-2",
+            "mgmt_ip": "10.143.11.23",
+            "ipmi_ip": "10.143.11.24",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Dnode",
+            "position": "left",
+            "box_name": "dbox-515-25032600200191",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          }
+        ],
+        "total_dnodes": 2,
+        "extraction_timestamp": "2025-10-21T09:16:49.295925"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "logical_configuration": {
+      "name": "logical_configuration",
+      "title": "Logical Configuration",
+      "data": {
+        "tenants": {
+          "tenants": [
+            {
+              "name": "tom-tenant2",
+              "id": 17,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca-dr",
+              "id": 6,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mcltenant",
+              "id": 25,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test123",
+              "id": 24,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Hawthorn",
+              "id": 20,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "eelmasry-tenant1",
+              "id": 26,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "id": 1,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sbunch-tenant",
+              "id": 3,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant1",
+              "id": 16,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant",
+              "id": 21,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sli",
+              "id": 13,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant-2",
+              "id": 22,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test-tenant",
+              "id": 27,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant3",
+              "id": 18,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tenant1",
+              "id": 4,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-tenant",
+              "id": 5,
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 16,
+          "source": "API"
+        },
+        "views": {
+          "views": [
+            {
+              "name": "root",
+              "path": "/",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-111",
+              "path": "/andy-gns",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-165",
+              "path": "/bert-allsquash",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-158",
+              "path": "/bert-ga",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-146",
+              "path": "/bert/s3test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1560",
+              "path": "/bgolliher/ciscowritetput",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-155",
+              "path": "/bg-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "block-test-subsystem",
+              "path": "/block/test01",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1528",
+              "path": "/buzz-dest",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-24",
+              "path": "/csg",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1574",
+              "path": "/csg2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-136",
+              "path": "/csg-repl-target",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-44",
+              "path": "/dchan-nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-45",
+              "path": "/dchan-s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1575",
+              "path": "/ddrozdowski/demo",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1557",
+              "path": "/ddrozdowski/gn-202",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1549",
+              "path": "/ddrozdowski/k8s",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1550",
+              "path": "/ddrozdowski/k8s/pvc-524ae01a-5aef-4592-829c-45141b1ab980",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-166",
+              "path": "/ddrozdow-tenant1/endpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-c071079a-fd8c-4812-a7a7-af4f2fd12b20",
+              "path": "/ddrozdow-tenant1/endpoint/tenant1-firstbucket",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-167",
+              "path": "/ddrozdow-tenant2/endpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-7eda96b6-41d7-4629-b224-3a59b39ea27f",
+              "path": "/ddrozdow-tenant2/endpoint/tenant2-firstbucket",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-147",
+              "path": "/demo",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-fe5b25c5-59a7-4d9e-99c5-4519a59e2590",
+              "path": "/denis/s3/dmbucket01",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-65",
+              "path": "/drozdowski/s3-endpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-4cf8c396-1a22-4697-97a0-050c013d5a47",
+              "path": "/drozdowski/s3-endpoint/29augusttemp1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-584a1b12-5b1e-4a6e-8b18-9af8760c2140",
+              "path": "/drozdowski/s3-endpoint/29augusttemp2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-df6e7e36-e54c-4f7f-ae8b-c24644c86157",
+              "path": "/drozdowski/s3-endpoint/daniel-temp1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-12f0be01-cda7-4521-bd30-0f9cb5750367",
+              "path": "/drozdowski/s3-endpoint/daniel-temp1-bla",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-c4bf4369-d89f-4fce-8890-672311731233",
+              "path": "/drozdowski/s3-endpoint/daniel-temp2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-786ccb16-1ea4-44e3-bc07-cb2ef71ebf4f",
+              "path": "/drozdowski/s3-endpoint/drozdowski-bucket1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-6bc1e3b6-9ff0-491e-b91b-de9ca65c3c7a",
+              "path": "/drozdowski/s3-endpoint/temp2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-3ddeb6ed-b34a-4c7c-9d2d-955285fe396c",
+              "path": "/drozdowski/s3-endpoint/vasttest-0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-eeb9c240-f911-445a-8104-ad7453c66618",
+              "path": "/drozdowski/s3-endpoint/vasttest-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-efbcd343-49a5-46d8-8a42-6b234fcf2268",
+              "path": "/drozdowski/s3-endpoint/vasttest-1755865778-12160-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-6ae7175c-c43d-4c3d-8d18-09afc1452c31",
+              "path": "/drozdowski/s3-endpoint/vasttest-1755865778-12160-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-7b16798c-900c-4b6e-b1d3-9bcae9425247",
+              "path": "/drozdowski/s3-endpoint/vasttest-1755865778-12160-3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-4fb1fcf5-232f-498e-bedb-da6950c9df43",
+              "path": "/drozdowski/s3-endpoint/vasttest-1755865778-12160-4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-904e2e78-e979-4cab-ad56-0fe626a5b15f",
+              "path": "/drozdowski/s3-endpoint/vasttest-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-390c3f60-cdd4-4b04-b6cc-6bb835f0aa56",
+              "path": "/drozdowski/s3-endpoint/vasttest-3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1547",
+              "path": "/eelmasry-tenant1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-96",
+              "path": "/gosbench",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-116",
+              "path": "/hsbc1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-118",
+              "path": "/hsbc2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-130",
+              "path": "/hsbc3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-131",
+              "path": "/hsbc4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-63",
+              "path": "/james/replication-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-156",
+              "path": "/jan",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-160",
+              "path": "/jan_s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-112",
+              "path": "/jonas/cosmos-lab",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-145",
+              "path": "/jonas/cosmos-lab/cosmos-lab-metadata",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-114",
+              "path": "/jonas/cosmos-lab/processed",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-113",
+              "path": "/jonas/cosmos-lab/raw",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test-orphaned-data-1756929864",
+              "path": "/jonas/test-orphaned-data",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-43",
+              "path": "/jrussler/mb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1551",
+              "path": "/jthaloor/nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1555",
+              "path": "/jthaloor/nfs2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-190",
+              "path": "/junhyukhong-cosi-view/vastdata-bucketdf26fe66-fecb-43bb-896c-43d5f1cd40ef",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1522",
+              "path": "/kyle",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1529",
+              "path": "/kyle/large",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1537",
+              "path": "/maria",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1544",
+              "path": "/maria2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1545",
+              "path": "/maria2/nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1546",
+              "path": "/maria2/test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1552",
+              "path": "/matthewrogers/videodemos",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-105",
+              "path": "/mcavallaro",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1561",
+              "path": "/mclgns",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-141",
+              "path": "/michalk",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-121",
+              "path": "/michalk/bucket-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-122",
+              "path": "/michalk/bucket-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-945df9f9-1626-49a9-9804-14d1ca97e859",
+              "path": "/michalk/bucket-3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-37ec788e-90d9-403d-9375-c8deb28d1a2a",
+              "path": "/michalk/bucket-4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-b48f3c24-04af-4406-9648-1d72f9e2c62a",
+              "path": "/michalk/endpoint-2/michalk-test3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-699f744e-1c48-4cf8-b544-d1209341e692",
+              "path": "/michalk/endpoint-2/michalk-test6",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-c91924e6-7a28-489a-b618-bad4f0afcfbb",
+              "path": "/michalk/endpoint-3/michalk-test4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-09d6a926-e07c-48c9-a729-7fcc2555a3d6",
+              "path": "/michalk/endpoint-3/michalk-test5",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-33",
+              "path": "/migration-source",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1532",
+              "path": "/mmito",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1563",
+              "path": "/mmito-clone",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1562",
+              "path": "/mmito/event",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1535",
+              "path": "/mmito-s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-115",
+              "path": "/nireny",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1479",
+              "path": "/nireny-k8s/pvc-03d1cac5-792d-4359-9b2b-fe3e7dc3c99b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1429",
+              "path": "/nireny-k8s/pvc-04975079-570b-4479-9e61-04de66323d50",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1474",
+              "path": "/nireny-k8s/pvc-05664851-117f-49da-9e21-dac60dd8081b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1492",
+              "path": "/nireny-k8s/pvc-0bf0ae6b-fd90-4944-b57c-92afdc41aa49",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1475",
+              "path": "/nireny-k8s/pvc-0d7038f7-b505-46bf-aa18-80565d89086f",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1471",
+              "path": "/nireny-k8s/pvc-0f77be0c-d562-4187-bd82-7af46ad89043",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1444",
+              "path": "/nireny-k8s/pvc-12a9ac17-fd34-43bf-8827-cb83d1373f7a",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1493",
+              "path": "/nireny-k8s/pvc-138eddb1-01eb-4305-abaf-5b47143c1e7b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1513",
+              "path": "/nireny-k8s/pvc-148213a5-9cb5-4429-8102-6c1569230d0f",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1436",
+              "path": "/nireny-k8s/pvc-163184fb-ee55-4da5-b9e6-d4d7fcf286b9",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1498",
+              "path": "/nireny-k8s/pvc-16654d19-ac55-4d34-bdc2-ca62f3eaab7c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1440",
+              "path": "/nireny-k8s/pvc-1acfd121-c061-41e4-ab61-06ab8d4f22df",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1423",
+              "path": "/nireny-k8s/pvc-1e413a89-953a-4dca-abeb-1aa0d310956b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1454",
+              "path": "/nireny-k8s/pvc-1e7b0a79-c321-4d5a-8f86-8c752048538c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1452",
+              "path": "/nireny-k8s/pvc-1f7a96c2-9251-4f47-99cf-66c8e78c4530",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1517",
+              "path": "/nireny-k8s/pvc-220dc50c-bf87-48ad-b0c3-86427b359dc7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1455",
+              "path": "/nireny-k8s/pvc-235c0e86-ff00-4e7c-9513-05c88b5d3c5a",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1494",
+              "path": "/nireny-k8s/pvc-2361ad88-50dd-4e6d-9ea7-654c6538d56b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1456",
+              "path": "/nireny-k8s/pvc-25a2036c-8d1f-400d-89a7-46fc8819d3be",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1457",
+              "path": "/nireny-k8s/pvc-2bf21cad-0ed9-4e6d-821b-0c683987cacd",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1503",
+              "path": "/nireny-k8s/pvc-3128e8a4-860a-455d-ae85-c643c0a1bd6d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1509",
+              "path": "/nireny-k8s/pvc-3369edc4-dee3-48a2-b661-5bed42582fff",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1431",
+              "path": "/nireny-k8s/pvc-37d19227-159e-4ab4-934c-c986fb2eb4d9",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1434",
+              "path": "/nireny-k8s/pvc-38293815-a4e4-4647-b1de-227a60115d18",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1449",
+              "path": "/nireny-k8s/pvc-3f59818b-b7fd-47ad-8828-a2818063ca2a",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1461",
+              "path": "/nireny-k8s/pvc-4248168c-a42b-4556-a3ff-4ed4fb2c7092",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1502",
+              "path": "/nireny-k8s/pvc-446f33b4-4115-4b68-b489-17dc5fdcd025",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1427",
+              "path": "/nireny-k8s/pvc-46075d76-a9ff-44fa-8bb7-62aaf0c3317d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1465",
+              "path": "/nireny-k8s/pvc-46d96dfd-64ff-4778-a77c-f2ef0a54e5aa",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1458",
+              "path": "/nireny-k8s/pvc-4a6dcced-293b-41a9-9433-3e40a752f122",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1484",
+              "path": "/nireny-k8s/pvc-4b3737c4-03b0-4e4f-8abb-573163f949f5",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1500",
+              "path": "/nireny-k8s/pvc-4bcf14b8-5745-4491-b9f3-8b8dd810828e",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1426",
+              "path": "/nireny-k8s/pvc-5272d380-202b-4b98-8e80-740f7fa67b27",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1473",
+              "path": "/nireny-k8s/pvc-5633bad1-d821-444b-9ca2-2a54fc4f099a",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1430",
+              "path": "/nireny-k8s/pvc-58bbf202-b09a-4e7a-ad19-c77bafc6fc88",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1518",
+              "path": "/nireny-k8s/pvc-5ac54160-d670-4bba-bbb7-fa2e2ed1b3cf",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1451",
+              "path": "/nireny-k8s/pvc-5e7173b5-eb82-46e9-bbab-3cd859fa414a",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1470",
+              "path": "/nireny-k8s/pvc-628bee87-9221-4c62-95ec-c3545b4c75b5",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1437",
+              "path": "/nireny-k8s/pvc-6297a7b1-0923-4da2-81c3-ed575119a6d3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1511",
+              "path": "/nireny-k8s/pvc-62d4687f-d335-48e3-9bef-f75d8cc75185",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1432",
+              "path": "/nireny-k8s/pvc-63b1d8b2-5803-4284-8963-5d7a1f8c2eae",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1488",
+              "path": "/nireny-k8s/pvc-63d1c53a-dff7-4acb-acfb-705be9230f03",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1501",
+              "path": "/nireny-k8s/pvc-69ae40f1-8d0d-4d60-8fd3-62d623464e6e",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1480",
+              "path": "/nireny-k8s/pvc-6cb939d8-f866-41fd-a674-a01049640fa9",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1508",
+              "path": "/nireny-k8s/pvc-6df9627d-ed4d-45d5-9942-9d68d3ab752c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1521",
+              "path": "/nireny-k8s/pvc-7252b988-57ec-48fe-a560-a82f58530f96",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1459",
+              "path": "/nireny-k8s/pvc-7332d039-5b28-4811-a86b-d8194d9869c6",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1514",
+              "path": "/nireny-k8s/pvc-73bd6c5b-5e04-4b32-b89e-85612b0d13f7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1472",
+              "path": "/nireny-k8s/pvc-78df3f83-d98a-417c-8f21-094d5fd63e5b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1433",
+              "path": "/nireny-k8s/pvc-795fc518-4661-46ab-97d8-eeea30c05bdb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1520",
+              "path": "/nireny-k8s/pvc-7d14a903-f78b-467a-b9b8-100a46bdb2af",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1447",
+              "path": "/nireny-k8s/pvc-88034892-04ee-49ad-9689-52970f2e2d1b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1462",
+              "path": "/nireny-k8s/pvc-8c05214b-95df-4fe0-9c83-8fc8706b21a8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1448",
+              "path": "/nireny-k8s/pvc-8c8ea1b9-4b65-4bec-87fa-ae1ba31546a1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1505",
+              "path": "/nireny-k8s/pvc-8d004155-efa9-4ccf-b340-bcbce59b8bf2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1445",
+              "path": "/nireny-k8s/pvc-8ece413d-fe5b-4360-94f8-fec188f026f0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1478",
+              "path": "/nireny-k8s/pvc-9a7d654b-5b3f-4731-adc0-bb87133052dd",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1483",
+              "path": "/nireny-k8s/pvc-9b1e2e56-4e11-49c4-b2d5-63b5460b712d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1496",
+              "path": "/nireny-k8s/pvc-9c082392-d0b5-4e09-a8e3-f73066332f4c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1453",
+              "path": "/nireny-k8s/pvc-a11fed9c-ff91-4253-bd97-1952bf4371f3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1439",
+              "path": "/nireny-k8s/pvc-aa7b138b-5642-49fe-928d-2d2436efead8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1491",
+              "path": "/nireny-k8s/pvc-ab3bda21-304c-4897-9766-0d6da1cb0872",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1507",
+              "path": "/nireny-k8s/pvc-ad6170ea-6c77-4e86-89db-2ac304acbb36",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1463",
+              "path": "/nireny-k8s/pvc-ae8d5e6f-f75d-4897-a49d-db907c5bfe89",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1424",
+              "path": "/nireny-k8s/pvc-af096043-57c0-47c4-b838-d5a6664e506f",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1486",
+              "path": "/nireny-k8s/pvc-afa1d17c-b3e9-4b81-9f98-cf1904622cf7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1450",
+              "path": "/nireny-k8s/pvc-b0d62d04-89ee-4d84-9709-0c310c2d0fa8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1506",
+              "path": "/nireny-k8s/pvc-b58c0acc-13a5-4855-ad74-78ea5515e35d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1495",
+              "path": "/nireny-k8s/pvc-ba03fd24-b8f8-487c-85fa-0d14b489a260",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1510",
+              "path": "/nireny-k8s/pvc-ba386951-d5ae-4e86-8e01-f250b8432dc7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1428",
+              "path": "/nireny-k8s/pvc-bad7e51e-5a77-4e43-90f4-000d1ee0f4a8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1477",
+              "path": "/nireny-k8s/pvc-bb1eb633-a294-4187-9159-3517fb2089d3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1482",
+              "path": "/nireny-k8s/pvc-bc66193a-c50a-400a-a5d1-98018eba7451",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1469",
+              "path": "/nireny-k8s/pvc-bc801b26-92e1-4a30-8e0a-66a35b2e6e08",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1512",
+              "path": "/nireny-k8s/pvc-bd8313d5-6659-4c87-b560-69e5291e75f7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1460",
+              "path": "/nireny-k8s/pvc-bf65f030-1f9e-4828-a599-a7af42e7cde0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1487",
+              "path": "/nireny-k8s/pvc-c0ca7f7a-116e-4f02-89e9-d50099020380",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1490",
+              "path": "/nireny-k8s/pvc-c22f8f62-efd4-438e-abc7-6041ee758af2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1441",
+              "path": "/nireny-k8s/pvc-c23e946e-fde5-4136-88e0-bd0793224a9d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1464",
+              "path": "/nireny-k8s/pvc-c45c9ab2-44a8-4d9b-941a-9ffd067cd133",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1443",
+              "path": "/nireny-k8s/pvc-c66b9f71-abb1-4d2a-96a2-56efbe9a4e7f",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1467",
+              "path": "/nireny-k8s/pvc-c87b26fa-ee37-47ae-b3af-1d7fabc324b6",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1504",
+              "path": "/nireny-k8s/pvc-ca035927-8bff-43bb-b6fd-e017d276e215",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1446",
+              "path": "/nireny-k8s/pvc-cb96e4de-acec-46db-9ef1-1d15b74dd1e7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1476",
+              "path": "/nireny-k8s/pvc-cc521870-eeba-4c74-a991-0f5049057068",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1442",
+              "path": "/nireny-k8s/pvc-cc7f2264-3282-4cd1-acb5-df23f9645bea",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1438",
+              "path": "/nireny-k8s/pvc-d04d58ef-baf9-4449-8b15-affb1f0c6709",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1435",
+              "path": "/nireny-k8s/pvc-d5404276-31ad-47d6-af97-840b74d0c211",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1422",
+              "path": "/nireny-k8s/pvc-d973c15a-bfd2-4d80-9cbc-2e8c592ccc04",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1515",
+              "path": "/nireny-k8s/pvc-d9c11ef9-5327-4bcd-98c4-97638af558f8",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1468",
+              "path": "/nireny-k8s/pvc-dfbecb26-5bf7-4538-acad-138bbd74b8fb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1516",
+              "path": "/nireny-k8s/pvc-e7440337-1769-4635-bb79-5094a02c70c4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1425",
+              "path": "/nireny-k8s/pvc-ebbad1bd-7d38-47fe-91dc-8033a93d94a1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1519",
+              "path": "/nireny-k8s/pvc-ececfadb-09cc-4f44-82b8-72695e7b0777",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1489",
+              "path": "/nireny-k8s/pvc-ecfdf063-0742-419e-99d8-79a20f11564c",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1466",
+              "path": "/nireny-k8s/pvc-f349ceff-9654-41a8-a1b7-a05cf089b2c7",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1499",
+              "path": "/nireny-k8s/pvc-f6eecfad-13fb-4b1f-8167-3e627c5771f0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1497",
+              "path": "/nireny-k8s/pvc-f7b3738d-cabb-4dd8-875e-a02fc1822ad2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1481",
+              "path": "/nireny-k8s/pvc-fe3aeff3-712f-40f7-b60e-d6f956c17163",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1485",
+              "path": "/nireny-k8s/pvc-fe506973-1470-4a06-8ce9-2869ab855d4e",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-12",
+              "path": "/paulh",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-36",
+              "path": "/paulh/archive-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-13",
+              "path": "/paulh/ktls",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1312",
+              "path": "/peca_nfs2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-51",
+              "path": "/peca-nfs-repl2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-48",
+              "path": "/Petika/Backups",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1556",
+              "path": "/pjb-s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1553",
+              "path": "/pkg/videodemos",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1579",
+              "path": "/pohseng-demo",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-41",
+              "path": "/pwags-mixed",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-39",
+              "path": "/pwags-nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-40",
+              "path": "/pwags-smb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-32",
+              "path": "/radView",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1525",
+              "path": "/ram",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1548",
+              "path": "/ram-db",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1578",
+              "path": "/robg/vmware/datastore-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-162",
+              "path": "/russ1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-17",
+              "path": "/sbunch/s3bucket",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "scotth-ss1",
+              "path": "/scotth/block1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-5203db63-b7eb-4086-b0ae-29c6e22cdf72",
+              "path": "/scotth/shb9-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-a60d4901-d4c1-43d2-a895-34a6638aa96c",
+              "path": "/scotth/shsync1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1533",
+              "path": "/sgjameschen_nfs3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-47",
+              "path": "/shaddowwin",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-109",
+              "path": "/sli/s3-endpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-397ecc24-772f-44ef-bb7c-ab9b98c99d21",
+              "path": "/sli/s3-endpoint/foundation",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-120",
+              "path": "/sli/sli-nfs3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1554",
+              "path": "/sli/sli-smb",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1419",
+              "path": "/soto/gns",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1531",
+              "path": "/soto/renderman",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1527",
+              "path": "/soto/s3bucketlogs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1526",
+              "path": "/soto/s3bucket-media",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-201",
+              "path": "/splunkendpoint",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-899317a1-4721-4662-a27f-0cf367fca8ce",
+              "path": "/splunkendpoint/splunks3tests-og11cdqbmaxdaft-171",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-143",
+              "path": "/splunk/s3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-144",
+              "path": "/splunk/s3-logging",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "S3-a05f239e-c736-4c84-a7a6-b7c16537a33d",
+              "path": "/splunks3tests-5maopr226v3zyte-171",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1534",
+              "path": "/steve/nfs",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sven-view",
+              "path": "/sven",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-191",
+              "path": "/syncengine/dest-bucket",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-193",
+              "path": "/syncengine/nfs-dest",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-200",
+              "path": "/test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1559",
+              "path": "/test_path",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-108",
+              "path": "/tom-tenant1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1523",
+              "path": "/.vast_audit_dir",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1536",
+              "path": "/visalatency",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-164",
+              "path": "/vperfsanity",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-16",
+              "path": "/vsphere/datastores/selab-critical",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-4",
+              "path": "/vsphere/datastores/vsphere-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-5",
+              "path": "/vsphere/datastores/vsphere-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-7",
+              "path": "/vsphere/datastores/vsphere-3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-8",
+              "path": "/vsphere/datastores/vsphere-4",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1572",
+              "path": "/williammo/buckets/williammo-loki",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1573",
+              "path": "/williammo/buckets/williammo-mimir",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-1571",
+              "path": "/williammo/williammo-test-bucket",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 236,
+          "source": "API"
+        },
+        "view_policies": {
+          "policies": [
+            {
+              "name": "bg-multi",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "buzzPol",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-nfs-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-s3-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-smb",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-tenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "dchan-tenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant-2__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant-2__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdow-s3-tenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "ddrozdowski-k8s-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "eelmasry-tenant1__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "eelmasry-tenant1__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Hawthorn__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Hawthorn__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jonas-NFS",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "jonas-S3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "junhyukhong-cosi-view-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "maria_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mcl_s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mcltenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mcltenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "michalk-nfs-policy1",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "michalk-s3-policy1",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mmito-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "mmito-s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "nfs-nosquash",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "nireny",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "nireny-k8s",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "nosquash",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "paulh-ktls",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "paulh-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca-dr-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca-dr-s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca_nfs_rootsquash",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "peca_nfs_rootsquash_override",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Petika-SMB",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pjb-s3-default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-mixed",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-nfs",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-nfs-audit",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "pwags-smb",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "radViewPolicy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Russ_S3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "s3_policy_denis",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sbunch-s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sbunch-tenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sbunch-tenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "scotth-default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sgjameschen_nfs3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sli__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sli__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sli-smb-pol",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "soto_auditing",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "soto_default_s3",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "soto_nfs_default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "Steve-Policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "sven-view-policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tenant1__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tenant1__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test123__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test123__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test-tenant__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "test-tenant__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant1__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant1__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant2__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant2__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant3__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tom-tenant3__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "tomtenants",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "videodemos",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "vperfsanity",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "vsphere",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 78,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-21T09:16:49.297488"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "security_configuration": {
+      "name": "security_configuration",
+      "title": "Security & Authentication",
+      "data": {
+        "active_directory": {
+          "enabled": true,
+          "domain": "Unknown",
+          "servers": [],
+          "source": "API"
+        },
+        "ldap": null,
+        "nis": null,
+        "extraction_timestamp": "2025-10-21T09:16:49.297641"
+      },
+      "completeness": 0.3333333333333333,
+      "status": "missing"
+    },
+    "data_protection_configuration": {
+      "name": "data_protection_configuration",
+      "title": "Data Protection",
+      "data": {
+        "snapshot_programs": null,
+        "protection_policies": {
+          "policies": [
+            {
+              "name": "5min-var201-202",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "mcl_5min",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "mclgns",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "michalk-policy1",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "mmito-repl-var202",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "Steve-snaps",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            },
+            {
+              "name": "wildcard",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            }
+          ],
+          "total_count": 7,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-21T09:16:49.297908"
+      },
+      "completeness": 0.5,
+      "status": "partial"
+    },
+    "performance_metrics": {
+      "name": "performance_metrics",
+      "title": "Performance Metrics & Capacity Analysis",
+      "data": {
+        "total_capacity": "Unknown",
+        "used_capacity": "Unknown",
+        "available_capacity": "Unknown",
+        "utilization_percentage": 0.0,
+        "iops_rating": "Unknown",
+        "throughput_rating": "Unknown",
+        "latency_metrics": {},
+        "performance_tier": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.25,
+      "status": "missing"
+    },
+    "licensing_info": {
+      "name": "licensing_info",
+      "title": "Licensing & Compliance Information",
+      "data": {
+        "license_type": "Unknown",
+        "license_key": "Unknown",
+        "expiration_date": "Unknown",
+        "licensed_features": [],
+        "compliance_status": "Unknown",
+        "support_level": "Unknown",
+        "maintenance_expiry": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.14285714285714285,
+      "status": "missing"
+    },
+    "monitoring_configuration": {
+      "name": "monitoring_config",
+      "title": "Monitoring & Alerting Configuration",
+      "data": {
+        "snmp_config": null,
+        "syslog_config": null,
+        "alert_policies": null,
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "customer_integration": {
+      "name": "customer_integration",
+      "title": "Customer Environment Integration",
+      "data": {
+        "network_topology": "Switch-to-switch MLAG connections",
+        "vlan_configuration": {
+          "customer_vlan": "100 (Production Data)",
+          "internal_vlan": "69 (VAST internal traffic)"
+        },
+        "firewall_rules": [
+          {
+            "service": "NFS",
+            "port": "2049",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SMB",
+            "port": "445",
+            "protocol": "TCP"
+          },
+          {
+            "service": "S3",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "iSCSI",
+            "port": "3260",
+            "protocol": "TCP"
+          },
+          {
+            "service": "Management",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SNMP",
+            "port": "161",
+            "protocol": "UDP"
+          },
+          {
+            "service": "Syslog",
+            "port": "514",
+            "protocol": "UDP"
+          }
+        ],
+        "load_balancer_config": {
+          "method": "Round-robin across available CNodes",
+          "redundancy": "Dual-path connectivity for high availability"
+        },
+        "customer_requirements": [
+          "1.3M IOPS performance requirement",
+          "264 GB/s throughput requirement",
+          "1.17 PB usable capacity",
+          "NFS, SMB, S3, iSCSI protocol support",
+          "Active Directory integration",
+          "SNMP and syslog monitoring integration",
+          "Snapshot backup policies"
+        ],
+        "integration_timeline": "6-week deployment timeline",
+        "source": "API"
+      },
+      "completeness": 1.1666666666666667,
+      "status": "missing"
+    },
+    "deployment_timeline": {
+      "name": "deployment_timeline",
+      "title": "Deployment Timeline & Milestones",
+      "data": {
+        "deployment_phases": [
+          {
+            "phase": "Phase 1 - Planning",
+            "duration": "Week 1",
+            "description": "Requirements gathering, design review"
+          },
+          {
+            "phase": "Phase 2 - Hardware Installation",
+            "duration": "Week 2",
+            "description": "Rack mounting, cabling"
+          },
+          {
+            "phase": "Phase 3 - Software Configuration",
+            "duration": "Week 3",
+            "description": "Cluster setup, network config"
+          },
+          {
+            "phase": "Phase 4 - Integration",
+            "duration": "Week 4",
+            "description": "Customer network integration, testing"
+          },
+          {
+            "phase": "Phase 5 - Validation",
+            "duration": "Week 5",
+            "description": "Performance testing, user acceptance"
+          },
+          {
+            "phase": "Phase 6 - Go-Live",
+            "duration": "Week 6",
+            "description": "Production cutover, documentation"
+          }
+        ],
+        "key_milestones": [
+          {
+            "milestone": "Hardware Delivery",
+            "date": "September 1, 2025"
+          },
+          {
+            "milestone": "Rack Installation Complete",
+            "date": "September 5, 2025"
+          },
+          {
+            "milestone": "Cluster Initialization",
+            "date": "September 8, 2025"
+          },
+          {
+            "milestone": "Network Integration",
+            "date": "September 12, 2025"
+          },
+          {
+            "milestone": "Performance Validation",
+            "date": "September 15, 2025"
+          },
+          {
+            "milestone": "Production Go-Live",
+            "date": "September 18, 2025"
+          }
+        ],
+        "testing_results": [
+          {
+            "test": "Functional Testing",
+            "status": "Passed",
+            "description": "All protocols tested and validated"
+          },
+          {
+            "test": "Performance Testing",
+            "status": "Passed",
+            "description": "Exceeded IOPS and throughput requirements"
+          },
+          {
+            "test": "Failover Testing",
+            "status": "Passed",
+            "description": "CNode and DNode failover tested successfully"
+          },
+          {
+            "test": "Backup Testing",
+            "status": "Passed",
+            "description": "Snapshot and replication policies validated"
+          },
+          {
+            "test": "Security Testing",
+            "status": "Passed",
+            "description": "Authentication and authorization verified"
+          },
+          {
+            "test": "Integration Testing",
+            "status": "Passed",
+            "description": "Customer applications tested successfully"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "future_recommendations": {
+      "name": "future_recommendations",
+      "title": "Future Recommendations & Roadmap",
+      "data": {
+        "short_term": [
+          {
+            "category": "Capacity Planning",
+            "description": "Monitor utilization and plan for growth"
+          },
+          {
+            "category": "Performance Tuning",
+            "description": "Optimize workload placement and QoS policies"
+          },
+          {
+            "category": "Backup Testing",
+            "description": "Regular DR testing and backup validation"
+          },
+          {
+            "category": "Monitoring Enhancement",
+            "description": "Implement custom dashboards and alerts"
+          },
+          {
+            "category": "Documentation Updates",
+            "description": "Keep operational procedures current"
+          }
+        ],
+        "medium_term": [
+          {
+            "category": "Capacity Expansion",
+            "description": "Add DBoxes for increased storage capacity"
+          },
+          {
+            "category": "Performance Scaling",
+            "description": "Add CNodes for increased IOPS and throughput"
+          },
+          {
+            "category": "Feature Adoption",
+            "description": "Implement advanced features like replication"
+          },
+          {
+            "category": "Automation",
+            "description": "Implement automated provisioning and management"
+          },
+          {
+            "category": "Integration",
+            "description": "Expand integration with customer applications"
+          }
+        ],
+        "long_term": [
+          {
+            "category": "Multi-Site Deployment",
+            "description": "Consider secondary site for DR"
+          },
+          {
+            "category": "Cloud Integration",
+            "description": "Hybrid cloud storage capabilities"
+          },
+          {
+            "category": "AI/ML Integration",
+            "description": "Leverage VAST's AI capabilities"
+          },
+          {
+            "category": "Edge Computing",
+            "description": "Deploy edge storage nodes if needed"
+          },
+          {
+            "category": "Technology Refresh",
+            "description": "Plan for hardware refresh cycles"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "port_mapping": {
+      "name": "port_mapping",
+      "title": "Port Mapping",
+      "data": {
+        "available": true,
+        "port_map": [
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-R",
+            "node_type": "cnode",
+            "interface": "enp129s0f0",
+            "mac": "c4:70:bd:fa:45:0a",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f1",
+            "mac": "c4:70:bd:fa:45:0b",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f2",
+            "mac": "be:ef:0a:8f:0b:3d",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.4",
+            "node_hostname": "se-az-arrow-cb2-cn-1",
+            "node_designation": "CB1-CN1-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f3",
+            "mac": "be:ef:0a:8f:0b:3d",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P20",
+            "port": "swp20",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-R",
+            "node_type": "cnode",
+            "interface": "enp129s0f0",
+            "mac": "b8:e9:24:d6:e6:30",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f1",
+            "mac": "b8:e9:24:d6:e6:31",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f2",
+            "mac": "be:ef:0a:8f:0b:3f",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.5",
+            "node_hostname": "se-az-arrow-cb2-cn-2",
+            "node_designation": "CB2-CN2-L",
+            "node_type": "cnode",
+            "interface": "enp129s0f3",
+            "mac": "be:ef:0a:8f:0b:3f",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P21",
+            "port": "swp21",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-R",
+            "node_type": "dnode",
+            "interface": "enp3s0f0",
+            "mac": "7c:8c:09:f2:0f:66",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f2",
+            "mac": "be:ef:0a:8f:0b:15",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.104",
+            "node_hostname": "se-az-arrow-db2-dn-1",
+            "node_designation": "DB1-DN1-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f3",
+            "mac": "be:ef:0a:8f:0b:15",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-R",
+            "node_type": "dnode",
+            "interface": "enp3s0f0",
+            "mac": "c4:70:bd:f6:e2:f2",
+            "network": "A",
+            "port_side": "R",
+            "switch_ip": "10.143.11.154",
+            "switch_hostname": "se-var-1-2",
+            "switch_designation": "SWB-P5",
+            "port": "swp5",
+            "is_cross_connected": false,
+            "expected_network": "A"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f2",
+            "mac": "be:ef:0a:8f:0b:17",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          },
+          {
+            "node_ip": "172.16.3.105",
+            "node_hostname": "se-az-arrow-db2-dn-2",
+            "node_designation": "DB1-DN2-L",
+            "node_type": "dnode",
+            "interface": "enp3s0f3",
+            "mac": "be:ef:0a:8f:0b:17",
+            "network": "B",
+            "port_side": "L",
+            "switch_ip": "10.143.11.153",
+            "switch_hostname": "se-var-1-1",
+            "switch_designation": "SWA-P6",
+            "port": "swp6",
+            "is_cross_connected": false,
+            "expected_network": "B"
+          }
+        ],
+        "connections_by_switch": {
+          "10.143.11.153": [
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp5",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f2",
+              "mac": "be:ef:0a:8f:0b:15",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp5",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f3",
+              "mac": "be:ef:0a:8f:0b:15",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp6",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f2",
+              "mac": "be:ef:0a:8f:0b:17",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp6",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f3",
+              "mac": "be:ef:0a:8f:0b:17",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f0",
+              "mac": "c4:70:bd:fa:45:0a",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f2",
+              "mac": "be:ef:0a:8f:0b:3d",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.153",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f3",
+              "mac": "be:ef:0a:8f:0b:3d",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.153",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f0",
+              "mac": "b8:e9:24:d6:e6:30",
+              "network": "A"
+            }
+          ],
+          "10.143.11.154": [
+            {
+              "hostname": "se-az-arrow-db2-dn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp5",
+              "node_ip": "172.16.3.105",
+              "interface": "enp3s0f0",
+              "mac": "c4:70:bd:f6:e2:f2",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-db2-dn-1",
+              "switch_ip": "10.143.11.154",
+              "port": "swp6",
+              "node_ip": "172.16.3.104",
+              "interface": "enp3s0f0",
+              "mac": "7c:8c:09:f2:0f:66",
+              "network": "A"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-1",
+              "switch_ip": "10.143.11.154",
+              "port": "swp20",
+              "node_ip": "172.16.3.4",
+              "interface": "enp129s0f1",
+              "mac": "c4:70:bd:fa:45:0b",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f1",
+              "mac": "b8:e9:24:d6:e6:31",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f2",
+              "mac": "be:ef:0a:8f:0b:3f",
+              "network": "B"
+            },
+            {
+              "hostname": "se-az-arrow-cb2-cn-2",
+              "switch_ip": "10.143.11.154",
+              "port": "swp21",
+              "node_ip": "172.16.3.5",
+              "interface": "enp129s0f3",
+              "mac": "be:ef:0a:8f:0b:3f",
+              "network": "B"
+            }
+          ]
+        },
+        "cross_connections": [],
+        "has_cross_connections": false,
+        "cross_connection_summary": "No cross-connections detected. All cabling is correct.",
+        "cross_connection_count": 0,
+        "total_connections": 14,
+        "ipl_ports": [
+          {
+            "port": "swp29",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp30",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp31",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp32",
+            "switch": "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp29",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp30",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp31",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          },
+          {
+            "port": "swp32",
+            "switch": "se-var-1-2: -MSN3700-VS2FC (MT2450J01JPY)",
+            "speed": "100G",
+            "state": "up",
+            "mtu": "9216"
+          }
+        ],
+        "total_ipl_ports": 8,
+        "data_source": "External SSH collection (clush + switch CLI)",
+        "designation_format": {
+          "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
+          "switch_side": "SWA-P12 (Switch-1/Port-12)",
+          "port_mapping": "R = Network A (Port-A), L = Network B (Port-B)"
+        }
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    }
+  }
+}

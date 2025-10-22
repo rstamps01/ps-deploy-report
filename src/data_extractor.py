@@ -123,6 +123,7 @@ class HardwareInventory:
     total_nodes: int
     rack_positions_available: bool
     physical_layout: Optional[Dict[str, Any]] = None
+    switches: Optional[List[Dict[str, Any]]] = None
 
 
 class DataExtractionError(Exception):
@@ -361,13 +362,31 @@ class VastDataExtractor:
             # Process DBoxes
             dboxes = hardware_data.get("dboxes", {})
 
+            # Process Switches
+            switch_inventory = raw_data.get("switch_inventory", {})
+            switches = switch_inventory.get("switches", [])
+
             # Calculate total nodes
             total_nodes = len(cnodes) + len(dnodes)
 
-            # Check if rack positions are available
-            rack_positions_available = enhanced_features.get(
-                "rack_height_supported", False
+            # Check if rack positions are available by examining actual data
+            # A node has rack position if it has rack_u, rack_unit, or position field
+            has_cnode_positions = any(
+                node.get("rack_u") or node.get("rack_unit") or node.get("position")
+                for node in cnodes
             )
+            has_dbox_positions = any(
+                dbox_info.get("rack_unit") for dbox_info in cboxes.values()
+            )
+
+            # Rack positions available if any node has position data
+            rack_positions_available = has_cnode_positions or has_dbox_positions
+
+            # Also consider the enhanced features flag as a fallback
+            if not rack_positions_available:
+                rack_positions_available = enhanced_features.get(
+                    "rack_height_supported", False
+                )
 
             # Generate physical layout if rack positions available
             physical_layout = None
@@ -382,6 +401,7 @@ class VastDataExtractor:
                 total_nodes=total_nodes,
                 rack_positions_available=rack_positions_available,
                 physical_layout=physical_layout,
+                switches=switches,
             )
 
             self.logger.info(f"Hardware inventory extracted: {total_nodes} total nodes")
@@ -1643,6 +1663,160 @@ class VastDataExtractor:
                 status="error",
             )
 
+    def extract_port_mapping(
+        self, raw_data: Dict[str, Any], use_external: bool = False
+    ) -> ReportSection:
+        """
+        Extract and process port mapping data with enhanced designations.
+
+        Uses standardized naming conventions:
+        - Node Side: CB1-CN1-R (CBox-1/CNode-1/Port-A)
+        - Switch Side: SWA-P12 (Switch-1/Port-12)
+
+        Also includes IPL/MLAG port identification.
+
+        Args:
+            raw_data (Dict[str, Any]): Raw data from API handler
+            use_external (bool): Use external SSH collection instead of static file
+
+        Returns:
+            ReportSection: Processed port mapping section
+        """
+        try:
+            self.logger.info("Extracting port mapping data with enhanced designations")
+
+            # Import port mapping modules
+            from enhanced_port_mapper import EnhancedPortMapper
+            from vnetmap_parser import VNetMapParser
+
+            # Check if vnetmap output is available
+            vnetmap_file = Path("vnetmap_output.txt")
+            if not vnetmap_file.exists():
+                self.logger.warning(
+                    "VNetMap output file not found - port mapping unavailable"
+                )
+                return ReportSection(
+                    name="port_mapping",
+                    title="Port Mapping",
+                    data={
+                        "available": False,
+                        "message": "Port mapping data not available. VNetMap output required.",
+                    },
+                    completeness=0.0,
+                    status="missing",
+                )
+
+            # Parse vnetmap output
+            parser = VNetMapParser(str(vnetmap_file))
+            vnetmap_data = parser.parse()
+
+            if not vnetmap_data.get("available"):
+                self.logger.warning(
+                    f"Failed to parse vnetmap output: {vnetmap_data.get('error')}"
+                )
+                return ReportSection(
+                    name="port_mapping",
+                    title="Port Mapping",
+                    data=vnetmap_data,
+                    completeness=0.0,
+                    status="error",
+                )
+
+            # Get hardware data for enhanced port mapper
+            cboxes = raw_data.get("cboxes", [])
+            dboxes = raw_data.get("dboxes", [])
+            cnodes = raw_data.get("cnodes", [])
+            dnodes = raw_data.get("dnodes", [])
+            switches = raw_data.get("switches", {}).get("switches", [])
+
+            # Initialize enhanced port mapper
+            enhanced_mapper = EnhancedPortMapper(
+                cboxes=cboxes,
+                dboxes=dboxes,
+                cnodes=cnodes,
+                dnodes=dnodes,
+                switches=switches,
+            )
+
+            # Generate enhanced port map with standardized designations
+            enhanced_data = enhanced_mapper.generate_enhanced_port_map(
+                vnetmap_data["topology"]
+            )
+
+            # Collect IPL/MLAG port information from switches
+            ipl_ports = []
+            switch_ports = raw_data.get("switch_ports", [])
+            for port in switch_ports:
+                port_name = port.get("name", "")
+                speed = port.get("speed", "")
+                if enhanced_mapper.is_ipl_port(port_name, speed):
+                    switch_ip = port.get("switch", "")
+                    # Extract switch IP from switch string if needed
+                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
+
+                    ipl_ports.append(
+                        {
+                            "port": port_name,
+                            "switch": port.get("switch", "Unknown"),
+                            "speed": speed,
+                            "state": port.get("state", "Unknown"),
+                            "mtu": port.get("mtu", "Unknown"),
+                        }
+                    )
+
+            # Organize port map by switch
+            connections_by_switch = parser.get_connections_by_switch()
+
+            processed_data = {
+                "available": True,
+                "port_map": enhanced_data["port_map"],
+                "connections_by_switch": connections_by_switch,
+                "cross_connections": enhanced_data["cross_connections"],
+                "has_cross_connections": enhanced_data["has_cross_connections"],
+                "cross_connection_summary": parser.get_cross_connection_summary(),
+                "cross_connection_count": enhanced_data["cross_connection_count"],
+                "total_connections": enhanced_data["total_connections"],
+                "ipl_ports": ipl_ports,
+                "total_ipl_ports": len(ipl_ports),
+                "data_source": "External SSH collection (clush + switch CLI)",
+                "designation_format": {
+                    "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
+                    "switch_side": "SWA-P12 (Switch-1/Port-12)",
+                    "port_mapping": "R = Network A (Port-A), L = Network B (Port-B)",
+                },
+            }
+
+            completeness = 1.0 if len(enhanced_data["port_map"]) > 0 else 0.0
+            status = "complete" if completeness == 1.0 else "partial"
+
+            section = ReportSection(
+                name="port_mapping",
+                title="Port Mapping",
+                data=processed_data,
+                completeness=completeness,
+                status=status,
+            )
+
+            self.logger.info(
+                f"Enhanced port mapping extracted: {len(enhanced_data['port_map'])} connections, "
+                f"{enhanced_data['cross_connection_count']} cross-connections, "
+                f"{len(ipl_ports)} IPL ports"
+            )
+            return section
+
+        except Exception as e:
+            self.logger.error(f"Error extracting port mapping: {e}", exc_info=True)
+            return ReportSection(
+                name="port_mapping",
+                title="Port Mapping",
+                data={
+                    "available": False,
+                    "error": str(e),
+                },
+                completeness=0.0,
+                status="error",
+            )
+
     def extract_all_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract and process all report data from raw API responses.
@@ -1676,6 +1850,7 @@ class VastDataExtractor:
             customer_integration = self.extract_customer_integration(raw_data)
             deployment_timeline = self.extract_deployment_timeline(raw_data)
             future_recommendations = self.extract_future_recommendations(raw_data)
+            port_mapping = self.extract_port_mapping(raw_data)
 
             # Calculate overall completeness
             section_completeness = [
@@ -1692,6 +1867,7 @@ class VastDataExtractor:
                 customer_integration.completeness,
                 deployment_timeline.completeness,
                 future_recommendations.completeness,
+                port_mapping.completeness,
             ]
             overall_completeness = sum(section_completeness) / len(section_completeness)
 
@@ -1720,6 +1896,7 @@ class VastDataExtractor:
                     "customer_integration": asdict(customer_integration),
                     "deployment_timeline": asdict(deployment_timeline),
                     "future_recommendations": asdict(future_recommendations),
+                    "port_mapping": asdict(port_mapping),
                 },
             }
 

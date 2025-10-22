@@ -27,7 +27,14 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm, inch
-from reportlab.platypus import PageBreak, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    KeepTogether,
+    PageBreak,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from utils.logger import get_logger
 
@@ -226,25 +233,36 @@ class VastBrandCompliance:
         )
         title_para = Paragraph(f"<b>{title}</b>", title_style)
         elements.append(title_para)
-        elements.append(Spacer(1, 10))
+        elements.append(Spacer(1, 20))
 
-        # Add VAST logo
+        # Add VAST logo - larger size to fill available space
         try:
+            from pathlib import Path
+
             from reportlab.platypus import Image
 
-            logo_path = "reports/VAST_Logo.png"
-            # Load image with preserved aspect ratio
+            # Use the new lg_vast_logo.png from assets/diagrams
+            logo_path = (
+                Path(__file__).parent.parent
+                / "assets"
+                / "diagrams"
+                / "lg_vast_logo.png"
+            )
+
+            # Load image with larger size and preserved aspect ratio
+            # Increased from 2" to 4.5" width to fill more space
             logo = Image(
-                logo_path, width=2 * inch, height=1 * inch, kind="proportional"
+                str(logo_path), width=4.5 * inch, height=2.5 * inch, kind="proportional"
             )
             logo.hAlign = "CENTER"
             elements.append(logo)
-            elements.append(Spacer(1, 10))
+            elements.append(Spacer(1, 20))
         except Exception as e:
             # If logo fails to load, continue without it
+            self.logger.warning(f"Could not load logo: {e}")
             pass
 
-        # Subtitle (centered)
+        # Subtitle (centered) - moved to middle of page after logo
         if subtitle:
             subtitle_style = ParagraphStyle(
                 "CenteredSubtitle",
@@ -253,9 +271,9 @@ class VastBrandCompliance:
             )
             subtitle_para = Paragraph(subtitle, subtitle_style)
             elements.append(subtitle_para)
-            elements.append(Spacer(1, 15))
+            elements.append(Spacer(1, 30))
 
-        # Cluster information (centered)
+        # Cluster information (centered) - now appears below subtitle
         if cluster_info:
             cluster_name = cluster_info.get("name", "Unknown Cluster")
             psnt = cluster_info.get("psnt", "Not Available")
@@ -320,15 +338,16 @@ class VastBrandCompliance:
             headers (List[str], optional): Column headers
 
         Returns:
-            List[Any]: Table elements
+            List[Any]: Table elements (wrapped in KeepTogether if title provided)
         """
         elements = []
+        table_elements = []
 
         # Add title if provided
         if title:
             title_para = Paragraph(f"<b>{title}</b>", self.styles["vast_subheading"])
-            elements.append(title_para)
-            elements.append(Spacer(1, 8))
+            table_elements.append(title_para)
+            table_elements.append(Spacer(1, 8))
 
         # Prepare table data
         table_data = []
@@ -341,7 +360,8 @@ class VastBrandCompliance:
         num_cols = len(table_data[0]) if table_data else 1
         col_width = page_width / num_cols if num_cols > 0 else page_width
 
-        table = Table(table_data, colWidths=[col_width] * num_cols)
+        # Create table with repeat headers on page breaks
+        table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
 
         # Apply VAST brand table styling
         table_style = TableStyle(
@@ -374,7 +394,14 @@ class VastBrandCompliance:
         )
 
         table.setStyle(table_style)
-        elements.append(table)
+        table_elements.append(table)
+
+        # Keep title and table together if title provided
+        if title:
+            elements.append(KeepTogether(table_elements))
+        else:
+            elements.extend(table_elements)
+
         elements.append(Spacer(1, 12))
 
         return elements
@@ -448,17 +475,18 @@ class VastBrandCompliance:
             headers (List[str]): Column headers
 
         Returns:
-            List[Any]: Table elements
+            List[Any]: Table elements (title and table kept together)
         """
         if not table_data:
             return []
 
         elements = []
+        table_elements = []
 
         # Title
         title_para = Paragraph(f"<b>{title}</b>", self.styles["vast_subheading"])
-        elements.append(title_para)
-        elements.append(Spacer(1, 8))
+        table_elements.append(title_para)
+        table_elements.append(Spacer(1, 8))
 
         # Prepare table data with headers
         full_table_data = []
@@ -520,8 +548,8 @@ class VastBrandCompliance:
                         processed_row.append(str(cell))
                 processed_table_data.append(processed_row)
 
-        # Create table with calculated column widths
-        table = Table(processed_table_data, colWidths=col_widths)
+        # Create table with calculated column widths and repeat headers on page breaks
+        table = Table(processed_table_data, colWidths=col_widths, repeatRows=1)
 
         # Apply VAST brand table styling with text wrapping - match create_vast_table styling
         table_style = TableStyle(
@@ -556,7 +584,10 @@ class VastBrandCompliance:
         )
 
         table.setStyle(table_style)
-        elements.append(table)
+        table_elements.append(table)
+
+        # Keep title and table together to prevent page breaks
+        elements.append(KeepTogether(table_elements))
         elements.append(Spacer(1, 12))
 
         return elements
@@ -824,12 +855,11 @@ class VastBrandCompliance:
             # Footer content
             if generation_info:
                 timestamp = generation_info.get("timestamp", "Unknown")
-                completeness = generation_info.get("completeness", 0.0)
 
-                # Footer text
+                # Footer text (removed Data Completeness)
                 footer_text = (
-                    f"VAST Professional Services | Automated As-Built Documentation\n"
-                    f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
+                    f"VAST Professional Services | Automated As-Built Documentation | "
+                    f"Generated: {timestamp}"
                 )
             else:
                 footer_text = (
@@ -846,28 +876,22 @@ class VastBrandCompliance:
                 bottom_margin - 0.1 * inch,
             )
 
-            # Draw centered footer text
+            # Draw centered footer text (single line)
             canvas.setFont(self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
             canvas.setFillColor(self.colors.DARK_GRAY)
 
-            # Split footer text into lines
-            lines = footer_text.split("\n")
+            # Calculate text width for centering
+            text_width = canvas.stringWidth(
+                footer_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
+            )
+            x_position = (page_width - text_width) / 2
             y_position = bottom_margin - 0.3 * inch
 
-            for line in lines:
-                # Calculate text width for centering
-                text_width = canvas.stringWidth(
-                    line, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
-                )
-                x_position = (page_width - text_width) / 2
-                canvas.drawString(x_position, y_position, line)
-                y_position -= 0.15 * inch
+            canvas.drawString(x_position, y_position, footer_text)
 
-            # Draw page number (right aligned)
+            # Draw page number (right aligned on same line)
             page_text = f"Page {page_num}"
-            canvas.drawRightString(
-                page_width - right_margin, bottom_margin - 0.3 * inch, page_text
-            )
+            canvas.drawRightString(page_width - right_margin, y_position, page_text)
 
         # Create page template
         page_template = PageTemplate(

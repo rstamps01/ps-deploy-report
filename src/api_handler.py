@@ -2245,6 +2245,183 @@ class VastApiHandler:
             )
             return {}
 
+    def get_switches_detail(self) -> List[Dict[str, Any]]:
+        """
+        Get detailed switch information from the VAST cluster.
+
+        Returns:
+            List[Dict[str, Any]]: List of switches with detailed metadata
+        """
+        try:
+            self.logger.info("Collecting detailed switch information")
+
+            # The switches endpoint is only available in v1 API
+            # Construct the full v1 API URL
+            base_url = f"https://{self.cluster_ip}/api/v1"
+            switches_url = f"{base_url}/switches/"
+
+            response = self.session.get(
+                switches_url, verify=False, timeout=self.timeout
+            )
+
+            if response.status_code == 200:
+                switches_data = response.json()
+                if switches_data:
+                    self.logger.info(f"Retrieved {len(switches_data)} switch details")
+                    return switches_data
+                else:
+                    self.logger.warning("No switch detail data available")
+                    return []
+            else:
+                self.logger.warning(
+                    f"Failed to retrieve switches: HTTP {response.status_code}"
+                )
+                return []
+
+        except Exception as e:
+            self.logger.error(f"Error collecting switch details: {e}")
+            return []
+
+    def get_switch_ports(self) -> List[Dict[str, Any]]:
+        """
+        Get switch port information from the VAST cluster.
+
+        Returns:
+            List[Dict[str, Any]]: List of all switch ports with their configurations
+        """
+        try:
+            self.logger.info("Collecting switch port information")
+
+            # The ports endpoint is only available in v1 API
+            # Construct the full v1 API URL
+            base_url = f"https://{self.cluster_ip}/api/v1"
+            ports_url = f"{base_url}/ports/"
+
+            response = self.session.get(ports_url, verify=False, timeout=self.timeout)
+
+            if response.status_code == 200:
+                ports_data = response.json()
+                if ports_data:
+                    self.logger.info(f"Retrieved {len(ports_data)} port entries")
+                    return ports_data
+                else:
+                    self.logger.warning("No switch port data available")
+                    return []
+            else:
+                self.logger.warning(
+                    f"Failed to retrieve ports data: HTTP {response.status_code}"
+                )
+                return []
+
+        except Exception as e:
+            self.logger.error(f"Error collecting switch port data: {e}")
+            return []
+
+    def get_switch_inventory(self) -> Dict[str, Any]:
+        """
+        Get comprehensive switch inventory by merging data from switches and ports endpoints.
+
+        Returns:
+            Dict[str, Any]: Switch inventory summary with detailed metadata and port information
+        """
+        try:
+            self.logger.info("Processing comprehensive switch inventory")
+
+            # Get detailed switch information
+            switches_detail = self.get_switches_detail()
+
+            # Get port information
+            ports_data = self.get_switch_ports()
+
+            if not ports_data and not switches_detail:
+                self.logger.warning("No switch or port data available")
+                return {}
+
+            # Aggregate ports by switch
+            port_aggregation = {}
+            for port in ports_data:
+                switch_str = port.get("switch", "")
+                if not switch_str or switch_str == "null":
+                    continue
+
+                if switch_str not in port_aggregation:
+                    port_aggregation[switch_str] = {
+                        "total_ports": 0,
+                        "active_ports": 0,
+                        "port_speeds": {},
+                        "mtu": port.get("mtu", "Unknown"),
+                        "ports": [],
+                    }
+
+                port_aggregation[switch_str]["total_ports"] += 1
+                if port.get("state", "").lower() == "up":
+                    port_aggregation[switch_str]["active_ports"] += 1
+
+                speed = port.get("speed") or "unconfigured"
+                port_aggregation[switch_str]["port_speeds"][speed] = (
+                    port_aggregation[switch_str]["port_speeds"].get(speed, 0) + 1
+                )
+
+                # Store port details
+                port_aggregation[switch_str]["ports"].append(
+                    {
+                        "name": port.get("name", "Unknown"),
+                        "state": port.get("state", "Unknown"),
+                        "speed": port.get("speed", "Unknown"),
+                        "mtu": port.get("mtu", "Unknown"),
+                    }
+                )
+
+            # Build comprehensive switch list by merging detailed info with port data
+            switches = []
+            for switch_detail in switches_detail:
+                hostname = switch_detail.get("hostname", "Unknown")
+                serial = switch_detail.get("sn", "Unknown")
+
+                # Find matching port aggregation by hostname or serial
+                port_data = None
+                for switch_str, port_info in port_aggregation.items():
+                    if hostname in switch_str or serial in switch_str:
+                        port_data = port_info
+                        break
+
+                # Build comprehensive switch entry
+                switch_entry = {
+                    "name": hostname,
+                    "hostname": hostname,
+                    "model": switch_detail.get("model", "Unknown"),
+                    "serial": serial,
+                    "firmware_version": switch_detail.get("fw_version", "Unknown"),
+                    "mgmt_ip": switch_detail.get("mgmt_ip", "Unknown"),
+                    "state": switch_detail.get("state", "Unknown"),
+                    "switch_type": switch_detail.get("switch_type", "Unknown"),
+                    "configured": switch_detail.get("configured", False),
+                    "role": switch_detail.get("role", "Unknown"),
+                    "total_ports": port_data["total_ports"] if port_data else 0,
+                    "active_ports": port_data["active_ports"] if port_data else 0,
+                    "port_speeds": port_data["port_speeds"] if port_data else {},
+                    "mtu": port_data["mtu"] if port_data else "Unknown",
+                    "ports": port_data["ports"] if port_data else [],
+                }
+                switches.append(switch_entry)
+
+            inventory_summary = {
+                "switch_count": len(switches),
+                "switches": switches,
+                "total_ports": sum(s["total_ports"] for s in switches),
+                "total_active_ports": sum(s["active_ports"] for s in switches),
+            }
+
+            self.logger.info(
+                f"Processed {inventory_summary['switch_count']} switches with enhanced metadata "
+                f"and {inventory_summary['total_ports']} total ports"
+            )
+            return inventory_summary
+
+        except Exception as e:
+            self.logger.error(f"Error processing switch inventory: {e}")
+            return {}
+
     def get_all_data(self) -> Dict[str, Any]:
         """
         Collect all available data from the VAST cluster.
@@ -2393,6 +2570,12 @@ class VastApiHandler:
             all_data["customer_integration"] = self.get_customer_integration_info()
             all_data["deployment_timeline"] = self.get_deployment_timeline()
             all_data["future_recommendations"] = self.get_future_recommendations()
+
+            # Switch/network hardware information
+            all_data["switch_inventory"] = self.get_switch_inventory()
+
+            # Raw switch ports data (needed for IPL/MLAG detection)
+            all_data["switch_ports"] = self.get_switch_ports()
 
             self.logger.info("Comprehensive data collection completed successfully")
             return all_data

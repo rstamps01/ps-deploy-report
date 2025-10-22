@@ -22,7 +22,7 @@ $ErrorActionPreference = "Stop"
 # Configuration
 ################################################################################
 
-$script:DefaultInstallDir = "$env:USERPROFILE\vast-reporter"
+$script:DefaultInstallDir = "$env:USERPROFILE\vast-asbuilt-reporter"
 $script:InstallDir = $null
 $script:BackupCreated = $null
 
@@ -169,7 +169,7 @@ function Backup-UserData {
 
         if (Confirm-Action "Create backup before uninstalling?") {
             $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-            $backupDir = "$env:USERPROFILE\vast-reporter-backup-$timestamp"
+            $backupDir = "$env:USERPROFILE\vast-asbuilt-reporter-backup-$timestamp"
             New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
 
             # Backup reports
@@ -251,11 +251,11 @@ function Remove-EnvironmentVariables {
 
     $modified = $false
 
-    # Check PATH for vast-reporter entries
+    # Check PATH for vast-asbuilt-reporter entries
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    if ($userPath -like "*vast-reporter*") {
+    if ($userPath -like "*vast-asbuilt-reporter*") {
         if (Confirm-Action "Remove VAST reporter entries from PATH?") {
-            $newPath = ($userPath -split ';' | Where-Object { $_ -notlike "*vast-reporter*" }) -join ';'
+            $newPath = ($userPath -split ';' | Where-Object { $_ -notlike "*vast-asbuilt-reporter*" }) -join ';'
             [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
             Write-ColorOutput "Cleaned PATH variable" -Type Success
             $modified = $true

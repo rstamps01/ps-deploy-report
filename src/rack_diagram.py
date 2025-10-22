@@ -100,6 +100,8 @@ class RackDiagram:
             "ceres_v2": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
             "dbox-515": HARDWARE_IMAGE_DIR
             / "ceres_v2_1u.png",  # Map dbox-515 to ceres_v2 image
+            "msn3700-vs2fc": HARDWARE_IMAGE_DIR
+            / "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox switch
             # Add more hardware models as images become available
         }
 
@@ -502,24 +504,147 @@ class RackDiagram:
         )
         drawing.add(device_icon)
 
+    def _calculate_switch_positions(
+        self,
+        cboxes: List[Dict[str, Any]],
+        dboxes: List[Dict[str, Any]],
+        num_switches: int,
+    ) -> List[int]:
+        """
+        Calculate optimal switch positions in the rack between CBoxes and DBoxes.
+
+        For 2 switches:
+        - If gap is even (2U, 4U, 6U, etc.): Place switches in center-most positions
+        - If gap is odd (3U, 5U, 7U, etc.): Place switches in center with 1U gap between them
+
+        Args:
+            cboxes: List of CBox device dictionaries
+            dboxes: List of DBox device dictionaries
+            num_switches: Number of switches to place (currently only supports 2)
+
+        Returns:
+            List of U positions for switches (empty list if cannot calculate)
+        """
+        if num_switches != 2:
+            logger.warning(
+                f"Switch placement logic currently only supports 2 switches, got {num_switches}"
+            )
+            return []
+
+        # Find the highest CBox position and lowest DBox position
+        cbox_positions = []
+        for cbox in cboxes:
+            rack_pos = cbox.get("rack_unit", "")
+            u_pos = self._parse_rack_position(rack_pos)
+            if u_pos > 0:
+                model = cbox.get("model", "")
+                u_height = self._get_device_height_units(model)
+                # Record the bottom of the CBox
+                bottom_u = u_pos - u_height + 1
+                cbox_positions.append(bottom_u)
+
+        dbox_positions = []
+        for dbox in dboxes:
+            rack_pos = dbox.get("rack_unit", "")
+            u_pos = self._parse_rack_position(rack_pos)
+            if u_pos > 0:
+                dbox_positions.append(u_pos)  # Top of DBox
+
+        if not cbox_positions or not dbox_positions:
+            logger.warning(
+                "Cannot calculate switch positions: insufficient CBox or DBox data"
+            )
+            return []
+
+        # Find the gap between the lowest CBox and highest DBox
+        lowest_cbox = min(cbox_positions)  # Bottom-most U occupied by any CBox
+        highest_dbox = max(dbox_positions)  # Top-most U occupied by any DBox
+
+        # Calculate available gap (inclusive)
+        # Gap is from (lowest_cbox - 1) down to (highest_dbox + 1)
+        gap_top = lowest_cbox - 1
+        gap_bottom = highest_dbox + 1
+
+        if gap_top < gap_bottom:
+            logger.warning(
+                f"No gap between CBoxes and DBoxes: CBox bottom={lowest_cbox}, DBox top={highest_dbox}"
+            )
+            return []
+
+        # Calculate gap size
+        gap_size = gap_top - gap_bottom + 1  # Inclusive count
+
+        logger.info(
+            f"Gap between CBoxes and DBoxes: {gap_size}U (U{gap_bottom} to U{gap_top})"
+        )
+
+        if gap_size < 2:
+            logger.warning(f"Insufficient gap size ({gap_size}U) for 2 switches")
+            return []
+
+        # Calculate switch positions (switches are 1U each)
+        # SW-1 should be below SW-2, so list lower U position first
+        switch_positions = []
+
+        if gap_size % 2 == 0:
+            # Even gap: Place switches in center-most positions
+            # Example: 4U gap (U19-U22): SW-1 at U20, SW-2 at U21
+            center_top = gap_bottom + (gap_size // 2)
+            center_bottom = center_top - 1
+            # Return lower position first (SW-1 below SW-2)
+            switch_positions = [center_bottom, center_top]
+            logger.info(
+                f"Even gap ({gap_size}U): Placing SW-1 at U{center_bottom}, SW-2 at U{center_top}"
+            )
+        else:
+            # Odd gap: Place switches in center with 1U gap between them
+            # Example: 5U gap (U19-U23): SW-1 at U20, SW-2 at U22 (leaving U21 empty)
+            center_u = gap_bottom + (gap_size // 2)
+            switch_top = center_u + 1
+            switch_bottom = center_u - 1
+            # Return lower position first (SW-1 below SW-2)
+            switch_positions = [switch_bottom, switch_top]
+            logger.info(
+                f"Odd gap ({gap_size}U): Placing SW-1 at U{switch_bottom}, SW-2 at U{switch_top} (U{center_u} empty)"
+            )
+
+        return switch_positions
+
     def generate_rack_diagram(
-        self, cboxes: List[Dict[str, Any]], dboxes: List[Dict[str, Any]]
-    ) -> Drawing:
+        self,
+        cboxes: List[Dict[str, Any]],
+        dboxes: List[Dict[str, Any]],
+        switches: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[Drawing, Dict[int, int]]:
         """
         Generate a complete rack diagram with all devices.
 
         Args:
             cboxes: List of CBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
             dboxes: List of DBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
+            switches: Optional list of switch dictionaries with 'id', 'model', 'state'
 
         Returns:
-            ReportLab Drawing object containing the complete rack diagram
+            Tuple of:
+                - ReportLab Drawing object containing the complete rack diagram
+                - Dictionary mapping switch numbers to calculated U positions
         """
         # Create drawing
         drawing = Drawing(self.page_width, self.page_height)
 
         # Create empty rack background
         self._create_empty_rack_background(drawing)
+
+        # Calculate switch positions if switches are provided
+        switch_positions_map = {}
+        if switches and len(switches) > 0:
+            calculated_positions = self._calculate_switch_positions(
+                cboxes, dboxes, len(switches)
+            )
+            if calculated_positions:
+                # Map switch number to U position
+                for idx, u_pos in enumerate(calculated_positions, start=1):
+                    switch_positions_map[idx] = u_pos
 
         # Place CBoxes
         for cbox in cboxes:
@@ -563,8 +688,21 @@ class RackDiagram:
                 drawing, "dbox", device_id, u_position, u_height, model, status
             )
 
-        logger.info(
-            f"Generated rack diagram with {len(cboxes)} CBoxes and {len(dboxes)} DBoxes"
-        )
+        # Place Switches at calculated positions
+        if switches and switch_positions_map:
+            for switch_num, switch in enumerate(switches, start=1):
+                if switch_num in switch_positions_map:
+                    u_position = switch_positions_map[switch_num]
+                    model = switch.get("model", "switch")
+                    status = switch.get("state", "ACTIVE")
 
-        return drawing
+                    self._create_device_representation(
+                        drawing, "switch", switch_num, u_position, 1, model, status
+                    )
+
+        device_count_msg = f"{len(cboxes)} CBoxes, {len(dboxes)} DBoxes"
+        if switches:
+            device_count_msg += f", {len(switches)} Switches"
+        logger.info(f"Generated rack diagram with {device_count_msg}")
+
+        return drawing, switch_positions_map

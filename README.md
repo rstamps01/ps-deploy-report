@@ -64,7 +64,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -72,7 +72,7 @@ chmod +x install-mac.sh
 **For Windows Users:**
 ```powershell
 # Download and run the automated installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -147,7 +147,7 @@ For production deployments, consider the following additional steps:
 
 3. **Set up log rotation:**
    ```bash
-   sudo cp config/logrotate.conf /etc/logrotate.d/vast-reporter
+   sudo cp config/logrotate.conf /etc/logrotate.d/vast-asbuilt-reporter
    ```
 
 ## Configuration
@@ -215,7 +215,7 @@ api:
 ```yaml
 logging:
   level: "INFO"
-  file_path: "/var/log/vast-reporter/vast_report_generator.log"
+  file_path: "/var/log/vast-asbuilt-reporter/vast_report_generator.log"
 
 security:
   prompt_for_credentials: true
@@ -473,8 +473,8 @@ To update an existing installation to the latest version:
 
 **Quick Update (Recommended)**:
 ```bash
-cd ~/vast-reporter
-git pull origin develop
+cd ~/vast-asbuilt-reporter
+git pull origin main
 source venv/bin/activate  # Mac/Linux
 # .\venv\Scripts\Activate  # Windows
 pip install --upgrade -r requirements.txt
@@ -488,14 +488,14 @@ To remove the VAST As-Built Report Generator:
 
 **Automated Uninstall (Mac)**:
 ```bash
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-mac.sh
 chmod +x uninstall-mac.sh
 ./uninstall-mac.sh
 ```
 
 **Automated Uninstall (Windows)**:
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
 .\uninstall-windows.ps1
 ```
 

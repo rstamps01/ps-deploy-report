@@ -122,6 +122,7 @@ class VastReportBuilder:
         """
         self.logger = get_logger(__name__)
         self.config = config or ReportConfig()
+        self.switch_positions = {}  # Will store calculated switch U positions
 
         # Check for required libraries
         if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
@@ -229,6 +230,10 @@ class VastReportBuilder:
             story.extend(
                 self._create_comprehensive_network_configuration(processed_data)
             )
+            story.append(PageBreak())
+
+            # Add switch configuration section
+            story.extend(self._create_switch_configuration(processed_data))
             story.append(PageBreak())
 
             # Add logical network diagram (Page 8)
@@ -349,7 +354,23 @@ class VastReportBuilder:
                 if dbox_hardware_types:
                     hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
 
-                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}"
+                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
+
+            # Switch Hardware (from switch inventory)
+            switches = hardware_inventory.get("switches", [])
+            if switches:
+                switch_models = set()
+                switch_count = len(switches)
+
+                for switch in switches:
+                    model = switch.get("model", "Unknown")
+                    if model and model != "Unknown":
+                        switch_models.add(model)
+
+                if switch_models:
+                    hardware_text += f"<b>Switch Hardware:</b> {', '.join(sorted(switch_models))}<br/>"
+
+                hardware_text += f"<b>Switch Quantity:</b> {switch_count}"
 
             if hardware_text:
                 # Create centered hardware information
@@ -367,8 +388,15 @@ class VastReportBuilder:
 
         return content
 
-    def _create_table_of_contents(self, data: Dict[str, Any]) -> List[Any]:
-        """Create table of contents."""
+    def _create_table_of_contents_from_excel(self, excel_path: str) -> List[Any]:
+        """Create table of contents from Excel file."""
+        try:
+            import openpyxl
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+        except ImportError:
+            self.logger.error("openpyxl not available for Excel import")
+            return []
+
         styles = getSampleStyleSheet()
 
         title_style = ParagraphStyle(
@@ -376,37 +404,444 @@ class VastReportBuilder:
             parent=styles["Heading1"],
             fontSize=self.config.heading_font_size + 2,
             spaceAfter=20,
-            alignment=TA_CENTER,
+            alignment=TA_LEFT,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            fontName="Helvetica-Bold",
         )
 
-        toc_style = ParagraphStyle(
-            "TOC_Item",
-            parent=styles["Normal"],
-            fontSize=self.config.font_size,
-            spaceAfter=8,
-            leftIndent=20,
+        content = []
+        content.append(Paragraph("Table of Contents (from Excel)", title_style))
+        content.append(Spacer(1, 8))
+
+        # Load Excel file
+        try:
+            wb = openpyxl.load_workbook(excel_path)
+            ws = wb["Report-TOC"]
+        except Exception as e:
+            self.logger.error(f"Error loading Excel file: {e}")
+            content.append(
+                Paragraph(f"Error loading Excel file: {e}", styles["Normal"])
+            )
+            return content
+
+        # Read TOC data from Excel (A1:C60)
+        available_width = 7.5 * inch
+        toc_table_data = []
+
+        for row in range(1, 61):
+            # Read values from columns A, B, C
+            text_cell = ws[f"A{row}"]
+            page_cell = ws[f"C{row}"]
+
+            text = str(text_cell.value).strip() if text_cell.value else ""
+            page_num = str(page_cell.value).strip() if page_cell.value else ""
+
+            # Skip empty rows or header row
+            if not text or text.lower() == "contents":
+                continue
+
+            # Determine indentation level by counting leading spaces
+            # Support multiple indentation levels (each 4-5 spaces = 1 level)
+            indent_level = 0
+            original_text = str(text_cell.value) if text_cell.value else ""
+
+            # Count leading spaces to determine indent level
+            leading_spaces = len(original_text) - len(original_text.lstrip())
+            if leading_spaces > 0:
+                # Each 4-5 spaces = 1 indent level
+                indent_level = (leading_spaces + 2) // 4  # Round to nearest level
+                text = text.strip()
+
+            # Read Excel cell formatting (bold, font size, color, alignment)
+            # Default values
+            is_bold_excel = False
+            is_italic_excel = False
+            text_size_excel = None
+            text_color_excel = None
+            text_alignment = TA_LEFT  # Default left alignment
+
+            # Check if cell has font formatting
+            if text_cell.font:
+                is_bold_excel = text_cell.font.bold or False
+                is_italic_excel = text_cell.font.italic or False
+
+                # Get font size from Excel (convert from points)
+                if text_cell.font.size:
+                    text_size_excel = text_cell.font.size
+
+                # Get font color from Excel
+                if text_cell.font.color:
+                    if text_cell.font.color.rgb:
+                        # RGB format: "AARRGGBB" or "RRGGBB"
+                        rgb = text_cell.font.color.rgb
+                        if isinstance(rgb, str):
+                            # Remove alpha channel if present
+                            if len(rgb) == 8:
+                                rgb = rgb[2:]  # Remove "AA" prefix
+                            text_color_excel = colors.HexColor(f"#{rgb}")
+
+            # Read cell alignment from Excel
+            if text_cell.alignment:
+                horizontal = text_cell.alignment.horizontal
+                if horizontal == "center":
+                    text_alignment = TA_CENTER
+                elif horizontal == "right":
+                    text_alignment = TA_RIGHT
+                elif horizontal == "left":
+                    text_alignment = TA_LEFT
+                # Note: 'general' or None defaults to TA_LEFT
+
+            # Determine if bold from Excel or fallback to page number logic
+            is_bold = is_bold_excel if text_cell.font else bool(page_num)
+
+            # Set font properties (use Excel formatting if available)
+            if is_bold:
+                text_font = "Helvetica-Bold"
+                text_color = (
+                    text_color_excel
+                    if text_color_excel
+                    else self.brand_compliance.colors.BACKGROUND_DARK
+                )
+                text_size = (
+                    text_size_excel if text_size_excel else (self.config.font_size - 1)
+                )
+                page_font = "Helvetica-Bold"
+                page_color = (
+                    text_color
+                    if text_color
+                    else self.brand_compliance.colors.BACKGROUND_DARK
+                )
+                page_size = text_size
+                extra_space = 3
+            else:
+                text_font = "Helvetica-Oblique" if is_italic_excel else "Helvetica"
+                text_color = (
+                    text_color_excel if text_color_excel else colors.HexColor("#000000")
+                )
+                text_size = (
+                    text_size_excel if text_size_excel else (self.config.font_size - 2)
+                )
+                page_font = text_font
+                page_color = text_color
+                page_size = text_size
+                extra_space = 0
+
+            # Check column B for special formatting (lines/separators)
+            sep_cell = ws[f"B{row}"]
+            separator_text = str(sep_cell.value).strip() if sep_cell.value else ""
+
+            # Format text with indentation (only if not center/right aligned)
+            if text_alignment == TA_LEFT:
+                # Use 4 spaces per indent level for better visibility
+                indent_space = "    " * indent_level if indent_level > 0 else ""
+                full_text = f"{indent_space}{text}"
+            else:
+                full_text = text
+
+            # Calculate dots if page number exists AND alignment is left
+            # Center/right aligned entries don't get dots
+            if page_num and text_alignment == TA_LEFT:
+                text_width = stringWidth(full_text, text_font, text_size)
+                page_width = stringWidth(page_num, page_font, page_size)
+
+                spacing_buffer = 0.1 * inch
+                available_for_dots = (
+                    available_width - text_width - page_width - spacing_buffer
+                )
+
+                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                if dot_width > 0:
+                    num_dots = int(available_for_dots / dot_width)
+                    num_dots = max(3, num_dots)
+                else:
+                    num_dots = 30
+
+                dots = '<font color="#CCCCCC">' + ("." * num_dots) + "</font>"
+                text_with_dots = f"{full_text} {dots}"
+            elif page_num and text_alignment == TA_CENTER:
+                # Center-aligned with page number: text on left, number on right, centered line between
+                if separator_text and separator_text in ["─", "-", "—", "_"]:
+                    # Use separator character from column B
+                    text_with_dots = f"{full_text} {separator_text * 80}"
+                else:
+                    # Default to dots but will be centered
+                    text_with_dots = f"{full_text} {'.' * 80}"
+            elif page_num and text_alignment == TA_RIGHT:
+                # Right-aligned with page number
+                text_with_dots = full_text
+            else:
+                text_with_dots = full_text
+
+            # Create paragraph styles with Excel alignment
+            text_style = ParagraphStyle(
+                f"TOC_Text_{len(toc_table_data)}",
+                parent=styles["Normal"],
+                fontSize=text_size,
+                fontName=text_font,
+                textColor=text_color,
+                alignment=text_alignment,  # Use Excel alignment
+                spaceBefore=extra_space,
+                spaceAfter=0.5,
+                leading=text_size + 2,
+            )
+
+            # Page number alignment matches text alignment for center, otherwise right
+            page_alignment = text_alignment if text_alignment == TA_CENTER else TA_RIGHT
+
+            page_style = ParagraphStyle(
+                f"TOC_Page_{len(toc_table_data)}",
+                parent=styles["Normal"],
+                fontSize=page_size,
+                fontName=page_font,
+                textColor=page_color,
+                alignment=page_alignment,
+                spaceBefore=extra_space,
+                spaceAfter=0.5,
+                leading=page_size + 2,
+            )
+
+            # Create paragraphs
+            text_para = Paragraph(text_with_dots, text_style)
+            if page_num:
+                page_para = Paragraph(page_num, page_style)
+            else:
+                page_para = Paragraph("", page_style)
+
+            toc_table_data.append([text_para, page_para])
+
+        # Create table
+        text_col_width = available_width - 0.5 * inch
+        page_col_width = 0.5 * inch
+
+        from reportlab.platypus import Table as RLTable
+
+        toc_table = RLTable(toc_table_data, colWidths=[text_col_width, page_col_width])
+        toc_table.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (0, -1), "LEFT"),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+
+        content.append(toc_table)
+        return content
+
+    def _create_table_of_contents(self, data: Dict[str, Any]) -> List[Any]:
+        """Create enhanced table of contents with dot leaders and perfect alignment."""
+        from reportlab.platypus import Table as RLTable
+
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            "TOC_Title",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size + 2,
+            spaceAfter=20,
+            alignment=TA_LEFT,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            fontName="Helvetica-Bold",
         )
 
         content = []
 
         content.append(Paragraph("Table of Contents", title_style))
-        content.append(Spacer(1, 20))
+        content.append(Spacer(1, 8))
 
-        # TOC items
-        toc_items = [
-            "1. Executive Summary",
-            "2. Cluster Information",
-            "3. Hardware Inventory",
-            "4. Network Configuration",
-            "5. Logical Configuration",
-            "6. Security & Authentication",
-            "7. Data Protection",
-            "8. Enhanced Features",
-            "9. Appendix",
+        # TOC structure with sections, subsections, and page numbers
+        # Format: (text, indent_level, page_num, is_bold)
+        # Structure: Parent section first, then its subsections indented below
+        toc_structure = [
+            # Executive Summary section
+            ("Executive Summary", 0, "3", True),
+            ("Cluster Overview", 1, None, False),
+            ("Hardware Overview", 1, None, False),
+            # Cluster Information section
+            ("Cluster Information", 0, "4", True),
+            ("Cluster Details", 1, None, False),
+            ("Operational Status", 1, None, False),
+            ("Feature Configuration", 1, None, False),
+            # Hardware Summary section
+            ("Hardware Summary", 0, "5", True),
+            ("Storage Capacity", 1, None, False),
+            ("CBox Inventory", 1, None, False),
+            ("DBox Inventory", 1, None, False),
+            # Physical Rack Layout section (no subsections)
+            ("Physical Rack Layout", 0, "6", True),
+            # Network Configuration section
+            ("Network Configuration", 0, "7", True),
+            ("Cluster Network", 1, None, False),
+            ("CNode Network", 1, None, False),
+            ("DNode Network", 1, None, False),
+            # Switch Configuration section
+            ("Switch Configuration", 0, "8", True),
+            ("Switch Details", 1, None, False),
+            ("Port Summary", 1, None, False),
+            # Port Mapping section
+            ("Port Mapping", 0, "10", True),
+            ("Device Mapping", 1, None, False),
+            # Logical Network Diagram section (no subsections)
+            ("Logical Network Diagram", 0, "11", True),
+            # Logical Configuration section
+            ("Logical Configuration", 0, "12", True),
+            ("Tenants & Views", 1, None, False),
+            ("Protection Policies", 1, None, False),
+            # Security & Authentication section
+            ("Security & Authentication", 0, "13", True),
+            ("Encryption Configuration", 1, None, False),
+            ("Authentication Services", 1, None, False),
         ]
 
-        for item in toc_items:
-            content.append(Paragraph(item, toc_style))
+        # Build TOC table with calculated dot leaders for perfect alignment
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+
+        available_width = 7.5 * inch  # Page width minus margins
+        toc_table_data = []
+
+        # List of subsections that should have extra space after them (to separate section groups)
+        subsections_with_space_after = [
+            "Hardware Overview",
+            "Feature Configuration",
+            "DBox Inventory",
+            "Physical Rack Layout",
+            "DNode Network",
+            "Port Summary",
+            "Device Mapping",
+            "Logical Network Diagram",
+            "Protection Policies",
+        ]
+
+        for idx, (text, indent_level, page_num, is_bold) in enumerate(toc_structure):
+            # Calculate indentation using spaces (smaller indent for compact view)
+            indent_space = "  " * indent_level if indent_level > 0 else ""
+            full_text = f"{indent_space}{text}"
+
+            # Create styles for text and page number
+            if is_bold:
+                text_font = "Helvetica-Bold"
+                text_color = self.brand_compliance.colors.BACKGROUND_DARK
+                text_size = (
+                    self.config.font_size - 1
+                )  # Slightly smaller for compact view
+                page_font = "Helvetica-Bold"
+                page_color = self.brand_compliance.colors.BACKGROUND_DARK
+                page_size = self.config.font_size - 1
+                # More space before main sections (except first one) to separate from subsections above
+                extra_space = 0 if idx == 0 else 12
+            else:
+                text_font = "Helvetica"
+                text_color = colors.HexColor("#000000")
+                text_size = self.config.font_size - 2  # Smaller for subsections
+                page_font = "Helvetica"
+                page_color = colors.HexColor("#000000")
+                page_size = self.config.font_size - 2
+                extra_space = 0
+
+            # Add extra space after specific subsections to separate section groups
+            if text in subsections_with_space_after:
+                extra_space_after = 8  # Extra space after these subsections
+            else:
+                extra_space_after = 0.5
+
+            # Only add dots and page numbers for entries that have page numbers
+            if page_num:
+                # Custom dot leader lengths for specific sections
+                if text == "Executive Summary":
+                    dot_leader_length = 5.0 * inch
+                elif text == "Cluster Information":
+                    dot_leader_length = 5.0 * inch
+                elif text == "Hardware Summary":
+                    dot_leader_length = 5.0 * inch
+                elif text == "Physical Rack Layout":
+                    dot_leader_length = 4.92 * inch
+                elif text == "Network Configuration":
+                    dot_leader_length = 4.87 * inch
+                elif text == "Switch Configuration":
+                    dot_leader_length = 4.95 * inch
+                elif text == "Port Mapping":
+                    dot_leader_length = 5.4 * inch
+                elif text == "Logical Network Diagram":
+                    dot_leader_length = 4.78 * inch
+                elif text == "Logical Configuration":
+                    dot_leader_length = 4.95 * inch
+                else:
+                    dot_leader_length = 4.75 * inch  # Default for all other entries
+
+                # Calculate how many dots fit in the specified space
+                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                if dot_width > 0:
+                    num_dots = int(dot_leader_length / dot_width)
+                    num_dots = max(3, num_dots)  # Minimum 3 dots
+                else:
+                    num_dots = 150  # Fallback for 5 inches
+
+                dots = '<font color="#CCCCCC">' + ("." * num_dots) + "</font>"
+                text_with_dots = f"{full_text} {dots}"
+            else:
+                # Subsections without page numbers - no dots needed
+                text_with_dots = full_text
+
+            text_style = ParagraphStyle(
+                f"TOC_Text_{len(toc_table_data)}",
+                parent=styles["Normal"],
+                fontSize=text_size,
+                fontName=text_font,
+                textColor=text_color,
+                alignment=TA_LEFT,
+                spaceBefore=extra_space,
+                spaceAfter=extra_space_after,  # Variable spacing based on subsection
+                leading=text_size + 2,  # Compact line spacing
+            )
+
+            page_style = ParagraphStyle(
+                f"TOC_Page_{len(toc_table_data)}",
+                parent=styles["Normal"],
+                fontSize=page_size,
+                fontName=page_font,
+                textColor=page_color,
+                alignment=TA_RIGHT,
+                spaceBefore=extra_space,
+                spaceAfter=extra_space_after,  # Variable spacing based on subsection
+                leading=page_size + 2,
+            )
+
+            # Create paragraphs
+            text_para = Paragraph(text_with_dots, text_style)
+            if page_num:
+                page_para = Paragraph(page_num, page_style)
+            else:
+                page_para = Paragraph("", page_style)  # Empty for subsections
+
+            toc_table_data.append([text_para, page_para])
+
+        # Create a 2-column table: text+dots | page number
+        # The text column should be wide, page column narrow
+        # Page numbers positioned close to dot leaders (0.15" from right edge)
+        text_col_width = available_width - 0.15 * inch
+        page_col_width = 0.15 * inch
+
+        toc_table = RLTable(toc_table_data, colWidths=[text_col_width, page_col_width])
+        toc_table.setStyle(
+            TableStyle(
+                [
+                    ("ALIGN", (0, 0), (0, -1), "LEFT"),  # Text column left-aligned
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),  # Page column right-aligned
+                    ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),  # Align to baseline
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ]
+            )
+        )
+
+        content.append(toc_table)
 
         return content
 
@@ -481,7 +916,23 @@ class VastReportBuilder:
         dnodes = len(hardware.get("dnodes", []))
         cboxes = len(hardware.get("cboxes", []))
         dboxes = len(hardware.get("dboxes", []))
-        switches = len(hardware.get("switches", []))
+        switches_list = hardware.get("switches", [])
+        total_switches = len(switches_list)
+
+        # Calculate leaf and spine switches
+        # Logic: If 2 switches = 2 leaf, if 4 = 2 leaf + 2 spine, if >4 = 2 spine + rest are leaf
+        if total_switches == 2:
+            leaf_switches = 2
+            spine_switches = 0
+        elif total_switches == 4:
+            leaf_switches = 2
+            spine_switches = 2
+        elif total_switches > 4:
+            spine_switches = 2
+            leaf_switches = total_switches - 2
+        else:
+            leaf_switches = total_switches
+            spine_switches = 0
 
         hardware_overview_data = [
             ["CBoxes", str(cboxes)],
@@ -490,9 +941,9 @@ class VastReportBuilder:
             ["DBoxes", str(dboxes)],
             ["DNodes", str(dnodes)],
             ["", ""],  # Empty line
-            ["Switches", str(switches)],
-            ["Leaf", "0"],  # Placeholder for Leaf switches
-            ["Spine", "0"],  # Placeholder for Spine switches
+            ["Switches", str(total_switches)],
+            ["Leaf", str(leaf_switches)],
+            ["Spine", str(spine_switches)],
         ]
 
         # Create hardware overview table with same style as Cluster Information
@@ -518,92 +969,120 @@ class VastReportBuilder:
 
         return content
 
-    def _create_cbox_inventory_table(
-        self, cboxes: Dict[str, Any], cnodes: List[Dict[str, Any]]
+    def _create_consolidated_inventory_table(
+        self,
+        cboxes: Dict[str, Any],
+        cnodes: List[Dict[str, Any]],
+        dboxes: Dict[str, Any],
+        switches: List[Dict[str, Any]],
     ) -> List[Any]:
         """
-        Create CBox Inventory table using data from both cboxes and cnodes APIs.
+        Create consolidated hardware inventory table with CBoxes, DBoxes, and Switches.
 
         Args:
             cboxes: CBox data from /api/v1/cboxes/
             cnodes: CNode data from /api/v7/cnodes/
+            dboxes: DBox data from /api/v7/dboxes/
+            switches: Switch data from switch inventory
 
         Returns:
             List[Any]: Table elements
         """
-        if not cboxes or not cnodes:
-            return []
-
-        # Create a mapping of cbox_id to box_vendor and status from cnodes
-        cbox_vendor_map = {}
-        cbox_status_map = {}
-        for cnode in cnodes:
-            cbox_id = cnode.get("cbox_id")
-            box_vendor = cnode.get("box_vendor", "Unknown")
-            status = cnode.get("status", "Unknown")
-            if cbox_id:
-                cbox_vendor_map[cbox_id] = box_vendor
-                cbox_status_map[cbox_id] = status
-
         # Prepare table data
         table_data = []
         headers = ["ID", "Model", "Name/Serial Number", "Status", "Position"]
 
-        for cbox_name, cbox_data in cboxes.items():
-            cbox_id = cbox_data.get("id", "Unknown")
-            name = cbox_data.get("name", "Unknown")
-            rack_unit = cbox_data.get("rack_unit", "Unknown")
+        # Add CBoxes
+        if cboxes and cnodes:
+            # Create a mapping of cbox_id to box_vendor and status from cnodes
+            cbox_vendor_map = {}
+            cbox_status_map = {}
+            for cnode in cnodes:
+                cbox_id = cnode.get("cbox_id")
+                box_vendor = cnode.get("box_vendor", "Unknown")
+                status = cnode.get("status", "Unknown")
+                if cbox_id:
+                    cbox_vendor_map[cbox_id] = box_vendor
+                    cbox_status_map[cbox_id] = status
 
-            # Get model and status from cnodes data using cbox_id
-            model = cbox_vendor_map.get(cbox_id, "Unknown")
-            status = cbox_status_map.get(cbox_id, "Unknown")
+            cbox_rows = []
+            for cbox_name, cbox_data in cboxes.items():
+                cbox_id = cbox_data.get("id", "Unknown")
+                name = cbox_data.get("name", "Unknown")
+                rack_unit = cbox_data.get("rack_unit", "Unknown")
 
-            # Create row data
-            row = [str(cbox_id), model, name, status, rack_unit]
-            table_data.append(row)
+                # Get model and status from cnodes data using cbox_id
+                model = cbox_vendor_map.get(cbox_id, "Unknown")
+                status = cbox_status_map.get(cbox_id, "Unknown")
 
-        # Sort by ID for consistent ordering
-        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
+                # Create row data with CB- prefix
+                row = [f"CB-{cbox_id}", model, name, status, rack_unit]
+                cbox_rows.append((cbox_id, row))
 
-        # Create table with VAST styling
-        return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "CBox Inventory (Compute)", headers
-        )
+            # Sort by numeric ID
+            cbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+            table_data.extend([row for _, row in cbox_rows])
 
-    def _create_dbox_inventory_table(self, dboxes: Dict[str, Any]) -> List[Any]:
-        """
-        Create DBox Inventory table using data from the dboxes API.
+        # Add DBoxes
+        if dboxes:
+            dbox_rows = []
+            for dbox_name, dbox_data in dboxes.items():
+                dbox_id = dbox_data.get("id", "Unknown")
+                hardware_type = dbox_data.get("hardware_type", "Unknown")
+                name = dbox_data.get("name", "Unknown")
+                state = dbox_data.get("state", "Unknown")
+                rack_unit = dbox_data.get("rack_unit", "Unknown")
 
-        Args:
-            dboxes: DBox data from /api/v7/dboxes/
+                # Create row data with DB- prefix
+                row = [f"DB-{dbox_id}", hardware_type, name, state, rack_unit]
+                dbox_rows.append((dbox_id, row))
 
-        Returns:
-            List[Any]: Table elements
-        """
-        if not dboxes:
+            # Sort by numeric ID
+            dbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
+            table_data.extend([row for _, row in dbox_rows])
+
+        # Add Switches
+        if switches:
+            switch_rows = []
+            for switch_num, switch in enumerate(switches, start=1):
+                switch_name = switch.get("name", "Unknown")
+                hostname = switch.get("hostname", switch_name)
+                model = switch.get("model", "Unknown")
+                serial = switch.get("serial", "Unknown")
+                state = switch.get("state", "Unknown")
+
+                # Get calculated position from rack diagram (if available)
+                position = ""
+                if (
+                    hasattr(self, "switch_positions")
+                    and switch_num in self.switch_positions
+                ):
+                    u_pos = self.switch_positions[switch_num]
+                    position = f"U{u_pos}"
+
+                # Create row data with SW- prefix using switch number
+                row = [f"SW-{switch_num}", model, serial, state, position]
+                switch_rows.append((hostname, row))
+
+            # Sort by hostname before numbering
+            switch_rows.sort(key=lambda x: x[0])
+
+            # Re-number switches sequentially after sorting and update positions
+            for idx, (hostname, row) in enumerate(switch_rows, start=1):
+                row[0] = f"SW-{idx}"
+                # Update position if available for this switch number
+                if hasattr(self, "switch_positions") and idx in self.switch_positions:
+                    u_pos = self.switch_positions[idx]
+                    row[4] = f"U{u_pos}"  # Position is at index 4
+
+            table_data.extend([row for _, row in switch_rows])
+
+        if not table_data:
             return []
 
-        # Prepare table data
-        table_data = []
-        headers = ["ID", "Model", "Name/SN", "Status", "Position"]
-
-        for dbox_name, dbox_data in dboxes.items():
-            dbox_id = dbox_data.get("id", "Unknown")
-            hardware_type = dbox_data.get("hardware_type", "Unknown")
-            name = dbox_data.get("name", "Unknown")
-            state = dbox_data.get("state", "Unknown")
-            rack_unit = dbox_data.get("rack_unit", "Unknown")
-
-            # Create row data
-            row = [str(dbox_id), hardware_type, name, state, rack_unit]
-            table_data.append(row)
-
-        # Sort by ID for consistent ordering
-        table_data.sort(key=lambda x: int(x[0]) if x[0].isdigit() else 0)
-
         # Create table with VAST styling
         return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "DBox Inventory (Data)", headers
+            table_data, "Hardware Inventory", headers
         )
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
@@ -896,25 +1375,71 @@ class VastReportBuilder:
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
 
-        # CBox Inventory (Compute) table with VAST styling
-        cboxes = hardware.get("cboxes", {})
-        cnodes = hardware.get("cnodes", [])
-        if cboxes and cnodes:
-            cbox_elements = self._create_cbox_inventory_table(cboxes, cnodes)
-            content.extend(cbox_elements)
+            # Calculate switch positions early (before creating inventory table)
+            # This allows us to populate the Position column for switches
+            cboxes = hardware.get("cboxes", {})
+            cnodes = hardware.get("cnodes", [])
+            dboxes = hardware.get("dboxes", {})
+            switches = hardware.get("switches", [])
 
-            # Add page break if we have many CBoxes to prevent layout issues
-            if len(cboxes) > 10:  # Threshold for large inventories
-                content.append(PageBreak())
+            # Pre-calculate switch positions for rack diagram
+            if switches and len(switches) == 2:
+                # Prepare CBox and DBox data for calculation
+                temp_rack_gen = RackDiagram()
 
-        # DBox Inventory (Data) table with VAST styling
-        dboxes = hardware.get("dboxes", {})
-        if dboxes:
-            dbox_elements = self._create_dbox_inventory_table(dboxes)
-            content.extend(dbox_elements)
+                # Build CBox data for switch calculation
+                cboxes_data = []
+                hw_cnodes = hardware.get("cnodes", [])
+                for cnode in hw_cnodes:
+                    cbox_data = {
+                        "id": cnode.get("id"),
+                        "model": cnode.get("model", cnode.get("box_vendor", "")),
+                        "rack_unit": cnode.get(
+                            "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
+                        ),
+                        "state": cnode.get("state", cnode.get("status", "ACTIVE")),
+                    }
+                    if cbox_data["rack_unit"]:  # Only add if has position
+                        cboxes_data.append(cbox_data)
 
-            # Add page break if we have many DBoxes to prevent layout issues
-            if len(dboxes) > 10:  # Threshold for large inventories
+                # Build DBox data for switch calculation
+                # Use dboxes (physical chassis) not dnodes (individual nodes)
+                dboxes_data = []
+                hw_dboxes = hardware.get("dboxes", {})
+                for dbox_name, dbox_info in hw_dboxes.items():
+                    rack_unit = dbox_info.get("rack_unit", "")
+                    if rack_unit:
+                        dbox_data = {
+                            "id": dbox_info.get("id"),
+                            "model": dbox_info.get("hardware_type", "Unknown"),
+                            "rack_unit": rack_unit,
+                            "state": dbox_info.get("state", "ACTIVE"),
+                        }
+                        dboxes_data.append(dbox_data)
+
+                # Calculate switch positions
+                calculated_positions = temp_rack_gen._calculate_switch_positions(
+                    cboxes_data, dboxes_data, len(switches)
+                )
+                if calculated_positions:
+                    self.switch_positions = {
+                        idx: u_pos
+                        for idx, u_pos in enumerate(calculated_positions, start=1)
+                    }
+                    self.logger.info(
+                        f"Pre-calculated switch positions: {self.switch_positions}"
+                    )
+
+        # Consolidated Hardware Inventory table with VAST styling
+        if cboxes or dboxes or switches:
+            inventory_elements = self._create_consolidated_inventory_table(
+                cboxes, cnodes, dboxes, switches
+            )
+            content.extend(inventory_elements)
+
+            # Add page break if we have many devices to prevent layout issues
+            total_devices = len(cboxes) + len(dboxes) + len(switches)
+            if total_devices > 15:  # Threshold for large inventories
                 content.append(PageBreak())
 
         # Add Physical Rack Layout - force to start at top of Page 6
@@ -925,7 +1450,7 @@ class VastReportBuilder:
 
             # Add section heading at top of new page
             heading_elements = self.brand_compliance.create_vast_section_heading(
-                "Physical Rack Layout", level=2
+                "Physical Rack Layout", level=1
             )
             content.extend(heading_elements)
 
@@ -962,32 +1487,42 @@ class VastReportBuilder:
                     if cbox_data["rack_unit"]:  # Only add if has position
                         cboxes_data.append(cbox_data)
 
-                # Get DBox information
-                hw_dnodes = hardware.get("dnodes", [])
+                # Get DBox information (physical chassis, not individual nodes)
+                hw_dboxes = hardware.get("dboxes", {})
 
-                for dnode in hw_dnodes:
-                    # Prefer hardware_type over model for rack diagram
-                    model = dnode.get("hardware_type")
-                    if not model or model == "Unknown":
-                        model = dnode.get("model", "")
-
-                    dbox_data = {
-                        "id": dnode.get("id"),
-                        "model": model,
-                        "rack_unit": dnode.get(
-                            "rack_u", dnode.get("rack_unit", dnode.get("position", ""))
-                        ),
-                        "state": dnode.get("state", dnode.get("status", "ACTIVE")),
-                    }
-                    if dbox_data["rack_unit"]:  # Only add if has position
+                for dbox_name, dbox_info in hw_dboxes.items():
+                    rack_unit = dbox_info.get("rack_unit", "")
+                    if rack_unit:
+                        dbox_data = {
+                            "id": dbox_info.get("id"),
+                            "model": dbox_info.get("hardware_type", "Unknown"),
+                            "rack_unit": rack_unit,
+                            "state": dbox_info.get("state", "ACTIVE"),
+                        }
                         dboxes_data.append(dbox_data)
+
+                # Get switch data for rack diagram
+                switches_data = []
+                switches = hardware.get("switches", [])
+                for switch in switches:
+                    switch_data = {
+                        "id": switch.get("name", "Unknown"),  # Use name as ID
+                        "model": switch.get("model", "switch"),
+                        "state": switch.get("state", "ACTIVE"),
+                    }
+                    switches_data.append(switch_data)
 
                 # Create rack diagram
                 if cboxes_data or dboxes_data:
                     rack_gen = RackDiagram()
-                    rack_drawing = rack_gen.generate_rack_diagram(
-                        cboxes_data, dboxes_data
+                    rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
+                        cboxes_data,
+                        dboxes_data,
+                        switches_data if switches_data else None,
                     )
+
+                    # Store switch positions for use in inventory table
+                    self.switch_positions = switch_positions_map
 
                     # Center the rack diagram on the page using a table
                     from reportlab.platypus import Table as RLTable
@@ -1010,8 +1545,11 @@ class VastReportBuilder:
                     )
                     content.append(rack_table)
 
+                    switch_msg = (
+                        f", {len(switches_data)} Switches" if switches_data else ""
+                    )
                     self.logger.info(
-                        f"Added rack diagram with {len(cboxes_data)} CBoxes and {len(dboxes_data)} DBoxes"
+                        f"Added rack diagram with {len(cboxes_data)} CBoxes, {len(dboxes_data)} DBoxes{switch_msg}"
                     )
                 else:
                     # Fallback to placeholder if no position data
@@ -1943,7 +2481,145 @@ class VastReportBuilder:
         )
         content.append(Spacer(1, 16))
 
-        # Check if network diagram image exists (try PNG first, then JPG)
+        # Generate network diagram dynamically
+        try:
+            from network_diagram import NetworkDiagramGenerator
+
+            # Get required data
+            port_mapping_section = data.get("sections", {}).get("port_mapping", {})
+            port_mapping_data = (
+                port_mapping_section.get("data", {})
+                if isinstance(port_mapping_section, dict)
+                else {}
+            )
+
+            # Prepare hardware data from hardware_inventory
+            hardware_inventory = data.get("hardware_inventory", {})
+
+            # Convert cboxes/dboxes from dict to list if needed
+            cboxes_data = hardware_inventory.get("cboxes", [])
+            dboxes_data = hardware_inventory.get("dboxes", [])
+            switches_data = hardware_inventory.get("switches", [])
+
+            # If cboxes/dboxes are dicts (keyed by name), convert to list of values
+            cboxes_list = (
+                list(cboxes_data.values())
+                if isinstance(cboxes_data, dict)
+                else cboxes_data
+            )
+            dboxes_list = (
+                list(dboxes_data.values())
+                if isinstance(dboxes_data, dict)
+                else dboxes_data
+            )
+            switches_list = switches_data if isinstance(switches_data, list) else []
+
+            hardware_data = {
+                "cboxes": cboxes_list,
+                "dboxes": dboxes_list,
+                "switches": switches_list,
+            }
+
+            self.logger.info(
+                f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
+                f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['switches'])} Switches"
+            )
+
+            # Create output directory
+            diagrams_dir = Path(__file__).parent.parent / "output" / "diagrams"
+            diagrams_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate diagram
+            diagram_generator = NetworkDiagramGenerator(
+                assets_path=str(Path(__file__).parent.parent / "assets")
+            )
+
+            diagram_path = diagrams_dir / "network_topology.pdf"
+            generated_path = diagram_generator.generate_network_diagram(
+                port_mapping_data=port_mapping_data,
+                hardware_data=hardware_data,
+                output_path=str(diagram_path),
+            )
+
+            # Add color legend
+            legend_style = ParagraphStyle(
+                "Diagram_Legend",
+                parent=styles["Normal"],
+                fontSize=self.config.font_size - 1,
+                textColor=colors.HexColor("#666666"),
+                alignment=TA_CENTER,
+                spaceAfter=12,
+            )
+            content.append(
+                Paragraph(
+                    "<font color='#00aa00'><b>■</b> Green</font> = Switch A connections | "
+                    "<font color='#0066cc'><b>■</b> Blue</font> = Switch B connections | "
+                    "<font color='#9933cc'><b>■</b> Purple</font> = IPL/MLAG connections",
+                    legend_style,
+                )
+            )
+            content.append(Spacer(1, 12))
+
+            if generated_path and Path(generated_path).exists():
+                self.logger.info(f"Network diagram generated: {generated_path}")
+
+                # Embed the generated diagram (PNG)
+                try:
+                    # Calculate image size to fit on page
+                    if self.config.page_size == "Letter":
+                        page_width = 8.5 * inch
+                    else:
+                        page_width = 595.27
+
+                    available_width = page_width - (2 * 0.5 * inch)
+                    max_height = 5.5 * inch
+
+                    # Load and add the dynamically generated diagram
+                    img = Image(
+                        str(generated_path),
+                        width=available_width * 0.9,
+                        height=max_height,
+                        kind="proportional",
+                    )
+
+                    # Center the image using a table
+                    from reportlab.platypus import Table as RLTable
+
+                    image_table = RLTable(
+                        [[img]],
+                        colWidths=[available_width],
+                    )
+                    image_table.setStyle(
+                        TableStyle(
+                            [
+                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                            ]
+                        )
+                    )
+                    content.append(image_table)
+
+                    self.logger.info(f"Embedded dynamically generated network diagram")
+
+                    # Skip loading static placeholder since we have the dynamic one
+                    return content
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Error embedding generated diagram: {e}", exc_info=True
+                    )
+                    # Fall through to try static placeholder
+
+            else:
+                self.logger.warning(
+                    "Network diagram PNG not available. Using placeholder. "
+                    "For dynamic diagrams, install: pip install reportlab[renderPM]"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error generating network diagram: {e}", exc_info=True)
+
+        # Check if static network diagram image exists (try PNG first, then JPG)
         diagram_path_png = (
             Path(__file__).parent.parent
             / "assets"
@@ -1965,19 +2641,6 @@ class VastReportBuilder:
 
         if diagram_path:
             try:
-                # Add diagram title
-                title_style = ParagraphStyle(
-                    "Diagram_Title",
-                    parent=styles["Normal"],
-                    fontSize=self.config.font_size + 2,
-                    textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-                    alignment=TA_CENTER,
-                    fontName="Helvetica-Bold",
-                    spaceAfter=12,
-                )
-                content.append(Paragraph("Placeholder", title_style))
-                content.append(Spacer(1, 8))
-
                 # Calculate image size to fit on page
                 # A4 width in points
                 if self.config.page_size == "Letter":
@@ -2011,6 +2674,7 @@ class VastReportBuilder:
                         ]
                     )
                 )
+                content.append(Spacer(1, 12))
                 content.append(image_table)
 
                 self.logger.info(f"Added network topology diagram from {diagram_path}")
@@ -2037,8 +2701,597 @@ class VastReportBuilder:
             )
             content.extend(placeholder_elements)
             self.logger.info(
-                f"Network diagram not found at {diagram_path}, " "using placeholder"
+                "Network diagram placeholder shown - static image not found"
             )
+
+        return content
+
+    def _classify_port_purpose(
+        self, port_name: str, speed: str, total_switches: int
+    ) -> str:
+        """
+        Classify port purpose based on speed, port number, and cluster topology.
+
+        Args:
+            port_name: Port name (e.g., "swp1", "eth1/1")
+            speed: Port speed (e.g., "200G", "100G", None)
+            total_switches: Total number of switches in cluster
+
+        Returns:
+            Port classification string
+        """
+        # Extract port number from name (handles swp1, eth1/1, etc.)
+        try:
+            port_num = int("".join(filter(str.isdigit, port_name)))
+        except (ValueError, TypeError):
+            port_num = 0
+
+        # Classification logic based on speed and port position
+        if speed == "200G":
+            # 200G ports are typically data plane connections
+            if 1 <= port_num <= 14:
+                return "Data Plane (CNode)"
+            elif 15 <= port_num <= 28:
+                return "Data Plane (DNode)"
+            else:
+                return "Data Plane"
+
+        elif speed == "100G":
+            # 100G ports are typically IPLs, uplinks, or standard data plane
+            if port_num in [29, 30]:
+                # Ports 29-30 typically used for MLAG IPL (Inter-Peer Link)
+                return "IPL (Inter-Peer Link)" if total_switches > 1 else "Reserved"
+            elif port_num in [31, 32]:
+                # Ports 31-32 typically used for uplinks to spine/core
+                return "Uplink (Spine/Core)"
+            else:
+                return "Data Plane"
+
+        elif speed == "Unconfigured" or not speed:
+            # Unconfigured ports are unused or reserved
+            return "Unused/Reserved"
+
+        else:
+            # Other speeds (40G, 10G, etc.)
+            return "Data Plane"
+
+    def _create_port_mapping_section(
+        self, port_mapping_data: Dict[str, Any], switches: List[Dict[str, Any]]
+    ) -> List[Any]:
+        """
+        Create port mapping section with detailed port-to-device mappings.
+
+        Args:
+            port_mapping_data: Port mapping data from data extractor
+            switches: List of switch hardware data
+
+        Returns:
+            List of ReportLab elements for port mapping section
+        """
+        content = []
+        styles = getSampleStyleSheet()
+
+        # Add section heading
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Port Mapping", level=1
+        )
+        content.extend(heading_elements)
+
+        # Section Overview
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Port Mapping section provides detailed connectivity information showing which switch ports connect to which cluster nodes. This information is critical for troubleshooting network issues, validating cabling, and planning maintenance activities. The mapping uses standardized designations to clearly identify each connection point on both the switch side and node side.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 12))
+
+        # Get port map organized by switch
+        port_map = port_mapping_data.get("port_map", [])
+        has_cross_connections = port_mapping_data.get("has_cross_connections", False)
+
+        if not port_map:
+            content.append(
+                Paragraph("No port mapping data available", styles["Normal"])
+            )
+            return content
+
+        # Group ports by switch
+        ports_by_switch = {}
+        for entry in port_map:
+            switch_ip = entry["switch_ip"]
+            if switch_ip not in ports_by_switch:
+                ports_by_switch[switch_ip] = []
+            ports_by_switch[switch_ip].append(entry)
+
+        # Sort ports within each switch by port number
+        for switch_ip in ports_by_switch:
+            ports_by_switch[switch_ip].sort(
+                key=lambda x: (
+                    int("".join(filter(str.isdigit, x["port"])))
+                    if any(c.isdigit() for c in x["port"])
+                    else 0
+                )
+            )
+
+        # Find switch info from switches list to get switch numbers
+        switch_ip_to_number = {}
+        for idx, switch in enumerate(switches, start=1):
+            switch_ip_to_number[switch.get("mgmt_ip")] = idx
+
+        # Create port map table for each switch
+        for switch_ip, connections in ports_by_switch.items():
+            switch_num = switch_ip_to_number.get(switch_ip, "?")
+
+            # Build table data - filter to show only primary physical connections
+            table_data = []
+            headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
+
+            # Track which ports we've already added to avoid duplicates
+            # Key: (switch_designation, node_designation, network)
+            seen_connections = set()
+
+            for conn in connections:
+                # Smart filtering: show one primary interface per network per node
+                # CNodes: f0 = Net A (primary), f1 = Net B (primary), f2/f3 = bonded
+                # DNodes: f0 = Net A (primary), f2/f3 = Net B (primary - different than CNodes!)
+
+                interface = conn.get("interface", "")
+                network = conn.get("network", "?")
+                node_designation = conn.get("node_designation", "Unknown")
+
+                # Determine if this is a DNode or CNode
+                is_dnode = "DN" in node_designation
+                is_cnode = "CN" in node_designation
+
+                # Primary interface logic:
+                # - CNodes Network A: f0 (primary)
+                # - CNodes Network B: f1 (primary)
+                # - DNodes Network A: f0 (primary)
+                # - DNodes Network B: f2 (primary - first of bonded pair)
+
+                is_primary = False
+                if is_cnode:
+                    # CNodes: f0 for Net A, f1 for Net B
+                    if network == "A" and "f0" in interface:
+                        is_primary = True
+                    elif network == "B" and "f1" in interface:
+                        is_primary = True
+                elif is_dnode:
+                    # DNodes: f0 for Net A, f2 for Net B (use first of pair)
+                    if network == "A" and "f0" in interface:
+                        is_primary = True
+                    elif network == "B" and "f2" in interface:
+                        is_primary = True
+
+                # Skip non-primary interfaces
+                if not is_primary:
+                    continue
+
+                # Use enhanced switch designation (e.g., SWA-P20)
+                port_display = conn.get("switch_designation", conn["port"])
+
+                # Use node designation (already have it from above)
+                node_display = node_designation
+
+                # Create unique key for this connection
+                conn_key = (port_display, node_designation, network)
+
+                # Skip if we've already added this connection
+                if conn_key in seen_connections:
+                    continue
+                seen_connections.add(conn_key)
+
+                speed = "200G"  # Default, would need to get from switch port data
+
+                # Simple notes - all primary connections are correct
+                notes_str = "Primary"
+
+                table_data.append(
+                    [port_display, node_display, network, speed, notes_str]
+                )
+
+            # Add IPL/MLAG ports to this switch's table
+            ipl_ports = port_mapping_data.get("ipl_ports", [])
+            if ipl_ports:
+                # Determine switch designation (SWA or SWB) based on switch_num
+                source_switch_des = "SWA" if switch_num == 1 else "SWB"
+                dest_switch_des = "SWB" if switch_num == 1 else "SWA"
+
+                # Filter IPL ports for this switch
+                for ipl_port in ipl_ports:
+                    # Check if this IPL port belongs to current switch
+                    switch_name = ipl_port.get("switch", "")
+                    port_name = ipl_port.get("port", "")
+
+                    # Extract switch hostname from the switch string
+                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
+                    if "se-var-1-1" in switch_name and switch_num == 1:
+                        # This is switch 1
+                        pass
+                    elif "se-var-1-2" in switch_name and switch_num == 2:
+                        # This is switch 2
+                        pass
+                    else:
+                        # Not for this switch
+                        continue
+
+                    # Extract port number from port_name (e.g., "swp29" -> "29")
+                    port_num = port_name.replace("swp", "")
+
+                    # Format: SWA-P29 -> SWB-P29
+                    source_port = f"{source_switch_des}-P{port_num}"
+                    dest_port = f"{dest_switch_des}-P{port_num}"
+
+                    # Get speed
+                    speed = ipl_port.get("speed", "Unknown")
+
+                    # Network is A/B (alternating or both - using A/B to indicate both networks)
+                    network_display = "A/B"
+
+                    # Notes
+                    notes_str = "IPL/MLAG"
+
+                    table_data.append(
+                        [source_port, dest_port, network_display, speed, notes_str]
+                    )
+
+            # Create table
+            table_title = f"Switch {switch_num} Port-to-Device Mapping"
+            table_elements = self.brand_compliance.create_vast_table(
+                table_data, table_title, headers
+            )
+            content.extend(table_elements)
+            content.append(Spacer(1, 12))
+
+        # Note: Cross-connection detection disabled - VAST dual-network design
+        # naturally has both Network A and B on both switches for redundancy
+        # Add cross-connection summary if any issues detected
+        if False and has_cross_connections:  # Disabled
+            content.append(Spacer(1, 12))
+
+            warning_heading = self.brand_compliance.create_vast_section_heading(
+                "⚠️ Network Configuration Issues Detected", level=2
+            )
+            content.extend(warning_heading)
+
+            cross_connections = port_mapping_data.get("cross_connections", [])
+            cross_summary = port_mapping_data.get("cross_connection_summary", "")
+
+            issue_style = ParagraphStyle(
+                "Issue_Style",
+                parent=styles["Normal"],
+                fontSize=self.config.font_size,
+                textColor=colors.HexColor("#d62728"),  # Red warning color
+                spaceAfter=8,
+                spaceBefore=8,
+                leftIndent=20,
+                rightIndent=20,
+            )
+
+            content.append(
+                Paragraph(
+                    f"<b>Summary:</b> {cross_summary}",
+                    issue_style,
+                )
+            )
+            content.append(Spacer(1, 8))
+
+            # List specific cross-connection issues
+            issue_list_data = []
+            issue_headers = [
+                "Switch Port",
+                "Node",
+                "Actual Network",
+                "Expected Network",
+            ]
+
+            for issue in cross_connections:
+                issue_list_data.append(
+                    [
+                        issue.get("port", "Unknown"),
+                        issue.get("node", issue.get("node_designation", "Unknown")),
+                        f"Network {issue.get('actual_network', '?')}",
+                        f"Network {issue.get('expected_network', '?')}",
+                    ]
+                )
+
+            issue_table_elements = self.brand_compliance.create_vast_table(
+                issue_list_data, "Cross-Connection Details", issue_headers
+            )
+            content.extend(issue_table_elements)
+            content.append(Spacer(1, 12))
+
+        # IPL/MLAG ports are now integrated into switch port tables above
+        # No separate section needed
+
+        return content
+
+    def _create_switch_configuration(self, data: Dict[str, Any]) -> List[Any]:
+        """Create switch configuration section with port details."""
+        content = []
+
+        # Add section heading with VAST styling
+        heading_elements = self.brand_compliance.create_vast_section_heading(
+            "Switch Configuration", level=1
+        )
+        content.extend(heading_elements)
+
+        # Section Overview
+        styles = getSampleStyleSheet()
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content.append(
+            Paragraph(
+                "The Switch Configuration section provides detailed information about the network switches that form the fabric interconnecting the VAST cluster nodes. This section documents switch hardware specifications, port configurations, operational status, and connectivity details. Understanding the switch topology is critical for network troubleshooting, capacity planning, and validating proper network segmentation. The port-level details enable network administrators to trace physical connectivity, identify unused ports, and plan for cluster expansion.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        # Get switch data
+        hardware = data.get("hardware_inventory", {})
+        switches = hardware.get("switches", [])
+
+        if not switches:
+            content.append(Paragraph("No switch data available", styles["Normal"]))
+            return content
+
+        # For each switch, create a detailed port configuration table on separate page
+        for switch_num, switch in enumerate(switches, start=1):
+            # Add page break before each switch (except the first)
+            if switch_num > 1:
+                content.append(PageBreak())
+
+            # Add "Switch # Details" heading
+            switch_details_heading = self.brand_compliance.create_vast_section_heading(
+                f"Switch {switch_num} Details", level=2
+            )
+            content.extend(switch_details_heading)
+
+            switch_name = switch.get("name", "Unknown")
+            hostname = switch.get("hostname", "Unknown")
+            model = switch.get("model", "Unknown")
+            serial = switch.get("serial", "Unknown")
+            firmware_version = switch.get("firmware_version", "Unknown")
+            mgmt_ip = switch.get("mgmt_ip", "Unknown")
+            switch_type = switch.get("switch_type", "Unknown")
+            state = switch.get("state", "Unknown")
+            configured = switch.get("configured", False)
+            role = switch.get("role", "Unknown")
+            total_ports = switch.get("total_ports", 0)
+            active_ports = switch.get("active_ports", 0)
+            mtu = switch.get("mtu", "Unknown")
+            port_speeds = switch.get("port_speeds", {})
+            ports = switch.get("ports", [])
+
+            # Capitalize switch type for display
+            if switch_type.lower() == "cumulus":
+                switch_type_display = "Cumulus Linux"
+            else:
+                switch_type_display = switch_type
+
+            # Format configuration status
+            config_status = "Configured" if configured else "Not Configured"
+
+            # Switch header info
+            switch_info_data = [
+                ["Hostname", hostname],
+                ["Model", model],
+                ["Serial Number", serial],
+                ["Firmware Version", firmware_version],
+                ["Management IP", mgmt_ip],
+                ["Switch Type", switch_type_display],
+                ["State", state],
+                ["Configuration Status", config_status],
+                ["Role", role if role else "Not Assigned"],
+                ["Total Ports", str(total_ports)],
+                ["Active Ports", str(active_ports)],
+                ["Port MTU", mtu],
+            ]
+
+            # Create switch info table
+            switch_info_elements = self._create_cluster_info_table(
+                switch_info_data, f"{switch_name} Configuration"
+            )
+            content.extend(switch_info_elements)
+            content.append(Spacer(1, 12))
+
+            # Create port summary table with port numbers
+            if ports:
+                # Aggregate ports by speed, collecting port names
+                port_summary = {}
+
+                for port in ports:
+                    speed = port.get("speed")
+                    if not speed or speed == "":
+                        speed = "Unconfigured"
+
+                    port_name = port.get("name", "Unknown")
+
+                    if speed not in port_summary:
+                        port_summary[speed] = []
+                    port_summary[speed].append(port_name)
+
+                # Create summary table with port count and port numbers
+                summary_table_data = []
+                headers = ["Port Count", "Speed", "Port Numbers"]
+
+                # Sort by speed (200G, 100G, Unconfigured, then others)
+                speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
+                sorted_summary = sorted(
+                    port_summary.items(), key=lambda x: speed_order.get(x[0], 3)
+                )
+
+                for speed, port_list in sorted_summary:
+                    # Sort port names naturally (swp1, swp2, ..., swp10, swp11, ...)
+                    try:
+                        sorted_ports = sorted(
+                            port_list,
+                            key=lambda x: (
+                                int("".join(filter(str.isdigit, x)))
+                                if any(c.isdigit() for c in x)
+                                else 0
+                            ),
+                        )
+                    except:
+                        sorted_ports = sorted(port_list)
+
+                    # Join ports with comma separation
+                    ports_str = ", ".join(sorted_ports)
+
+                    # Use Paragraph for port numbers to enable text wrapping
+                    port_style = ParagraphStyle(
+                        "PortNumbers",
+                        parent=styles["Normal"],
+                        fontSize=9,
+                        alignment=0,  # Left alignment
+                        wordWrap="CJK",  # Enable word wrapping
+                    )
+                    port_para = Paragraph(ports_str, port_style)
+
+                    # Count ports for this speed
+                    port_count = len(port_list)
+
+                    summary_table_data.append([str(port_count), speed, port_para])
+
+                # Create custom port summary table with specific column widths
+                # Port Count: 15%, Speed: 15%, Port Numbers: 70%
+                page_width = 7.5 * inch
+                col_widths = [
+                    page_width * 0.15,  # Port Count (matches Speed column)
+                    page_width * 0.15,  # Speed (reduced by 50%)
+                    page_width * 0.70,  # Port Numbers (reduced slightly)
+                ]
+
+                # Add title
+                table_title = f"{switch_name} Port Summary"
+                title_para = Paragraph(
+                    f"<b>{table_title}</b>",
+                    self.brand_compliance.styles["vast_subheading"],
+                )
+                content.append(title_para)
+                content.append(Spacer(1, 8))
+
+                # Prepare table data with headers
+                full_table_data = [headers] + summary_table_data
+
+                # Create table with custom column widths
+                port_table = Table(full_table_data, colWidths=col_widths, repeatRows=1)
+
+                # Apply VAST brand table styling
+                table_style = TableStyle(
+                    [
+                        # Header row styling
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, 0),
+                            self.brand_compliance.colors.BACKGROUND_DARK,
+                        ),
+                        (
+                            "TEXTCOLOR",
+                            (0, 0),
+                            (-1, 0),
+                            self.brand_compliance.colors.PURE_WHITE,
+                        ),
+                        (
+                            "FONTNAME",
+                            (0, 0),
+                            (-1, 0),
+                            self.brand_compliance.typography.PRIMARY_FONT,
+                        ),
+                        (
+                            "FONTSIZE",
+                            (0, 0),
+                            (-1, 0),
+                            self.brand_compliance.typography.BODY_SIZE,
+                        ),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        # Data rows styling
+                        (
+                            "BACKGROUND",
+                            (0, 1),
+                            (-1, -1),
+                            self.brand_compliance.colors.VAST_BLUE_LIGHTEST,
+                        ),
+                        (
+                            "TEXTCOLOR",
+                            (0, 1),
+                            (-1, -1),
+                            self.brand_compliance.colors.DARK_GRAY,
+                        ),
+                        (
+                            "FONTNAME",
+                            (0, 1),
+                            (-1, -1),
+                            self.brand_compliance.typography.BODY_FONT,
+                        ),
+                        (
+                            "FONTSIZE",
+                            (0, 1),
+                            (-1, -1),
+                            self.brand_compliance.typography.BODY_SIZE,
+                        ),
+                        # Borders and spacing
+                        (
+                            "GRID",
+                            (0, 0),
+                            (-1, -1),
+                            1,
+                            self.brand_compliance.colors.BACKGROUND_DARK,
+                        ),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [
+                                self.brand_compliance.colors.PURE_WHITE,
+                                self.brand_compliance.colors.ALTERNATING_ROW,
+                            ],
+                        ),
+                        ("PADDING", (0, 0), (-1, -1), 8),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                        ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+                    ]
+                )
+
+                port_table.setStyle(table_style)
+                content.append(port_table)
+                content.append(Spacer(1, 12))
+
+        # Add port mapping section if available
+        port_mapping_section = data.get("sections", {}).get("port_mapping", {})
+        port_mapping_data = port_mapping_section.get("data", {})
+
+        if port_mapping_data.get("available"):
+            content.append(PageBreak())
+            port_mapping_content = self._create_port_mapping_section(
+                port_mapping_data, switches
+            )
+            content.extend(port_mapping_content)
 
         return content
 

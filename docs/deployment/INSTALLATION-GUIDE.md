@@ -18,7 +18,7 @@ This guide provides step-by-step installation instructions for Mac and Windows l
 ### For Mac Users
 ```bash
 # Download and run the installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -26,7 +26,7 @@ chmod +x install-mac.sh
 ### For Windows Users
 ```powershell
 # Download and run the installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -44,7 +44,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 1. **Download the installation script:**
    ```bash
-   curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-mac.sh
+   curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
    ```
 
 2. **Make the script executable:**
@@ -110,7 +110,7 @@ mkdir -p output logs
 - **Python Dependencies**: All required Python packages
 - **Project Files**: Complete VAST As-Built Report Generator
 - **Desktop Shortcut**: Easy access from desktop
-- **Launch Script**: `run-vast-reporter.sh` for easy execution
+- **Launch Script**: `run-vast-asbuilt-reporter.sh` for easy execution
 
 ### Installation Location
 
@@ -143,7 +143,7 @@ mkdir -p output logs
 
 3. **Download and run the installation script:**
    ```powershell
-   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-windows.ps1" -OutFile "install-windows.ps1"
+   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
    .\install-windows.ps1
    ```
 
@@ -223,20 +223,20 @@ New-Item -ItemType Directory -Path "logs" -Force
    ```bash
    # macOS
    cd ~/vast-asbuilt-reporter
-   ./run-vast-reporter.sh --version
+   ./run-vast-asbuilt-reporter.sh --version
 
    # Windows
    cd %USERPROFILE%\vast-asbuilt-reporter
-   run-vast-reporter.bat --version
+   run-vast-asbuilt-reporter.bat --version
    ```
 
 2. **Generate your first report:**
    ```bash
    # macOS
-   ./run-vast-reporter.sh --cluster 192.168.1.100 --output ./output
+   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output
 
    # Windows
-   run-vast-reporter.bat --cluster 192.168.1.100 --output .\output
+   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output
    ```
 
 ### Configuration
@@ -302,7 +302,7 @@ brew install pango harfbuzz libffi libxml2 libxslt cairo gobject-introspection
 **Problem**: Permission denied errors
 ```bash
 # Solution: Fix permissions
-chmod +x ~/vast-asbuilt-reporter/run-vast-reporter.sh
+chmod +x ~/vast-asbuilt-reporter/run-vast-asbuilt-reporter.sh
 chmod +x ~/vast-asbuilt-reporter/venv/bin/python3
 ```
 
@@ -341,11 +341,11 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
    ```bash
    # macOS
    cd ~/vast-asbuilt-reporter
-   ./run-vast-reporter.sh --help
+   ./run-vast-asbuilt-reporter.sh --help
 
    # Windows
    cd %USERPROFILE%\vast-asbuilt-reporter
-   run-vast-reporter.bat --help
+   run-vast-asbuilt-reporter.bat --help
    ```
 
 3. **Check system requirements:**

@@ -33,10 +33,6 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from api_handler import VastApiHandler, create_vast_api_handler
 from data_extractor import VastDataExtractor, create_data_extractor
-from enhanced_report_builder import (
-    EnhancedReportBuilder,
-    create_enhanced_report_builder,
-)
 from report_builder import VastReportBuilder, create_report_builder
 from utils.logger import get_logger, setup_logging
 
@@ -134,10 +130,9 @@ class VastReportGenerator:
             self.data_extractor = create_data_extractor(self.config)
             self.logger.info("Data extractor initialized")
 
-            # Initialize report builders
+            # Initialize report builder
             self.report_builder = create_report_builder()
-            self.enhanced_report_builder = create_enhanced_report_builder()
-            self.logger.info("Report builders initialized")
+            self.logger.info("Report builder initialized")
 
             # API handler will be initialized when we have credentials
             self.logger.info("Components initialized successfully")
@@ -374,25 +369,17 @@ class VastReportGenerator:
 
             self.logger.info(f"JSON report saved: {json_path}")
 
-            # Generate enhanced PDF report
+            # Generate PDF report
             pdf_filename = f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
             pdf_path = output_dir / pdf_filename
 
-            if not self.enhanced_report_builder.generate_enhanced_report(
+            if not self.report_builder.generate_pdf_report(
                 processed_data, str(pdf_path)
             ):
-                self.logger.error("Failed to generate enhanced PDF report")
-                # Fallback to basic report builder
-                if not self.report_builder.generate_pdf_report(
-                    processed_data, str(pdf_path)
-                ):
-                    self.logger.error("Failed to generate any PDF report")
-                    return False
-                else:
-                    self.logger.info(f"Basic PDF report generated: {pdf_path}")
-            else:
-                self.logger.info(f"Enhanced PDF report generated: {pdf_path}")
+                self.logger.error("Failed to generate PDF report")
+                return False
 
+            self.logger.info(f"PDF report generated: {pdf_path}")
             return True
 
         except Exception as e:

@@ -63,17 +63,17 @@ This guide provides comprehensive instructions for deploying the VAST As-Built R
 
 1. **Create System User**
    ```bash
-   sudo useradd -m -s /bin/bash vast-reporter
-   sudo mkdir -p /opt/vast-reporter
-   sudo chown vast-reporter:vast-reporter /opt/vast-reporter
+   sudo useradd -m -s /bin/bash vast-asbuilt-reporter
+   sudo mkdir -p /opt/vast-asbuilt-reporter
+   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
    ```
 
 2. **Install Application**
    ```bash
-   sudo -u vast-reporter git clone https://github.com/rstamps01/ps-deploy-report.git /opt/vast-reporter
-   cd /opt/vast-reporter
-   sudo -u vast-reporter python3 -m venv venv
-   sudo -u vast-reporter ./venv/bin/pip install -r requirements.txt
+   sudo -u vast-asbuilt-reporter git clone https://github.com/rstamps01/ps-deploy-report.git /opt/vast-asbuilt-reporter
+   cd /opt/vast-asbuilt-reporter
+   sudo -u vast-asbuilt-reporter python3 -m venv venv
+   sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
    ```
 
 3. **Install System Dependencies**
@@ -88,21 +88,21 @@ This guide provides comprehensive instructions for deploying the VAST As-Built R
 
 4. **Configure Application**
    ```bash
-   sudo -u vast-reporter cp config/config.yaml.template config/config.yaml
-   sudo -u vast-reporter nano config/config.yaml
+   sudo -u vast-asbuilt-reporter cp config/config.yaml.template config/config.yaml
+   sudo -u vast-asbuilt-reporter nano config/config.yaml
    ```
 
 5. **Set Up Logging**
    ```bash
-   sudo mkdir -p /var/log/vast-reporter
-   sudo chown vast-reporter:vast-reporter /var/log/vast-reporter
-   sudo cp config/logrotate.conf /etc/logrotate.d/vast-reporter
+   sudo mkdir -p /var/log/vast-asbuilt-reporter
+   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /var/log/vast-asbuilt-reporter
+   sudo cp config/logrotate.conf /etc/logrotate.d/vast-asbuilt-reporter
    ```
 
 6. **Create Output Directory**
    ```bash
-   sudo mkdir -p /var/opt/vast-reporter/output
-   sudo chown vast-reporter:vast-reporter /var/opt/vast-reporter/output
+   sudo mkdir -p /var/opt/vast-asbuilt-reporter/output
+   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter/output
    ```
 
 ## Docker Deployment
@@ -134,10 +134,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create non-root user
-RUN useradd -m -s /bin/bash vast-reporter && \
-    chown -R vast-reporter:vast-reporter /app
+RUN useradd -m -s /bin/bash vast-asbuilt-reporter && \
+    chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /app
 
-USER vast-reporter
+USER vast-asbuilt-reporter
 
 # Create directories
 RUN mkdir -p logs output
@@ -154,9 +154,9 @@ Create a `docker-compose.yml`:
 version: '3.8'
 
 services:
-  vast-reporter:
+  vast-asbuilt-reporter:
     build: .
-    container_name: vast-reporter
+    container_name: vast-asbuilt-reporter
     volumes:
       - ./config:/app/config
       - ./logs:/app/logs
@@ -172,14 +172,14 @@ services:
 
 ```bash
 # Build image
-docker build -t vast-reporter .
+docker build -t vast-asbuilt-reporter .
 
 # Run container
 docker run -it --rm \
   -e VAST_USERNAME=admin \
   -e VAST_PASSWORD=password \
   -v $(pwd)/output:/app/output \
-  vast-reporter \
+  vast-asbuilt-reporter \
   python3 src/main.py --cluster 192.168.1.100 --output ./output
 
 # Or use docker-compose
@@ -190,7 +190,7 @@ docker-compose up -d
 
 ### Service File
 
-Create `/etc/systemd/system/vast-reporter.service`:
+Create `/etc/systemd/system/vast-asbuilt-reporter.service`:
 
 ```ini
 [Unit]
@@ -199,10 +199,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=vast-reporter
-Group=vast-reporter
-WorkingDirectory=/opt/vast-reporter
-ExecStart=/opt/vast-reporter/venv/bin/python3 src/main.py --cluster 192.168.1.100 --output /var/opt/vast-reporter/output
+User=vast-asbuilt-reporter
+Group=vast-asbuilt-reporter
+WorkingDirectory=/opt/vast-asbuilt-reporter
+ExecStart=/opt/vast-asbuilt-reporter/venv/bin/python3 src/main.py --cluster 192.168.1.100 --output /var/opt/vast-asbuilt-reporter/output
 Restart=on-failure
 RestartSec=30
 StandardOutput=journal
@@ -213,7 +213,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/vast-reporter /var/opt/vast-reporter/output
+ReadWritePaths=/var/log/vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter/output
 
 [Install]
 WantedBy=multi-user.target
@@ -223,28 +223,28 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable vast-reporter
-sudo systemctl start vast-reporter
-sudo systemctl status vast-reporter
+sudo systemctl enable vast-asbuilt-reporter
+sudo systemctl start vast-asbuilt-reporter
+sudo systemctl status vast-asbuilt-reporter
 ```
 
 ### Service Management
 
 ```bash
 # Start service
-sudo systemctl start vast-reporter
+sudo systemctl start vast-asbuilt-reporter
 
 # Stop service
-sudo systemctl stop vast-reporter
+sudo systemctl stop vast-asbuilt-reporter
 
 # Restart service
-sudo systemctl restart vast-reporter
+sudo systemctl restart vast-asbuilt-reporter
 
 # View logs
-sudo journalctl -u vast-reporter -f
+sudo journalctl -u vast-asbuilt-reporter -f
 
 # Check status
-sudo systemctl status vast-reporter
+sudo systemctl status vast-asbuilt-reporter
 ```
 
 ## Monitoring and Alerting
@@ -260,25 +260,25 @@ Set up log monitoring with tools like:
 
 ### Health Checks
 
-Create a health check script `/opt/vast-reporter/health_check.sh`:
+Create a health check script `/opt/vast-asbuilt-reporter/health_check.sh`:
 
 ```bash
 #!/bin/bash
 
 # Check if service is running
-if ! systemctl is-active --quiet vast-reporter; then
-    echo "ERROR: vast-reporter service is not running"
+if ! systemctl is-active --quiet vast-asbuilt-reporter; then
+    echo "ERROR: vast-asbuilt-reporter service is not running"
     exit 1
 fi
 
 # Check if logs are being written
-if [ ! -f /var/log/vast-reporter/vast_report_generator.log ]; then
+if [ ! -f /var/log/vast-asbuilt-reporter/vast_report_generator.log ]; then
     echo "ERROR: Log file not found"
     exit 1
 fi
 
 # Check if output directory is writable
-if [ ! -w /var/opt/vast-reporter/output ]; then
+if [ ! -w /var/opt/vast-asbuilt-reporter/output ]; then
     echo "ERROR: Output directory not writable"
     exit 1
 fi
@@ -293,10 +293,10 @@ Example Prometheus alerting rules:
 
 ```yaml
 groups:
-- name: vast-reporter
+- name: vast-asbuilt-reporter
   rules:
   - alert: VastReporterDown
-    expr: up{job="vast-reporter"} == 0
+    expr: up{job="vast-asbuilt-reporter"} == 0
     for: 5m
     labels:
       severity: critical
@@ -320,16 +320,16 @@ groups:
 
 ```bash
 # Set proper permissions
-sudo chmod 755 /opt/vast-reporter
-sudo chmod 644 /opt/vast-reporter/config/config.yaml
-sudo chmod 755 /opt/vast-reporter/src/main.py
-sudo chmod 700 /var/log/vast-reporter
-sudo chmod 755 /var/opt/vast-reporter/output
+sudo chmod 755 /opt/vast-asbuilt-reporter
+sudo chmod 644 /opt/vast-asbuilt-reporter/config/config.yaml
+sudo chmod 755 /opt/vast-asbuilt-reporter/src/main.py
+sudo chmod 700 /var/log/vast-asbuilt-reporter
+sudo chmod 755 /var/opt/vast-asbuilt-reporter/output
 
 # Set ownership
-sudo chown -R vast-reporter:vast-reporter /opt/vast-reporter
-sudo chown -R vast-reporter:vast-reporter /var/log/vast-reporter
-sudo chown -R vast-reporter:vast-reporter /var/opt/vast-reporter
+sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
+sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /var/log/vast-asbuilt-reporter
+sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter
 ```
 
 ### Network Security
@@ -349,7 +349,7 @@ sudo iptables -A INPUT -p tcp --dport 443 -j DROP
 ```bash
 # Use environment variables for credentials
 export VAST_USERNAME=admin
-export VAST_PASSWORD=$(cat /etc/vast-reporter/password.txt)
+export VAST_PASSWORD=$(cat /etc/vast-asbuilt-reporter/password.txt)
 
 # Or use a secrets management system
 # HashiCorp Vault, AWS Secrets Manager, etc.
@@ -359,7 +359,7 @@ export VAST_PASSWORD=$(cat /etc/vast-reporter/password.txt)
 
 ```bash
 # For self-signed certificates
-openssl req -x509 -newkey rsa:4096 -keyout vast-reporter.key -out vast-reporter.crt -days 365 -nodes
+openssl req -x509 -newkey rsa:4096 -keyout vast-asbuilt-reporter.key -out vast-asbuilt-reporter.crt -days 365 -nodes
 
 # Update configuration
 api:
@@ -371,25 +371,25 @@ api:
 
 ### Backup Script
 
-Create `/opt/vast-reporter/backup.sh`:
+Create `/opt/vast-asbuilt-reporter/backup.sh`:
 
 ```bash
 #!/bin/bash
 
-BACKUP_DIR="/backup/vast-reporter"
+BACKUP_DIR="/backup/vast-asbuilt-reporter"
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Create backup directory
 mkdir -p $BACKUP_DIR
 
 # Backup configuration
-cp -r /opt/vast-reporter/config $BACKUP_DIR/config_$DATE
+cp -r /opt/vast-asbuilt-reporter/config $BACKUP_DIR/config_$DATE
 
 # Backup logs
-tar -czf $BACKUP_DIR/logs_$DATE.tar.gz /var/log/vast-reporter/
+tar -czf $BACKUP_DIR/logs_$DATE.tar.gz /var/log/vast-asbuilt-reporter/
 
 # Backup output files
-tar -czf $BACKUP_DIR/output_$DATE.tar.gz /var/opt/vast-reporter/output/
+tar -czf $BACKUP_DIR/output_$DATE.tar.gz /var/opt/vast-asbuilt-reporter/output/
 
 # Cleanup old backups (keep 30 days)
 find $BACKUP_DIR -name "*.tar.gz" -mtime +30 -delete
@@ -403,20 +403,20 @@ Add to crontab:
 
 ```bash
 # Daily backup at 2 AM
-0 2 * * * /opt/vast-reporter/backup.sh >> /var/log/vast-reporter/backup.log 2>&1
+0 2 * * * /opt/vast-asbuilt-reporter/backup.sh >> /var/log/vast-asbuilt-reporter/backup.log 2>&1
 ```
 
 ### Recovery Procedures
 
 ```bash
 # Restore configuration
-cp -r /backup/vast-reporter/config_20250927_020000/* /opt/vast-reporter/config/
+cp -r /backup/vast-asbuilt-reporter/config_20250927_020000/* /opt/vast-asbuilt-reporter/config/
 
 # Restore logs
-tar -xzf /backup/vast-reporter/logs_20250927_020000.tar.gz -C /
+tar -xzf /backup/vast-asbuilt-reporter/logs_20250927_020000.tar.gz -C /
 
 # Restore output files
-tar -xzf /backup/vast-reporter/output_20250927_020000.tar.gz -C /
+tar -xzf /backup/vast-asbuilt-reporter/output_20250927_020000.tar.gz -C /
 ```
 
 ## Troubleshooting
@@ -425,14 +425,14 @@ tar -xzf /backup/vast-reporter/output_20250927_020000.tar.gz -C /
 
 1. **Permission Denied**
    ```bash
-   sudo chown -R vast-reporter:vast-reporter /opt/vast-reporter
-   sudo chmod +x /opt/vast-reporter/src/main.py
+   sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
+   sudo chmod +x /opt/vast-asbuilt-reporter/src/main.py
    ```
 
 2. **Module Not Found**
    ```bash
-   cd /opt/vast-reporter
-   sudo -u vast-reporter ./venv/bin/pip install -r requirements.txt
+   cd /opt/vast-asbuilt-reporter
+   sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
    ```
 
 3. **SSL Certificate Errors**
@@ -455,7 +455,7 @@ tar -xzf /backup/vast-reporter/output_20250927_020000.tar.gz -C /
 python3 src/main.py --cluster 192.168.1.100 --output ./output --verbose
 
 # Check system resources
-top -p $(pgrep -f vast-reporter)
+top -p $(pgrep -f vast-asbuilt-reporter)
 
 # Monitor network connections
 netstat -tulpn | grep python3
@@ -465,13 +465,13 @@ netstat -tulpn | grep python3
 
 ```bash
 # View recent errors
-grep "ERROR" /var/log/vast-reporter/vast_report_generator.log | tail -20
+grep "ERROR" /var/log/vast-asbuilt-reporter/vast_report_generator.log | tail -20
 
 # Monitor real-time logs
-tail -f /var/log/vast-reporter/vast_report_generator.log
+tail -f /var/log/vast-asbuilt-reporter/vast_report_generator.log
 
 # Analyze log patterns
-grep "Connection timeout" /var/log/vast-reporter/vast_report_generator.log | wc -l
+grep "Connection timeout" /var/log/vast-asbuilt-reporter/vast_report_generator.log | wc -l
 ```
 
 ## Performance Tuning
@@ -495,12 +495,12 @@ data_collection:
 
 ```bash
 # Set memory limits
-echo "vast-reporter soft memlock 2097152" >> /etc/security/limits.conf
-echo "vast-reporter hard memlock 2097152" >> /etc/security/limits.conf
+echo "vast-asbuilt-reporter soft memlock 2097152" >> /etc/security/limits.conf
+echo "vast-asbuilt-reporter hard memlock 2097152" >> /etc/security/limits.conf
 
 # Set CPU limits
-echo "vast-reporter soft cpu 4" >> /etc/security/limits.conf
-echo "vast-reporter hard cpu 4" >> /etc/security/limits.conf
+echo "vast-asbuilt-reporter soft cpu 4" >> /etc/security/limits.conf
+echo "vast-asbuilt-reporter hard cpu 4" >> /etc/security/limits.conf
 ```
 
 ## Maintenance
@@ -517,10 +517,10 @@ echo "vast-reporter hard cpu 4" >> /etc/security/limits.conf
 
 ```bash
 # Update application
-cd /opt/vast-reporter
-sudo -u vast-reporter git pull origin main
-sudo -u vast-reporter ./venv/bin/pip install -r requirements.txt
-sudo systemctl restart vast-reporter
+cd /opt/vast-asbuilt-reporter
+sudo -u vast-asbuilt-reporter git pull origin main
+sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
+sudo systemctl restart vast-asbuilt-reporter
 ```
 
 ---
