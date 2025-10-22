@@ -15,6 +15,9 @@ rl-renderPM>=4.0.3
 cairocffi>=1.7.0
 pycairo>=1.28.0
 
+# Image processing for diagram sizing
+Pillow>=10.0.0
+
 # CLI argument parsing (built-in argparse is sufficient, but click is an alternative)
 click>=8.1.0
 

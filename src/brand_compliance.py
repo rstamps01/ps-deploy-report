@@ -848,9 +848,97 @@ class VastBrandCompliance:
         )
 
         def footer_canvas(canvas, doc):
-            """Draw footer on every page."""
+            """Draw watermark and footer on every page."""
             # Get page number
             page_num = canvas.getPageNumber()
+
+            # Draw watermark on all pages except the title page (page 1)
+            if page_num > 1:
+                try:
+                    from pathlib import Path
+
+                    from reportlab.lib.utils import ImageReader
+
+                    # Path to watermark image
+                    watermark_path = (
+                        Path(__file__).parent.parent
+                        / "assets"
+                        / "diagrams"
+                        / "lg_vast_watermark.png"
+                    )
+
+                    if watermark_path.exists():
+                        # Log watermark application (only once)
+                        if page_num == 2:
+                            self.logger.info(
+                                f"Applying watermark from: {watermark_path}"
+                            )
+
+                        # Get page dimensions (use variables from outer scope)
+                        page_height_size = page_height
+                        page_width_size = page_width
+
+                        # Load image to get aspect ratio
+                        img = ImageReader(str(watermark_path))
+                        img_width, img_height = img.getSize()
+                        aspect_ratio = img_width / img_height
+
+                        # Calculate watermark dimensions to fit at bottom of page
+                        # Use width-based sizing for footer area
+                        target_width = page_width_size * 0.9
+                        watermark_width = target_width
+                        watermark_height = target_width / aspect_ratio
+
+                        # Position watermark at bottom, just above the footer line
+                        # Footer line is at bottom_margin - 0.1 * inch
+                        # Position watermark to end just above the footer line with small gap
+                        x_centered = (page_width_size - watermark_width) / 2
+                        y_position = (
+                            bottom_margin + 0.1 * inch
+                        )  # Just above the footer line
+                        y_centered = y_position
+
+                        # Log dimensions on first page with watermark
+                        if page_num == 2:
+                            self.logger.info(
+                                f"Watermark dimensions: {watermark_width:.1f}x{watermark_height:.1f} at ({x_centered:.1f}, {y_centered:.1f})"
+                            )
+                            self.logger.info(
+                                f"Page dimensions: {page_width_size:.1f}x{page_height_size:.1f}"
+                            )
+
+                        # Save graphics state before applying transparency
+                        canvas.saveState()
+
+                        # Set transparency for watermark
+                        # Note: Using 0.15 (15% opacity) for subtle effect
+                        canvas.setFillAlpha(0.15)
+                        canvas.setStrokeAlpha(0.15)
+
+                        # Draw watermark image
+                        # Using mask='auto' to handle PNG transparency
+                        canvas.drawImage(
+                            str(watermark_path),
+                            x_centered,
+                            y_centered,
+                            width=watermark_width,
+                            height=watermark_height,
+                            mask="auto",
+                        )
+
+                        # Restore graphics state
+                        canvas.restoreState()
+                    else:
+                        # Log warning if watermark not found (only on first occurrence)
+                        if page_num == 2:
+                            self.logger.warning(
+                                f"Watermark image not found: {watermark_path}"
+                            )
+
+                except Exception as e:
+                    # Log error but don't fail report generation
+                    if page_num == 2:
+                        self.logger.error(f"Error adding watermark: {e}")
 
             # Footer content
             if generation_info:

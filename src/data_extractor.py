@@ -1689,59 +1689,94 @@ class VastDataExtractor:
             from enhanced_port_mapper import EnhancedPortMapper
             from vnetmap_parser import VNetMapParser
 
-            # Check if vnetmap output is available
-            vnetmap_file = Path("vnetmap_output.txt")
-            if not vnetmap_file.exists():
-                self.logger.warning(
-                    "VNetMap output file not found - port mapping unavailable"
-                )
-                return ReportSection(
-                    name="port_mapping",
-                    title="Port Mapping",
-                    data={
-                        "available": False,
-                        "message": "Port mapping data not available. VNetMap output required.",
-                    },
-                    completeness=0.0,
-                    status="missing",
-                )
+            # Check if external port mapping data is available
+            if use_external and "port_mapping_external" in raw_data:
+                self.logger.info("Using externally collected port mapping data")
+                external_data = raw_data["port_mapping_external"]
 
-            # Parse vnetmap output
-            parser = VNetMapParser(str(vnetmap_file))
-            vnetmap_data = parser.parse()
+                # Get hardware data for enhanced port mapper
+                cboxes = raw_data.get("cboxes", [])
+                dboxes = raw_data.get("dboxes", [])
+                cnodes = raw_data.get("cnodes", [])
+                dnodes = raw_data.get("dnodes", [])
+                # Switches are in switch_inventory, not switches
+                switch_inventory = raw_data.get("switch_inventory", {})
+                switches = switch_inventory.get("switches", [])
 
-            if not vnetmap_data.get("available"):
-                self.logger.warning(
-                    f"Failed to parse vnetmap output: {vnetmap_data.get('error')}"
-                )
-                return ReportSection(
-                    name="port_mapping",
-                    title="Port Mapping",
-                    data=vnetmap_data,
-                    completeness=0.0,
-                    status="error",
+                # Initialize enhanced port mapper with external port map for IP discovery
+                enhanced_mapper = EnhancedPortMapper(
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
+                    external_port_map=external_data["port_map"],
                 )
 
-            # Get hardware data for enhanced port mapper
-            cboxes = raw_data.get("cboxes", [])
-            dboxes = raw_data.get("dboxes", [])
-            cnodes = raw_data.get("cnodes", [])
-            dnodes = raw_data.get("dnodes", [])
-            switches = raw_data.get("switches", {}).get("switches", [])
+                # External mapper returns port_map directly, pass it to enhanced mapper
+                enhanced_data = enhanced_mapper.generate_enhanced_port_map(
+                    external_data["port_map"]
+                )
 
-            # Initialize enhanced port mapper
-            enhanced_mapper = EnhancedPortMapper(
-                cboxes=cboxes,
-                dboxes=dboxes,
-                cnodes=cnodes,
-                dnodes=dnodes,
-                switches=switches,
-            )
+                # No file-based parser for external data
+                parser = None
 
-            # Generate enhanced port map with standardized designations
-            enhanced_data = enhanced_mapper.generate_enhanced_port_map(
-                vnetmap_data["topology"]
-            )
+            else:
+                # Check if vnetmap output file is available
+                vnetmap_file = Path("vnetmap_output.txt")
+                if not vnetmap_file.exists():
+                    self.logger.warning(
+                        "VNetMap output file not found - port mapping unavailable"
+                    )
+                    return ReportSection(
+                        name="port_mapping",
+                        title="Port Mapping",
+                        data={
+                            "available": False,
+                            "message": "Port mapping data not available. Use --enable-port-mapping to collect.",
+                        },
+                        completeness=0.0,
+                        status="missing",
+                    )
+
+                # Parse vnetmap output
+                parser = VNetMapParser(str(vnetmap_file))
+                vnetmap_data = parser.parse()
+
+                if not vnetmap_data.get("available"):
+                    self.logger.warning(
+                        f"Failed to parse vnetmap output: {vnetmap_data.get('error')}"
+                    )
+                    return ReportSection(
+                        name="port_mapping",
+                        title="Port Mapping",
+                        data=vnetmap_data,
+                        completeness=0.0,
+                        status="error",
+                    )
+
+                # Get hardware data for enhanced port mapper
+                cboxes = raw_data.get("cboxes", [])
+                dboxes = raw_data.get("dboxes", [])
+                cnodes = raw_data.get("cnodes", [])
+                dnodes = raw_data.get("dnodes", [])
+                # Switches are in switch_inventory, not switches
+                switch_inventory = raw_data.get("switch_inventory", {})
+                switches = switch_inventory.get("switches", [])
+
+                # Initialize enhanced port mapper
+                enhanced_mapper = EnhancedPortMapper(
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
+                )
+
+                # Generate enhanced port map with standardized designations
+                enhanced_data = enhanced_mapper.generate_enhanced_port_map(
+                    vnetmap_data["topology"]
+                )
 
             # Collect IPL/MLAG port information from switches
             ipl_ports = []
@@ -1765,7 +1800,22 @@ class VastDataExtractor:
                     )
 
             # Organize port map by switch
-            connections_by_switch = parser.get_connections_by_switch()
+            if parser:
+                connections_by_switch = parser.get_connections_by_switch()
+                cross_connection_summary = parser.get_cross_connection_summary()
+            else:
+                # For external data, organize by switch from enhanced_data
+                connections_by_switch = {}
+                for conn in enhanced_data["port_map"]:
+                    switch = conn.get("switch_designation", "Unknown")
+                    if switch not in connections_by_switch:
+                        connections_by_switch[switch] = []
+                    connections_by_switch[switch].append(conn)
+                cross_connection_summary = (
+                    "No cross-connections detected"
+                    if not enhanced_data["has_cross_connections"]
+                    else f"{enhanced_data['cross_connection_count']} cross-connections detected"
+                )
 
             processed_data = {
                 "available": True,
@@ -1773,7 +1823,7 @@ class VastDataExtractor:
                 "connections_by_switch": connections_by_switch,
                 "cross_connections": enhanced_data["cross_connections"],
                 "has_cross_connections": enhanced_data["has_cross_connections"],
-                "cross_connection_summary": parser.get_cross_connection_summary(),
+                "cross_connection_summary": cross_connection_summary,
                 "cross_connection_count": enhanced_data["cross_connection_count"],
                 "total_connections": enhanced_data["total_connections"],
                 "ipl_ports": ipl_ports,
@@ -1817,12 +1867,15 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_all_data(self, raw_data: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_all_data(
+        self, raw_data: Dict[str, Any], use_external_port_mapping: bool = False
+    ) -> Dict[str, Any]:
         """
         Extract and process all report data from raw API responses.
 
         Args:
             raw_data (Dict[str, Any]): Raw data from API handler
+            use_external_port_mapping (bool): Use external port mapping data if available
 
         Returns:
             Dict[str, Any]: Complete processed report data
@@ -1850,7 +1903,9 @@ class VastDataExtractor:
             customer_integration = self.extract_customer_integration(raw_data)
             deployment_timeline = self.extract_deployment_timeline(raw_data)
             future_recommendations = self.extract_future_recommendations(raw_data)
-            port_mapping = self.extract_port_mapping(raw_data)
+            port_mapping = self.extract_port_mapping(
+                raw_data, use_external=use_external_port_mapping
+            )
 
             # Calculate overall completeness
             section_completeness = [

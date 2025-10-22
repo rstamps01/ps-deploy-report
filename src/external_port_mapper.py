@@ -225,10 +225,11 @@ class ExternalPortMapper:
                 "-p",
                 self.node_password,
                 "ssh",
+                "-T",  # Disable PTY allocation for non-interactive commands
                 "-o",
                 "StrictHostKeyChecking=no",
                 "-o",
-                "UserKnownHostsFile /dev/null",
+                "UserKnownHostsFile=/dev/null",
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a hostname",
             ]
@@ -274,12 +275,13 @@ class ExternalPortMapper:
                 "-p",
                 self.node_password,
                 "ssh",
+                "-T",  # Disable PTY allocation for non-interactive commands
                 "-o",
                 "StrictHostKeyChecking=no",
                 "-o",
-                "UserKnownHostsFile /dev/null",
+                "UserKnownHostsFile=/dev/null",
                 f"{self.node_user}@{self.cnode_ip}",
-                "clush -a ip link show",
+                "clush -a 'ip link show'",
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -360,7 +362,8 @@ class ExternalPortMapper:
                     "-o",
                     "StrictHostKeyChecking=no",
                     "-o",
-                    "UserKnownHostsFile /dev/null",
+                    "UserKnownHostsFile=/dev/null",
+                    "-T",  # Disable PTY allocation for non-interactive commands
                     f"{self.switch_user}@{switch_ip}",
                     "nv show bridge domain br_default mac-table",
                 ]
@@ -456,14 +459,16 @@ class ExternalPortMapper:
             # Find hostname for this data IP
             hostname = ip_to_hostname.get(data_ip)
             if not hostname:
-                self.logger.warning(f"No hostname found for data IP {data_ip}")
-                continue
-
-            # Get node info from inventory
-            node_info = node_inventory.get(hostname)
-            if not node_info:
-                self.logger.warning(f"No inventory found for hostname {hostname}")
-                continue
+                self.logger.warning(
+                    f"No hostname found for data IP {data_ip} - using IP as identifier"
+                )
+                hostname = f"Unknown-{data_ip}"
+                node_info = {}
+            else:
+                # Get node info from inventory
+                node_info = node_inventory.get(hostname, {})
+                if not node_info:
+                    self.logger.warning(f"No inventory found for hostname {hostname}")
 
             for interface, mac in interfaces.items():
                 # Find this MAC in switch tables

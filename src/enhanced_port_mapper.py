@@ -36,6 +36,7 @@ class EnhancedPortMapper:
         cnodes: List[Dict[str, Any]],
         dnodes: List[Dict[str, Any]],
         switches: List[Dict[str, Any]],
+        external_port_map: List[Dict[str, Any]] = None,
     ):
         """
         Initialize enhanced port mapper.
@@ -46,67 +47,189 @@ class EnhancedPortMapper:
             cnodes: List of CNode data
             dnodes: List of DNode data
             switches: List of switch hardware data
+            external_port_map: Optional pre-collected port map data with node IPs
         """
         self.cboxes = cboxes
         self.dboxes = dboxes
         self.cnodes = cnodes
         self.dnodes = dnodes
         self.switches = switches
+        self.external_port_map = external_port_map or []
 
         # Build lookup maps
         self._build_node_maps()
         self._build_switch_map()
 
     def _build_node_maps(self):
-        """Build IP-based node lookup maps."""
-        # Map data IPs to node numbers based on last octet
-        # .4 = CNode-1, .5 = CNode-2, .104 = DNode-1, .105 = DNode-2
+        """Build IP-based node lookup maps from actual cluster data and external port map."""
+        self.cnode_map = {}
+        self.dnode_map = {}
 
-        self.cnode_map = {
-            "172.16.3.4": {
-                "cnode_num": 1,
-                "cbox_num": 1,
-                "hostname": "se-az-arrow-cb2-cn-1",
-            },
-            "172.16.3.5": {
-                "cnode_num": 2,
-                "cbox_num": 2,
-                "hostname": "se-az-arrow-cb2-cn-2",
-            },
-        }
+        # First, try to build from external port map data (most reliable for data IPs)
+        if self.external_port_map:
+            # Group by node IP to get unique nodes
+            nodes_by_ip = {}
+            for entry in self.external_port_map:
+                node_ip = entry.get("node_ip")
+                if node_ip and node_ip not in nodes_by_ip:
+                    nodes_by_ip[node_ip] = entry
 
-        self.dnode_map = {
-            "172.16.3.104": {
-                "dnode_num": 1,
-                "dbox_num": 1,
-                "hostname": "se-az-arrow-db2-dn-1",
-            },
-            "172.16.3.105": {
-                "dnode_num": 2,
-                "dbox_num": 1,
-                "hostname": "se-az-arrow-db2-dn-2",
-            },
-        }
+            # Determine node type by interface pattern
+            # CNodes typically use enp129s0f* interfaces
+            # DNodes typically use enp3s0f* interfaces
+            cnode_ips = []
+            dnode_ips = []
+
+            for node_ip, entry in nodes_by_ip.items():
+                interface = entry.get("interface", "")
+                hostname = entry.get("node_hostname", "")
+
+                # Heuristic: enp129 = CNode, enp3 = DNode
+                if "enp129" in interface or "cnode" in hostname.lower():
+                    cnode_ips.append((node_ip, hostname))
+                elif "enp3" in interface or "dnode" in hostname.lower():
+                    dnode_ips.append((node_ip, hostname))
+                else:
+                    # Default: assume CNode
+                    cnode_ips.append((node_ip, hostname))
+
+            # Sort by IP to ensure consistent numbering
+            cnode_ips.sort()
+            dnode_ips.sort()
+
+            # Build CNode map
+            for idx, (node_ip, hostname) in enumerate(cnode_ips, start=1):
+                self.cnode_map[node_ip] = {
+                    "cnode_num": idx,
+                    "cbox_num": idx,  # Assume 1:1 mapping
+                    "hostname": hostname if hostname != "Unknown" else f"cnode-{idx}",
+                }
+                logger.debug(f"Mapped CNode {idx} from external data: {node_ip}")
+
+            # Build DNode map
+            for idx, (node_ip, hostname) in enumerate(dnode_ips, start=1):
+                self.dnode_map[node_ip] = {
+                    "dnode_num": idx,
+                    "dbox_num": 1,  # Assume single DBox
+                    "hostname": hostname if hostname != "Unknown" else f"dnode-{idx}",
+                }
+                logger.debug(f"Mapped DNode {idx} from external data: {node_ip}")
+
+        # Supplement with API data if we didn't get enough nodes from external map
+        if len(self.cnode_map) < len(self.cnodes):
+            for idx, cnode in enumerate(self.cnodes, start=1):
+                # Try to get data IP from various possible fields
+                data_ip = None
+
+                # Check for data_ips list
+                data_ips = cnode.get("data_ips", [])
+                if data_ips and len(data_ips) > 0:
+                    data_ip = data_ips[0]  # Use first data IP
+
+                # Check for mgmt_ip as fallback
+                if not data_ip:
+                    data_ip = cnode.get("mgmt_ip")
+
+                # Check for ipmi_ip as last resort
+                if not data_ip:
+                    data_ip = cnode.get("ipmi_ip")
+
+                # Only add if not already in map
+                if data_ip and data_ip not in self.cnode_map:
+                    # Determine CBox number from CNode data
+                    cbox_id = cnode.get("cbox_id", idx)
+                    cbox_num = cbox_id if isinstance(cbox_id, int) else idx
+
+                    # Get hostname
+                    hostname = (
+                        cnode.get("name") or cnode.get("hostname") or f"cnode-{idx}"
+                    )
+
+                    self.cnode_map[data_ip] = {
+                        "cnode_num": idx,
+                        "cbox_num": cbox_num,
+                        "hostname": hostname,
+                    }
+                    logger.debug(
+                        f"Mapped CNode {idx} from API: {data_ip} -> {hostname}"
+                    )
+
+        # Supplement with DNode API data
+        if len(self.dnode_map) < len(self.dnodes):
+            for idx, dnode in enumerate(self.dnodes, start=1):
+                # Try to get data IP from various possible fields
+                data_ip = None
+
+                # Check for data_ips list
+                data_ips = dnode.get("data_ips", [])
+                if data_ips and len(data_ips) > 0:
+                    data_ip = data_ips[0]  # Use first data IP
+
+                # Check for mgmt_ip as fallback
+                if not data_ip:
+                    data_ip = dnode.get("mgmt_ip")
+
+                # Check for ipmi_ip as last resort
+                if not data_ip:
+                    data_ip = dnode.get("ipmi_ip")
+
+                # Only add if not already in map
+                if data_ip and data_ip not in self.dnode_map:
+                    # Determine DBox number from DNode data
+                    dbox_id = dnode.get("dbox_id", 1)
+                    dbox_num = dbox_id if isinstance(dbox_id, int) else 1
+
+                    # Get hostname
+                    hostname = (
+                        dnode.get("name") or dnode.get("hostname") or f"dnode-{idx}"
+                    )
+
+                    self.dnode_map[data_ip] = {
+                        "dnode_num": idx,
+                        "dbox_num": dbox_num,
+                        "hostname": hostname,
+                    }
+                    logger.debug(
+                        f"Mapped DNode {idx} from API: {data_ip} -> {hostname}"
+                    )
 
         logger.info(
             f"Built node maps: {len(self.cnode_map)} CNodes, {len(self.dnode_map)} DNodes"
         )
 
+        # Log the mappings for debugging
+        if self.cnode_map:
+            logger.debug(f"CNode IPs: {list(self.cnode_map.keys())}")
+        if self.dnode_map:
+            logger.debug(f"DNode IPs: {list(self.dnode_map.keys())}")
+
     def _build_switch_map(self):
-        """Build switch IP to designation map."""
-        # Map switch management IPs to switch numbers
-        self.switch_map = {
-            "10.143.11.153": {
-                "switch_num": 1,
-                "designation": "SWA",
-                "hostname": "se-var-1-1",
-            },
-            "10.143.11.154": {
-                "switch_num": 2,
-                "designation": "SWB",
-                "hostname": "se-var-1-2",
-            },
-        }
+        """Build switch IP to designation map from actual cluster data."""
+        self.switch_map = {}
+
+        # Sort switches by management IP to ensure consistent numbering
+        sorted_switches = sorted(self.switches, key=lambda s: s.get("mgmt_ip", ""))
+
+        for idx, switch in enumerate(sorted_switches, start=1):
+            mgmt_ip = switch.get("mgmt_ip")
+            if not mgmt_ip:
+                logger.warning(f"Switch {idx} has no management IP, skipping")
+                continue
+
+            # Designation: Switch 1 = SWA, Switch 2 = SWB
+            designation = "SWA" if idx == 1 else "SWB"
+
+            # Get hostname
+            hostname = switch.get("name") or switch.get("hostname") or f"switch-{idx}"
+
+            self.switch_map[mgmt_ip] = {
+                "switch_num": idx,
+                "designation": designation,
+                "hostname": hostname,
+            }
+            logger.debug(
+                f"Mapped Switch {idx}: {mgmt_ip} -> {hostname} ({designation})"
+            )
 
         logger.info(f"Built switch map: {len(self.switch_map)} switches")
 

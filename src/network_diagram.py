@@ -130,28 +130,30 @@ class NetworkDiagramGenerator:
             layer_height = (
                 height / 4
             )  # Divide into 4 layers (top margin, cbox, switch, dbox)
-            
+
             # Calculate max devices per row to determine sizing
             max_devices = max(len(cboxes), len(dboxes), 2)  # At least 2 for switches
-            
+
             # Dynamic device sizing - scale down as more devices are added
-            # Base size for 3 or fewer devices, scale down for more
+            # Reduced by 50% from original sizes for compact fit within original canvas
             if max_devices <= 3:
-                device_width = 160
-                device_height = 80
-                base_spacing = 300
+                device_width = 80  # Original was 160
+                device_height = 40  # Original was 80
+                base_spacing = 150  # Original was 300
             elif max_devices <= 5:
-                device_width = 120
-                device_height = 60
-                base_spacing = 220
+                device_width = 60  # Original was 120
+                device_height = 30  # Original was 60
+                base_spacing = 110  # Original was 220
             elif max_devices <= 7:
-                device_width = 100
-                device_height = 50
-                base_spacing = 160
+                device_width = 50  # Original was 100
+                device_height = 25  # Original was 50
+                base_spacing = 80  # Original was 160
             else:
                 # For 8+ devices, calculate to fit all within width
-                available_width = width * 0.9  # Use 90% of width
-                device_width = min(80, available_width / (max_devices * 1.3))
+                available_width = width * 0.90  # Use 90% of width
+                device_width = min(
+                    40, available_width / (max_devices * 1.3)
+                )  # Original was 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
@@ -163,7 +165,7 @@ class NetworkDiagramGenerator:
             # Calculate dynamic font sizes based on device size
             label_font_size = max(8, int(device_width / 8))
             name_font_size = max(6, int(device_width / 11.5))
-            
+
             self.logger.info(
                 f"Dynamic sizing: device={device_width:.0f}x{device_height:.0f}, "
                 f"fonts={label_font_size}/{name_font_size}"
@@ -487,7 +489,7 @@ class NetworkDiagramGenerator:
         """
         # Dynamic stroke width based on device size
         stroke_width = max(2, width / 40)
-        
+
         # Draw box
         box = Rect(
             x,

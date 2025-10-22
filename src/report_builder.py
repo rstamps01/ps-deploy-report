@@ -2535,10 +2535,17 @@ class VastReportBuilder:
             )
 
             diagram_path = diagrams_dir / "network_topology.pdf"
+
+            # Use standard width but reduce height to fit on page 11
+            # Width: standard letter - margins, Height: reduced to fit
+            target_diagram_width = 6.5 * inch
+            target_diagram_height = 6.0 * inch  # Reduced from ~9" to fit on page
+
             generated_path = diagram_generator.generate_network_diagram(
                 port_mapping_data=port_mapping_data,
                 hardware_data=hardware_data,
                 output_path=str(diagram_path),
+                drawing_size=(target_diagram_width, target_diagram_height),
             )
 
             # Add color legend
@@ -2565,21 +2572,51 @@ class VastReportBuilder:
 
                 # Embed the generated diagram (PNG)
                 try:
-                    # Calculate image size to fit on page
+                    # Calculate available space on page
                     if self.config.page_size == "Letter":
                         page_width = 8.5 * inch
-                    else:
-                        page_width = 595.27
+                        page_height = 11 * inch
+                    else:  # A4
+                        page_width = 8.27 * inch
+                        page_height = 11.69 * inch
 
+                    # Account for margins and header/footer
                     available_width = page_width - (2 * 0.5 * inch)
-                    max_height = 5.5 * inch
+                    available_height = page_height - (
+                        2 * 0.75 * inch
+                    )  # Top and bottom margins
 
-                    # Load and add the dynamically generated diagram
+                    # Reserve space for heading and spacing (approximately 1 inch)
+                    max_diagram_height = available_height - 1.5 * inch
+
+                    # Get actual image dimensions to calculate aspect ratio
+                    from PIL import Image as PILImage
+
+                    with PILImage.open(str(generated_path)) as pil_img:
+                        img_width, img_height = pil_img.size
+                        aspect_ratio = img_width / img_height
+
+                    # Calculate dimensions to fit within available space while maintaining aspect ratio
+                    # Try fitting by width first
+                    target_width = available_width * 0.95  # Use 95% of available width
+                    target_height = target_width / aspect_ratio
+
+                    # If height exceeds available space, scale by height instead
+                    if target_height > max_diagram_height:
+                        target_height = max_diagram_height
+                        target_width = target_height * aspect_ratio
+
+                    self.logger.info(
+                        f"Network diagram sizing: original={img_width}x{img_height}, "
+                        f"target={target_width:.1f}x{target_height:.1f}, "
+                        f"available={available_width:.1f}x{max_diagram_height:.1f}"
+                    )
+
+                    # Load and add the dynamically generated diagram with calculated dimensions
                     img = Image(
                         str(generated_path),
-                        width=available_width * 0.9,
-                        height=max_height,
-                        kind="proportional",
+                        width=target_width,
+                        height=target_height,
                     )
 
                     # Center the image using a table
@@ -2854,12 +2891,14 @@ class VastReportBuilder:
                 # Determine if this is a DNode or CNode
                 is_dnode = "DN" in node_designation
                 is_cnode = "CN" in node_designation
+                is_unknown = "UNKNOWN" in node_designation.upper()
 
                 # Primary interface logic:
                 # - CNodes Network A: f0 (primary)
                 # - CNodes Network B: f1 (primary)
                 # - DNodes Network A: f0 (primary)
                 # - DNodes Network B: f2 (primary - first of bonded pair)
+                # - Unknown nodes: f0 for Net A, f1 for Net B (assume CNode pattern)
 
                 is_primary = False
                 if is_cnode:
@@ -2873,6 +2912,13 @@ class VastReportBuilder:
                     if network == "A" and "f0" in interface:
                         is_primary = True
                     elif network == "B" and "f2" in interface:
+                        is_primary = True
+                elif is_unknown:
+                    # Unknown nodes: use standard pattern (f0=NetA, f1=NetB)
+                    # This works for both CNode and DNode patterns on f0/f1
+                    if network == "A" and "f0" in interface:
+                        is_primary = True
+                    elif network == "B" and "f1" in interface:
                         is_primary = True
 
                 # Skip non-primary interfaces

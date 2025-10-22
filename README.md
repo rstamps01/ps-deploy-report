@@ -248,6 +248,11 @@ python3 -m src.main [OPTIONS]
 - `--token TOKEN`: API token for authentication (alternative to username/password)
 - `--config CONFIG`: Path to configuration file (optional)
 - `--verbose`: Enable verbose output for debugging
+- `--enable-port-mapping`: Enable automatic port mapping collection via switch SSH (optional)
+- `--node-user USER`: SSH username for VAST nodes (default: vastdata)
+- `--node-password PASSWORD`: SSH password for VAST nodes (prompted if not provided)
+- `--switch-user USER`: SSH username for switches (default: cumulus)
+- `--switch-password PASSWORD`: SSH password for switches (prompted if not provided)
 - `--version`: Show program version and exit
 - `--help`: Show help message and exit
 
@@ -276,12 +281,20 @@ python3 -m src.main --cluster-ip 10.143.11.204 --token YOUR_API_TOKEN --output-d
 python3 -m src.main --cluster-ip 10.143.11.204 --output-dir ./reports --config /path/to/custom_config.yaml
 ```
 
-**5. Verbose output for debugging:**
+**5. With port mapping collection (requires switch SSH access):**
+```bash
+python3 -m src.main --cluster-ip <CLUSTER_IP> --output-dir ./reports --enable-port-mapping
+# Tool will prompt for VAST API credentials and switch SSH credentials
+# Collects detailed port-to-device mappings from switches
+# See docs/deployment/PORT-MAPPING-GUIDE.md for details
+```
+
+**6. Verbose output for debugging:**
 ```bash
 python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir ./reports --verbose
 ```
 
-**6. Batch processing with script:**
+**7. Batch processing with script:**
 ```bash
 #!/bin/bash
 # Process multiple clusters
