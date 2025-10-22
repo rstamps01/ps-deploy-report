@@ -1,0 +1,1341 @@
+{
+  "metadata": {
+    "extraction_timestamp": "2025-10-22T00:51:57.105193",
+    "overall_completeness": 0.7334183673469388,
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "cluster_version": "5.4.0.20.10960402906660116571",
+    "api_version": "v7"
+  },
+  "cluster_summary": {
+    "name": "cosmos-var-202",
+    "guid": "54eea904-dd99-5fce-8153-fb37552df622",
+    "version": "5.4.0.20.10960402906660116571",
+    "state": "ONLINE",
+    "license": "Unknown",
+    "psnt": "cosmos-var-202",
+    "enhanced_features": {
+      "rack_height_supported": true,
+      "psnt_supported": true
+    },
+    "collection_timestamp": "2025-10-22 00:51:44.975270",
+    "cluster_id": "1",
+    "mgmt_vip": "10.143.15.202",
+    "build": "release-5.4.0-hf8-2022230",
+    "uptime": "55 days, 9:44:10.214624",
+    "online_start_time": "2025-08-27T22:07:35.127665Z",
+    "deployment_time": "2025-08-27T22:08:21.159989Z",
+    "url": "https://10.143.15.202/api/v7/clusters/1",
+    "ssd_raid_state": "HEALTHY",
+    "nvram_raid_state": "HEALTHY",
+    "memory_raid_state": "HEALTHY",
+    "leader_state": "UP",
+    "leader_cnode": "cnode-3-5",
+    "mgmt_cnode": "cnode-3-4",
+    "mgmt_inner_vip": "172.16.4.202",
+    "mgmt_inner_vip_cnode": "cnode-3-5",
+    "enabled": true,
+    "enable_similarity": true,
+    "dedup_active": null,
+    "is_wb_raid_enabled": true,
+    "wb_raid_layout": "DATA_6_PARITY_2",
+    "dbox_ha_support": false,
+    "enable_rack_level_resiliency": false,
+    "disable_metrics": false,
+    "usable_capacity_tb": 245.656,
+    "free_usable_capacity_tb": 241.332,
+    "drr_text": "10.8:1",
+    "physical_space_tb": 310.167,
+    "physical_space_in_use_tb": 5.401,
+    "free_physical_space_tb": 304.766,
+    "physical_space_in_use_percent": 1.74,
+    "logical_space_tb": 2643.468,
+    "logical_space_in_use_tb": 45.113,
+    "free_logical_space_tb": 2596.936,
+    "logical_space_in_use_percent": 1.71,
+    "enable_encryption": false,
+    "s3_enable_only_aes_ciphers": null,
+    "encryption_type": "INTERNAL",
+    "ekm_servers": "",
+    "ekm_address": "Unknown",
+    "ekm_port": null,
+    "ekm_auth_domain": "",
+    "secondary_ekm_address": null,
+    "secondary_ekm_port": null,
+    "management_vips": "Not Configured",
+    "external_gateways": "Not Configured",
+    "dns": "Not Configured",
+    "ntp": "Not Configured",
+    "ext_netmask": "Not Configured",
+    "auto_ports_ext_iface": "Not Configured",
+    "b2b_ipmi": "Not Configured",
+    "eth_mtu": "Not Configured",
+    "ib_mtu": "Not Configured",
+    "ipmi_gateway": "Not Configured",
+    "ipmi_netmask": "Not Configured"
+  },
+  "hardware_inventory": {
+    "cnodes": [
+      {
+        "id": "1",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X4C20891",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "cbox_id": 1,
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      },
+      {
+        "id": "2",
+        "type": "cnode",
+        "model": "supermicro_gen5_cbox, two dual-port NICs",
+        "serial_number": "S929986X4C17457",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+        "cbox_id": 2,
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      }
+    ],
+    "dnodes": [
+      {
+        "id": "1",
+        "type": "dnode",
+        "model": "dbox-515-25022100600179",
+        "serial_number": "C15-25022100600273",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "Unknown",
+        "cbox_id": null,
+        "hardware_type": "ceres_v2",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      },
+      {
+        "id": "2",
+        "type": "dnode",
+        "model": "dbox-515-25022100600179",
+        "serial_number": "C15-25022100600280",
+        "status": "ACTIVE",
+        "rack_position": null,
+        "rack_position_available": false,
+        "box_vendor": "Unknown",
+        "cbox_id": null,
+        "hardware_type": "ceres_v2",
+        "rack_u": "Manual Entry Required",
+        "positioning_note": "Not available for this cluster version"
+      }
+    ],
+    "cboxes": {
+      "cbox-S929986X4C17457": {
+        "id": 2,
+        "guid": "35332b1f-db5f-4d61-af44-27fe401dbfdc",
+        "name": "cbox-S929986X4C17457",
+        "uid": "S929986X4C17457",
+        "state": "UNKNOWN",
+        "cluster": "cosmos-var-202",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "rack_name": null
+      },
+      "cbox-S929986X4C20891": {
+        "id": 1,
+        "guid": "ad9509af-1ebd-4ce2-8125-fc758a2ef560",
+        "name": "cbox-S929986X4C20891",
+        "uid": "S929986X4C20891",
+        "state": "UNKNOWN",
+        "cluster": "cosmos-var-202",
+        "cluster_id": 1,
+        "description": null,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "rack_name": null
+      }
+    },
+    "dboxes": {
+      "dbox-515-25022100600179": {
+        "id": 1,
+        "guid": "7cf571b6-7b84-40b1-8da8-a182efe0757e",
+        "name": "dbox-515-25022100600179",
+        "uid": "515-25022100600179",
+        "state": "ACTIVE",
+        "cluster": "cosmos-var-202",
+        "cluster_id": 1,
+        "drive_type": "ACTIVE_PASSIVE",
+        "description": null,
+        "sync": "SYNCED",
+        "sync_time": "2025-10-22T07:41:04.788655Z",
+        "arch_type": "aarch64",
+        "is_conclude_possible": false,
+        "is_replace_possible": true,
+        "subsystem": null,
+        "index_in_rack": null,
+        "rack_id": null,
+        "rack_unit": null,
+        "box_vendor": "BlueField, SoC PCIe Bridge",
+        "is_migrate_target": false,
+        "is_migrate_source": false,
+        "rack_name": null,
+        "hardware_type": "ceres_v2",
+        "failure_domain": ""
+      }
+    },
+    "total_nodes": 4,
+    "rack_positions_available": true,
+    "physical_layout": {
+      "rack_layout": {},
+      "statistics": {
+        "occupied_positions": 0,
+        "min_position": 0,
+        "max_position": 0,
+        "total_cnodes": 2,
+        "total_dnodes": 2
+      },
+      "generated_timestamp": "2025-10-22T00:51:57.097577"
+    },
+    "switches": []
+  },
+  "sections": {
+    "network_configuration": {
+      "name": "network_configuration",
+      "title": "Network Configuration",
+      "data": {
+        "dns": null,
+        "ntp": null,
+        "vippools": {
+          "pools": [
+            {
+              "id": 6,
+              "guid": "f2378500-cfda-4c1b-a775-37dcb096d010",
+              "name": "eventbroker-bench",
+              "url": "https://10.143.15.202/api/v7/vippools/6",
+              "title": "172.200.202.20 - 172.200.202.23",
+              "start_ip": "172.200.202.20",
+              "end_ip": "172.200.202.23",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.20",
+                  "172.200.202.23"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[20-23]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.946547Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": 55,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            },
+            {
+              "id": 3,
+              "guid": "27d2e603-8255-432a-82ea-a38a037e53fc",
+              "name": "main",
+              "url": "https://10.143.15.202/api/v7/vippools/3",
+              "title": "172.200.202.1 - 172.200.202.6",
+              "start_ip": "172.200.202.1",
+              "end_ip": "172.200.202.6",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.1",
+                  "172.200.202.6"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[1-6]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.940020Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": 8,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            },
+            {
+              "id": 7,
+              "guid": "fe301287-e13a-41b3-8115-da0994f410f7",
+              "name": "query-engine",
+              "url": "https://10.143.15.202/api/v7/vippools/7",
+              "title": "172.200.202.40 - 172.200.202.41",
+              "start_ip": "172.200.202.40",
+              "end_ip": "172.200.202.41",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": null,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "QUERY_ENGINE_CNODE_GROUP",
+              "ip_ranges": [
+                [
+                  "172.200.202.40",
+                  "172.200.202.41"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[40-41]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.920498Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": null,
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            },
+            {
+              "id": 2,
+              "guid": "e79ae66e-f4d4-476d-8239-baa199f3b699",
+              "name": "repl",
+              "url": "https://10.143.15.202/api/v7/vippools/2",
+              "title": "172.200.202.230 - 172.200.202.237",
+              "start_ip": "172.200.202.230",
+              "end_ip": "172.200.202.237",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "REPLICATION",
+              "ip_ranges": [
+                [
+                  "172.200.202.230",
+                  "172.200.202.237"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[230-237]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.933662Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            },
+            {
+              "id": 4,
+              "guid": "da04ae6e-1291-4fda-be55-48946f7b02a0",
+              "name": "tenant",
+              "url": "https://10.143.15.202/api/v7/vippools/4",
+              "title": "172.200.202.7 - 172.200.202.12",
+              "start_ip": "172.200.202.7",
+              "end_ip": "172.200.202.12",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 3,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.7",
+                  "172.200.202.12"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[7-12]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.927450Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "partner",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            },
+            {
+              "id": 5,
+              "guid": "6380a744-c9bf-472c-befc-dd5f661300c7",
+              "name": "vsphere",
+              "url": "https://10.143.15.202/api/v7/vippools/5",
+              "title": "172.200.202.13 - 172.200.202.18",
+              "start_ip": "172.200.202.13",
+              "end_ip": "172.200.202.18",
+              "vlan": 0,
+              "subnet_cidr": 16,
+              "gw_ip": "",
+              "cluster": "cosmos-var-202",
+              "cluster_id": 1,
+              "active_cnode_ids": [],
+              "gw_ipv6": "",
+              "subnet_cidr_ipv6": null,
+              "tenant_id": 1,
+              "cnode_ids": [],
+              "cnodes": [],
+              "domain_name": "",
+              "role": "PROTOCOLS",
+              "ip_ranges": [
+                [
+                  "172.200.202.13",
+                  "172.200.202.18"
+                ]
+              ],
+              "ranges_summary": "172.200.202.[13-18]",
+              "sync": "SYNCED",
+              "sync_time": "2025-10-22T07:41:04.958867Z",
+              "vms_preferred": false,
+              "enabled": true,
+              "port_membership": "ALL",
+              "active_interfaces": 4,
+              "enable_l3": false,
+              "vast_asn": 0,
+              "peer_asn": 0,
+              "tenant_name": "default",
+              "enable_weighted_balancing": false,
+              "kafka_view_id": null,
+              "bgp_config_id": null,
+              "bgp_config_guid": null,
+              "bgp_config_name": null,
+              "client_monitoring_ips": []
+            }
+          ],
+          "total_pools": 6,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-22T00:51:57.098073"
+      },
+      "completeness": 0.3333333333333333,
+      "status": "missing"
+    },
+    "cluster_network_configuration": {
+      "name": "cluster_network_configuration",
+      "title": "Cluster Network Configuration",
+      "data": {
+        "management_vips": "10.143.15.202",
+        "external_gateways": "10.143.254.254",
+        "dns": "10.140.3.248",
+        "ntp": "10.140.0.17",
+        "mgmt_vip": "Not Configured",
+        "mgmt_inner_vip": "Not Configured",
+        "mgmt_inner_vip_cnode": "Not Configured",
+        "ext_netmask": "255.255.0.0",
+        "auto_ports_ext_iface": "outband",
+        "b2b_ipmi": false,
+        "eth_mtu": 9000,
+        "ib_mtu": 65520,
+        "ipmi_gateway": null,
+        "ipmi_netmask": null,
+        "extraction_timestamp": "2025-10-22T00:51:57.098522"
+      },
+      "completeness": 0.875,
+      "status": "partial"
+    },
+    "cnodes_network_configuration": {
+      "name": "cnodes_network_configuration",
+      "title": "CNodes Network Configuration",
+      "data": {
+        "cnodes": [
+          {
+            "id": 2,
+            "hostname": "cosmo-arrow-cb2-cn-1",
+            "mgmt_ip": "10.143.15.61",
+            "ipmi_ip": "10.143.15.62",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X4C20891",
+            "is_vms_host": true,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          },
+          {
+            "id": 1,
+            "hostname": "cosmo-arrow-cb2-cn-2",
+            "mgmt_ip": "10.143.15.63",
+            "ipmi_ip": "10.143.15.64",
+            "box_vendor": "supermicro_gen5_cbox, two dual-port NICs",
+            "vast_os": "12.14.19-1809895",
+            "node_type": "Cnode",
+            "box_name": "cbox-S929986X4C17457",
+            "is_vms_host": false,
+            "tpm_boot_dev_encryption_supported": false,
+            "tpm_boot_dev_encryption_enabled": false,
+            "single_nic": false,
+            "net_type": "eth"
+          }
+        ],
+        "total_cnodes": 2,
+        "extraction_timestamp": "2025-10-22T00:51:57.098863"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "dnodes_network_configuration": {
+      "name": "dnodes_network_configuration",
+      "title": "DNodes Network Configuration",
+      "data": {
+        "dnodes": [
+          {
+            "id": 4,
+            "hostname": "cosmo-arrow-db2-dn-1",
+            "mgmt_ip": "10.143.15.21",
+            "ipmi_ip": "10.143.15.22",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.15-1791040",
+            "node_type": "Dnode",
+            "position": "right",
+            "box_name": "dbox-515-25022100600179",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          },
+          {
+            "id": 3,
+            "hostname": "cosmo-arrow-db2-dn-2",
+            "mgmt_ip": "10.143.15.23",
+            "ipmi_ip": "10.143.15.24",
+            "box_vendor": "BlueField, SoC PCIe Bridge",
+            "vast_os": "12.14.15-1791040",
+            "node_type": "Dnode",
+            "position": "left",
+            "box_name": "dbox-515-25022100600179",
+            "is_ceres": true,
+            "is_ceres_v2": true,
+            "net_type": "eth"
+          }
+        ],
+        "total_dnodes": 2,
+        "extraction_timestamp": "2025-10-22T00:51:57.099144"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "logical_configuration": {
+      "name": "logical_configuration",
+      "title": "Logical Configuration",
+      "data": {
+        "tenants": {
+          "tenants": [
+            {
+              "name": "partner",
+              "id": 3,
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "id": 1,
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 2,
+          "source": "API"
+        },
+        "views": {
+          "views": [
+            {
+              "name": "root",
+              "path": "/",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-3",
+              "path": "/",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-6",
+              "path": "/acceldata",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-46",
+              "path": "/andrius/corpaction",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-28",
+              "path": "/andrius-db-3eafb53a84d2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-52",
+              "path": "/andrius-drg-db-2a619cbd5d4b",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-43",
+              "path": "/andrius/noaa",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-7",
+              "path": "/backup",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-47",
+              "path": "/bucketleon1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-48",
+              "path": "/bucketleon2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-53",
+              "path": "/bucketleon3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-56",
+              "path": "/cneundorf-db",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-5",
+              "path": "/database-analytics",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-4",
+              "path": "/datastore-analytics",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-23",
+              "path": "/document-rag",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-8",
+              "path": "/event-broker",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-55",
+              "path": "/eventbroker-bench",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-36",
+              "path": "/hadoop-magic-committer-test",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-24",
+              "path": "/ie-bucket-insight-engine-pipe",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-10",
+              "path": "/ie-cluster-bucket",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-32",
+              "path": "/ie-insight-engine-pipe-database",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-22",
+              "path": "/insight-engine/pvc-0c6666d3-0f99-4c5f-b0c6-cf54f1b2a6f2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-30",
+              "path": "/insight-engine/pvc-1e15b040-a7da-47fb-b55e-4674cdd3413e",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-20",
+              "path": "/insight-engine/pvc-26cd0f69-764d-4cba-b7bb-17d7ca385830",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-40",
+              "path": "/insight-engine/pvc-2b00627c-1f87-474f-b6c7-d6058701141f",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-29",
+              "path": "/insight-engine/pvc-5c0df4c2-d865-4ec4-9974-3ca0b9363ad3",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-31",
+              "path": "/insight-engine/pvc-61808bba-012c-4eaa-adeb-a55fb28499fc",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-21",
+              "path": "/insight-engine/pvc-657ee684-4522-4f24-9548-d1d552c95a6e",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-38",
+              "path": "/insight-engine/pvc-664be6be-f3c8-49db-9134-e3c2031ad894",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-37",
+              "path": "/insight-engine/pvc-bfd963d5-88bb-4de8-903f-cc59ee9c56af",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-39",
+              "path": "/insight-engine/pvc-f7c9b317-c43c-4ae5-9d76-60005985b833",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-58",
+              "path": "/james-db-c83b3adf5ec2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-35",
+              "path": "/micrologic-db-76b7f703b23d",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-50",
+              "path": "/nfsbucketleon",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-49",
+              "path": "/partner-db",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-51",
+              "path": "/s3bucketleon",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-33",
+              "path": "/sandbox",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-14",
+              "path": "/vast-202/insight-engine/data-kafka-broker-0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-11",
+              "path": "/vast-202/insight-engine/data-kafka-broker-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-12",
+              "path": "/vast-202/insight-engine/data-kafka-broker-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-15",
+              "path": "/vast-202/insight-engine/data-kafka-zookeeper-0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-19",
+              "path": "/vast-202/insight-engine/data-milvus-cluster-etcd-0",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-17",
+              "path": "/vast-202/insight-engine/data-milvus-cluster-etcd-1",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-18",
+              "path": "/vast-202/insight-engine/data-milvus-cluster-etcd-2",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-16",
+              "path": "/vast-202/insight-engine/postgres",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-13",
+              "path": "/vast-202/insight-engine/redis",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-57",
+              "path": "/vector_db",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "view-26",
+              "path": "/vsphere",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 48,
+          "source": "API"
+        },
+        "view_policies": {
+          "policies": [
+            {
+              "name": "andrius-drg-ViewPolicy-2a619cbd5d4b",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "andrius-ViewPolicy-3eafb53a84d2",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "andrius-ViewPolicy-noaa",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "andrius-ViewPolicy-occ-corp-action",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "data_analytics",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "default",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "james-ViewPolicy-c83b3adf5ec2",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "micrologic-ViewPolicy-76b7f703b23d",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "partner__default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "partner__s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "s3_default_policy",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "s3-leon-test",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            },
+            {
+              "name": "vsphere",
+              "type": "Unknown",
+              "state": "Unknown",
+              "source": "API"
+            }
+          ],
+          "total_count": 13,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-22T00:51:57.099465"
+      },
+      "completeness": 1.0,
+      "status": "complete"
+    },
+    "security_configuration": {
+      "name": "security_configuration",
+      "title": "Security & Authentication",
+      "data": {
+        "active_directory": null,
+        "ldap": null,
+        "nis": null,
+        "extraction_timestamp": "2025-10-22T00:51:57.099718"
+      },
+      "completeness": 0.0,
+      "status": "error"
+    },
+    "data_protection_configuration": {
+      "name": "data_protection_configuration",
+      "title": "Data Protection",
+      "data": {
+        "snapshot_programs": null,
+        "protection_policies": {
+          "policies": [
+            {
+              "name": "partner-wildcard",
+              "type": "Unknown",
+              "retention": "Unknown",
+              "enabled": false,
+              "source": "API"
+            }
+          ],
+          "total_count": 1,
+          "source": "API"
+        },
+        "extraction_timestamp": "2025-10-22T00:51:57.099905"
+      },
+      "completeness": 0.5,
+      "status": "partial"
+    },
+    "performance_metrics": {
+      "name": "performance_metrics",
+      "title": "Performance Metrics & Capacity Analysis",
+      "data": {
+        "total_capacity": "Unknown",
+        "used_capacity": "Unknown",
+        "available_capacity": "Unknown",
+        "utilization_percentage": 0.0,
+        "iops_rating": "Unknown",
+        "throughput_rating": "Unknown",
+        "latency_metrics": {},
+        "performance_tier": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.25,
+      "status": "missing"
+    },
+    "licensing_info": {
+      "name": "licensing_info",
+      "title": "Licensing & Compliance Information",
+      "data": {
+        "license_type": "Unknown",
+        "license_key": "Unknown",
+        "expiration_date": "Unknown",
+        "licensed_features": [],
+        "compliance_status": "Unknown",
+        "support_level": "Unknown",
+        "maintenance_expiry": "Unknown",
+        "source": "API"
+      },
+      "completeness": 0.14285714285714285,
+      "status": "missing"
+    },
+    "monitoring_configuration": {
+      "name": "monitoring_config",
+      "title": "Monitoring & Alerting Configuration",
+      "data": {
+        "snmp_config": null,
+        "syslog_config": null,
+        "alert_policies": null,
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "customer_integration": {
+      "name": "customer_integration",
+      "title": "Customer Environment Integration",
+      "data": {
+        "network_topology": "Switch-to-switch MLAG connections",
+        "vlan_configuration": {
+          "customer_vlan": "100 (Production Data)",
+          "internal_vlan": "69 (VAST internal traffic)"
+        },
+        "firewall_rules": [
+          {
+            "service": "NFS",
+            "port": "2049",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SMB",
+            "port": "445",
+            "protocol": "TCP"
+          },
+          {
+            "service": "S3",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "iSCSI",
+            "port": "3260",
+            "protocol": "TCP"
+          },
+          {
+            "service": "Management",
+            "port": "443",
+            "protocol": "TCP"
+          },
+          {
+            "service": "SNMP",
+            "port": "161",
+            "protocol": "UDP"
+          },
+          {
+            "service": "Syslog",
+            "port": "514",
+            "protocol": "UDP"
+          }
+        ],
+        "load_balancer_config": {
+          "method": "Round-robin across available CNodes",
+          "redundancy": "Dual-path connectivity for high availability"
+        },
+        "customer_requirements": [
+          "1.3M IOPS performance requirement",
+          "264 GB/s throughput requirement",
+          "1.17 PB usable capacity",
+          "NFS, SMB, S3, iSCSI protocol support",
+          "Active Directory integration",
+          "SNMP and syslog monitoring integration",
+          "Snapshot backup policies"
+        ],
+        "integration_timeline": "6-week deployment timeline",
+        "source": "API"
+      },
+      "completeness": 1.1666666666666667,
+      "status": "missing"
+    },
+    "deployment_timeline": {
+      "name": "deployment_timeline",
+      "title": "Deployment Timeline & Milestones",
+      "data": {
+        "deployment_phases": [
+          {
+            "phase": "Phase 1 - Planning",
+            "duration": "Week 1",
+            "description": "Requirements gathering, design review"
+          },
+          {
+            "phase": "Phase 2 - Hardware Installation",
+            "duration": "Week 2",
+            "description": "Rack mounting, cabling"
+          },
+          {
+            "phase": "Phase 3 - Software Configuration",
+            "duration": "Week 3",
+            "description": "Cluster setup, network config"
+          },
+          {
+            "phase": "Phase 4 - Integration",
+            "duration": "Week 4",
+            "description": "Customer network integration, testing"
+          },
+          {
+            "phase": "Phase 5 - Validation",
+            "duration": "Week 5",
+            "description": "Performance testing, user acceptance"
+          },
+          {
+            "phase": "Phase 6 - Go-Live",
+            "duration": "Week 6",
+            "description": "Production cutover, documentation"
+          }
+        ],
+        "key_milestones": [
+          {
+            "milestone": "Hardware Delivery",
+            "date": "September 1, 2025"
+          },
+          {
+            "milestone": "Rack Installation Complete",
+            "date": "September 5, 2025"
+          },
+          {
+            "milestone": "Cluster Initialization",
+            "date": "September 8, 2025"
+          },
+          {
+            "milestone": "Network Integration",
+            "date": "September 12, 2025"
+          },
+          {
+            "milestone": "Performance Validation",
+            "date": "September 15, 2025"
+          },
+          {
+            "milestone": "Production Go-Live",
+            "date": "September 18, 2025"
+          }
+        ],
+        "testing_results": [
+          {
+            "test": "Functional Testing",
+            "status": "Passed",
+            "description": "All protocols tested and validated"
+          },
+          {
+            "test": "Performance Testing",
+            "status": "Passed",
+            "description": "Exceeded IOPS and throughput requirements"
+          },
+          {
+            "test": "Failover Testing",
+            "status": "Passed",
+            "description": "CNode and DNode failover tested successfully"
+          },
+          {
+            "test": "Backup Testing",
+            "status": "Passed",
+            "description": "Snapshot and replication policies validated"
+          },
+          {
+            "test": "Security Testing",
+            "status": "Passed",
+            "description": "Authentication and authorization verified"
+          },
+          {
+            "test": "Integration Testing",
+            "status": "Passed",
+            "description": "Customer applications tested successfully"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "future_recommendations": {
+      "name": "future_recommendations",
+      "title": "Future Recommendations & Roadmap",
+      "data": {
+        "short_term": [
+          {
+            "category": "Capacity Planning",
+            "description": "Monitor utilization and plan for growth"
+          },
+          {
+            "category": "Performance Tuning",
+            "description": "Optimize workload placement and QoS policies"
+          },
+          {
+            "category": "Backup Testing",
+            "description": "Regular DR testing and backup validation"
+          },
+          {
+            "category": "Monitoring Enhancement",
+            "description": "Implement custom dashboards and alerts"
+          },
+          {
+            "category": "Documentation Updates",
+            "description": "Keep operational procedures current"
+          }
+        ],
+        "medium_term": [
+          {
+            "category": "Capacity Expansion",
+            "description": "Add DBoxes for increased storage capacity"
+          },
+          {
+            "category": "Performance Scaling",
+            "description": "Add CNodes for increased IOPS and throughput"
+          },
+          {
+            "category": "Feature Adoption",
+            "description": "Implement advanced features like replication"
+          },
+          {
+            "category": "Automation",
+            "description": "Implement automated provisioning and management"
+          },
+          {
+            "category": "Integration",
+            "description": "Expand integration with customer applications"
+          }
+        ],
+        "long_term": [
+          {
+            "category": "Multi-Site Deployment",
+            "description": "Consider secondary site for DR"
+          },
+          {
+            "category": "Cloud Integration",
+            "description": "Hybrid cloud storage capabilities"
+          },
+          {
+            "category": "AI/ML Integration",
+            "description": "Leverage VAST's AI capabilities"
+          },
+          {
+            "category": "Edge Computing",
+            "description": "Deploy edge storage nodes if needed"
+          },
+          {
+            "category": "Technology Refresh",
+            "description": "Plan for hardware refresh cycles"
+          }
+        ],
+        "source": "API"
+      },
+      "completeness": 1.3333333333333333,
+      "status": "missing"
+    },
+    "port_mapping": {
+      "name": "port_mapping",
+      "title": "Port Mapping",
+      "data": {
+        "available": false,
+        "message": "Port mapping data not available. Use --enable-port-mapping to collect."
+      },
+      "completeness": 0.0,
+      "status": "missing"
+    }
+  }
+}
