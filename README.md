@@ -64,7 +64,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -72,7 +72,7 @@ chmod +x install-mac.sh
 **For Windows Users:**
 ```powershell
 # Download and run the automated installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -488,14 +488,14 @@ To remove the VAST As-Built Report Generator:
 
 **Automated Uninstall (Mac)**:
 ```bash
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-mac.sh
 chmod +x uninstall-mac.sh
 ./uninstall-mac.sh
 ```
 
 **Automated Uninstall (Windows)**:
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/develop/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
 .\uninstall-windows.ps1
 ```
 

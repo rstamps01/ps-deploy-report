@@ -18,7 +18,7 @@ This guide provides step-by-step installation instructions for Mac and Windows l
 ### For Mac Users
 ```bash
 # Download and run the installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -26,7 +26,7 @@ chmod +x install-mac.sh
 ### For Windows Users
 ```powershell
 # Download and run the installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -44,7 +44,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 1. **Download the installation script:**
    ```bash
-   curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-mac.sh
+   curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
    ```
 
 2. **Make the script executable:**
@@ -143,7 +143,7 @@ mkdir -p output logs
 
 3. **Download and run the installation script:**
    ```powershell
-   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/install-windows.ps1" -OutFile "install-windows.ps1"
+   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
    .\install-windows.ps1
    ```
 
