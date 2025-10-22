@@ -178,7 +178,7 @@ nano ~/.bash_profile
 nano ~/.zshrc
 ```
 
-Remove any lines containing `vast-reporter` such as:
+Remove any lines containing `vast-asbuilt-reporter` such as:
 - Aliases
 - PATH modifications
 - Environment variables
@@ -186,14 +186,14 @@ Remove any lines containing `vast-reporter` such as:
 **Step 5: Remove symlinks (optional)**
 ```bash
 # Check common locations
-rm -f ~/bin/vast-reporter
-rm -f ~/.local/bin/vast-reporter
-sudo rm -f /usr/local/bin/vast-reporter  # Requires sudo
+rm -f ~/bin/vast-asbuilt-reporter
+rm -f ~/.local/bin/vast-asbuilt-reporter
+sudo rm -f /usr/local/bin/vast-asbuilt-reporter  # Requires sudo
 ```
 
 **Step 6: Clean system logs (optional)**
 ```bash
-sudo rm -rf /var/log/vast-reporter  # Requires sudo
+sudo rm -rf /var/log/vast-asbuilt-reporter  # Requires sudo
 ```
 
 **Step 7: Reload shell configuration**
@@ -220,7 +220,7 @@ deactivate
 **Step 3: Remove installation directory**
 ```powershell
 # Default location
-Remove-Item -Path "$env:USERPROFILE\vast-reporter" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse -Force
 
 # Or custom location
 Remove-Item -Path "C:\path\to\custom\installation" -Recurse -Force
@@ -231,7 +231,7 @@ Remove-Item -Path "C:\path\to\custom\installation" -Recurse -Force
 ```powershell
 # Remove from PATH
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$newPath = ($userPath -split ';' | Where-Object { $_ -notlike "*vast-reporter*" }) -join ';'
+$newPath = ($userPath -split ';' | Where-Object { $_ -notlike "*vast-asbuilt-reporter*" }) -join ';'
 [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
 
 # Remove VAST_* variables
@@ -274,27 +274,27 @@ If you want to remove the application but keep your reports:
 **macOS/Linux:**
 ```bash
 # Backup reports and data
-cp -r ~/vast-reporter/reports ~/vast-reports-archive/
-cp -r ~/vast-reporter/output ~/vast-reports-archive/
-cp ~/vast-reporter/config/config.yaml ~/vast-reports-archive/
+cp -r ~/vast-asbuilt-reporter/reports ~/vast-reports-archive/
+cp -r ~/vast-asbuilt-reporter/output ~/vast-reports-archive/
+cp ~/vast-asbuilt-reporter/config/config.yaml ~/vast-reports-archive/
 
 # Remove application
-rm -rf ~/vast-reporter/venv
-rm -rf ~/vast-reporter/src
-rm -rf ~/vast-reporter/.git
+rm -rf ~/vast-asbuilt-reporter/venv
+rm -rf ~/vast-asbuilt-reporter/src
+rm -rf ~/vast-asbuilt-reporter/.git
 ```
 
 **Windows:**
 ```powershell
 # Backup reports and data
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\reports" -Destination "$env:USERPROFILE\vast-reports-archive\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\output" -Destination "$env:USERPROFILE\vast-reports-archive\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-reports-archive\"
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\reports" -Destination "$env:USERPROFILE\vast-reports-archive\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\output" -Destination "$env:USERPROFILE\vast-reports-archive\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-reports-archive\"
 
 # Remove application
-Remove-Item -Path "$env:USERPROFILE\vast-reporter\venv" -Recurse -Force
-Remove-Item -Path "$env:USERPROFILE\vast-reporter\src" -Recurse -Force
-Remove-Item -Path "$env:USERPROFILE\vast-reporter\.git" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\venv" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\src" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\.git" -Recurse -Force
 ```
 
 ### Remove Only Virtual Environment
@@ -304,23 +304,23 @@ To reinstall with a clean Python environment:
 ```bash
 # Mac/Linux
 deactivate  # If active
-rm -rf ~/vast-reporter/venv
+rm -rf ~/vast-asbuilt-reporter/venv
 
 # Windows
 deactivate  # If active
-Remove-Item -Path "$env:USERPROFILE\vast-reporter\venv" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\venv" -Recurse -Force
 ```
 
 Then recreate:
 ```bash
 # Mac/Linux
-cd ~/vast-reporter
+cd ~/vast-asbuilt-reporter
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
 # Windows
-cd $env:USERPROFILE\vast-reporter
+cd $env:USERPROFILE\vast-asbuilt-reporter
 python -m venv venv
 .\venv\Scripts\Activate
 pip install -r requirements.txt
@@ -337,13 +337,13 @@ pip install -r requirements.txt
 **Solution (Mac/Linux)**:
 ```bash
 # Check file permissions
-ls -la ~/vast-reporter
+ls -la ~/vast-asbuilt-reporter
 
 # Change ownership if needed
-sudo chown -R $USER:$USER ~/vast-reporter
+sudo chown -R $USER:$USER ~/vast-asbuilt-reporter
 
 # Try removal again
-rm -rf ~/vast-reporter
+rm -rf ~/vast-asbuilt-reporter
 ```
 
 **Solution (Windows)**:
@@ -352,11 +352,11 @@ rm -rf ~/vast-reporter
 # Right-click PowerShell → "Run as Administrator"
 
 # Take ownership
-takeown /f "$env:USERPROFILE\vast-reporter" /r /d y
-icacls "$env:USERPROFILE\vast-reporter" /grant "$env:USERNAME:F" /t
+takeown /f "$env:USERPROFILE\vast-asbuilt-reporter" /r /d y
+icacls "$env:USERPROFILE\vast-asbuilt-reporter" /grant "$env:USERNAME:F" /t
 
 # Try removal again
-Remove-Item -Path "$env:USERPROFILE\vast-reporter" -Recurse -Force
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse -Force
 ```
 
 ### Directory Not Empty Errors
@@ -366,10 +366,10 @@ Remove-Item -Path "$env:USERPROFILE\vast-reporter" -Recurse -Force
 **Solution**:
 ```bash
 # Mac/Linux - Force removal
-rm -rf ~/vast-reporter
+rm -rf ~/vast-asbuilt-reporter
 
 # Windows - Force removal
-Remove-Item -Path "$env:USERPROFILE\vast-reporter" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
 ### Process Still Running
@@ -416,10 +416,10 @@ deactivate
 **Solution (Mac/Linux)**:
 ```bash
 # Use sudo for system directories
-sudo rm -f /usr/local/bin/vast-reporter
+sudo rm -f /usr/local/bin/vast-asbuilt-reporter
 
 # Or change to user-local location
-rm -f ~/.local/bin/vast-reporter
+rm -f ~/.local/bin/vast-asbuilt-reporter
 ```
 
 ---
@@ -431,10 +431,10 @@ rm -f ~/.local/bin/vast-reporter
 **Check installation directory:**
 ```bash
 # Mac/Linux
-ls -la ~/vast-reporter  # Should not exist
+ls -la ~/vast-asbuilt-reporter  # Should not exist
 
 # Windows
-Test-Path "$env:USERPROFILE\vast-reporter"  # Should return False
+Test-Path "$env:USERPROFILE\vast-asbuilt-reporter"  # Should return False
 ```
 
 **Check running processes:**
@@ -449,17 +449,17 @@ Get-Process -Name "python*" | Where-Object { $_.CommandLine -like "*src.main*" }
 **Check PATH:**
 ```bash
 # Mac/Linux
-echo $PATH | grep vast-reporter  # Should return nothing
+echo $PATH | grep vast-asbuilt-reporter  # Should return nothing
 
 # Windows
-[Environment]::GetEnvironmentVariable("Path", "User") -split ';' | Where-Object { $_ -like "*vast-reporter*" }  # Should return nothing
+[Environment]::GetEnvironmentVariable("Path", "User") -split ';' | Where-Object { $_ -like "*vast-asbuilt-reporter*" }  # Should return nothing
 ```
 
 **Check command availability:**
 ```bash
 # Should return "command not found" or similar
 python3 -m src.main --version
-vast-reporter --version
+vast-asbuilt-reporter --version
 ```
 
 ---
@@ -499,19 +499,19 @@ If you need to restore from backup after uninstallation:
 **Restore reports:**
 ```bash
 # Mac/Linux
-cp -r ~/vast-reporter-backup/reports ~/new-location/
+cp -r ~/vast-asbuilt-reporter-backup/reports ~/new-location/
 
 # Windows
-Copy-Item -Path "$env:USERPROFILE\vast-reporter-backup\reports" -Destination "$env:USERPROFILE\new-location\" -Recurse
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter-backup\reports" -Destination "$env:USERPROFILE\new-location\" -Recurse
 ```
 
 **Restore configuration:**
 ```bash
 # Mac/Linux
-cp ~/vast-reporter-backup/config.yaml ~/new-location/config/
+cp ~/vast-asbuilt-reporter-backup/config.yaml ~/new-location/config/
 
 # Windows
-Copy-Item -Path "$env:USERPROFILE\vast-reporter-backup\config.yaml" -Destination "$env:USERPROFILE\new-location\config\"
+Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter-backup\config.yaml" -Destination "$env:USERPROFILE\new-location\config\"
 ```
 
 ---

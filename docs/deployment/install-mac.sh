@@ -355,7 +355,7 @@ setup_configuration() {
 create_launch_script() {
     print_status "Creating launch script..."
 
-    cat > run-vast-reporter.sh << 'EOF'
+    cat > run-vast-asbuilt-reporter.sh << 'EOF'
 #!/bin/bash
 # VAST As-Built Report Generator Launch Script for macOS
 
@@ -372,9 +372,9 @@ source venv/bin/activate
 python3 src/main.py "$@"
 EOF
 
-    chmod +x run-vast-reporter.sh
+    chmod +x run-vast-asbuilt-reporter.sh
 
-    print_success "Launch script created: run-vast-reporter.sh"
+    print_success "Launch script created: run-vast-asbuilt-reporter.sh"
 }
 
 # Function to create desktop shortcut
@@ -389,7 +389,7 @@ create_desktop_shortcut() {
 # VAST As-Built Report Generator Desktop Shortcut
 
 cd "$project_dir"
-./run-vast-reporter.sh
+./run-vast-asbuilt-reporter.sh
 EOF
 
     chmod +x "$desktop_file"
@@ -443,7 +443,7 @@ display_usage_instructions() {
     echo
     echo "2. Using Terminal:"
     echo "   cd $project_dir"
-    echo "   ./run-vast-reporter.sh --cluster <CLUSTER_IP> --output ./output"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster <CLUSTER_IP> --output ./output"
     echo
     echo "3. Direct Python execution:"
     echo "   cd $project_dir"
@@ -453,15 +453,15 @@ display_usage_instructions() {
     echo "EXAMPLE COMMANDS:"
     echo "================="
     echo "   # Basic usage with interactive credentials"
-    echo "   ./run-vast-reporter.sh --cluster 192.168.1.100 --output ./output"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output"
     echo
     echo "   # Using environment variables"
     echo "   export VAST_USERNAME=admin"
     echo "   export VAST_PASSWORD=your_password"
-    echo "   ./run-vast-reporter.sh --cluster 192.168.1.100 --output ./output"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output"
     echo
     echo "   # Verbose output for debugging"
-    echo "   ./run-vast-reporter.sh --cluster 192.168.1.100 --output ./output --verbose"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output --verbose"
     echo
     echo "CONFIGURATION:"
     echo "=============="
@@ -472,7 +472,7 @@ display_usage_instructions() {
     echo "SUPPORT:"
     echo "========"
     echo "   - Check logs: tail -f $project_dir/logs/vast_report_generator.log"
-    echo "   - View help: ./run-vast-reporter.sh --help"
+    echo "   - View help: ./run-vast-asbuilt-reporter.sh --help"
     echo "   - GitHub: https://github.com/rstamps01/ps-deploy-report"
     echo
     echo "=================================================================="
@@ -534,7 +534,7 @@ display_installation_summary() {
     echo
     echo "🚀 Quick Start:"
     echo "   cd $project_dir"
-    echo "   ./run-vast-reporter.sh --cluster <CLUSTER_IP> --output ./output"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster <CLUSTER_IP> --output ./output"
     echo
     echo "📖 Documentation:"
     echo "   - README.md: Complete usage guide"
@@ -544,7 +544,7 @@ display_installation_summary() {
     echo "🆘 Support:"
     echo "   - GitHub: https://github.com/rstamps01/ps-deploy-report"
     echo "   - Logs: tail -f $LOG_FILE"
-    echo "   - Help: ./run-vast-reporter.sh --help"
+    echo "   - Help: ./run-vast-asbuilt-reporter.sh --help"
     echo
 }
 

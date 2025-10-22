@@ -408,9 +408,9 @@ REM Pause to see output
 pause
 "@
 
-    $launchScript | Out-File -FilePath "run-vast-reporter.bat" -Encoding ASCII
+    $launchScript | Out-File -FilePath "run-vast-asbuilt-reporter.bat" -Encoding ASCII
 
-    Write-Success "Launch script created: run-vast-reporter.bat"
+    Write-Success "Launch script created: run-vast-asbuilt-reporter.bat"
 }
 
 # Function to create PowerShell launch script
@@ -433,9 +433,9 @@ Set-Location `$ScriptDir
 python src\main.py `$args
 "@
 
-    $psLaunchScript | Out-File -FilePath "run-vast-reporter.ps1" -Encoding UTF8
+    $psLaunchScript | Out-File -FilePath "run-vast-asbuilt-reporter.ps1" -Encoding UTF8
 
-    Write-Success "PowerShell launch script created: run-vast-reporter.ps1"
+    Write-Success "PowerShell launch script created: run-vast-asbuilt-reporter.ps1"
 }
 
 # Function to create desktop shortcut
@@ -445,7 +445,7 @@ function New-DesktopShortcut {
     $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
     $desktopPath = "$env:USERPROFILE\Desktop"
     $shortcutPath = "$desktopPath\VAST As-Built Reporter.lnk"
-    $targetPath = "$projectDir\run-vast-reporter.bat"
+    $targetPath = "$projectDir\run-vast-asbuilt-reporter.bat"
 
     # Create WScript.Shell object
     $WshShell = New-Object -comObject WScript.Shell
@@ -467,7 +467,7 @@ function New-StartMenuShortcut {
     $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
     $startMenuPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
     $shortcutPath = "$startMenuPath\VAST As-Built Reporter.lnk"
-    $targetPath = "$projectDir\run-vast-reporter.bat"
+    $targetPath = "$projectDir\run-vast-asbuilt-reporter.bat"
 
     # Create WScript.Shell object
     $WshShell = New-Object -comObject WScript.Shell
@@ -534,11 +534,11 @@ function Show-UsageInstructions {
     Write-Host ""
     Write-Host "2. Using Command Prompt:" -ForegroundColor $Green
     Write-Host "   cd $projectDir" -ForegroundColor $Green
-    Write-Host "   run-vast-reporter.bat --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "3. Using PowerShell:" -ForegroundColor $Green
     Write-Host "   cd $projectDir" -ForegroundColor $Green
-    Write-Host "   .\run-vast-reporter.ps1 --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
+    Write-Host "   .\run-vast-asbuilt-reporter.ps1 --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "4. Direct Python execution:" -ForegroundColor $Green
     Write-Host "   cd $projectDir" -ForegroundColor $Green
@@ -548,15 +548,15 @@ function Show-UsageInstructions {
     Write-Host "EXAMPLE COMMANDS:" -ForegroundColor $Yellow
     Write-Host "=================" -ForegroundColor $Yellow
     Write-Host "   # Basic usage with interactive credentials" -ForegroundColor $Green
-    Write-Host "   run-vast-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "   # Using environment variables" -ForegroundColor $Green
     Write-Host "   set VAST_USERNAME=admin" -ForegroundColor $Green
     Write-Host "   set VAST_PASSWORD=your_password" -ForegroundColor $Green
-    Write-Host "   run-vast-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "   # Verbose output for debugging" -ForegroundColor $Green
-    Write-Host "   run-vast-reporter.bat --cluster 192.168.1.100 --output .\output --verbose" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output --verbose" -ForegroundColor $Green
     Write-Host ""
     Write-Host "CONFIGURATION:" -ForegroundColor $Yellow
     Write-Host "==============" -ForegroundColor $Yellow
@@ -567,7 +567,7 @@ function Show-UsageInstructions {
     Write-Host "SUPPORT:" -ForegroundColor $Yellow
     Write-Host "========" -ForegroundColor $Yellow
     Write-Host "   - Check logs: Get-Content $projectDir\logs\vast_report_generator.log -Tail 20" -ForegroundColor $Green
-    Write-Host "   - View help: run-vast-reporter.bat --help" -ForegroundColor $Green
+    Write-Host "   - View help: run-vast-asbuilt-reporter.bat --help" -ForegroundColor $Green
     Write-Host "   - GitHub: https://github.com/rstamps01/ps-deploy-report" -ForegroundColor $Green
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor $Blue
@@ -629,7 +629,7 @@ function Show-InstallationSummary {
     Write-Host ""
     Write-Host "🚀 Quick Start:" -ForegroundColor $Yellow
     Write-Host "   cd $projectDir" -ForegroundColor $Green
-    Write-Host "   run-vast-reporter.bat --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster <CLUSTER_IP> --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "📖 Documentation:" -ForegroundColor $Yellow
     Write-Host "   - README.md: Complete usage guide" -ForegroundColor $Green
@@ -639,7 +639,7 @@ function Show-InstallationSummary {
     Write-Host "🆘 Support:" -ForegroundColor $Yellow
     Write-Host "   - GitHub: https://github.com/rstamps01/ps-deploy-report" -ForegroundColor $Green
     Write-Host "   - Logs: Get-Content $LogPath -Tail 20" -ForegroundColor $Green
-    Write-Host "   - Help: run-vast-reporter.bat --help" -ForegroundColor $Green
+    Write-Host "   - Help: run-vast-asbuilt-reporter.bat --help" -ForegroundColor $Green
     Write-Host ""
     Write-Host "==================================================================" -ForegroundColor $Blue
 }
