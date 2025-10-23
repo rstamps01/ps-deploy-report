@@ -2941,37 +2941,42 @@ class VastReportBuilder:
             if ipl_connections:
                 # Add IPL connections for this switch
                 for ipl_conn in ipl_connections:
-                    # ipl_conn format:
+                    # ipl_conn format (stored from Switch 1's perspective):
                     # {
-                    #   'switch_designation': 'SWA-P29',
-                    #   'node_designation': 'SWB-P29',
+                    #   'switch_designation': 'SWA-P29',  (always Switch 1)
+                    #   'node_designation': 'SWB-P29',     (always Switch 2)
                     #   'notes': 'IPL',
                     #   'connection_type': 'IPL',
                     #   ...
                     # }
-                    
-                    # Only add if this connection involves current switch
-                    switch_des = ipl_conn.get('switch_designation', '')
-                    
+
+                    # Check which switch this is and format accordingly
+                    switch_des = ipl_conn.get("switch_designation", "")
+                    node_des = ipl_conn.get("node_designation", "")
+
                     # Extract switch letter from designation (SWA-P29 -> A, SWB-P29 -> B)
-                    if 'SWA' in switch_des and switch_num == 1:
-                        # This IPL is on Switch 1
-                        table_data.append([
-                            ipl_conn.get('switch_designation'),  # SWA-P29
-                            ipl_conn.get('node_designation'),    # SWB-P29
-                            "A/B",                                # Network (both)
-                            "100G",                               # Speed
-                            ipl_conn.get('notes', 'IPL')        # IPL
-                        ])
-                    elif 'SWB' in switch_des and switch_num == 2:
-                        # This IPL is on Switch 2
-                        table_data.append([
-                            ipl_conn.get('switch_designation'),  # SWB-P29
-                            ipl_conn.get('node_designation'),    # SWA-P29
-                            "A/B",                                # Network (both)
-                            "100G",                               # Speed
-                            ipl_conn.get('notes', 'IPL')        # IPL
-                        ])
+                    if "SWA" in switch_des and switch_num == 1:
+                        # This is Switch 1: show SWA-P29 → SWB-P29
+                        table_data.append(
+                            [
+                                switch_des,  # SWA-P29
+                                node_des,    # SWB-P29
+                                "A/B",       # Network (both)
+                                "100G",      # Speed
+                                ipl_conn.get("notes", "IPL"),  # IPL
+                            ]
+                        )
+                    elif "SWB" in node_des and switch_num == 2:
+                        # This is Switch 2: swap the columns to show SWB-P29 → SWA-P29
+                        table_data.append(
+                            [
+                                node_des,    # SWB-P29 (was in node_designation)
+                                switch_des,  # SWA-P29 (was in switch_designation)
+                                "A/B",       # Network (both)
+                                "100G",      # Speed
+                                ipl_conn.get("notes", "IPL"),  # IPL
+                            ]
+                        )
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
