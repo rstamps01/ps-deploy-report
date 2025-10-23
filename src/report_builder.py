@@ -44,7 +44,6 @@ try:
     from reportlab.pdfgen import canvas
     from reportlab.platypus import (
         BaseDocTemplate,
-        Flowable,
         Frame,
         Image,
         KeepTogether,
@@ -69,36 +68,6 @@ try:
 except (ImportError, OSError):
     # OSError can occur when system libraries are missing
     WEASYPRINT_AVAILABLE = False
-
-
-class PageMarker(Flowable):
-    """
-    Invisible flowable that captures the current page number.
-
-    Used for dynamic TOC generation with two-pass PDF building.
-    This flowable has zero width and height, so it doesn't affect layout,
-    but its draw() method captures the page number when rendered.
-    """
-
-    def __init__(self, section_key: str, page_tracker: Dict[str, int]):
-        """
-        Initialize page marker.
-
-        Args:
-            section_key: Unique key for this section (e.g., 'exec_summary')
-            page_tracker: Dictionary to store captured page numbers
-        """
-        Flowable.__init__(self)
-        self.section_key = section_key
-        self.page_tracker = page_tracker
-        self.width = 0
-        self.height = 0
-
-    def draw(self):
-        """Capture the current page number during PDF rendering."""
-        page_num = self.canv.getPageNumber()
-        self.page_tracker[self.section_key] = page_num
-        # Note: We don't draw anything - this is invisible
 
 
 @dataclass
@@ -198,89 +167,10 @@ class VastReportBuilder:
             self.logger.error(f"Error generating PDF report: {e}")
             return False
 
-    def _build_report_story(
-        self,
-        processed_data: Dict[str, Any],
-        page_tracker: Optional[Dict[str, int]] = None,
-    ) -> List[Any]:
-        """
-        Build the report story (list of flowable elements).
-
-        Args:
-            processed_data: Processed cluster data
-            page_tracker: Optional dictionary for capturing page numbers (first pass)
-                         or providing page numbers (second pass)
-
-        Returns:
-            List of reportlab flowable elements
-        """
-        story = []
-
-        # Add title page
-        story.extend(self._create_title_page(processed_data))
-        story.append(PageBreak())
-
-        # Add table of contents
-        if self.config.include_toc:
-            story.extend(self._create_table_of_contents(processed_data, page_tracker))
-            story.append(PageBreak())
-
-        # Add executive summary
-        story.extend(self._create_executive_summary(processed_data))
-        if page_tracker is not None and "exec_summary" not in page_tracker:
-            story.append(PageMarker("exec_summary", page_tracker))
-        story.append(PageBreak())
-
-        # Add cluster information
-        story.extend(self._create_cluster_information(processed_data))
-        if page_tracker is not None and "cluster_info" not in page_tracker:
-            story.append(PageMarker("cluster_info", page_tracker))
-        story.append(PageBreak())
-
-        # Add hardware inventory
-        story.extend(self._create_hardware_inventory(processed_data))
-        if page_tracker is not None and "hardware_summary" not in page_tracker:
-            story.append(PageMarker("hardware_summary", page_tracker))
-        # Note: PageBreak is handled within hardware inventory for rack layout
-
-        # Add comprehensive network configuration
-        story.extend(self._create_comprehensive_network_configuration(processed_data))
-        if page_tracker is not None and "network_config" not in page_tracker:
-            story.append(PageMarker("network_config", page_tracker))
-        story.append(PageBreak())
-
-        # Add switch configuration section
-        story.extend(self._create_switch_configuration(processed_data))
-        if page_tracker is not None and "switch_config" not in page_tracker:
-            story.append(PageMarker("switch_config", page_tracker))
-        # Note: PageBreak for port mapping is handled within switch configuration
-        # Add PageBreak here to ensure logical network diagram starts on new page
-        story.append(PageBreak())
-
-        # Add logical network diagram
-        story.extend(self._create_logical_network_diagram(processed_data))
-        if page_tracker is not None and "network_diagram" not in page_tracker:
-            story.append(PageMarker("network_diagram", page_tracker))
-        story.append(PageBreak())
-
-        # Add logical configuration
-        story.extend(self._create_logical_configuration(processed_data))
-        if page_tracker is not None and "logical_config" not in page_tracker:
-            story.append(PageMarker("logical_config", page_tracker))
-        story.append(PageBreak())
-
-        # Add security configuration
-        story.extend(self._create_security_configuration(processed_data))
-        if page_tracker is not None and "security_config" not in page_tracker:
-            story.append(PageMarker("security_config", page_tracker))
-        story.append(PageBreak())
-
-        return story
-
     def _generate_with_reportlab(
         self, processed_data: Dict[str, Any], output_path: str
     ) -> bool:
-        """Generate PDF using ReportLab with two-pass TOC generation."""
+        """Generate PDF using ReportLab."""
         try:
             # Set up document with page template
             page_size = A4 if self.config.page_size == "A4" else letter
@@ -311,62 +201,59 @@ class VastReportBuilder:
             # Add page template to document
             doc.addPageTemplates([page_template])
 
-            # TWO-PASS GENERATION FOR DYNAMIC TOC
-            # Pass 1: Build PDF with PageMarkers to capture actual page numbers
-            self.logger.info("Starting first pass: capturing page numbers...")
-            page_tracker = {}
+            # Build story (content)
+            story = []
 
-            # Build story with page markers
-            story_pass1 = self._build_report_story(processed_data, page_tracker)
+            # Add title page
+            story.extend(self._create_title_page(processed_data))
+            story.append(PageBreak())
 
-            # Add page template directive
+            # Add table of contents
+            if self.config.include_toc:
+                story.extend(self._create_table_of_contents(processed_data))
+                story.append(PageBreak())
+
+            # Add executive summary
+            story.extend(self._create_executive_summary(processed_data))
+            story.append(PageBreak())
+
+            # Add cluster information
+            story.extend(self._create_cluster_information(processed_data))
+            story.append(PageBreak())
+
+            # Add hardware inventory (includes Physical Rack Layout on Page 6)
+            story.extend(self._create_hardware_inventory(processed_data))
+            # Note: PageBreak is handled within hardware inventory for rack layout
+            # Do not add extra PageBreak here to keep rack on Page 6
+
+            # Add comprehensive network configuration (consolidated)
+            story.extend(
+                self._create_comprehensive_network_configuration(processed_data)
+            )
+            story.append(PageBreak())
+
+            # Add switch configuration section
+            story.extend(self._create_switch_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Add logical network diagram (Page 8)
+            story.extend(self._create_logical_network_diagram(processed_data))
+            story.append(PageBreak())
+
+            # Add logical configuration
+            story.extend(self._create_logical_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Add security configuration
+            story.extend(self._create_security_configuration(processed_data))
+            story.append(PageBreak())
+
+            # Build PDF with page template
             from reportlab.platypus import NextPageTemplate
 
-            story_pass1.insert(0, NextPageTemplate("VastPage"))
-
-            # Build first pass to temp file to capture page numbers
-            import tempfile
-
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".pdf")
-            os.close(temp_fd)
-
-            try:
-                doc.build(story_pass1)
-                self.logger.info(
-                    f"First pass complete: captured {len(page_tracker)} page numbers"
-                )
-                self.logger.debug(f"Page tracker: {page_tracker}")
-
-                # Pass 2: Rebuild PDF with actual page numbers in TOC
-                self.logger.info(
-                    "Starting second pass: generating final PDF with dynamic TOC..."
-                )
-
-                # Create new document for second pass
-                doc2 = BaseDocTemplate(
-                    output_path,
-                    pagesize=page_size,
-                    rightMargin=0.5 * inch,
-                    leftMargin=0.5 * inch,
-                    topMargin=0.5 * inch,
-                    bottomMargin=0.75 * inch,
-                )
-                doc2.addPageTemplates([page_template])
-
-                # Build story with actual page numbers (no markers this time)
-                story_pass2 = self._build_report_story(processed_data, page_tracker)
-                story_pass2.insert(0, NextPageTemplate("VastPage"))
-
-                # Build final PDF
-                doc2.build(story_pass2)
-                self.logger.info(
-                    "Second pass complete: dynamic TOC generated successfully"
-                )
-
-            finally:
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+            # Start with the page template
+            story.insert(0, NextPageTemplate("VastPage"))
+            doc.build(story)
 
             self.logger.info(f"PDF report generated successfully: {output_path}")
             return True
@@ -746,16 +633,8 @@ class VastReportBuilder:
         content.append(toc_table)
         return content
 
-    def _create_table_of_contents_static(self, data: Dict[str, Any]) -> List[Any]:
-        """
-        BACKUP: Original static table of contents implementation.
-
-        Create enhanced table of contents with dot leaders and perfect alignment.
-        Uses hardcoded page numbers.
-
-        This is the original implementation preserved for reference.
-        To use this version, call this method instead of _create_table_of_contents().
-        """
+    def _create_table_of_contents(self, data: Dict[str, Any]) -> List[Any]:
+        """Create enhanced table of contents with dot leaders and perfect alignment."""
         from reportlab.platypus import Table as RLTable
 
         styles = getSampleStyleSheet()
@@ -965,261 +844,6 @@ class VastReportBuilder:
         content.append(toc_table)
 
         return content
-
-    def _create_table_of_contents_dynamic(
-        self, data: Dict[str, Any], page_tracker: Dict[str, int]
-    ) -> List[Any]:
-        """
-        Create table of contents with dynamically captured page numbers.
-
-        Uses the same beautiful formatting as static TOC, but with automatically
-        tracked page numbers from the first pass.
-
-        Args:
-            data: Processed cluster data
-            page_tracker: Dictionary mapping section_key to actual page number
-
-        Returns:
-            List of flowable elements for the TOC
-        """
-        from reportlab.platypus import Table as RLTable
-
-        styles = getSampleStyleSheet()
-
-        title_style = ParagraphStyle(
-            "TOC_Title",
-            parent=styles["Heading1"],
-            fontSize=self.config.heading_font_size + 2,
-            spaceAfter=20,
-            alignment=TA_LEFT,
-            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
-        )
-
-        content = []
-
-        content.append(Paragraph("Table of Contents", title_style))
-        content.append(Spacer(1, 8))
-
-        # TOC structure with section keys for page lookup
-        # Format: (text, indent_level, section_key, is_bold)
-        toc_structure = [
-            # Executive Summary section
-            ("Executive Summary", 0, "exec_summary", True),
-            ("Cluster Overview", 1, None, False),
-            ("Hardware Overview", 1, None, False),
-            # Cluster Information section
-            ("Cluster Information", 0, "cluster_info", True),
-            ("Cluster Details", 1, None, False),
-            ("Operational Status", 1, None, False),
-            ("Feature Configuration", 1, None, False),
-            # Hardware Summary section
-            ("Hardware Summary", 0, "hardware_summary", True),
-            ("Storage Capacity", 1, None, False),
-            ("CBox Inventory", 1, None, False),
-            ("DBox Inventory", 1, None, False),
-            # Physical Rack Layout section (only if available)
-            (
-                ("Physical Rack Layout", 0, "rack_layout", True)
-                if "rack_layout" in page_tracker
-                else None
-            ),
-            # Network Configuration section
-            ("Network Configuration", 0, "network_config", True),
-            ("Cluster Network", 1, None, False),
-            ("CNode Network", 1, None, False),
-            ("DNode Network", 1, None, False),
-            # Switch Configuration section
-            ("Switch Configuration", 0, "switch_config", True),
-            ("Switch Details", 1, None, False),
-            ("Port Summary", 1, None, False),
-            # Port Mapping section (only if available)
-            (
-                ("Port Mapping", 0, "port_mapping", True)
-                if "port_mapping" in page_tracker
-                else None
-            ),
-            # Logical Network Diagram section
-            ("Logical Network Diagram", 0, "network_diagram", True),
-            # Logical Configuration section
-            ("Logical Configuration", 0, "logical_config", True),
-            ("Tenants & Views", 1, None, False),
-            ("Protection Policies", 1, None, False),
-            # Security & Authentication section
-            ("Security & Authentication", 0, "security_config", True),
-            ("Encryption Configuration", 1, None, False),
-            ("Authentication Services", 1, None, False),
-        ]
-
-        # Filter out None entries (sections that weren't in page_tracker)
-        toc_structure = [entry for entry in toc_structure if entry is not None]
-
-        # Build TOC table with calculated dot leaders for perfect alignment
-        from reportlab.pdfbase.pdfmetrics import stringWidth
-
-        available_width = 7.5 * inch  # Page width minus margins
-        toc_table_data = []
-
-        # List of subsections that should have extra space after them
-        subsections_with_space_after = [
-            "Hardware Overview",
-            "Feature Configuration",
-            "DBox Inventory",
-            "Physical Rack Layout",
-            "DNode Network",
-            "Port Summary",
-            "Device Mapping",
-            "Logical Network Diagram",
-            "Protection Policies",
-        ]
-
-        for idx, (text, indent_level, section_key, is_bold) in enumerate(toc_structure):
-            # Calculate indentation using spaces
-            indent_space = "  " * indent_level if indent_level > 0 else ""
-            full_text = f"{indent_space}{text}"
-
-            # Create styles for text and page number
-            if is_bold:
-                text_font = "Helvetica-Bold"
-                text_color = self.brand_compliance.colors.BACKGROUND_DARK
-                text_size = self.config.font_size - 1
-                page_font = "Helvetica-Bold"
-                page_color = self.brand_compliance.colors.BACKGROUND_DARK
-                page_size = self.config.font_size - 1
-                extra_space = 0 if idx == 0 else 12
-            else:
-                text_font = "Helvetica"
-                text_color = colors.HexColor("#000000")
-                text_size = self.config.font_size - 2
-                page_font = "Helvetica"
-                page_color = colors.HexColor("#000000")
-                page_size = self.config.font_size - 2
-                extra_space = 0
-
-            # Add extra space after specific subsections
-            if text in subsections_with_space_after:
-                extra_space_after = 8
-            else:
-                extra_space_after = 0.5
-
-            # Get page number from tracker (only for sections with keys)
-            if section_key and section_key in page_tracker:
-                page_num = str(page_tracker[section_key])
-
-                # Custom dot leader lengths for specific sections
-                if text == "Executive Summary":
-                    dot_leader_length = 5.0 * inch
-                elif text == "Cluster Information":
-                    dot_leader_length = 5.0 * inch
-                elif text == "Hardware Summary":
-                    dot_leader_length = 5.0 * inch
-                elif text == "Physical Rack Layout":
-                    dot_leader_length = 4.92 * inch
-                elif text == "Network Configuration":
-                    dot_leader_length = 4.87 * inch
-                elif text == "Switch Configuration":
-                    dot_leader_length = 4.95 * inch
-                elif text == "Port Mapping":
-                    dot_leader_length = 5.4 * inch
-                elif text == "Logical Network Diagram":
-                    dot_leader_length = 4.78 * inch
-                elif text == "Logical Configuration":
-                    dot_leader_length = 4.95 * inch
-                else:
-                    dot_leader_length = 4.75 * inch
-
-                # Calculate how many dots fit
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
-                if dot_width > 0:
-                    num_dots = int(dot_leader_length / dot_width)
-                    num_dots = max(3, num_dots)
-                else:
-                    num_dots = 150
-
-                dots = '<font color="#CCCCCC">' + ("." * num_dots) + "</font>"
-                text_with_dots = f"{full_text} {dots}"
-            else:
-                # Subsections without page numbers
-                page_num = ""
-                text_with_dots = full_text
-
-            text_style = ParagraphStyle(
-                f"TOC_Text_{len(toc_table_data)}",
-                parent=styles["Normal"],
-                fontSize=text_size,
-                fontName=text_font,
-                textColor=text_color,
-                alignment=TA_LEFT,
-                spaceBefore=extra_space,
-                spaceAfter=extra_space_after,
-                leading=text_size + 2,
-            )
-
-            page_style = ParagraphStyle(
-                f"TOC_Page_{len(toc_table_data)}",
-                parent=styles["Normal"],
-                fontSize=page_size,
-                fontName=page_font,
-                textColor=page_color,
-                alignment=TA_RIGHT,
-                spaceBefore=extra_space,
-                spaceAfter=extra_space_after,
-                leading=page_size + 2,
-            )
-
-            # Create paragraphs
-            text_para = Paragraph(text_with_dots, text_style)
-            page_para = Paragraph(page_num, page_style)
-
-            toc_table_data.append([text_para, page_para])
-
-        # Create 2-column table
-        text_col_width = available_width - 0.15 * inch
-        page_col_width = 0.15 * inch
-
-        toc_table = RLTable(toc_table_data, colWidths=[text_col_width, page_col_width])
-        toc_table.setStyle(
-            TableStyle(
-                [
-                    ("ALIGN", (0, 0), (0, -1), "LEFT"),
-                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-                    ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                    ("TOPPADDING", (0, 0), (-1, -1), 0),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                ]
-            )
-        )
-
-        content.append(toc_table)
-
-        self.logger.info(f"Dynamic TOC created with {len(page_tracker)} tracked pages")
-
-        return content
-
-    def _create_table_of_contents(
-        self, data: Dict[str, Any], page_tracker: Optional[Dict[str, int]] = None
-    ) -> List[Any]:
-        """
-        Table of contents with automatic or static page numbers.
-
-        If page_tracker is provided (second pass), uses captured page numbers.
-        Otherwise (first pass), uses placeholder or static page numbers.
-
-        Args:
-            data: Processed cluster data
-            page_tracker: Optional dictionary of section_key -> page_number mappings
-
-        Returns:
-            List of flowable elements for the TOC
-        """
-        if page_tracker:
-            # Second pass: Use captured page numbers
-            return self._create_table_of_contents_dynamic(data, page_tracker)
-        else:
-            # First pass: Use static page numbers
-            return self._create_table_of_contents_static(data)
 
     def _create_executive_summary(self, data: Dict[str, Any]) -> List[Any]:
         """Create VAST brand-compliant executive summary section."""
@@ -1614,12 +1238,6 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Hardware Summary", "hardware_summary")
-            )
-
         # Section Overview
         styles = getSampleStyleSheet()
         overview_style = ParagraphStyle(
@@ -1793,11 +1411,7 @@ class VastReportBuilder:
                     if rack_unit:
                         dbox_data = {
                             "id": dbox_info.get("id"),
-                            "name": dbox_name,  # Add name for network diagram
                             "model": dbox_info.get("hardware_type", "Unknown"),
-                            "hardware_type": dbox_info.get(
-                                "hardware_type", "Unknown"
-                            ),  # Ensure hardware_type is available
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
                         }
@@ -1840,12 +1454,6 @@ class VastReportBuilder:
             )
             content.extend(heading_elements)
 
-            # Register with TOC
-            if hasattr(self, "_toc") and self._toc:
-                content.append(
-                    self._toc.addEntry(0, "Physical Rack Layout", "rack_layout")
-                )
-
             # Add spacer after heading before diagram
             content.append(Spacer(1, 0.3 * inch))
 
@@ -1887,11 +1495,7 @@ class VastReportBuilder:
                     if rack_unit:
                         dbox_data = {
                             "id": dbox_info.get("id"),
-                            "name": dbox_name,  # Add name for network diagram
                             "model": dbox_info.get("hardware_type", "Unknown"),
-                            "hardware_type": dbox_info.get(
-                                "hardware_type", "Unknown"
-                            ),  # Ensure hardware_type is available
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
                         }
@@ -2582,12 +2186,6 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Network Configuration", "network_config")
-            )
-
         # Section Overview
         overview_style = ParagraphStyle(
             "Section_Overview",
@@ -2846,17 +2444,10 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        # Note: PageBreak added in _build_report_story() to avoid blank pages
         heading_elements = self.brand_compliance.create_vast_section_heading(
             "Logical Network Diagram", level=1
         )
         content.extend(heading_elements)
-
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Logical Network Diagram", "network_diagram")
-            )
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -2909,8 +2500,6 @@ class VastReportBuilder:
             cboxes_data = hardware_inventory.get("cboxes", [])
             dboxes_data = hardware_inventory.get("dboxes", [])
             switches_data = hardware_inventory.get("switches", [])
-            cnodes_data = hardware_inventory.get("cnodes", [])
-            dnodes_data = hardware_inventory.get("dnodes", [])
 
             # If cboxes/dboxes are dicts (keyed by name), convert to list of values
             cboxes_list = (
@@ -2924,52 +2513,6 @@ class VastReportBuilder:
                 else dboxes_data
             )
             switches_list = switches_data if isinstance(switches_data, list) else []
-
-            # Enrich CBoxes with model information from CNodes
-            # CBoxes don't have model info, but CNodes do (via box_vendor field)
-            # Group CNodes by cbox_id to find the model for each CBox
-            if cboxes_list and cnodes_data:
-                cnode_models_by_cbox = {}
-                for cnode in cnodes_data:
-                    cbox_id = cnode.get("cbox_id")
-                    model = cnode.get("model") or cnode.get("box_vendor")
-                    if cbox_id and model:
-                        if cbox_id not in cnode_models_by_cbox:
-                            cnode_models_by_cbox[cbox_id] = model
-
-                # Add model to each CBox based on its cbox_id
-                for cbox in cboxes_list:
-                    cbox_id = cbox.get("id")
-                    if cbox_id in cnode_models_by_cbox:
-                        # Extract just the hardware model name (first part before comma)
-                        full_model = cnode_models_by_cbox[cbox_id]
-                        # Parse "Broadwell, single dual-port NIC" -> "Broadwell"
-                        model_name = full_model.split(",")[0].strip()
-                        cbox["model"] = model_name
-                        cbox["hardware_type"] = model_name
-                        self.logger.info(
-                            f"Enriched CBox {cbox_id} with model: {model_name}"
-                        )
-
-            # Enrich DBoxes with model information
-            # DBoxes already have hardware_type and box_vendor fields from API
-            # Just ensure model field is populated for consistency
-            if dboxes_list:
-                for dbox in dboxes_list:
-                    # DBox already has hardware_type and box_vendor from API
-                    existing_model = (
-                        dbox.get("model")
-                        or dbox.get("hardware_type")
-                        or dbox.get("box_vendor")
-                    )
-                    if existing_model:
-                        # Parse model name (take first part before comma)
-                        model_name = existing_model.split(",")[0].strip()
-                        dbox["model"] = model_name
-                        dbox["hardware_type"] = model_name
-                        self.logger.info(
-                            f"Enriched DBox {dbox.get('name', 'Unknown')} with model: {model_name}"
-                        )
 
             hardware_data = {
                 "cboxes": cboxes_list,
@@ -2992,10 +2535,17 @@ class VastReportBuilder:
             )
 
             diagram_path = diagrams_dir / "network_topology.pdf"
+
+            # Use standard width but reduce height to fit on page 11
+            # Width: standard letter - margins, Height: reduced to fit
+            target_diagram_width = 6.5 * inch
+            target_diagram_height = 6.0 * inch  # Reduced from ~9" to fit on page
+
             generated_path = diagram_generator.generate_network_diagram(
                 port_mapping_data=port_mapping_data,
                 hardware_data=hardware_data,
                 output_path=str(diagram_path),
+                drawing_size=(target_diagram_width, target_diagram_height),
             )
 
             # Add color legend
@@ -3022,21 +2572,51 @@ class VastReportBuilder:
 
                 # Embed the generated diagram (PNG)
                 try:
-                    # Calculate image size to fit on page
+                    # Calculate available space on page
                     if self.config.page_size == "Letter":
                         page_width = 8.5 * inch
-                    else:
-                        page_width = 595.27
+                        page_height = 11 * inch
+                    else:  # A4
+                        page_width = 8.27 * inch
+                        page_height = 11.69 * inch
 
+                    # Account for margins and header/footer
                     available_width = page_width - (2 * 0.5 * inch)
-                    max_height = 5.5 * inch
+                    available_height = page_height - (
+                        2 * 0.75 * inch
+                    )  # Top and bottom margins
 
-                    # Load and add the dynamically generated diagram
+                    # Reserve space for heading and spacing (approximately 1 inch)
+                    max_diagram_height = available_height - 1.5 * inch
+
+                    # Get actual image dimensions to calculate aspect ratio
+                    from PIL import Image as PILImage
+
+                    with PILImage.open(str(generated_path)) as pil_img:
+                        img_width, img_height = pil_img.size
+                        aspect_ratio = img_width / img_height
+
+                    # Calculate dimensions to fit within available space while maintaining aspect ratio
+                    # Try fitting by width first
+                    target_width = available_width * 0.95  # Use 95% of available width
+                    target_height = target_width / aspect_ratio
+
+                    # If height exceeds available space, scale by height instead
+                    if target_height > max_diagram_height:
+                        target_height = max_diagram_height
+                        target_width = target_height * aspect_ratio
+
+                    self.logger.info(
+                        f"Network diagram sizing: original={img_width}x{img_height}, "
+                        f"target={target_width:.1f}x{target_height:.1f}, "
+                        f"available={available_width:.1f}x{max_diagram_height:.1f}"
+                    )
+
+                    # Load and add the dynamically generated diagram with calculated dimensions
                     img = Image(
                         str(generated_path),
-                        width=available_width * 0.9,
-                        height=max_height,
-                        kind="proportional",
+                        width=target_width,
+                        height=target_height,
                     )
 
                     # Center the image using a table
@@ -3311,12 +2891,14 @@ class VastReportBuilder:
                 # Determine if this is a DNode or CNode
                 is_dnode = "DN" in node_designation
                 is_cnode = "CN" in node_designation
+                is_unknown = "UNKNOWN" in node_designation.upper()
 
                 # Primary interface logic:
                 # - CNodes Network A: f0 (primary)
                 # - CNodes Network B: f1 (primary)
                 # - DNodes Network A: f0 (primary)
                 # - DNodes Network B: f2 (primary - first of bonded pair)
+                # - Unknown nodes: f0 for Net A, f1 for Net B (assume CNode pattern)
 
                 is_primary = False
                 if is_cnode:
@@ -3330,6 +2912,13 @@ class VastReportBuilder:
                     if network == "A" and "f0" in interface:
                         is_primary = True
                     elif network == "B" and "f2" in interface:
+                        is_primary = True
+                elif is_unknown:
+                    # Unknown nodes: use standard pattern (f0=NetA, f1=NetB)
+                    # This works for both CNode and DNode patterns on f0/f1
+                    if network == "A" and "f0" in interface:
+                        is_primary = True
+                    elif network == "B" and "f1" in interface:
                         is_primary = True
 
                 # Skip non-primary interfaces
@@ -3368,34 +2957,37 @@ class VastReportBuilder:
 
                 # Filter IPL ports for this switch
                 for ipl_port in ipl_ports:
-                    # Check if this IPL port belongs to current switch by IP
-                    ipl_switch_ip = ipl_port.get("switch_ip", "")
+                    # Check if this IPL port belongs to current switch
+                    switch_name = ipl_port.get("switch", "")
                     port_name = ipl_port.get("port", "")
 
-                    # Only add IPL ports from this switch
-                    if ipl_switch_ip != switch_ip:
+                    # Extract switch hostname from the switch string
+                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
+                    if "se-var-1-1" in switch_name and switch_num == 1:
+                        # This is switch 1
+                        pass
+                    elif "se-var-1-2" in switch_name and switch_num == 2:
+                        # This is switch 2
+                        pass
+                    else:
+                        # Not for this switch
                         continue
 
                     # Extract port number from port_name (e.g., "swp29" -> "29")
                     port_num = port_name.replace("swp", "")
 
-                    # Get remote port (peer switch port)
-                    remote_port_name = ipl_port.get("remote_port", port_name)
-                    remote_port_num = remote_port_name.replace("swp", "")
-
                     # Format: SWA-P29 -> SWB-P29
                     source_port = f"{source_switch_des}-P{port_num}"
-                    dest_port = f"{dest_switch_des}-P{remote_port_num}"
+                    dest_port = f"{dest_switch_des}-P{port_num}"
 
-                    # Speed - default to 200G for IPL (can be updated if available)
-                    speed = "200G"
+                    # Get speed
+                    speed = ipl_port.get("speed", "Unknown")
 
-                    # Network is A/B (IPL carries both networks)
+                    # Network is A/B (alternating or both - using A/B to indicate both networks)
                     network_display = "A/B"
 
-                    # Notes with remote host name
-                    remote_host = ipl_port.get("remote_host", "Peer Switch")
-                    notes_str = f"IPL to {remote_host}"
+                    # Notes
+                    notes_str = "IPL/MLAG"
 
                     table_data.append(
                         [source_port, dest_port, network_display, speed, notes_str]
@@ -3482,12 +3074,6 @@ class VastReportBuilder:
         )
         content.extend(heading_elements)
 
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Switch Configuration", "switch_config")
-            )
-
         # Section Overview
         styles = getSampleStyleSheet()
         overview_style = ParagraphStyle(
@@ -3517,11 +3103,11 @@ class VastReportBuilder:
             content.append(Paragraph("No switch data available", styles["Normal"]))
             return content
 
-        # For each switch, create a detailed port configuration table
+        # For each switch, create a detailed port configuration table on separate page
         for switch_num, switch in enumerate(switches, start=1):
-            # Add spacing between switches (natural page flow, no forced page breaks)
+            # Add page break before each switch (except the first)
             if switch_num > 1:
-                content.append(Spacer(1, 24))
+                content.append(PageBreak())
 
             # Add "Switch # Details" heading
             switch_details_heading = self.brand_compliance.create_vast_section_heading(
@@ -3769,13 +3355,6 @@ class VastReportBuilder:
         content = []
 
         content.append(Paragraph("Logical Configuration", heading_style))
-
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Logical Configuration", "logical_config")
-            )
-
         content.append(Spacer(1, 12))
 
         # Section Overview
@@ -3963,13 +3542,6 @@ class VastReportBuilder:
         content = []
 
         content.append(Paragraph("Security & Authentication", heading_style))
-
-        # Register with TOC
-        if hasattr(self, "_toc") and self._toc:
-            content.append(
-                self._toc.addEntry(0, "Security & Authentication", "security_config")
-            )
-
         content.append(Spacer(1, 12))
 
         # Section Overview
