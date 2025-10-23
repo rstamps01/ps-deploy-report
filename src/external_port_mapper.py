@@ -737,6 +737,20 @@ class ExternalPortMapper:
         """
         Parse Cumulus 'nv show interface' JSON output to find IPL connections.
 
+        The JSON structure from 'nv show interface --output json' looks like:
+        {
+          "swp29": {
+            "type": "swp",
+            "link": {
+              "state": {"up": {}}
+            },
+            "lldp": [{
+              "hostname": "se-var-1-1",
+              "port": [{"id": "swp29"}]
+            }]
+          }
+        }
+
         Args:
             json_output: JSON output from 'nv show interface'
             current_switch_ip: IP of the switch we're querying
@@ -750,47 +764,63 @@ class ExternalPortMapper:
 
         try:
             data = json.loads(json_output)
+            
+            self.vlog.log(f"Parsing interface data for IPL discovery on {current_switch_ip}")
+            self.vlog.log_data("Interface JSON keys", {"ports": list(data.keys())[:10]})
 
             # Look for swp29-32 (typical IPL ports)
             for port_name in ["swp29", "swp30", "swp31", "swp32"]:
-                if port_name in data:
-                    port_data = data[port_name]
+                if port_name not in data:
+                    continue
+                    
+                port_data = data[port_name]
+                self.vlog.log(f"Checking {port_name} for IPL: keys={list(port_data.keys()) if isinstance(port_data, dict) else 'not dict'}")
 
-                    # Check if this port has LLDP neighbor
-                    if "lldp" in port_data and port_data["lldp"]:
-                        lldp_data = port_data["lldp"]
+                if not isinstance(port_data, dict):
+                    continue
 
-                        # Look for neighbor information
-                        for neighbor_entry in lldp_data:
-                            if isinstance(neighbor_entry, dict):
-                                neighbor_port = neighbor_entry.get("port", {}).get(
-                                    "description", ""
-                                )
+                # Check for LLDP neighbor data
+                lldp_data = port_data.get("lldp", [])
+                if lldp_data and isinstance(lldp_data, list) and len(lldp_data) > 0:
+                    # Get first LLDP neighbor
+                    neighbor = lldp_data[0]
+                    if isinstance(neighbor, dict):
+                        remote_hostname = neighbor.get("hostname", "")
+                        
+                        # Get neighbor port - might be in different formats
+                        neighbor_port = None
+                        port_info = neighbor.get("port", [])
+                        if isinstance(port_info, list) and len(port_info) > 0:
+                            neighbor_port = port_info[0].get("id", "")
+                        elif isinstance(port_info, dict):
+                            neighbor_port = port_info.get("id", "")
+                        elif isinstance(port_info, str):
+                            neighbor_port = port_info
 
-                                # If neighbor port matches (e.g., swp29 ↔ swp29)
-                                # this is likely an IPL connection
-                                if neighbor_port == port_name:
-                                    # Determine remote switch IP
-                                    remote_switch_ip = self._get_other_switch_ip(
-                                        current_switch_ip
-                                    )
+                        self.vlog.log(f"{port_name}: remote_host={remote_hostname}, remote_port={neighbor_port}")
 
-                                    port_num = int(port_name.replace("swp", ""))
+                        # If neighbor port matches local port, it's an IPL
+                        if neighbor_port and neighbor_port == port_name:
+                            remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+                            port_num = int(port_name.replace("swp", ""))
 
-                                    ipl_connections.append(
-                                        {
-                                            "switch1_ip": current_switch_ip,
-                                            "switch1_port": port_name,
-                                            "switch2_ip": remote_switch_ip,
-                                            "switch2_port": neighbor_port,
-                                            "port_number": port_num,
-                                        }
-                                    )
+                            ipl_connections.append(
+                                {
+                                    "switch1_ip": current_switch_ip,
+                                    "switch1_port": port_name,
+                                    "switch2_ip": remote_switch_ip,
+                                    "switch2_port": neighbor_port,
+                                    "port_number": port_num,
+                                }
+                            )
+                            self.vlog.log(f"✓ IPL found: {port_name} ↔ {neighbor_port}", self.vlog.GREEN)
 
-        except json.JSONDecodeError:
-            self.logger.warning("Failed to parse JSON from nv show interface")
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse JSON from nv show interface: {e}")
+            self.vlog.log_error("JSON parse failed", e)
         except Exception as e:
             self.logger.error(f"Error parsing LLDP data: {e}")
+            self.vlog.log_error("IPL parsing error", e)
 
         return ipl_connections
 
