@@ -293,7 +293,7 @@ class ExternalPortMapper:
 
             # Step 5: Collect IPL connections between switches
             ipl_connections = self._collect_ipl_connections()
-            
+
             # Step 6: Detect cross-connections
             cross_connections = self._detect_cross_connections(port_map)
 
@@ -659,10 +659,10 @@ class ExternalPortMapper:
     def _collect_ipl_connections(self) -> List[Dict[str, Any]]:
         """
         Collect IPL (Inter-Peer Link) connections between switches using LLDP.
-        
+
         Uses 'nv show interface' for Cumulus switches or 'show lldp remote' for Onyx.
         Deduplicates connections so each physical link is counted once.
-        
+
         Returns:
             List of unique IPL connections with format:
             [{
@@ -675,11 +675,11 @@ class ExternalPortMapper:
         """
         ipl_connections = []
         seen_connections = set()
-        
+
         for switch_ip in self.switch_ips:
             try:
                 self.logger.info(f"Collecting IPL connections from switch {switch_ip}")
-                
+
                 # Try Cumulus command first
                 cmd = [
                     "sshpass",
@@ -693,22 +693,24 @@ class ExternalPortMapper:
                     f"{self.switch_user}@{switch_ip}",
                     "nv show interface --output json",
                 ]
-                
+
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-                
+
                 if result.returncode == 0:
                     # Parse Cumulus output
-                    ipl_data = self._parse_cumulus_lldp_for_ipl(result.stdout, switch_ip)
-                    
+                    ipl_data = self._parse_cumulus_lldp_for_ipl(
+                        result.stdout, switch_ip
+                    )
+
                     # Deduplicate: only add if we haven't seen the reverse connection
                     for conn in ipl_data:
                         # Create a normalized key (always put lower IP first)
-                        sw1_ip = conn['switch1_ip']
-                        sw2_ip = conn['switch2_ip']
-                        port = conn['port_number']
-                        
+                        sw1_ip = conn["switch1_ip"]
+                        sw2_ip = conn["switch2_ip"]
+                        port = conn["port_number"]
+
                         key = tuple(sorted([sw1_ip, sw2_ip]) + [port])
-                        
+
                         if key not in seen_connections:
                             seen_connections.add(key)
                             ipl_connections.append(conn)
@@ -719,10 +721,10 @@ class ExternalPortMapper:
                     self.logger.warning(
                         f"Failed to get interface data from {switch_ip}: {result.stderr}"
                     )
-                    
+
             except Exception as e:
                 self.logger.error(f"Error collecting IPL from {switch_ip}: {e}")
-        
+
         self.logger.info(
             f"Collected {len(ipl_connections)} unique IPL connections "
             f"({len(ipl_connections) * 2} total ports)"
@@ -734,58 +736,64 @@ class ExternalPortMapper:
     ) -> List[Dict[str, Any]]:
         """
         Parse Cumulus 'nv show interface' JSON output to find IPL connections.
-        
+
         Args:
             json_output: JSON output from 'nv show interface'
             current_switch_ip: IP of the switch we're querying
-            
+
         Returns:
             List of IPL connections found on this switch
         """
         import json
-        
+
         ipl_connections = []
-        
+
         try:
             data = json.loads(json_output)
-            
+
             # Look for swp29-32 (typical IPL ports)
-            for port_name in ['swp29', 'swp30', 'swp31', 'swp32']:
+            for port_name in ["swp29", "swp30", "swp31", "swp32"]:
                 if port_name in data:
                     port_data = data[port_name]
-                    
+
                     # Check if this port has LLDP neighbor
-                    if 'lldp' in port_data and port_data['lldp']:
-                        lldp_data = port_data['lldp']
-                        
+                    if "lldp" in port_data and port_data["lldp"]:
+                        lldp_data = port_data["lldp"]
+
                         # Look for neighbor information
                         for neighbor_entry in lldp_data:
                             if isinstance(neighbor_entry, dict):
-                                neighbor_port = neighbor_entry.get('port', {}).get('description', '')
-                                
+                                neighbor_port = neighbor_entry.get("port", {}).get(
+                                    "description", ""
+                                )
+
                                 # If neighbor port matches (e.g., swp29 ↔ swp29)
                                 # this is likely an IPL connection
                                 if neighbor_port == port_name:
                                     # Determine remote switch IP
-                                    remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
-                                    
-                                    port_num = int(port_name.replace('swp', ''))
-                                    
-                                    ipl_connections.append({
-                                        'switch1_ip': current_switch_ip,
-                                        'switch1_port': port_name,
-                                        'switch2_ip': remote_switch_ip,
-                                        'switch2_port': neighbor_port,
-                                        'port_number': port_num
-                                    })
-                                    
+                                    remote_switch_ip = self._get_other_switch_ip(
+                                        current_switch_ip
+                                    )
+
+                                    port_num = int(port_name.replace("swp", ""))
+
+                                    ipl_connections.append(
+                                        {
+                                            "switch1_ip": current_switch_ip,
+                                            "switch1_port": port_name,
+                                            "switch2_ip": remote_switch_ip,
+                                            "switch2_port": neighbor_port,
+                                            "port_number": port_num,
+                                        }
+                                    )
+
         except json.JSONDecodeError:
             self.logger.warning("Failed to parse JSON from nv show interface")
         except Exception as e:
             self.logger.error(f"Error parsing LLDP data: {e}")
-            
+
         return ipl_connections
-    
+
     def _get_other_switch_ip(self, current_switch_ip: str) -> str:
         """Get the IP of the other switch in the pair."""
         for switch_ip in self.switch_ips:
@@ -814,6 +822,16 @@ class ExternalPortMapper:
         """
         port_map = []
 
+        # Determine switch assignments (Switch 1 = Network A, Switch 2 = Network B)
+        sorted_switches = sorted(self.switch_ips)
+        switch_1 = sorted_switches[0] if len(sorted_switches) > 0 else None
+        switch_2 = sorted_switches[1] if len(sorted_switches) > 1 else None
+
+        self.logger.info(
+            f"Switch assignments: Switch-1 (Network A) = {switch_1}, "
+            f"Switch-2 (Network B) = {switch_2}"
+        )
+
         # Build reverse mapping: data_ip -> hostname
         ip_to_hostname = {ip: hostname for hostname, ip in hostname_to_ip.items()}
 
@@ -837,10 +855,27 @@ class ExternalPortMapper:
                     if mac in mac_table:
                         switch_entry = mac_table[mac]
 
-                        # Determine network (A or B) based on interface
-                        # Typically: enp*s0f0 = Port-A (Network A)
-                        #            enp*s0f1 = Port-B (Network B)
-                        network = "A" if interface.endswith("f0") else "B"
+                        # Determine network (A or B) based on WHICH SWITCH
+                        # the MAC is found on. This is the correct way to
+                        # determine network assignment:
+                        # - Switch 1 (lower IP) = Network A
+                        # - Switch 2 (higher IP) = Network B
+                        #
+                        # The interface name (f0 vs f1) tells us which
+                        # physical port on the node, but the NETWORK is
+                        # determined by which switch it connects to.
+                        if switch_ip == switch_1:
+                            network = "A"
+                        elif switch_ip == switch_2:
+                            network = "B"
+                        else:
+                            # Fallback to interface-based detection
+                            # if switch mapping fails
+                            network = "A" if interface.endswith("f0") else "B"
+                            self.logger.warning(
+                                f"Unknown switch {switch_ip}, using "
+                                f"interface-based network detection"
+                            )
 
                         port_map.append(
                             {
