@@ -229,6 +229,7 @@ class ExternalPortMapper:
                 "StrictHostKeyChecking=no",
                 "-o",
                 "UserKnownHostsFile=/dev/null",
+                "-T",  # Disable PTY allocation for non-interactive commands
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a hostname",
             ]
@@ -278,6 +279,7 @@ class ExternalPortMapper:
                 "StrictHostKeyChecking=no",
                 "-o",
                 "UserKnownHostsFile=/dev/null",
+                "-T",  # Disable PTY allocation for non-interactive commands
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a 'ip link show'",
             ]
@@ -352,18 +354,19 @@ class ExternalPortMapper:
 
                 # SSH to switch and get MAC table
                 # Using Cumulus Linux command (adjust for other vendors)
-                cmd = [
-                    "sshpass",
-                    "-p",
-                    self.switch_password,
-                    "ssh",
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    "UserKnownHostsFile=/dev/null",
-                    f"{self.switch_user}@{switch_ip}",
-                    "nv show bridge domain br_default mac-table",
-                ]
+                    cmd = [
+                        "sshpass",
+                        "-p",
+                        self.switch_password,
+                        "ssh",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        "UserKnownHostsFile=/dev/null",
+                        "-T",  # Disable PTY allocation for non-interactive commands
+                        f"{self.switch_user}@{switch_ip}",
+                        "nv show bridge domain br_default mac-table",
+                    ]
 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
