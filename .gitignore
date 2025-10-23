@@ -155,5 +155,9 @@ secrets.yaml
 # Local archive directory (not tracked in git)
 .archive/
 .DS_Store
+
+# Development reports (not tracked in git)
+reports/development_reports/
+
 # VNetMap tool (contains AWS credentials - keep local only)
 src/vnetmap.py

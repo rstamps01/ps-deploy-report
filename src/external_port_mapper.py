@@ -228,7 +228,7 @@ class ExternalPortMapper:
                 "-o",
                 "StrictHostKeyChecking=no",
                 "-o",
-                "UserKnownHostsFile /dev/null",
+                "UserKnownHostsFile=/dev/null",
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a hostname",
             ]
@@ -277,9 +277,9 @@ class ExternalPortMapper:
                 "-o",
                 "StrictHostKeyChecking=no",
                 "-o",
-                "UserKnownHostsFile /dev/null",
+                "UserKnownHostsFile=/dev/null",
                 f"{self.node_user}@{self.cnode_ip}",
-                "clush -a ip link show",
+                "clush -a 'ip link show'",
             ]
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
@@ -360,7 +360,7 @@ class ExternalPortMapper:
                     "-o",
                     "StrictHostKeyChecking=no",
                     "-o",
-                    "UserKnownHostsFile /dev/null",
+                    "UserKnownHostsFile=/dev/null",
                     f"{self.switch_user}@{switch_ip}",
                     "nv show bridge domain br_default mac-table",
                 ]
