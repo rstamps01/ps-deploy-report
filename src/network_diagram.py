@@ -122,13 +122,16 @@ class NetworkDiagramGenerator:
             dboxes = hardware_data.get("dboxes", [])
             switches = hardware_data.get("switches", [])
             port_map = port_mapping_data.get("port_map", [])
-            ipl_ports = port_mapping_data.get("ipl_ports", [])
+            ipl_connections = port_mapping_data.get("ipl_connections", [])
+            ipl_ports = port_mapping_data.get("ipl_ports", [])  # Legacy format for backward compatibility
 
             self.logger.info(
                 f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches"
             )
+            # Log IPL connections accurately
+            ipl_count_msg = f"{len(ipl_connections)} IPL connections" if ipl_connections else f"{len(ipl_ports)} IPL ports (legacy)"
             self.logger.info(
-                f"Connections: {len(port_map)} port mappings, {len(ipl_ports)} IPL ports"
+                f"Connections: {len(port_map)} port mappings, {ipl_count_msg}"
             )
 
             # Layout parameters with dynamic sizing based on device count
@@ -334,11 +337,34 @@ class NetworkDiagramGenerator:
                 connection_group.add(line)
 
             # Draw IPL/MLAG connections between switches
-            if len(switches) >= 2 and ipl_ports:
+            # Use new ipl_connections format (deduplicated)
+            if len(switches) >= 2 and ipl_connections:
                 sw1_x, sw1_y = switch_positions[1]
                 sw2_x, sw2_y = switch_positions[2]
 
-                # Count IPL connections per switch
+                num_ipl_lines = len(ipl_connections)
+                
+                self.logger.info(
+                    f"Drawing {num_ipl_lines} deduplicated IPL connections between switches"
+                )
+
+                # Draw IPL lines without labels (as specified)
+                for i in range(num_ipl_lines):
+                    offset = (i - (num_ipl_lines - 1) / 2) * 10  # Center lines vertically
+                    line = Line(
+                        sw1_x,
+                        sw1_y + device_height / 2 + offset,
+                        sw2_x + device_width,
+                        sw2_y + device_height / 2 + offset,
+                        strokeColor=self.ipl_color,
+                        strokeWidth=4,
+                    )
+                    connection_group.add(line)
+            elif len(switches) >= 2 and ipl_ports:
+                # Fallback to legacy format if new format not available
+                sw1_x, sw1_y = switch_positions[1]
+                sw2_x, sw2_y = switch_positions[2]
+                
                 # Group by source switch to avoid drawing duplicates
                 ipl_by_switch = {}
                 for ipl in ipl_ports:
@@ -348,21 +374,19 @@ class NetworkDiagramGenerator:
                     ipl_by_switch[switch_ip].append(ipl)
 
                 # Get one set of IPL connections (they're bidirectional, so only need one side)
-                ipl_connections = (
+                legacy_ipl = (
                     list(ipl_by_switch.values())[0] if ipl_by_switch else []
                 )
-                num_ipl_lines = len(ipl_connections)
+                num_ipl_lines = len(legacy_ipl)
 
                 if num_ipl_lines > 0:
                     self.logger.info(
-                        f"Drawing {num_ipl_lines} IPL connections between switches"
+                        f"Drawing {num_ipl_lines} IPL connections (legacy format)"
                     )
 
                     # Draw IPL lines without labels
-                    for i, ipl in enumerate(ipl_connections):
-                        offset = (
-                            i - (num_ipl_lines - 1) / 2
-                        ) * 10  # Center lines vertically
+                    for i in range(num_ipl_lines):
+                        offset = (i - (num_ipl_lines - 1) / 2) * 10
                         line = Line(
                             sw1_x,
                             sw1_y + device_height / 2 + offset,
@@ -373,9 +397,9 @@ class NetworkDiagramGenerator:
                         )
                         connection_group.add(line)
                 else:
-                    # Fallback: Draw generic IPL lines if no specific connections discovered
+                    # Fallback: Draw 4 generic IPL lines
                     self.logger.info(
-                        "No specific IPL connections found, drawing generic IPL representation"
+                        "No IPL connections found, drawing 4 generic IPL lines"
                     )
                     for i in range(4):
                         offset = (i - 1.5) * 10
@@ -561,7 +585,9 @@ class NetworkDiagramGenerator:
             x = start_x + i * spacing
             # Verify position is within bounds
             if x < min_margin:
-                self.logger.warning(f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}")
+                self.logger.warning(
+                    f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}"
+                )
                 x = min_margin
             elif x + device_width > total_width - min_margin:
                 self.logger.warning(

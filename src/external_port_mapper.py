@@ -291,7 +291,10 @@ class ExternalPortMapper:
             )
             self.logger.info(f"Generated {len(port_map)} port mappings")
 
-            # Step 5: Detect cross-connections
+            # Step 5: Collect IPL connections between switches
+            ipl_connections = self._collect_ipl_connections()
+            
+            # Step 6: Detect cross-connections
             cross_connections = self._detect_cross_connections(port_map)
 
             return {
@@ -299,8 +302,11 @@ class ExternalPortMapper:
                 "node_macs": node_macs,
                 "switch_macs": switch_macs,
                 "port_map": port_map,
+                "ipl_connections": ipl_connections,
                 "cross_connections": cross_connections,
                 "total_connections": len(port_map),
+                "total_ipl_connections": len(ipl_connections),
+                "total_ipl_ports": len(ipl_connections) * 2,
                 "data_source": "External SSH collection (clush + switch CLI)",
             }
 
@@ -649,6 +655,143 @@ class ExternalPortMapper:
                     continue
 
         return mac_table
+
+    def _collect_ipl_connections(self) -> List[Dict[str, Any]]:
+        """
+        Collect IPL (Inter-Peer Link) connections between switches using LLDP.
+        
+        Uses 'nv show interface' for Cumulus switches or 'show lldp remote' for Onyx.
+        Deduplicates connections so each physical link is counted once.
+        
+        Returns:
+            List of unique IPL connections with format:
+            [{
+                'switch1_ip': '10.143.11.153',
+                'switch1_port': 'swp29',
+                'switch2_ip': '10.143.11.154',
+                'switch2_port': 'swp29',
+                'port_number': 29
+            }]
+        """
+        ipl_connections = []
+        seen_connections = set()
+        
+        for switch_ip in self.switch_ips:
+            try:
+                self.logger.info(f"Collecting IPL connections from switch {switch_ip}")
+                
+                # Try Cumulus command first
+                cmd = [
+                    "sshpass",
+                    "-p",
+                    self.switch_password,
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    f"UserKnownHostsFile={self.known_hosts_file}",
+                    f"{self.switch_user}@{switch_ip}",
+                    "nv show interface --output json",
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    # Parse Cumulus output
+                    ipl_data = self._parse_cumulus_lldp_for_ipl(result.stdout, switch_ip)
+                    
+                    # Deduplicate: only add if we haven't seen the reverse connection
+                    for conn in ipl_data:
+                        # Create a normalized key (always put lower IP first)
+                        sw1_ip = conn['switch1_ip']
+                        sw2_ip = conn['switch2_ip']
+                        port = conn['port_number']
+                        
+                        key = tuple(sorted([sw1_ip, sw2_ip]) + [port])
+                        
+                        if key not in seen_connections:
+                            seen_connections.add(key)
+                            ipl_connections.append(conn)
+                            self.logger.info(
+                                f"Found IPL: {conn['switch1_port']} ↔ {conn['switch2_port']}"
+                            )
+                else:
+                    self.logger.warning(
+                        f"Failed to get interface data from {switch_ip}: {result.stderr}"
+                    )
+                    
+            except Exception as e:
+                self.logger.error(f"Error collecting IPL from {switch_ip}: {e}")
+        
+        self.logger.info(
+            f"Collected {len(ipl_connections)} unique IPL connections "
+            f"({len(ipl_connections) * 2} total ports)"
+        )
+        return ipl_connections
+
+    def _parse_cumulus_lldp_for_ipl(
+        self, json_output: str, current_switch_ip: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Parse Cumulus 'nv show interface' JSON output to find IPL connections.
+        
+        Args:
+            json_output: JSON output from 'nv show interface'
+            current_switch_ip: IP of the switch we're querying
+            
+        Returns:
+            List of IPL connections found on this switch
+        """
+        import json
+        
+        ipl_connections = []
+        
+        try:
+            data = json.loads(json_output)
+            
+            # Look for swp29-32 (typical IPL ports)
+            for port_name in ['swp29', 'swp30', 'swp31', 'swp32']:
+                if port_name in data:
+                    port_data = data[port_name]
+                    
+                    # Check if this port has LLDP neighbor
+                    if 'lldp' in port_data and port_data['lldp']:
+                        lldp_data = port_data['lldp']
+                        
+                        # Look for neighbor information
+                        for neighbor_entry in lldp_data:
+                            if isinstance(neighbor_entry, dict):
+                                neighbor_port = neighbor_entry.get('port', {}).get('description', '')
+                                
+                                # If neighbor port matches (e.g., swp29 ↔ swp29)
+                                # this is likely an IPL connection
+                                if neighbor_port == port_name:
+                                    # Determine remote switch IP
+                                    remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+                                    
+                                    port_num = int(port_name.replace('swp', ''))
+                                    
+                                    ipl_connections.append({
+                                        'switch1_ip': current_switch_ip,
+                                        'switch1_port': port_name,
+                                        'switch2_ip': remote_switch_ip,
+                                        'switch2_port': neighbor_port,
+                                        'port_number': port_num
+                                    })
+                                    
+        except json.JSONDecodeError:
+            self.logger.warning("Failed to parse JSON from nv show interface")
+        except Exception as e:
+            self.logger.error(f"Error parsing LLDP data: {e}")
+            
+        return ipl_connections
+    
+    def _get_other_switch_ip(self, current_switch_ip: str) -> str:
+        """Get the IP of the other switch in the pair."""
+        for switch_ip in self.switch_ips:
+            if switch_ip != current_switch_ip:
+                return switch_ip
+        return "Unknown"
 
     def _correlate_node_to_switch(
         self,
