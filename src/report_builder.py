@@ -2893,35 +2893,22 @@ class VastReportBuilder:
                 is_cnode = "CN" in node_designation
                 is_unknown = "UNKNOWN" in node_designation.upper()
 
-                # Primary interface logic:
-                # - CNodes Network A: f0 (primary)
-                # - CNodes Network B: f1 (primary)
-                # - DNodes Network A: f0 (primary)
-                # - DNodes Network B: f2 (primary - first of bonded pair)
-                # - Unknown nodes: f0 for Net A, f1 for Net B (assume CNode pattern)
+                # Primary interface logic (simplified):
+                # Show ONLY f0 and f1 interfaces - these are the primary physical ports
+                # f0 = First physical NIC port
+                # f1 = Second physical NIC port
+                # f2/f3 = Bonded/virtual interfaces (skip these)
+                #
+                # Network assignment (A or B) is already correctly determined
+                # by which switch the connection is on, so we don't need to
+                # make assumptions about which interface goes to which network.
 
                 is_primary = False
-                if is_cnode:
-                    # CNodes: f0 for Net A, f1 for Net B
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f1" in interface:
-                        is_primary = True
-                elif is_dnode:
-                    # DNodes: f0 for Net A, f2 for Net B (use first of pair)
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f2" in interface:
-                        is_primary = True
-                elif is_unknown:
-                    # Unknown nodes: use standard pattern (f0=NetA, f1=NetB)
-                    # This works for both CNode and DNode patterns on f0/f1
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f1" in interface:
-                        is_primary = True
+                if "f0" in interface or "f1" in interface:
+                    # This is a primary physical interface
+                    is_primary = True
 
-                # Skip non-primary interfaces
+                # Skip non-primary interfaces (f2, f3, bonds, VLANs, etc.)
                 if not is_primary:
                     continue
 
