@@ -135,10 +135,10 @@ class NetworkDiagramGenerator:
             layer_height = (
                 height / 4
             )  # Divide into 4 layers (top margin, cbox, switch, dbox)
-            
+
             # Calculate max devices per row to determine sizing
             max_devices = max(len(cboxes), len(dboxes), 2)  # At least 2 for switches
-            
+
             # Dynamic device sizing - scale down as more devices are added
             # Base size for 3 or fewer devices, scale down for more
             # Sizes reduced by 50% to fit better within page borders
@@ -157,7 +157,9 @@ class NetworkDiagramGenerator:
             else:
                 # For 8+ devices, calculate to fit all within width
                 available_width = width * 0.9  # Use 90% of width
-                device_width = min(40, available_width / (max_devices * 1.3))  # Reduced from 80
+                device_width = min(
+                    40, available_width / (max_devices * 1.3)
+                )  # Reduced from 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
@@ -169,7 +171,7 @@ class NetworkDiagramGenerator:
             # Calculate dynamic font sizes based on device size
             label_font_size = max(8, int(device_width / 8))
             name_font_size = max(6, int(device_width / 11.5))
-            
+
             self.logger.info(
                 f"Dynamic sizing: device={device_width:.0f}x{device_height:.0f}, "
                 f"fonts={label_font_size}/{name_font_size}"
@@ -520,7 +522,7 @@ class NetworkDiagramGenerator:
         spacing: float,
     ) -> List[Tuple[float, float]]:
         """
-        Calculate evenly-spaced positions for devices.
+        Calculate evenly-spaced positions for devices with border checking.
 
         Args:
             count: Number of devices
@@ -535,16 +537,48 @@ class NetworkDiagramGenerator:
         if count == 0:
             return []
 
+        # Define minimum margin from canvas edge
+        min_margin = 10  # Minimum 10 points margin from edge
+
         # Calculate total width needed
         total_needed = count * device_width + (count - 1) * (spacing - device_width)
 
-        # Center the devices
-        start_x = (total_width - total_needed) / 2
+        # Calculate available width with margins
+        available_width = total_width - (2 * min_margin)
+
+        # If devices don't fit with current spacing, reduce spacing
+        if total_needed > available_width:
+            # Recalculate spacing to fit within borders
+            adjusted_spacing = (available_width - (count * device_width)) / (count - 1)
+            spacing = device_width + adjusted_spacing if count > 1 else device_width
+            total_needed = count * device_width + (count - 1) * (spacing - device_width)
+
+        # Center the devices with margin
+        start_x = min_margin + (available_width - total_needed) / 2
 
         positions = []
         for i in range(count):
             x = start_x + i * spacing
+            # Verify position is within bounds
+            if x < min_margin:
+                self.logger.warning(f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}")
+                x = min_margin
+            elif x + device_width > total_width - min_margin:
+                self.logger.warning(
+                    f"Device {i} adjusted: x={x:.1f}+width={device_width} > "
+                    f"max={total_width - min_margin}"
+                )
+                x = total_width - min_margin - device_width
             positions.append((x, y))
+
+        # Log final position range for verification
+        if positions:
+            min_x = min(p[0] for p in positions)
+            max_x = max(p[0] for p in positions) + device_width
+            self.logger.info(
+                f"Positioned {count} devices: x range [{min_x:.1f}, {max_x:.1f}] "
+                f"within canvas [0, {total_width}] with {min_margin}pt margins"
+            )
 
         return positions
 
@@ -578,7 +612,7 @@ class NetworkDiagramGenerator:
         """
         # Dynamic stroke width based on device size
         stroke_width = max(2, width / 40)
-        
+
         # Draw box
         box = Rect(
             x,
