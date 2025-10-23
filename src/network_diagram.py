@@ -253,6 +253,8 @@ class NetworkDiagramGenerator:
             # Draw node-to-switch connections
             for conn in port_map:
                 # Skip if not primary interface
+                # Show only f0 and f1 (primary physical ports)
+                # Network assignment is already correct from switch-based logic
                 interface = conn.get("interface", "")
                 network = conn.get("network", "?")
                 node_designation = conn.get("node_designation", "Unknown")
@@ -260,17 +262,10 @@ class NetworkDiagramGenerator:
                 is_dnode = "DN" in node_designation
                 is_cnode = "CN" in node_designation
 
+                # Only draw primary physical interfaces (f0 and f1)
                 is_primary = False
-                if is_cnode:
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f1" in interface:
-                        is_primary = True
-                elif is_dnode:
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f2" in interface:
-                        is_primary = True
+                if "f0" in interface or "f1" in interface:
+                    is_primary = True
 
                 if not is_primary:
                     continue
