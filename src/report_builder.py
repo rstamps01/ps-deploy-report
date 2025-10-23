@@ -2948,50 +2948,43 @@ class VastReportBuilder:
                     [port_display, node_display, network, speed, notes_str]
                 )
 
-            # Add IPL/MLAG ports to this switch's table
-            ipl_ports = port_mapping_data.get("ipl_ports", [])
-            if ipl_ports:
-                # Determine switch designation (SWA or SWB) based on switch_num
-                source_switch_des = "SWA" if switch_num == 1 else "SWB"
-                dest_switch_des = "SWB" if switch_num == 1 else "SWA"
-
-                # Filter IPL ports for this switch
-                for ipl_port in ipl_ports:
-                    # Check if this IPL port belongs to current switch
-                    switch_name = ipl_port.get("switch", "")
-                    port_name = ipl_port.get("port", "")
-
-                    # Extract switch hostname from the switch string
-                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
-                    if "se-var-1-1" in switch_name and switch_num == 1:
-                        # This is switch 1
-                        pass
-                    elif "se-var-1-2" in switch_name and switch_num == 2:
-                        # This is switch 2
-                        pass
-                    else:
-                        # Not for this switch
-                        continue
-
-                    # Extract port number from port_name (e.g., "swp29" -> "29")
-                    port_num = port_name.replace("swp", "")
-
-                    # Format: SWA-P29 -> SWB-P29
-                    source_port = f"{source_switch_des}-P{port_num}"
-                    dest_port = f"{dest_switch_des}-P{port_num}"
-
-                    # Get speed
-                    speed = ipl_port.get("speed", "Unknown")
-
-                    # Network is A/B (alternating or both - using A/B to indicate both networks)
-                    network_display = "A/B"
-
-                    # Notes
-                    notes_str = "IPL/MLAG"
-
-                    table_data.append(
-                        [source_port, dest_port, network_display, speed, notes_str]
-                    )
+            # Add IPL/MLAG connections to this switch's table
+            # Use the new deduplicated ipl_connections format
+            ipl_connections = port_mapping_data.get("ipl_connections", [])
+            if ipl_connections:
+                # Add IPL connections for this switch
+                for ipl_conn in ipl_connections:
+                    # ipl_conn format:
+                    # {
+                    #   'switch_designation': 'SWA-P29',
+                    #   'node_designation': 'SWB-P29',
+                    #   'notes': 'IPL',
+                    #   'connection_type': 'IPL',
+                    #   ...
+                    # }
+                    
+                    # Only add if this connection involves current switch
+                    switch_des = ipl_conn.get('switch_designation', '')
+                    
+                    # Extract switch letter from designation (SWA-P29 -> A, SWB-P29 -> B)
+                    if 'SWA' in switch_des and switch_num == 1:
+                        # This IPL is on Switch 1
+                        table_data.append([
+                            ipl_conn.get('switch_designation'),  # SWA-P29
+                            ipl_conn.get('node_designation'),    # SWB-P29
+                            "A/B",                                # Network (both)
+                            "100G",                               # Speed
+                            ipl_conn.get('notes', 'IPL')        # IPL
+                        ])
+                    elif 'SWB' in switch_des and switch_num == 2:
+                        # This IPL is on Switch 2
+                        table_data.append([
+                            ipl_conn.get('switch_designation'),  # SWB-P29
+                            ipl_conn.get('node_designation'),    # SWA-P29
+                            "A/B",                                # Network (both)
+                            "100G",                               # Speed
+                            ipl_conn.get('notes', 'IPL')        # IPL
+                        ])
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
