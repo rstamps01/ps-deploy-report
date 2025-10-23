@@ -159,6 +159,9 @@ secrets.yaml
 # Development reports (not tracked in git)
 reports/development_reports/
 
+# SSH workspace for known_hosts (not tracked in git)
+.ssh_workspace/
+
 # Documentation with credentials/passwords (keep local only)
 CLUSH_PTY_ISSUE_ANALYSIS.md
 ONYX_SUPPORT_IMPLEMENTATION_COMPLETE.md
