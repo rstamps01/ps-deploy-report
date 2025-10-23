@@ -97,11 +97,19 @@ class RackDiagram:
         """
         image_map = {
             "supermicro_gen5_cbox": HARDWARE_IMAGE_DIR / "supermicro_gen5_cbox_1u.png",
+            "broadwell": HARDWARE_IMAGE_DIR
+            / "broadwell_cbox_2u.png",  # Broadwell 2U CBox
+            "cascadelake": HARDWARE_IMAGE_DIR
+            / "cascadelake_cbox_2u.png",  # CascadeLake 2U CBox
             "ceres_v2": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
             "dbox-515": HARDWARE_IMAGE_DIR
             / "ceres_v2_1u.png",  # Map dbox-515 to ceres_v2 image
+            "sanmina": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",  # Sanmina 1U DBox
+            "maverick_1.5": HARDWARE_IMAGE_DIR / "maverick_2u.png",  # Maverick 2U DBox
             "msn3700-vs2fc": HARDWARE_IMAGE_DIR
-            / "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox switch
+            / "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
+            "msn2100-cb2f": HARDWARE_IMAGE_DIR
+            / "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
             # Add more hardware models as images become available
         }
 
@@ -157,12 +165,18 @@ class RackDiagram:
         one_u_models = [
             "supermicro_gen5_cbox",
             "ceres_v2",
+            "sanmina",  # Sanmina 1U DBox
+            "msn3700-vs2fc",  # Mellanox MSN3700 switch
+            "msn2100-cb2f",  # Mellanox MSN2100 switch
         ]
 
         # 2U devices (add patterns as needed)
         two_u_models = [
             "supermicro_2u_cbox",
+            "broadwell",  # Broadwell 2U CBox
+            "cascadelake",  # CascadeLake 2U CBox
             "ceres_4u",  # Example, may need adjustment
+            "maverick_1.5",  # Maverick 2U DBox
         ]
 
         model_lower = model.lower() if model else ""
@@ -688,14 +702,28 @@ class RackDiagram:
                 drawing, "dbox", device_id, u_position, u_height, model, status
             )
 
-        # Place Switches at calculated positions
-        if switches and switch_positions_map:
+        # Place Switches at calculated or explicit positions
+        if switches:
             for switch_num, switch in enumerate(switches, start=1):
-                if switch_num in switch_positions_map:
-                    u_position = switch_positions_map[switch_num]
-                    model = switch.get("model", "switch")
-                    status = switch.get("state", "ACTIVE")
+                model = switch.get("model", "switch")
+                status = switch.get("state", "ACTIVE")
 
+                # Check if switch has explicit rack_unit position
+                explicit_position = switch.get("rack_unit", "")
+
+                if explicit_position:
+                    # Use explicit position for switch
+                    u_position = self._parse_rack_position(explicit_position)
+                    if u_position > 0:
+                        logger.info(
+                            f"Placing switch {switch_num} at explicit position U{u_position} (model: {model})"
+                        )
+                        self._create_device_representation(
+                            drawing, "switch", switch_num, u_position, 1, model, status
+                        )
+                elif switch_positions_map and switch_num in switch_positions_map:
+                    # Use calculated position
+                    u_position = switch_positions_map[switch_num]
                     self._create_device_representation(
                         drawing, "switch", switch_num, u_position, 1, model, status
                     )

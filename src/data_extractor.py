@@ -1743,26 +1743,38 @@ class VastDataExtractor:
                 vnetmap_data["topology"]
             )
 
-            # Collect IPL/MLAG port information from switches
+            # Collect IPL/MLAG port information
             ipl_ports = []
-            switch_ports = raw_data.get("switch_ports", [])
-            for port in switch_ports:
-                port_name = port.get("name", "")
-                speed = port.get("speed", "")
-                if enhanced_mapper.is_ipl_port(port_name, speed):
-                    switch_ip = port.get("switch", "")
-                    # Extract switch IP from switch string if needed
-                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
 
+            # If using external data, get IPL connections from it
+            if use_external and "ipl_connections" in external_data:
+                ipl_connections = external_data["ipl_connections"]
+                for ipl in ipl_connections:
                     ipl_ports.append(
                         {
-                            "port": port_name,
-                            "switch": port.get("switch", "Unknown"),
-                            "speed": speed,
-                            "state": port.get("state", "Unknown"),
-                            "mtu": port.get("mtu", "Unknown"),
+                            "port": ipl.get("local_port"),
+                            "switch_ip": ipl.get("switch_ip"),
+                            "remote_host": ipl.get("remote_host"),
+                            "remote_port": ipl.get("remote_port"),
+                            "connection_type": ipl.get("connection_type", "IPL"),
                         }
                     )
+            else:
+                # Fallback to old method for file-based data
+                switch_ports = raw_data.get("switch_ports", [])
+                for port in switch_ports:
+                    port_name = port.get("name", "")
+                    speed = port.get("speed", "")
+                    if enhanced_mapper.is_ipl_port(port_name, speed):
+                        ipl_ports.append(
+                            {
+                                "port": port_name,
+                                "switch": port.get("switch", "Unknown"),
+                                "speed": speed,
+                                "state": port.get("state", "Unknown"),
+                                "mtu": port.get("mtu", "Unknown"),
+                            }
+                        )
 
             # Organize port map by switch
             connections_by_switch = parser.get_connections_by_switch()

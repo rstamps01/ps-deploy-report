@@ -65,9 +65,14 @@ class NetworkDiagramGenerator:
         # Map hardware types to image files
         image_map = {
             "supermicro_gen5_cbox": "supermicro_gen5_cbox_1u.png",
+            "broadwell": "broadwell_cbox_2u.png",  # Broadwell 2U CBox
+            "cascadelake": "cascadelake_cbox_2u.png",  # CascadeLake 2U CBox
             "ceres_v2": "ceres_v2_1u.png",
             "dbox-515": "ceres_v2_1u.png",
-            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",
+            "sanmina": "ceres_v2_1u.png",  # Sanmina 1U DBox
+            "maverick_1.5": "maverick_2u.png",  # Maverick 2U DBox
+            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
+            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
         }
 
         # Find matching image
@@ -272,9 +277,20 @@ class NetworkDiagramGenerator:
                     continue
 
                 # Get switch position
-                if switch_num not in switch_positions:
-                    continue
-                switch_x, switch_y_pos = switch_positions[switch_num]
+                # For MSN2100 switches (side-by-side), both switches use position 1
+                msn2100_switches = [
+                    s for s in switches if "msn2100" in s.get("model", "").lower()
+                ]
+                if len(msn2100_switches) >= 2:
+                    # Both switches connect to the single MSN2100 image at position 1
+                    if 1 not in switch_positions:
+                        continue
+                    switch_x, switch_y_pos = switch_positions[1]
+                else:
+                    # Normal case: use the specific switch position
+                    if switch_num not in switch_positions:
+                        continue
+                    switch_x, switch_y_pos = switch_positions[switch_num]
 
                 # Determine node position
                 if is_cnode:
@@ -315,22 +331,60 @@ class NetworkDiagramGenerator:
                 connection_group.add(line)
 
             # Draw IPL/MLAG connections between switches
-            if len(switches) >= 2:
+            if len(switches) >= 2 and ipl_ports:
                 sw1_x, sw1_y = switch_positions[1]
                 sw2_x, sw2_y = switch_positions[2]
 
-                # Draw 4 IPL lines (representing swp29-32)
-                for i in range(4):
-                    offset = (i - 1.5) * 10  # Spread lines vertically (doubled spacing)
-                    line = Line(
-                        sw1_x,
-                        sw1_y + device_height / 2 + offset,
-                        sw2_x + device_width,
-                        sw2_y + device_height / 2 + offset,
-                        strokeColor=self.ipl_color,
-                        strokeWidth=4,  # Doubled from 2
+                # Count IPL connections per switch
+                # Group by source switch to avoid drawing duplicates
+                ipl_by_switch = {}
+                for ipl in ipl_ports:
+                    switch_ip = ipl.get("switch_ip", "")
+                    if switch_ip not in ipl_by_switch:
+                        ipl_by_switch[switch_ip] = []
+                    ipl_by_switch[switch_ip].append(ipl)
+
+                # Get one set of IPL connections (they're bidirectional, so only need one side)
+                ipl_connections = (
+                    list(ipl_by_switch.values())[0] if ipl_by_switch else []
+                )
+                num_ipl_lines = len(ipl_connections)
+
+                if num_ipl_lines > 0:
+                    self.logger.info(
+                        f"Drawing {num_ipl_lines} IPL connections between switches"
                     )
-                    connection_group.add(line)
+
+                    # Draw IPL lines without labels
+                    for i, ipl in enumerate(ipl_connections):
+                        offset = (
+                            i - (num_ipl_lines - 1) / 2
+                        ) * 10  # Center lines vertically
+                        line = Line(
+                            sw1_x,
+                            sw1_y + device_height / 2 + offset,
+                            sw2_x + device_width,
+                            sw2_y + device_height / 2 + offset,
+                            strokeColor=self.ipl_color,
+                            strokeWidth=4,
+                        )
+                        connection_group.add(line)
+                else:
+                    # Fallback: Draw generic IPL lines if no specific connections discovered
+                    self.logger.info(
+                        "No specific IPL connections found, drawing generic IPL representation"
+                    )
+                    for i in range(4):
+                        offset = (i - 1.5) * 10
+                        line = Line(
+                            sw1_x,
+                            sw1_y + device_height / 2 + offset,
+                            sw2_x + device_width,
+                            sw2_y + device_height / 2 + offset,
+                            strokeColor=self.ipl_color,
+                            strokeWidth=4,
+                        )
+                        connection_group.add(line)
 
             drawing.add(connection_group)
 
@@ -341,6 +395,10 @@ class NetworkDiagramGenerator:
             for idx, cbox in enumerate(cboxes):
                 if idx < len(cbox_positions):
                     x, y = cbox_positions[idx]
+                    # Get actual CBox model from hardware data
+                    cbox_model = cbox.get(
+                        "model", cbox.get("hardware_type", "supermicro_gen5_cbox")
+                    )
                     self._draw_device(
                         device_group,
                         x,
@@ -349,33 +407,65 @@ class NetworkDiagramGenerator:
                         device_height,
                         f"CB{idx + 1}",
                         cbox.get("name", "CBox"),
-                        "supermicro_gen5_cbox",
+                        cbox_model,  # Use actual model instead of hardcoded
                         label_font_size,
                         name_font_size,
                     )
 
             # Draw Switches
-            for switch_num, (x, y) in switch_positions.items():
-                if switch_num <= len(switches):
-                    switch = switches[switch_num - 1]
-                    switch_name = f"SW{'A' if switch_num == 1 else 'B'}"
+            # Check if we have MSN2100 switches (side-by-side representation)
+            msn2100_switches = [
+                s for s in switches if "msn2100" in s.get("model", "").lower()
+            ]
+
+            if len(msn2100_switches) >= 2:
+                # Special case: MSN2100-CB2F represents BOTH switches in single image
+                # Only draw switch 1, which represents both switches side-by-side
+                if 1 in switch_positions:
+                    x, y = switch_positions[1]
                     self._draw_device(
                         device_group,
                         x,
                         y,
                         device_width,
                         device_height,
-                        switch_name,
-                        switch.get("hostname", "Switch"),
-                        "msn3700-vs2fc",
+                        "SWA/SWB",  # Label showing both switches
+                        "MSN2100 Pair",
+                        "MSN2100-CB2F",  # Use the side-by-side image
                         label_font_size,
                         name_font_size,
                     )
+            else:
+                # Normal case: Draw each switch separately with its actual model
+                for switch_num, (x, y) in switch_positions.items():
+                    if switch_num <= len(switches):
+                        switch = switches[switch_num - 1]
+                        switch_name = f"SW{'A' if switch_num == 1 else 'B'}"
+                        # Get actual switch model from hardware data
+                        switch_model = switch.get(
+                            "model", switch.get("hardware_type", "msn3700-vs2fc")
+                        )
+                        self._draw_device(
+                            device_group,
+                            x,
+                            y,
+                            device_width,
+                            device_height,
+                            switch_name,
+                            switch.get("hostname", "Switch"),
+                            switch_model,  # Use actual model instead of hardcoded
+                            label_font_size,
+                            name_font_size,
+                        )
 
             # Draw DBoxes
             for idx, dbox in enumerate(dboxes):
                 if idx < len(dbox_positions):
                     x, y = dbox_positions[idx]
+                    # Get actual DBox model from hardware data
+                    dbox_model = dbox.get(
+                        "model", dbox.get("hardware_type", "ceres_v2")
+                    )
                     self._draw_device(
                         device_group,
                         x,
@@ -384,7 +474,7 @@ class NetworkDiagramGenerator:
                         device_height,
                         f"DB{idx + 1}",
                         dbox.get("name", "DBox"),
-                        "ceres_v2",
+                        dbox_model,  # Use actual model instead of hardcoded "ceres_v2"
                         label_font_size,
                         name_font_size,
                     )
