@@ -141,22 +141,23 @@ class NetworkDiagramGenerator:
             
             # Dynamic device sizing - scale down as more devices are added
             # Base size for 3 or fewer devices, scale down for more
+            # Sizes reduced by 50% to fit better within page borders
             if max_devices <= 3:
-                device_width = 160
-                device_height = 80
+                device_width = 80  # Reduced from 160
+                device_height = 40  # Reduced from 80
                 base_spacing = 300
             elif max_devices <= 5:
-                device_width = 120
-                device_height = 60
+                device_width = 60  # Reduced from 120
+                device_height = 30  # Reduced from 60
                 base_spacing = 220
             elif max_devices <= 7:
-                device_width = 100
-                device_height = 50
+                device_width = 50  # Reduced from 100
+                device_height = 25  # Reduced from 50
                 base_spacing = 160
             else:
                 # For 8+ devices, calculate to fit all within width
                 available_width = width * 0.9  # Use 90% of width
-                device_width = min(80, available_width / (max_devices * 1.3))
+                device_width = min(40, available_width / (max_devices * 1.3))  # Reduced from 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
