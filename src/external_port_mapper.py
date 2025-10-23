@@ -16,8 +16,161 @@ import logging
 import re
 import subprocess
 from typing import Any, Dict, List, Tuple
+from datetime import datetime
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+class VerboseLogger:
+    """Dedicated verbose logger for external port mapper debugging with color-coded output."""
+    
+    # ANSI color codes
+    BLUE = '\033[94m'      # For operations/commands
+    GREEN = '\033[92m'     # For successful responses
+    RED = '\033[91m'       # For errors
+    YELLOW = '\033[93m'    # For warnings
+    CYAN = '\033[96m'      # For function calls
+    MAGENTA = '\033[95m'   # For data/responses
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    def __init__(self, log_file: str = None):
+        if log_file is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file = f"logs/external_port_mapper_verbose_{timestamp}.log"
+        
+        self.log_file = Path(log_file)
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Clear existing log
+        with open(self.log_file, 'w') as f:
+            f.write(f"{self.BOLD}{'='*80}{self.RESET}\n")
+            f.write(f"{self.BOLD}{self.CYAN}EXTERNAL PORT MAPPER VERBOSE LOG{self.RESET}\n")
+            f.write(f"{self.BOLD}Started: {datetime.now().isoformat()}{self.RESET}\n")
+            f.write(f"{self.BOLD}{'='*80}{self.RESET}\n\n")
+            f.write(f"COLOR LEGEND:\n")
+            f.write(f"  {self.CYAN}CYAN    = Function calls and sections{self.RESET}\n")
+            f.write(f"  {self.BLUE}BLUE    = Commands and operations{self.RESET}\n")
+            f.write(f"  {self.GREEN}GREEN   = Successful responses{self.RESET}\n")
+            f.write(f"  {self.MAGENTA}MAGENTA = Data and output{self.RESET}\n")
+            f.write(f"  {self.YELLOW}YELLOW  = Warnings{self.RESET}\n")
+            f.write(f"  {self.RED}RED     = Errors{self.RESET}\n")
+            f.write(f"\n{'='*80}\n\n")
+    
+    def log(self, message: str, color: str = ""):
+        """Write message to log file with timestamp and optional color."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        with open(self.log_file, 'a') as f:
+            if color:
+                f.write(f"[{timestamp}] {color}{message}{self.RESET}\n")
+            else:
+                f.write(f"[{timestamp}] {message}\n")
+    
+    def log_function_enter(self, function_name: str, **kwargs):
+        """Log function entry with parameters."""
+        self.log(f"\n{'▶'*40}", self.CYAN)
+        self.log(f"ENTERING FUNCTION: {function_name}", self.CYAN + self.BOLD)
+        if kwargs:
+            self.log(f"Parameters:", self.CYAN)
+            for key, value in kwargs.items():
+                self.log(f"  {key}: {value}", self.CYAN)
+        self.log(f"{'▶'*40}\n", self.CYAN)
+    
+    def log_function_exit(self, function_name: str, result_summary: str = None):
+        """Log function exit with optional result summary."""
+        self.log(f"\n{'◀'*40}", self.CYAN)
+        self.log(f"EXITING FUNCTION: {function_name}", self.CYAN + self.BOLD)
+        if result_summary:
+            self.log(f"Result: {result_summary}", self.CYAN)
+        self.log(f"{'◀'*40}\n", self.CYAN)
+    
+    def log_operation(self, operation: str):
+        """Log an operation being performed."""
+        self.log(f"\n>>> OPERATION: {operation}", self.BLUE + self.BOLD)
+    
+    def log_command(self, cmd: list, label: str = "COMMAND"):
+        """Log command details."""
+        self.log(f"\n{self.BLUE}{'-'*80}{self.RESET}")
+        self.log(f"🔧 {label}", self.BLUE + self.BOLD)
+        self.log(f"  Command array:", self.BLUE)
+        for i, elem in enumerate(cmd):
+            # Mask passwords
+            display_elem = "***MASKED***" if i > 0 and cmd[i-1] == "-p" else elem
+            self.log(f"    [{i}] {display_elem}", self.BLUE)
+        # Create full command string with masked password
+        cmd_str_parts = []
+        for i, elem in enumerate(cmd):
+            if i > 0 and cmd[i-1] == "-p":
+                cmd_str_parts.append("***MASKED***")
+            else:
+                cmd_str_parts.append(elem)
+        self.log(f"  Full command: {' '.join(cmd_str_parts)}", self.BLUE)
+        self.log(f"{'-'*80}\n", self.BLUE)
+    
+    def log_response(self, response_type: str, content: str, success: bool = True):
+        """Log a response from target system."""
+        color = self.GREEN if success else self.RED
+        self.log(f"\n📨 RESPONSE: {response_type}", color + self.BOLD)
+        self.log(f"{'='*80}", color)
+        for line in content.split('\n')[:50]:  # Limit to first 50 lines
+            if line.strip():
+                self.log(f"  {line}", self.MAGENTA)
+        self.log(f"{'='*80}\n", color)
+    
+    def log_result(self, result, label: str = "RESULT"):
+        """Log subprocess result details with color coding."""
+        success = result.returncode == 0
+        color = self.GREEN if success else self.RED
+        
+        self.log(f"\n{color}{'-'*80}{self.RESET}")
+        self.log(f"📊 {label}", color + self.BOLD)
+        self.log(f"  Return code: {result.returncode} {'✓' if success else '✗'}", color)
+        self.log(f"  STDOUT length: {len(result.stdout)} bytes", color)
+        self.log(f"  STDERR length: {len(result.stderr)} bytes", color)
+        
+        if result.stdout:
+            self.log(f"\n  STDOUT OUTPUT:", self.GREEN + self.BOLD)
+            self.log(f"  {'-'*76}", self.GREEN)
+            for line in result.stdout.split('\n')[:100]:  # First 100 lines
+                if line.strip():
+                    self.log(f"  {line}", self.MAGENTA)
+            if len(result.stdout.split('\n')) > 100:
+                self.log(f"  ... ({len(result.stdout.split('\n')) - 100} more lines)", self.GREEN)
+            self.log(f"  {'-'*76}", self.GREEN)
+        
+        if result.stderr:
+            self.log(f"\n  STDERR OUTPUT:", self.RED + self.BOLD)
+            self.log(f"  {'-'*76}", self.RED)
+            for line in result.stderr.split('\n'):
+                if line.strip():
+                    self.log(f"  {line}", self.RED)
+            self.log(f"  {'-'*76}", self.RED)
+        
+        self.log(f"{'-'*80}\n", color)
+    
+    def log_error(self, error_msg: str, exception: Exception = None):
+        """Log an error with details."""
+        self.log(f"\n❌ ERROR: {error_msg}", self.RED + self.BOLD)
+        if exception:
+            self.log(f"Exception type: {type(exception).__name__}", self.RED)
+            self.log(f"Exception message: {str(exception)}", self.RED)
+    
+    def log_warning(self, warning_msg: str):
+        """Log a warning."""
+        self.log(f"⚠️  WARNING: {warning_msg}", self.YELLOW)
+    
+    def log_data(self, data_type: str, data: dict, max_items: int = 10):
+        """Log data structures."""
+        self.log(f"\n📦 DATA: {data_type}", self.MAGENTA + self.BOLD)
+        self.log(f"  Type: {type(data).__name__}", self.MAGENTA)
+        self.log(f"  Size: {len(data)} items", self.MAGENTA)
+        if isinstance(data, dict):
+            for i, (key, value) in enumerate(list(data.items())[:max_items]):
+                self.log(f"  [{key}] = {str(value)[:100]}", self.MAGENTA)
+            if len(data) > max_items:
+                self.log(f"  ... ({len(data) - max_items} more items)", self.MAGENTA)
+        self.log("")
 
 
 class ExternalPortMapper:
@@ -67,6 +220,16 @@ class ExternalPortMapper:
         self.switch_user = switch_user
         self.switch_password = switch_password
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize verbose logger
+        self.vlog = VerboseLogger()
+        self.vlog.log(f"ExternalPortMapper initialized")
+        self.vlog.log(f"  Cluster IP: {cluster_ip}")
+        self.vlog.log(f"  CNode IP: {cnode_ip}")
+        self.vlog.log(f"  Node user: {node_user}")
+        self.vlog.log(f"  Switch IPs: {switch_ips}")
+        self.vlog.log(f"  Switch user: {switch_user}")
+        print(f"\n✅ Verbose logging enabled: {self.vlog.log_file}\n")
 
     def collect_port_mapping(self) -> Dict[str, Any]:
         """
@@ -81,6 +244,7 @@ class ExternalPortMapper:
         """
         try:
             self.logger.info("Starting external port mapping collection")
+            self.vlog.log_function_enter("collect_port_mapping")
 
             # Step 1: Collect node inventory via Basic Auth API
             node_inventory = self._collect_node_inventory_basic_auth()
@@ -218,6 +382,9 @@ class ExternalPortMapper:
         """
         try:
             self.logger.info("Collecting hostname to IP mapping via clush")
+            self.vlog.log_function_enter("_collect_hostname_to_ip_mapping", 
+                                        cnode_ip=self.cnode_ip,
+                                        node_user=self.node_user)
 
             # SSH to CNode and run clush to get all node hostnames
             cmd = [
@@ -233,12 +400,30 @@ class ExternalPortMapper:
                 "clush -a hostname",
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Verbose logging
+            self.vlog.log_operation("Collecting hostname to IP mapping via clush")
+            self.vlog.log_command(cmd, "CLUSH HOSTNAME COMMAND")
+            
+            # Try with explicit environment to ensure PATH and other vars are available
+            import os
+
+            env = os.environ.copy()
+            self.vlog.log(f"subprocess.run() parameters: capture_output=True, text=True, timeout=30, env={len(env)} vars", self.vlog.BLUE)
+            
+            self.vlog.log("\nExecuting command...", self.vlog.BLUE)
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=30, env=env
+            )
+
+            # Log result
+            self.vlog.log_result(result, "CLUSH HOSTNAME RESULT")
 
             if result.returncode != 0:
+                self.vlog.log_error("clush hostname command failed", Exception(result.stderr))
                 raise Exception(f"clush hostname command failed: {result.stderr}")
 
             # Parse output: "172.16.3.4: se-az-arrow-cb2-cn-1"
+            self.vlog.log_operation("Parsing hostname to IP mapping from clush output")
             hostname_to_ip = {}
             for line in result.stdout.split("\n"):
                 match = re.match(r"^([\d.]+):\s+(.+)$", line.strip())
@@ -247,11 +432,17 @@ class ExternalPortMapper:
                     hostname = match.group(2).strip()
                     hostname_to_ip[hostname] = data_ip
                     self.logger.debug(f"Mapped {hostname} → {data_ip}")
+                    self.vlog.log(f"  Mapped: {hostname} → {data_ip}", self.vlog.MAGENTA)
 
+            self.vlog.log_data("hostname_to_ip", hostname_to_ip)
+            self.vlog.log_function_exit("_collect_hostname_to_ip_mapping", 
+                                       f"Collected {len(hostname_to_ip)} mappings")
             return hostname_to_ip
 
         except Exception as e:
             self.logger.error(f"Error collecting hostname to IP mapping: {e}")
+            self.vlog.log_error("Failed to collect hostname to IP mapping", e)
+            self.vlog.log_function_exit("_collect_hostname_to_ip_mapping", "FAILED")
             return {}
 
     def _collect_node_macs_via_clush(self) -> Dict[str, Dict[str, str]]:
@@ -361,7 +552,6 @@ class ExternalPortMapper:
                     "StrictHostKeyChecking=no",
                     "-o",
                     "UserKnownHostsFile=/dev/null",
-                    "-T",  # Disable PTY allocation for non-interactive commands
                     f"{self.switch_user}@{switch_ip}",
                     "nv show bridge domain br_default mac-table",
                 ]
