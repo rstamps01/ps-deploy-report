@@ -229,7 +229,6 @@ class ExternalPortMapper:
                 "StrictHostKeyChecking=no",
                 "-o",
                 "UserKnownHostsFile=/dev/null",
-                "-T",  # Disable PTY allocation for non-interactive commands
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a hostname",
             ]
@@ -279,7 +278,6 @@ class ExternalPortMapper:
                 "StrictHostKeyChecking=no",
                 "-o",
                 "UserKnownHostsFile=/dev/null",
-                "-T",  # Disable PTY allocation for non-interactive commands
                 f"{self.node_user}@{self.cnode_ip}",
                 "clush -a 'ip link show'",
             ]
