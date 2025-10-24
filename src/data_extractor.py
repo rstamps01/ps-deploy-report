@@ -76,6 +76,9 @@ class ClusterSummary:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
+    capacity_base_10: Optional[bool] = (
+        None  # Capacity display format (True=TB, False=TiB)
+    )
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -222,6 +225,7 @@ class VastDataExtractor:
                     "enable_rack_level_resiliency"
                 ),
                 disable_metrics=cluster_info.get("disable_metrics"),
+                capacity_base_10=cluster_info.get("capacity_base_10"),
                 # Storage capacity and usage metrics
                 usable_capacity_tb=cluster_info.get("usable_capacity_tb"),
                 free_usable_capacity_tb=cluster_info.get("free_usable_capacity_tb"),
@@ -1778,17 +1782,48 @@ class VastDataExtractor:
                     vnetmap_data["topology"]
                 )
 
-            # Collect IPL/MLAG port information from switches
+            # Collect IPL/MLAG connections from external port mapper
+            # Format IPL connections for port mapping table
+            # Format: SWA-P29 / SWB-P29 / IPL
+            ipl_formatted = []
+            if "ipl_connections" in external_data:
+                for ipl in external_data["ipl_connections"]:
+                    # Get switch designations
+                    sw1_ip = ipl["switch1_ip"]
+                    sw2_ip = ipl["switch2_ip"]
+                    sw1_port = ipl["switch1_port"]
+                    sw2_port = ipl["switch2_port"]
+
+                    # Generate switch designations
+                    sw1_designation = enhanced_mapper.generate_switch_designation(
+                        sw1_ip, sw1_port
+                    )
+                    sw2_designation = enhanced_mapper.generate_switch_designation(
+                        sw2_ip, sw2_port
+                    )
+
+                    # Format as node connection entry for inclusion in port map table
+                    # Switch Port = SWA-P29, Node Connection = SWB-P29, Notes = IPL
+                    ipl_formatted.append(
+                        {
+                            "switch_designation": sw1_designation,
+                            "node_designation": sw2_designation,
+                            "notes": "IPL",
+                            "connection_type": "IPL",
+                            "switch1_ip": sw1_ip,
+                            "switch2_ip": sw2_ip,
+                            "switch1_port": sw1_port,
+                            "switch2_port": sw2_port,
+                        }
+                    )
+
+            # Legacy IPL port collection (for backward compatibility)
             ipl_ports = []
             switch_ports = raw_data.get("switch_ports", [])
             for port in switch_ports:
                 port_name = port.get("name", "")
                 speed = port.get("speed", "")
                 if enhanced_mapper.is_ipl_port(port_name, speed):
-                    switch_ip = port.get("switch", "")
-                    # Extract switch IP from switch string if needed
-                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
-
                     ipl_ports.append(
                         {
                             "port": port_name,
@@ -1817,6 +1852,10 @@ class VastDataExtractor:
                     else f"{enhanced_data['cross_connection_count']} cross-connections detected"
                 )
 
+            # Get IPL counts from external data
+            total_ipl_connections = external_data.get("total_ipl_connections", 0)
+            total_ipl_ports = external_data.get("total_ipl_ports", len(ipl_ports))
+
             processed_data = {
                 "available": True,
                 "port_map": enhanced_data["port_map"],
@@ -1826,13 +1865,16 @@ class VastDataExtractor:
                 "cross_connection_summary": cross_connection_summary,
                 "cross_connection_count": enhanced_data["cross_connection_count"],
                 "total_connections": enhanced_data["total_connections"],
-                "ipl_ports": ipl_ports,
-                "total_ipl_ports": len(ipl_ports),
+                "ipl_connections": ipl_formatted,  # Use formatted IPL connections
+                "ipl_ports": ipl_ports,  # Legacy format for backward compatibility
+                "total_ipl_connections": total_ipl_connections,  # Unique connections
+                "total_ipl_ports": total_ipl_ports,  # Total ports (connections * 2)
                 "data_source": "External SSH collection (clush + switch CLI)",
                 "designation_format": {
                     "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
                     "switch_side": "SWA-P12 (Switch-1/Port-12)",
                     "port_mapping": "R = Network A (Port-A), L = Network B (Port-B)",
+                    "ipl_format": "SWA-P29 / SWB-P29 / IPL",
                 },
             }
 
@@ -1850,7 +1892,7 @@ class VastDataExtractor:
             self.logger.info(
                 f"Enhanced port mapping extracted: {len(enhanced_data['port_map'])} connections, "
                 f"{enhanced_data['cross_connection_count']} cross-connections, "
-                f"{len(ipl_ports)} IPL ports"
+                f"{total_ipl_connections} IPL connections using {total_ipl_ports} ports"
             )
             return section
 

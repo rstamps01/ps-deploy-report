@@ -889,6 +889,15 @@ class VastReportBuilder:
         online_start_time = cluster_info.get("online_start_time", "Unknown")
         deployment_time = cluster_info.get("deployment_time", "Unknown")
 
+        # Get capacity display format
+        capacity_base_10 = cluster_info.get("capacity_base_10", None)
+        if capacity_base_10 is True:
+            capacity_format = "True"
+        elif capacity_base_10 is False:
+            capacity_format = "False"
+        else:
+            capacity_format = "Unknown"
+
         cluster_overview_data = [
             ["ID", cluster_id],
             ["Name", cluster_name],
@@ -900,6 +909,7 @@ class VastReportBuilder:
             ["Uptime", uptime],
             ["Online Since", online_start_time],
             ["Deployed", deployment_time],
+            ["Capacity-Base 10", capacity_format],
         ]
 
         # Create cluster overview table with same style as Cluster Information
@@ -1282,19 +1292,24 @@ class VastReportBuilder:
             # Storage capacity table
             storage_data = []
 
+            # Determine capacity unit based on capacity_base_10 setting
+            capacity_unit = (
+                "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
+            )
+
             # Usable capacity section
             if cluster_info.get("usable_capacity_tb") is not None:
                 storage_data.append(
                     [
                         "Usable Capacity",
-                        f"{round(cluster_info.get('usable_capacity_tb', 0))} TB",
+                        f"{round(cluster_info.get('usable_capacity_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_usable_capacity_tb") is not None:
                 storage_data.append(
                     [
                         "Free Usable Capacity",
-                        f"{round(cluster_info.get('free_usable_capacity_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_usable_capacity_tb', 0))} {capacity_unit}",
                     ]
                 )
             if (
@@ -1313,21 +1328,21 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Physical Space",
-                        f"{round(cluster_info.get('physical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('physical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Physical Space In Use",
-                        f"{round(cluster_info.get('physical_space_in_use_tb', 0))} TB",
+                        f"{round(cluster_info.get('physical_space_in_use_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_physical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Physical Space",
-                        f"{round(cluster_info.get('free_physical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_physical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_percent") is not None:
@@ -1343,21 +1358,21 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Logical Space",
-                        f"{round(cluster_info.get('logical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('logical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Logical Space In Use",
-                        f"{round(cluster_info.get('logical_space_in_use_tb', 0))} TB",
+                        f"{round(cluster_info.get('logical_space_in_use_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_logical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Logical Space",
-                        f"{round(cluster_info.get('free_logical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_logical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_percent") is not None:
@@ -2893,35 +2908,22 @@ class VastReportBuilder:
                 is_cnode = "CN" in node_designation
                 is_unknown = "UNKNOWN" in node_designation.upper()
 
-                # Primary interface logic:
-                # - CNodes Network A: f0 (primary)
-                # - CNodes Network B: f1 (primary)
-                # - DNodes Network A: f0 (primary)
-                # - DNodes Network B: f2 (primary - first of bonded pair)
-                # - Unknown nodes: f0 for Net A, f1 for Net B (assume CNode pattern)
+                # Primary interface logic (simplified):
+                # Show ONLY f0 and f1 interfaces - these are the primary physical ports
+                # f0 = First physical NIC port
+                # f1 = Second physical NIC port
+                # f2/f3 = Bonded/virtual interfaces (skip these)
+                #
+                # Network assignment (A or B) is already correctly determined
+                # by which switch the connection is on, so we don't need to
+                # make assumptions about which interface goes to which network.
 
                 is_primary = False
-                if is_cnode:
-                    # CNodes: f0 for Net A, f1 for Net B
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f1" in interface:
-                        is_primary = True
-                elif is_dnode:
-                    # DNodes: f0 for Net A, f2 for Net B (use first of pair)
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f2" in interface:
-                        is_primary = True
-                elif is_unknown:
-                    # Unknown nodes: use standard pattern (f0=NetA, f1=NetB)
-                    # This works for both CNode and DNode patterns on f0/f1
-                    if network == "A" and "f0" in interface:
-                        is_primary = True
-                    elif network == "B" and "f1" in interface:
-                        is_primary = True
+                if "f0" in interface or "f1" in interface:
+                    # This is a primary physical interface
+                    is_primary = True
 
-                # Skip non-primary interfaces
+                # Skip non-primary interfaces (f2, f3, bonds, VLANs, etc.)
                 if not is_primary:
                     continue
 
@@ -2948,50 +2950,48 @@ class VastReportBuilder:
                     [port_display, node_display, network, speed, notes_str]
                 )
 
-            # Add IPL/MLAG ports to this switch's table
-            ipl_ports = port_mapping_data.get("ipl_ports", [])
-            if ipl_ports:
-                # Determine switch designation (SWA or SWB) based on switch_num
-                source_switch_des = "SWA" if switch_num == 1 else "SWB"
-                dest_switch_des = "SWB" if switch_num == 1 else "SWA"
+            # Add IPL/MLAG connections to this switch's table
+            # Use the new deduplicated ipl_connections format
+            ipl_connections = port_mapping_data.get("ipl_connections", [])
+            if ipl_connections:
+                # Add IPL connections for this switch
+                for ipl_conn in ipl_connections:
+                    # ipl_conn format (stored from Switch 1's perspective):
+                    # {
+                    #   'switch_designation': 'SWA-P29',  (always Switch 1)
+                    #   'node_designation': 'SWB-P29',     (always Switch 2)
+                    #   'notes': 'IPL',
+                    #   'connection_type': 'IPL',
+                    #   ...
+                    # }
 
-                # Filter IPL ports for this switch
-                for ipl_port in ipl_ports:
-                    # Check if this IPL port belongs to current switch
-                    switch_name = ipl_port.get("switch", "")
-                    port_name = ipl_port.get("port", "")
+                    # Check which switch this is and format accordingly
+                    switch_des = ipl_conn.get("switch_designation", "")
+                    node_des = ipl_conn.get("node_designation", "")
 
-                    # Extract switch hostname from the switch string
-                    # Format: "se-var-1-1: switch-MSN3700-VS2FC (MT2450J01JQ7)"
-                    if "se-var-1-1" in switch_name and switch_num == 1:
-                        # This is switch 1
-                        pass
-                    elif "se-var-1-2" in switch_name and switch_num == 2:
-                        # This is switch 2
-                        pass
-                    else:
-                        # Not for this switch
-                        continue
-
-                    # Extract port number from port_name (e.g., "swp29" -> "29")
-                    port_num = port_name.replace("swp", "")
-
-                    # Format: SWA-P29 -> SWB-P29
-                    source_port = f"{source_switch_des}-P{port_num}"
-                    dest_port = f"{dest_switch_des}-P{port_num}"
-
-                    # Get speed
-                    speed = ipl_port.get("speed", "Unknown")
-
-                    # Network is A/B (alternating or both - using A/B to indicate both networks)
-                    network_display = "A/B"
-
-                    # Notes
-                    notes_str = "IPL/MLAG"
-
-                    table_data.append(
-                        [source_port, dest_port, network_display, speed, notes_str]
-                    )
+                    # Extract switch letter from designation (SWA-P29 -> A, SWB-P29 -> B)
+                    if "SWA" in switch_des and switch_num == 1:
+                        # This is Switch 1: show SWA-P29 → SWB-P29
+                        table_data.append(
+                            [
+                                switch_des,  # SWA-P29
+                                node_des,  # SWB-P29
+                                "A/B",  # Network (both)
+                                "100G",  # Speed
+                                ipl_conn.get("notes", "IPL"),  # IPL
+                            ]
+                        )
+                    elif "SWB" in node_des and switch_num == 2:
+                        # This is Switch 2: swap the columns to show SWB-P29 → SWA-P29
+                        table_data.append(
+                            [
+                                node_des,  # SWB-P29 (was in node_designation)
+                                switch_des,  # SWA-P29 (was in switch_designation)
+                                "A/B",  # Network (both)
+                                "100G",  # Speed
+                                ipl_conn.get("notes", "IPL"),  # IPL
+                            ]
+                        )
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
