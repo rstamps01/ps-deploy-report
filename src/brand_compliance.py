@@ -858,12 +858,14 @@ class VastBrandCompliance:
                 timestamp = generation_info.get("timestamp", "Unknown")
                 mgmt_vip = generation_info.get("mgmt_vip", "Unknown")
 
-                # Footer components
-                generated_text = f"Generated: {timestamp}"
-                center_text = f"VAST Professional Services | Automated As-Built Documentation | Management VIP: {mgmt_vip}"
+                # Footer components (labels removed, values only)
+                generated_text = timestamp
+                center_text = f"VAST Professional Services | Automated As-Built Documentation | {mgmt_vip}"
             else:
-                generated_text = "Generated: Unknown"
-                center_text = "VAST Professional Services | Automated As-Built Documentation"
+                generated_text = "Unknown"
+                center_text = (
+                    "VAST Professional Services | Automated As-Built Documentation"
+                )
 
             # Add watermark (all pages except title page)
             if page_num > 1:
