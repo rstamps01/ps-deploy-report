@@ -363,9 +363,23 @@ class VastDataExtractor:
             # Process CBoxes - enrich with hardware type from CNodes
             cboxes = hardware_data.get("cboxes", {})
             
+            # Build cbox_id to cbox_name mapping
+            cbox_id_to_name = {}
+            for cbox_name, cbox_data in cboxes.items():
+                cbox_id = cbox_data.get("id")
+                if cbox_id:
+                    cbox_id_to_name[cbox_id] = cbox_name
+            
             # Enrich CBox data with model/hardware_type from first CNode in each CBox
             for cnode in cnodes:
+                # Try box_name first, then fall back to cbox_id
                 cbox_name = cnode.get("box_name", "")
+                if not cbox_name:
+                    # Use cbox_id to find the cbox_name
+                    cbox_id = cnode.get("cbox_id")
+                    if cbox_id and cbox_id in cbox_id_to_name:
+                        cbox_name = cbox_id_to_name[cbox_id]
+                
                 if cbox_name and cbox_name in cboxes:
                     # Only set if not already set (use first CNode's model for the CBox)
                     if "model" not in cboxes[cbox_name] or not cboxes[cbox_name].get("model"):
@@ -379,9 +393,23 @@ class VastDataExtractor:
             # Process DBoxes - enrich with hardware type from DNodes
             dboxes = hardware_data.get("dboxes", {})
             
+            # Build dbox_id to dbox_name mapping
+            dbox_id_to_name = {}
+            for dbox_name, dbox_data in dboxes.items():
+                dbox_id = dbox_data.get("id")
+                if dbox_id:
+                    dbox_id_to_name[dbox_id] = dbox_name
+            
             # Enrich DBox data with model/hardware_type from first DNode in each DBox
             for dnode in dnodes:
+                # Try box_name first, then fall back to dbox_id
                 dbox_name = dnode.get("box_name", "")
+                if not dbox_name:
+                    # Use dbox_id to find the dbox_name
+                    dbox_id = dnode.get("dbox_id")
+                    if dbox_id and dbox_id in dbox_id_to_name:
+                        dbox_name = dbox_id_to_name[dbox_id]
+                
                 if dbox_name and dbox_name in dboxes:
                     # Only set if not already set (use first DNode's model for the DBox)
                     if "model" not in dboxes[dbox_name] or not dboxes[dbox_name].get("model"):
