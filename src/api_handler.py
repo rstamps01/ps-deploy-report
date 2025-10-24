@@ -2504,6 +2504,7 @@ class VastApiHandler:
                     "dbox_ha_support": cluster_info.dbox_ha_support,
                     "enable_rack_level_resiliency": cluster_info.enable_rack_level_resiliency,
                     "disable_metrics": cluster_info.disable_metrics,
+                    "capacity_base_10": cluster_info.capacity_base_10,
                     # Storage capacity and usage metrics
                     "usable_capacity_tb": cluster_info.usable_capacity_tb,
                     "free_usable_capacity_tb": cluster_info.free_usable_capacity_tb,
