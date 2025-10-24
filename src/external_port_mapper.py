@@ -256,40 +256,44 @@ class ExternalPortMapper:
     def _detect_switch_os(self, switch_ip: str) -> Tuple[str, str, str]:
         """
         Detect switch operating system (Cumulus vs Onyx) and determine credentials.
-        
+
         Tries both credential sets and identifies the OS based on successful authentication
         and command responses.
-        
+
         Args:
             switch_ip: Switch management IP address
-            
+
         Returns:
             Tuple of (os_type, username, password) where os_type is 'cumulus' or 'onyx'
-            
+
         Raises:
             Exception if neither credential set works
         """
         self.vlog.log_operation(f"Detecting OS type for switch {switch_ip}")
-        
+
         # Try Cumulus credentials first (cumulus/Vastdata1!)
         credentials_to_try = [
-            ('cumulus', self.switch_password, 'cumulus'),  # (user, pass, os_name)
-            ('admin', 'admin', 'onyx'),  # Onyx default credentials
+            ("cumulus", self.switch_password, "cumulus"),  # (user, pass, os_name)
+            ("admin", "admin", "onyx"),  # Onyx default credentials
         ]
-        
+
         # If user provided admin as switch_user, try onyx first
-        if self.switch_user == 'admin':
+        if self.switch_user == "admin":
             credentials_to_try.reverse()
-        
+
         for user, password, expected_os in credentials_to_try:
             try:
-                self.vlog.log(f"Trying {expected_os} credentials ({user}/***) on {switch_ip}")
-                
+                self.vlog.log(
+                    f"Trying {expected_os} credentials ({user}/***) on {switch_ip}"
+                )
+
                 # Try to run a simple command to test authentication and identify OS
                 # Cumulus: "nv show system" will work
                 # Onyx: "show version" will work
-                test_cmd = "nv show system" if expected_os == 'cumulus' else "show version"
-                
+                test_cmd = (
+                    "nv show system" if expected_os == "cumulus" else "show version"
+                )
+
                 cmd = [
                     "sshpass",
                     "-p",
@@ -304,35 +308,51 @@ class ExternalPortMapper:
                     f"{user}@{switch_ip}",
                     test_cmd,
                 ]
-                
+
                 self.vlog.log_command(cmd, f"OS Detection test for {expected_os}")
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
                 self.vlog.log_result(result, f"{expected_os} test result")
-                
+
                 if result.returncode == 0:
                     # Successful authentication - verify OS type from output
                     output_lower = result.stdout.lower()
-                    
-                    if expected_os == 'cumulus':
+
+                    if expected_os == "cumulus":
                         # Cumulus will have specific output format or "cumulus" in response
-                        if 'cumulus' in output_lower or 'hostname' in output_lower:
-                            self.vlog.log(f"✓ Detected Cumulus Linux on {switch_ip}", self.vlog.GREEN)
-                            self.logger.info(f"Switch {switch_ip}: Cumulus Linux detected")
-                            return ('cumulus', user, password)
-                    elif expected_os == 'onyx':
+                        if "cumulus" in output_lower or "hostname" in output_lower:
+                            self.vlog.log(
+                                f"✓ Detected Cumulus Linux on {switch_ip}",
+                                self.vlog.GREEN,
+                            )
+                            self.logger.info(
+                                f"Switch {switch_ip}: Cumulus Linux detected"
+                            )
+                            return ("cumulus", user, password)
+                    elif expected_os == "onyx":
                         # Onyx will have "onyx" or "mellanox" in version output
-                        if 'onyx' in output_lower or 'mellanox' in output_lower or 'product name' in output_lower:
-                            self.vlog.log(f"✓ Detected Mellanox Onyx on {switch_ip}", self.vlog.GREEN)
-                            self.logger.info(f"Switch {switch_ip}: Mellanox Onyx detected")
-                            return ('onyx', user, password)
-                
+                        if (
+                            "onyx" in output_lower
+                            or "mellanox" in output_lower
+                            or "product name" in output_lower
+                        ):
+                            self.vlog.log(
+                                f"✓ Detected Mellanox Onyx on {switch_ip}",
+                                self.vlog.GREEN,
+                            )
+                            self.logger.info(
+                                f"Switch {switch_ip}: Mellanox Onyx detected"
+                            )
+                            return ("onyx", user, password)
+
             except subprocess.TimeoutExpired:
                 self.vlog.log_warning(f"Timeout testing {expected_os} on {switch_ip}")
                 continue
             except Exception as e:
-                self.vlog.log_warning(f"Error testing {expected_os} on {switch_ip}: {e}")
+                self.vlog.log_warning(
+                    f"Error testing {expected_os} on {switch_ip}: {e}"
+                )
                 continue
-        
+
         # If we get here, neither credential set worked
         error_msg = f"Could not detect OS type for switch {switch_ip} - authentication failed with both credential sets"
         self.vlog.log_error(error_msg)
@@ -366,9 +386,14 @@ class ExternalPortMapper:
             for switch_ip in self.switch_ips:
                 os_type, user, password = self._detect_switch_os(switch_ip)
                 self.switch_os_map[switch_ip] = os_type
-                self.switch_credentials[switch_ip] = {'user': user, 'password': password}
-                print(f"✅ Switch {switch_ip}: {os_type.upper()} detected (using {user} credentials)")
-            
+                self.switch_credentials[switch_ip] = {
+                    "user": user,
+                    "password": password,
+                }
+                print(
+                    f"✅ Switch {switch_ip}: {os_type.upper()} detected (using {user} credentials)"
+                )
+
             # Step 1: Collect node inventory via Basic Auth API
             node_inventory = self._collect_node_inventory_basic_auth()
             self.logger.info(
@@ -699,18 +724,20 @@ class ExternalPortMapper:
                 self.vlog.log_operation(f"Collecting MAC table from {switch_ip}")
 
                 # Get switch OS type and credentials
-                os_type = self.switch_os_map.get(switch_ip, 'cumulus')
-                creds = self.switch_credentials.get(switch_ip, {
-                    'user': self.switch_user,
-                    'password': self.switch_password
-                })
-                user = creds['user']
-                password = creds['password']
+                os_type = self.switch_os_map.get(switch_ip, "cumulus")
+                creds = self.switch_credentials.get(
+                    switch_ip,
+                    {"user": self.switch_user, "password": self.switch_password},
+                )
+                user = creds["user"]
+                password = creds["password"]
 
                 # Build command based on OS type
-                if os_type == 'cumulus':
+                if os_type == "cumulus":
                     mac_cmd = "nv show bridge domain br_default mac-table"
-                    vlan69_cmd_str = "nv show bridge domain br_default vlan 69 mac-table"
+                    vlan69_cmd_str = (
+                        "nv show bridge domain br_default vlan 69 mac-table"
+                    )
                 else:  # onyx
                     mac_cmd = "show mac-address-table"
                     vlan69_cmd_str = "show mac-address-table vlan 69"
@@ -735,7 +762,7 @@ class ExternalPortMapper:
 
                 if result.returncode == 0:
                     # Parse based on OS type
-                    if os_type == 'cumulus':
+                    if os_type == "cumulus":
                         switch_macs[switch_ip] = self._parse_cumulus_mac_table(
                             result.stdout
                         )
@@ -743,7 +770,7 @@ class ExternalPortMapper:
                         switch_macs[switch_ip] = self._parse_onyx_mac_table(
                             result.stdout
                         )
-                    
+
                     general_count = len(switch_macs[switch_ip])
                     self.logger.info(
                         f"Collected {general_count} MACs from {switch_ip} ({os_type}, general table)"
@@ -775,7 +802,9 @@ class ExternalPortMapper:
                     vlan69_cmd_str,
                 ]
 
-                self.vlog.log_command(vlan69_cmd, f"VLAN 69 MAC table query ({os_type})")
+                self.vlog.log_command(
+                    vlan69_cmd, f"VLAN 69 MAC table query ({os_type})"
+                )
                 vlan69_result = subprocess.run(
                     vlan69_cmd, capture_output=True, text=True, timeout=30
                 )
@@ -783,8 +812,10 @@ class ExternalPortMapper:
 
                 if vlan69_result.returncode == 0:
                     # Parse based on OS type
-                    if os_type == 'cumulus':
-                        vlan69_macs = self._parse_cumulus_mac_table(vlan69_result.stdout)
+                    if os_type == "cumulus":
+                        vlan69_macs = self._parse_cumulus_mac_table(
+                            vlan69_result.stdout
+                        )
                     else:  # onyx
                         vlan69_macs = self._parse_onyx_mac_table(vlan69_result.stdout)
 
@@ -885,7 +916,12 @@ class ExternalPortMapper:
 
         for line in output.split("\n"):
             # Skip header and separator lines
-            if "VID" in line or "MAC Address" in line or "---" in line or not line.strip():
+            if (
+                "VID" in line
+                or "MAC Address" in line
+                or "---" in line
+                or not line.strip()
+            ):
                 continue
 
             # Split line into columns
@@ -910,14 +946,16 @@ class ExternalPortMapper:
                                 swp_port = f"swp{port_num}"
                             else:
                                 swp_port = port.lower()
-                            
+
                             mac_table[mac_lower] = {
                                 "port": swp_port,
                                 "vlan": vlan,
                                 "original_port": port,  # Keep original for debugging
                             }
                 except (IndexError, ValueError) as e:
-                    self.logger.debug(f"Could not parse Onyx MAC table line: {line} - {e}")
+                    self.logger.debug(
+                        f"Could not parse Onyx MAC table line: {line} - {e}"
+                    )
                     continue
 
         return mac_table
@@ -947,16 +985,16 @@ class ExternalPortMapper:
                 self.logger.info(f"Collecting IPL connections from switch {switch_ip}")
 
                 # Get switch OS type and credentials
-                os_type = self.switch_os_map.get(switch_ip, 'cumulus')
-                creds = self.switch_credentials.get(switch_ip, {
-                    'user': self.switch_user,
-                    'password': self.switch_password
-                })
-                user = creds['user']
-                password = creds['password']
+                os_type = self.switch_os_map.get(switch_ip, "cumulus")
+                creds = self.switch_credentials.get(
+                    switch_ip,
+                    {"user": self.switch_user, "password": self.switch_password},
+                )
+                user = creds["user"]
+                password = creds["password"]
 
                 # Build command based on OS type
-                if os_type == 'cumulus':
+                if os_type == "cumulus":
                     lldp_cmd = "nv show interface --output json"
                 else:  # onyx
                     lldp_cmd = "show lldp remote"
@@ -980,7 +1018,7 @@ class ExternalPortMapper:
 
                 if result.returncode == 0:
                     # Parse based on OS type
-                    if os_type == 'cumulus':
+                    if os_type == "cumulus":
                         ipl_data = self._parse_cumulus_lldp_for_ipl(
                             result.stdout, switch_ip
                         )
@@ -1175,7 +1213,9 @@ class ExternalPortMapper:
                                 # Convert to swp naming for consistency
                                 local_swp = f"swp{local_port_num}"
                                 remote_swp = f"swp{local_port_num}"
-                                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+                                remote_switch_ip = self._get_other_switch_ip(
+                                    current_switch_ip
+                                )
 
                                 ipl_connections.append(
                                     {
