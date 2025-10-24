@@ -3113,13 +3113,15 @@ class VastReportBuilder:
             if switch_num > 1:
                 content.append(PageBreak())
 
-            # Add "Switch # Details" heading
+            # Get switch name first to use in consolidated heading
+            switch_name = switch.get("name", "Unknown")
+            
+            # Add consolidated "Switch # Details: <switch_name>" heading
             switch_details_heading = self.brand_compliance.create_vast_section_heading(
-                f"Switch {switch_num} Details", level=2
+                f"Switch {switch_num} Details: {switch_name}", level=2
             )
             content.extend(switch_details_heading)
 
-            switch_name = switch.get("name", "Unknown")
             hostname = switch.get("hostname", "Unknown")
             model = switch.get("model", "Unknown")
             serial = switch.get("serial", "Unknown")
@@ -3160,9 +3162,9 @@ class VastReportBuilder:
                 ["Port MTU", mtu],
             ]
 
-            # Create switch info table
+            # Create switch info table (no title needed - it's in the heading now)
             switch_info_elements = self._create_cluster_info_table(
-                switch_info_data, f"{switch_name} Configuration"
+                switch_info_data, None
             )
             content.extend(switch_info_elements)
             content.append(Spacer(1, 12))
@@ -3235,7 +3237,7 @@ class VastReportBuilder:
                 ]
 
                 # Add title
-                table_title = f"{switch_name} Port Summary"
+                table_title = f"Port Summary: {switch_name}"
                 title_para = Paragraph(
                     f"<b>{table_title}</b>",
                     self.brand_compliance.styles["vast_subheading"],
