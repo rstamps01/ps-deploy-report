@@ -847,21 +847,23 @@ class VastBrandCompliance:
             rightPadding=0,
             topPadding=0,
         )
+        
+        # Store to track the total page count between multiBuild passes
+        # This gets set after first pass and used during second pass
+        page_count_storage = {'total': 0}
 
         def footer_canvas(canvas, doc):
             """Draw footer on every page."""
             # Get page number
             page_num = canvas.getPageNumber()
+
+            # Get total page count
+            # During multiBuild's first pass, we track the highest page number
+            # During the second pass, we use the stored total from first pass
+            if page_num > page_count_storage['total']:
+                page_count_storage['total'] = page_num
             
-            # Get total page count from the canvas
-            # When using multiBuild(), canvas._doctemplate stores the document
-            # and canvas._doctemplate.page will contain the total page count
-            # after the first pass completes
-            if hasattr(canvas, '_doctemplate') and hasattr(canvas._doctemplate, 'page'):
-                total_pages = canvas._doctemplate.page
-            else:
-                # Fallback for single-pass build or if attribute not available
-                total_pages = page_num
+            total_pages = page_count_storage['total'] if page_count_storage['total'] > 0 else page_num
 
             # Footer content
             if generation_info:
