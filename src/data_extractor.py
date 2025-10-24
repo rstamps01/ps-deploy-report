@@ -76,6 +76,7 @@ class ClusterSummary:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
+    capacity_base_10: Optional[bool] = None  # Capacity display format (True=TB, False=TiB)
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -222,6 +223,7 @@ class VastDataExtractor:
                     "enable_rack_level_resiliency"
                 ),
                 disable_metrics=cluster_info.get("disable_metrics"),
+                capacity_base_10=cluster_info.get("capacity_base_10"),
                 # Storage capacity and usage metrics
                 usable_capacity_tb=cluster_info.get("usable_capacity_tb"),
                 free_usable_capacity_tb=cluster_info.get("free_usable_capacity_tb"),
