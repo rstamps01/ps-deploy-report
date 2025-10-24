@@ -181,7 +181,9 @@ class VastReportBuilder:
                 "completeness": processed_data.get("metadata", {}).get(
                     "overall_completeness", 0.0
                 ),
-                "mgmt_vip": processed_data.get("cluster_summary", {}).get("mgmt_vip", "Unknown"),
+                "mgmt_vip": processed_data.get("cluster_summary", {}).get(
+                    "mgmt_vip", "Unknown"
+                ),
             }
             page_template = self.brand_compliance.create_vast_page_template(
                 generation_info
@@ -254,7 +256,10 @@ class VastReportBuilder:
 
             # Start with the page template
             story.insert(0, NextPageTemplate("VastPage"))
-            doc.build(story)
+            
+            # Use multiBuild instead of build to enable two-pass rendering
+            # This allows the footer to access the total page count on the second pass
+            doc.multiBuild(story)
 
             self.logger.info(f"PDF report generated successfully: {output_path}")
             return True

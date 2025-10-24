@@ -852,6 +852,16 @@ class VastBrandCompliance:
             """Draw footer on every page."""
             # Get page number
             page_num = canvas.getPageNumber()
+            
+            # Get total page count from the canvas
+            # When using multiBuild(), canvas._doctemplate stores the document
+            # and canvas._doctemplate.page will contain the total page count
+            # after the first pass completes
+            if hasattr(canvas, '_doctemplate') and hasattr(canvas._doctemplate, 'page'):
+                total_pages = canvas._doctemplate.page
+            else:
+                # Fallback for single-pass build or if attribute not available
+                total_pages = page_num
 
             # Footer content
             if generation_info:
@@ -863,9 +873,7 @@ class VastBrandCompliance:
                 center_text = f"VAST Professional Services | Automated As-Built Report | {mgmt_vip}"
             else:
                 generated_text = "Unknown"
-                center_text = (
-                    "VAST Professional Services | Automated As-Built Report"
-                )
+                center_text = "VAST Professional Services | Automated As-Built Report"
 
             # Add watermark (all pages except title page)
             if page_num > 1:
@@ -949,8 +957,6 @@ class VastBrandCompliance:
             canvas.drawString(center_x_position, y_position, center_text)
 
             # Draw page number with total pages (right aligned on same line)
-            # Get total page count from document object
-            total_pages = getattr(doc, 'page', page_num)  # Fallback to current page if not available
             page_text = f"Page {page_num} of {total_pages}"
             canvas.drawRightString(page_width - right_margin, y_position, page_text)
 
