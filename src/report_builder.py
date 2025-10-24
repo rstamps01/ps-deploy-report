@@ -892,12 +892,12 @@ class VastReportBuilder:
         # Get capacity display format
         capacity_base_10 = cluster_info.get("capacity_base_10", None)
         if capacity_base_10 is True:
-            capacity_format = "True (TB - Base 10)"
+            capacity_format = "True"
         elif capacity_base_10 is False:
-            capacity_format = "False (TiB - Base 2)"
+            capacity_format = "False"
         else:
             capacity_format = "Unknown"
-        
+
         cluster_overview_data = [
             ["ID", cluster_id],
             ["Name", cluster_name],
@@ -906,10 +906,10 @@ class VastReportBuilder:
             ["Build", build],
             ["PSNT", psnt],
             ["GUID", guid],
-            ["Capacity-Base 10", capacity_format],
             ["Uptime", uptime],
             ["Online Since", online_start_time],
             ["Deployed", deployment_time],
+            ["Capacity-Base 10", capacity_format],
         ]
 
         # Create cluster overview table with same style as Cluster Information
@@ -1291,9 +1291,11 @@ class VastReportBuilder:
         ):
             # Storage capacity table
             storage_data = []
-            
+
             # Determine capacity unit based on capacity_base_10 setting
-            capacity_unit = "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
+            capacity_unit = (
+                "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
+            )
 
             # Usable capacity section
             if cluster_info.get("usable_capacity_tb") is not None:
