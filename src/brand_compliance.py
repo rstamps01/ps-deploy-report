@@ -856,16 +856,14 @@ class VastBrandCompliance:
             # Footer content
             if generation_info:
                 timestamp = generation_info.get("timestamp", "Unknown")
+                mgmt_vip = generation_info.get("mgmt_vip", "Unknown")
 
-                # Footer text (removed Data Completeness)
-                footer_text = (
-                    f"VAST Professional Services | Automated As-Built Documentation | "
-                    f"Generated: {timestamp}"
-                )
+                # Footer components
+                generated_text = f"Generated: {timestamp}"
+                center_text = f"VAST Professional Services | Automated As-Built Documentation | Management VIP: {mgmt_vip}"
             else:
-                footer_text = (
-                    "VAST Professional Services | Automated As-Built Documentation"
-                )
+                generated_text = "Generated: Unknown"
+                center_text = "VAST Professional Services | Automated As-Built Documentation"
 
             # Add watermark (all pages except title page)
             if page_num > 1:
@@ -933,18 +931,20 @@ class VastBrandCompliance:
                 bottom_margin - 0.1 * inch,
             )
 
-            # Draw centered footer text (single line)
+            # Draw footer text with new layout
             canvas.setFont(self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
             canvas.setFillColor(self.colors.DARK_GRAY)
-
-            # Calculate text width for centering
-            text_width = canvas.stringWidth(
-                footer_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
-            )
-            x_position = (page_width - text_width) / 2
             y_position = bottom_margin - 0.3 * inch
 
-            canvas.drawString(x_position, y_position, footer_text)
+            # Draw "Generated:" on far left
+            canvas.drawString(left_margin, y_position, generated_text)
+
+            # Draw center text (VAST PS | Documentation | Management VIP)
+            center_text_width = canvas.stringWidth(
+                center_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
+            )
+            center_x_position = (page_width - center_text_width) / 2
+            canvas.drawString(center_x_position, y_position, center_text)
 
             # Draw page number (right aligned on same line)
             page_text = f"Page {page_num}"

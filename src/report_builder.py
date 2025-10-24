@@ -181,6 +181,7 @@ class VastReportBuilder:
                 "completeness": processed_data.get("metadata", {}).get(
                     "overall_completeness", 0.0
                 ),
+                "mgmt_vip": processed_data.get("cluster_summary", {}).get("mgmt_vip", "Unknown"),
             }
             page_template = self.brand_compliance.create_vast_page_template(
                 generation_info
@@ -1120,7 +1121,7 @@ class VastReportBuilder:
 
         # Create cluster info table with VAST styling - reorganized per requirements
         cluster_name = cluster_info.get("name", "Unknown")
-        
+
         # Get capacity display format for this table
         capacity_base_10 = cluster_info.get("capacity_base_10", None)
         if capacity_base_10 is True:
@@ -1129,7 +1130,7 @@ class VastReportBuilder:
             capacity_format = "False"
         else:
             capacity_format = "Unknown"
-        
+
         cluster_data = [
             ["State", cluster_info.get("state", "Unknown")],
             ["SSD RAID State", cluster_info.get("ssd_raid_state", "Unknown")],
