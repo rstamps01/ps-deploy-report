@@ -889,6 +889,15 @@ class VastReportBuilder:
         online_start_time = cluster_info.get("online_start_time", "Unknown")
         deployment_time = cluster_info.get("deployment_time", "Unknown")
 
+        # Get capacity display format
+        capacity_base_10 = cluster_info.get("capacity_base_10", None)
+        if capacity_base_10 is True:
+            capacity_format = "True (TB - Base 10)"
+        elif capacity_base_10 is False:
+            capacity_format = "False (TiB - Base 2)"
+        else:
+            capacity_format = "Unknown"
+        
         cluster_overview_data = [
             ["ID", cluster_id],
             ["Name", cluster_name],
@@ -897,6 +906,7 @@ class VastReportBuilder:
             ["Build", build],
             ["PSNT", psnt],
             ["GUID", guid],
+            ["Capacity-Base 10", capacity_format],
             ["Uptime", uptime],
             ["Online Since", online_start_time],
             ["Deployed", deployment_time],
@@ -1281,20 +1291,23 @@ class VastReportBuilder:
         ):
             # Storage capacity table
             storage_data = []
+            
+            # Determine capacity unit based on capacity_base_10 setting
+            capacity_unit = "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
 
             # Usable capacity section
             if cluster_info.get("usable_capacity_tb") is not None:
                 storage_data.append(
                     [
                         "Usable Capacity",
-                        f"{round(cluster_info.get('usable_capacity_tb', 0))} TB",
+                        f"{round(cluster_info.get('usable_capacity_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_usable_capacity_tb") is not None:
                 storage_data.append(
                     [
                         "Free Usable Capacity",
-                        f"{round(cluster_info.get('free_usable_capacity_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_usable_capacity_tb', 0))} {capacity_unit}",
                     ]
                 )
             if (
@@ -1313,21 +1326,21 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Physical Space",
-                        f"{round(cluster_info.get('physical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('physical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Physical Space In Use",
-                        f"{round(cluster_info.get('physical_space_in_use_tb', 0))} TB",
+                        f"{round(cluster_info.get('physical_space_in_use_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_physical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Physical Space",
-                        f"{round(cluster_info.get('free_physical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_physical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("physical_space_in_use_percent") is not None:
@@ -1343,21 +1356,21 @@ class VastReportBuilder:
                 storage_data.append(
                     [
                         "Logical Space",
-                        f"{round(cluster_info.get('logical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('logical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_tb") is not None:
                 storage_data.append(
                     [
                         "Logical Space In Use",
-                        f"{round(cluster_info.get('logical_space_in_use_tb', 0))} TB",
+                        f"{round(cluster_info.get('logical_space_in_use_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("free_logical_space_tb") is not None:
                 storage_data.append(
                     [
                         "Free Logical Space",
-                        f"{round(cluster_info.get('free_logical_space_tb', 0))} TB",
+                        f"{round(cluster_info.get('free_logical_space_tb', 0))} {capacity_unit}",
                     ]
                 )
             if cluster_info.get("logical_space_in_use_percent") is not None:

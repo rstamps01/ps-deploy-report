@@ -78,6 +78,7 @@ class VastClusterInfo:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
+    capacity_base_10: Optional[bool] = None  # Capacity display format (True=TB, False=TiB)
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -986,6 +987,11 @@ class VastApiHandler:
                 "enable_rack_level_resiliency", None
             )
             cluster_info.disable_metrics = cluster_data.get("disable_metrics", None)
+            cluster_info.capacity_base_10 = cluster_data.get("capacity_base_10", None)
+            if cluster_info.capacity_base_10 is not None:
+                self.logger.info(
+                    f"Capacity display format: {'TB (base 10)' if cluster_info.capacity_base_10 else 'TiB (base 2)'}"
+                )
 
             # Extract storage capacity and usage metrics
             cluster_info.usable_capacity_tb = cluster_data.get(
