@@ -299,6 +299,7 @@ class ExternalPortMapper:
                     "-p",
                     password,
                     "ssh",
+                    "-T",  # Disable PTY allocation for non-interactive command
                     "-o",
                     "StrictHostKeyChecking=no",
                     "-o",
