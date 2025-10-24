@@ -256,10 +256,7 @@ class VastReportBuilder:
 
             # Start with the page template
             story.insert(0, NextPageTemplate("VastPage"))
-            
-            # Use multiBuild instead of build to enable two-pass rendering
-            # This allows the footer to access the total page count on the second pass
-            doc.multiBuild(story)
+            doc.build(story)
 
             self.logger.info(f"PDF report generated successfully: {output_path}")
             return True
