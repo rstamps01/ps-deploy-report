@@ -303,7 +303,7 @@ class ExternalPortMapper:
                     "-o",
                     "StrictHostKeyChecking=no",
                     "-o",
-                    f"UserKnownHostsFile={self.known_hosts_file}",
+                    "UserKnownHostsFile=/dev/null",  # Don't persist host keys for detection
                     "-o",
                     "ConnectTimeout=10",
                     f"{user}@{switch_ip}",
