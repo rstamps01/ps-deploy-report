@@ -360,11 +360,37 @@ class VastDataExtractor:
                 processed_dnode = self._process_hardware_node(dnode, "dnode")
                 dnodes.append(processed_dnode)
 
-            # Process CBoxes
+            # Process CBoxes - enrich with hardware type from CNodes
             cboxes = hardware_data.get("cboxes", {})
+            
+            # Enrich CBox data with model/hardware_type from first CNode in each CBox
+            for cnode in cnodes:
+                cbox_name = cnode.get("box_name", "")
+                if cbox_name and cbox_name in cboxes:
+                    # Only set if not already set (use first CNode's model for the CBox)
+                    if "model" not in cboxes[cbox_name] or not cboxes[cbox_name].get("model"):
+                        # Extract model from box_vendor field (e.g., "Broadwell, single dual-port NIC" -> "Broadwell")
+                        box_vendor = cnode.get("box_vendor", "")
+                        model = box_vendor.split(",")[0].strip() if box_vendor else "Unknown"
+                        cboxes[cbox_name]["model"] = model
+                        cboxes[cbox_name]["hardware_type"] = model.lower()
+                        self.logger.debug(f"Enriched CBox {cbox_name} with model: {model}")
 
-            # Process DBoxes
+            # Process DBoxes - enrich with hardware type from DNodes
             dboxes = hardware_data.get("dboxes", {})
+            
+            # Enrich DBox data with model/hardware_type from first DNode in each DBox
+            for dnode in dnodes:
+                dbox_name = dnode.get("box_name", "")
+                if dbox_name and dbox_name in dboxes:
+                    # Only set if not already set (use first DNode's model for the DBox)
+                    if "model" not in dboxes[dbox_name] or not dboxes[dbox_name].get("model"):
+                        # DBoxes already have hardware_type from API, but ensure model is set
+                        if not dboxes[dbox_name].get("hardware_type"):
+                            box_vendor = dnode.get("box_vendor", "")
+                            model = box_vendor.split(",")[0].strip() if box_vendor else "Unknown"
+                            dboxes[dbox_name]["hardware_type"] = model.lower()
+                            self.logger.debug(f"Enriched DBox {dbox_name} with hardware_type: {model.lower()}")
 
             # Process Switches
             switch_inventory = raw_data.get("switch_inventory", {})
