@@ -568,6 +568,9 @@ class ExternalPortMapper:
     def _collect_switch_mac_tables(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """
         Collect MAC address tables from all switches.
+        
+        Collects both general MAC table and VLAN 69-specific entries
+        to ensure DNode Network B interfaces are captured.
 
         Returns:
             Dict mapping switch IPs to {mac: {port, vlan}}
@@ -578,9 +581,9 @@ class ExternalPortMapper:
         for switch_ip in self.switch_ips:
             try:
                 self.logger.info(f"Collecting MAC table from switch {switch_ip}")
+                self.vlog.log_operation(f"Collecting MAC table from {switch_ip}")
 
-                # SSH to switch and get MAC table
-                # Using Cumulus Linux command (adjust for other vendors)
+                # Collect general MAC table
                 cmd = [
                     "sshpass",
                     "-p",
@@ -594,22 +597,85 @@ class ExternalPortMapper:
                     "nv show bridge domain br_default mac-table",
                 ]
 
+                self.vlog.log_command(cmd, "General MAC table query")
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+                self.vlog.log_result(result, "General MAC table result")
 
                 if result.returncode == 0:
                     switch_macs[switch_ip] = self._parse_cumulus_mac_table(
                         result.stdout
                     )
+                    general_count = len(switch_macs[switch_ip])
                     self.logger.info(
-                        f"Collected {len(switch_macs[switch_ip])} MACs from {switch_ip}"
+                        f"Collected {general_count} MACs from {switch_ip} (general table)"
+                    )
+                    self.vlog.log(
+                        f"General MAC table: {general_count} entries", self.vlog.GREEN
                     )
                 else:
                     self.logger.warning(
                         f"Failed to get MAC table from {switch_ip}: {result.stderr}"
                     )
+                    switch_macs[switch_ip] = {}
+
+                # Additionally collect VLAN 69-specific MAC table for DNode Network B interfaces
+                self.vlog.log_operation(f"Collecting VLAN 69 MAC table from {switch_ip}")
+                vlan69_cmd = [
+                    "sshpass",
+                    "-p",
+                    self.switch_password,
+                    "ssh",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-o",
+                    f"UserKnownHostsFile={self.known_hosts_file}",
+                    f"{self.switch_user}@{switch_ip}",
+                    "nv show bridge domain br_default vlan 69 mac-table",
+                ]
+
+                self.vlog.log_command(vlan69_cmd, "VLAN 69 MAC table query")
+                vlan69_result = subprocess.run(
+                    vlan69_cmd, capture_output=True, text=True, timeout=30
+                )
+                self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
+
+                if vlan69_result.returncode == 0:
+                    vlan69_macs = self._parse_cumulus_mac_table(vlan69_result.stdout)
+                    
+                    # Merge VLAN 69 MACs into the main table
+                    before_count = len(switch_macs[switch_ip])
+                    for mac, info in vlan69_macs.items():
+                        if mac not in switch_macs[switch_ip]:
+                            switch_macs[switch_ip][mac] = info
+                    
+                    added_count = len(switch_macs[switch_ip]) - before_count
+                    if added_count > 0:
+                        self.logger.info(
+                            f"Added {added_count} VLAN 69 MACs from {switch_ip}"
+                        )
+                        self.vlog.log(
+                            f"VLAN 69 table: {len(vlan69_macs)} entries, {added_count} new",
+                            self.vlog.GREEN,
+                        )
+                    else:
+                        self.vlog.log(
+                            f"VLAN 69 table: {len(vlan69_macs)} entries, 0 new (already in general table)",
+                            self.vlog.YELLOW,
+                        )
+                else:
+                    self.vlog.log(
+                        f"VLAN 69 query failed or not supported: {vlan69_result.stderr}",
+                        self.vlog.YELLOW,
+                    )
+
+                self.logger.info(
+                    f"Total: Collected {len(switch_macs[switch_ip])} MACs from {switch_ip}"
+                )
 
             except Exception as e:
                 self.logger.error(f"Error collecting MAC table from {switch_ip}: {e}")
+                self.vlog.log_error(f"MAC collection error for {switch_ip}", e)
+                switch_macs[switch_ip] = {}
 
         return switch_macs
 
