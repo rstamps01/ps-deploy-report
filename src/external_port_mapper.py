@@ -555,7 +555,7 @@ class ExternalPortMapper:
             # Skip vf (virtual function) lines
             if "vf " in line:
                 continue
-                
+
             mac_match = re.match(r"^[\d.]+:\s+link/ether\s+([0-9a-f:]{17})", line)
             if mac_match and current_node_ip and current_interface:
                 mac = mac_match.group(1)
@@ -580,7 +580,7 @@ class ExternalPortMapper:
     def _collect_switch_mac_tables(self) -> Dict[str, Dict[str, Dict[str, Any]]]:
         """
         Collect MAC address tables from all switches.
-        
+
         Collects both general MAC table and VLAN 69-specific entries
         to ensure DNode Network B interfaces are captured.
 
@@ -631,7 +631,9 @@ class ExternalPortMapper:
                     switch_macs[switch_ip] = {}
 
                 # Additionally collect VLAN 69-specific MAC table for DNode Network B interfaces
-                self.vlog.log_operation(f"Collecting VLAN 69 MAC table from {switch_ip}")
+                self.vlog.log_operation(
+                    f"Collecting VLAN 69 MAC table from {switch_ip}"
+                )
                 vlan69_cmd = [
                     "sshpass",
                     "-p",
@@ -653,13 +655,13 @@ class ExternalPortMapper:
 
                 if vlan69_result.returncode == 0:
                     vlan69_macs = self._parse_cumulus_mac_table(vlan69_result.stdout)
-                    
+
                     # Merge VLAN 69 MACs into the main table
                     before_count = len(switch_macs[switch_ip])
                     for mac, info in vlan69_macs.items():
                         if mac not in switch_macs[switch_ip]:
                             switch_macs[switch_ip][mac] = info
-                    
+
                     added_count = len(switch_macs[switch_ip]) - before_count
                     if added_count > 0:
                         self.logger.info(

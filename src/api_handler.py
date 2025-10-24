@@ -78,7 +78,9 @@ class VastClusterInfo:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
-    capacity_base_10: Optional[bool] = None  # Capacity display format (True=TB, False=TiB)
+    capacity_base_10: Optional[bool] = (
+        None  # Capacity display format (True=TB, False=TiB)
+    )
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -1073,7 +1075,7 @@ class VastApiHandler:
 
             # Store cluster_info as instance variable for later updates
             self._cluster_info = cluster_info
-            
+
             # If capacity_base_10 wasn't in clusters/ endpoint, try vms/ endpoint
             if cluster_info.capacity_base_10 is None:
                 try:
@@ -1081,13 +1083,17 @@ class VastApiHandler:
                     if vms_data:
                         if isinstance(vms_data, list) and len(vms_data) > 0:
                             vms_data = vms_data[0]
-                        cluster_info.capacity_base_10 = vms_data.get("capacity_base_10", None)
+                        cluster_info.capacity_base_10 = vms_data.get(
+                            "capacity_base_10", None
+                        )
                         if cluster_info.capacity_base_10 is not None:
                             self.logger.info(
                                 f"Capacity display format: {'TB (base 10)' if cluster_info.capacity_base_10 else 'TiB (base 2)'}"
                             )
                 except Exception as e:
-                    self.logger.warning(f"Could not retrieve capacity_base_10 from vms/ endpoint: {e}")
+                    self.logger.warning(
+                        f"Could not retrieve capacity_base_10 from vms/ endpoint: {e}"
+                    )
 
             # Log additional valuable information
             if "build" in cluster_data:

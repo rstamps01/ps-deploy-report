@@ -885,19 +885,21 @@ class VastBrandCompliance:
                         # Get image dimensions
                         with PILImage.open(watermark_path) as img:
                             img_width, img_height = img.size
-                        
+
                         # Calculate available space (fit within page width)
                         available_width = page_width - left_margin - right_margin
                         available_height = page_height - top_margin - bottom_margin
-                        
+
                         # Calculate scaling to fit within page width while maintaining aspect ratio
                         scale_x = available_width / img_width
                         scale_y = available_height / img_height
-                        scale = min(scale_x, scale_y)  # Use min to fit within page bounds
-                        
+                        scale = min(
+                            scale_x, scale_y
+                        )  # Use min to fit within page bounds
+
                         watermark_width = img_width * scale
                         watermark_height = img_height * scale
-                        
+
                         # Center the watermark on the page
                         x_position = (page_width - watermark_width) / 2
                         y_position = (page_height - watermark_height) / 2
