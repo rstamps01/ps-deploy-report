@@ -860,11 +860,11 @@ class VastBrandCompliance:
 
                 # Footer components (labels removed, values only)
                 generated_text = timestamp
-                center_text = f"VAST Professional Services | Automated As-Built Documentation | {mgmt_vip}"
+                center_text = f"VAST Professional Services | Automated As-Built Report | {mgmt_vip}"
             else:
                 generated_text = "Unknown"
                 center_text = (
-                    "VAST Professional Services | Automated As-Built Documentation"
+                    "VAST Professional Services | Automated As-Built Report"
                 )
 
             # Add watermark (all pages except title page)
@@ -948,8 +948,10 @@ class VastBrandCompliance:
             center_x_position = (page_width - center_text_width) / 2
             canvas.drawString(center_x_position, y_position, center_text)
 
-            # Draw page number (right aligned on same line)
-            page_text = f"Page {page_num}"
+            # Draw page number with total pages (right aligned on same line)
+            # Get total page count from document object
+            total_pages = getattr(doc, 'page', page_num)  # Fallback to current page if not available
+            page_text = f"Page {page_num} of {total_pages}"
             canvas.drawRightString(page_width - right_margin, y_position, page_text)
 
         # Create page template
