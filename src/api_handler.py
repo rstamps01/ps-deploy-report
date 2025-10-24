@@ -1621,6 +1621,21 @@ class VastApiHandler:
                 self.logger.warning("No data field found in network settings response")
                 return {}
 
+            # Extract net_type from the first host in boxes array (cluster-level setting)
+            net_type = "Unknown"
+            boxes = data.get("boxes", [])
+            if boxes:
+                for box in boxes:
+                    hosts = box.get("hosts", [])
+                    if hosts:
+                        for host in hosts:
+                            vast_install_info = host.get("vast_install_info", {})
+                            if vast_install_info.get("net_type"):
+                                net_type = vast_install_info.get("net_type")
+                                break
+                    if net_type != "Unknown":
+                        break
+
             # Extract cluster network configuration
             network_config = {
                 "management_vips": data.get("management_vips", []),
@@ -1634,6 +1649,7 @@ class VastApiHandler:
                 "ib_mtu": data.get("ib_mtu", "Unknown"),
                 "ipmi_gateway": data.get("ipmi_gateway", "Unknown"),
                 "ipmi_netmask": data.get("ipmi_netmask", "Unknown"),
+                "net_type": net_type,
             }
 
             self.logger.info(
