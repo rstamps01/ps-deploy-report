@@ -889,15 +889,6 @@ class VastReportBuilder:
         online_start_time = cluster_info.get("online_start_time", "Unknown")
         deployment_time = cluster_info.get("deployment_time", "Unknown")
 
-        # Get capacity display format
-        capacity_base_10 = cluster_info.get("capacity_base_10", None)
-        if capacity_base_10 is True:
-            capacity_format = "True"
-        elif capacity_base_10 is False:
-            capacity_format = "False"
-        else:
-            capacity_format = "Unknown"
-
         cluster_overview_data = [
             ["ID", cluster_id],
             ["Name", cluster_name],
@@ -909,7 +900,6 @@ class VastReportBuilder:
             ["Uptime", uptime],
             ["Online Since", online_start_time],
             ["Deployed", deployment_time],
-            ["Capacity-Base 10", capacity_format],
         ]
 
         # Create cluster overview table with same style as Cluster Information
@@ -1130,6 +1120,16 @@ class VastReportBuilder:
 
         # Create cluster info table with VAST styling - reorganized per requirements
         cluster_name = cluster_info.get("name", "Unknown")
+        
+        # Get capacity display format for this table
+        capacity_base_10 = cluster_info.get("capacity_base_10", None)
+        if capacity_base_10 is True:
+            capacity_format = "True"
+        elif capacity_base_10 is False:
+            capacity_format = "False"
+        else:
+            capacity_format = "Unknown"
+        
         cluster_data = [
             ["State", cluster_info.get("state", "Unknown")],
             ["SSD RAID State", cluster_info.get("ssd_raid_state", "Unknown")],
@@ -1229,6 +1229,7 @@ class VastReportBuilder:
                     )
                 ),
             ],
+            ["Capacity-Base 10", capacity_format],
         ]
 
         table_elements = self.brand_compliance.create_vast_table(
