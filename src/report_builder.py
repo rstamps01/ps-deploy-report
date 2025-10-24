@@ -3115,12 +3115,6 @@ class VastReportBuilder:
 
             # Get switch name first to use in consolidated heading
             switch_name = switch.get("name", "Unknown")
-            
-            # Add consolidated "Switch # Details: <switch_name>" heading
-            switch_details_heading = self.brand_compliance.create_vast_section_heading(
-                f"Switch {switch_num} Details: {switch_name}", level=2
-            )
-            content.extend(switch_details_heading)
 
             hostname = switch.get("hostname", "Unknown")
             model = switch.get("model", "Unknown")
@@ -3162,11 +3156,19 @@ class VastReportBuilder:
                 ["Port MTU", mtu],
             ]
 
-            # Create switch info table (no title needed - it's in the heading now)
+            # Create heading and table elements
+            switch_details_heading = self.brand_compliance.create_vast_section_heading(
+                f"Switch {switch_num} Details: {switch_name}", level=2
+            )
             switch_info_elements = self._create_cluster_info_table(
                 switch_info_data, None
             )
-            content.extend(switch_info_elements)
+            
+            # Keep heading with first table (switch info)
+            switch_section_elements = []
+            switch_section_elements.extend(switch_details_heading)
+            switch_section_elements.extend(switch_info_elements)
+            content.append(KeepTogether(switch_section_elements))
             content.append(Spacer(1, 12))
 
             # Create port summary table with port numbers
@@ -3235,15 +3237,6 @@ class VastReportBuilder:
                     page_width * 0.15,  # Speed (reduced by 50%)
                     page_width * 0.70,  # Port Numbers (reduced slightly)
                 ]
-
-                # Add title
-                table_title = f"Port Summary: {switch_name}"
-                title_para = Paragraph(
-                    f"<b>{table_title}</b>",
-                    self.brand_compliance.styles["vast_subheading"],
-                )
-                content.append(title_para)
-                content.append(Spacer(1, 8))
 
                 # Prepare table data with headers
                 full_table_data = [headers] + summary_table_data
@@ -3331,7 +3324,17 @@ class VastReportBuilder:
                 )
 
                 port_table.setStyle(table_style)
-                content.append(port_table)
+                
+                # Create title and wrap with table in KeepTogether
+                table_title = f"Port Summary: {switch_name}"
+                title_para = Paragraph(
+                    f"<b>{table_title}</b>",
+                    self.brand_compliance.styles["vast_subheading"],
+                )
+                
+                # Keep title and table together on page breaks
+                port_summary_elements = [title_para, Spacer(1, 8), port_table]
+                content.append(KeepTogether(port_summary_elements))
                 content.append(Spacer(1, 12))
 
         # Add port mapping section if available
