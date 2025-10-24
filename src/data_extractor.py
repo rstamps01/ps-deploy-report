@@ -662,6 +662,9 @@ class VastDataExtractor:
                     "ipmi_netmask",
                     cluster_summary.get("ipmi_netmask", "Not Configured"),
                 ),
+                "net_type": cluster_network_data.get(
+                    "net_type", cluster_summary.get("net_type", "Not Configured")
+                ),
                 "extraction_timestamp": datetime.now().isoformat(),
             }
 
