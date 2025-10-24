@@ -552,14 +552,26 @@ class ExternalPortMapper:
 
             # Match MAC address line
             # Format: 172.16.3.4:     link/ether c4:70:bd:fa:45:0a
+            # Skip vf (virtual function) lines
+            if "vf " in line:
+                continue
+                
             mac_match = re.match(r"^[\d.]+:\s+link/ether\s+([0-9a-f:]{17})", line)
             if mac_match and current_node_ip and current_interface:
                 mac = mac_match.group(1)
 
                 # Only capture physical data interfaces (enp*, not bond*, vlan*, etc.)
-                if current_interface.startswith("enp") and not "@" in line:
+                # And only capture once per interface (first MAC = physical interface MAC)
+                if (
+                    current_interface.startswith("enp")
+                    and not "@" in line
+                    and current_interface not in node_macs[current_node_ip]
+                ):
                     node_macs[current_node_ip][current_interface] = mac
                     self.logger.debug(
+                        f"Found MAC: {current_node_ip} {current_interface} = {mac}"
+                    )
+                    self.vlog.log(
                         f"Found MAC: {current_node_ip} {current_interface} = {mac}"
                     )
 
