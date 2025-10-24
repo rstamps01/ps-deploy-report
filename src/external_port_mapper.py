@@ -314,36 +314,40 @@ class ExternalPortMapper:
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
                 self.vlog.log_result(result, f"{expected_os} test result")
 
-                if result.returncode == 0:
-                    # Successful authentication - verify OS type from output
-                    output_lower = result.stdout.lower()
+                # Check both stdout and stderr for OS identification
+                output_lower = (result.stdout + result.stderr).lower()
 
-                    if expected_os == "cumulus":
-                        # Cumulus will have specific output format or "cumulus" in response
-                        if "cumulus" in output_lower or "hostname" in output_lower:
-                            self.vlog.log(
-                                f"✓ Detected Cumulus Linux on {switch_ip}",
-                                self.vlog.GREEN,
-                            )
-                            self.logger.info(
-                                f"Switch {switch_ip}: Cumulus Linux detected"
-                            )
-                            return ("cumulus", user, password)
-                    elif expected_os == "onyx":
-                        # Onyx will have "onyx" or "mellanox" in version output
-                        if (
-                            "onyx" in output_lower
-                            or "mellanox" in output_lower
-                            or "product name" in output_lower
-                        ):
-                            self.vlog.log(
-                                f"✓ Detected Mellanox Onyx on {switch_ip}",
-                                self.vlog.GREEN,
-                            )
-                            self.logger.info(
-                                f"Switch {switch_ip}: Mellanox Onyx detected"
-                            )
-                            return ("onyx", user, password)
+                if expected_os == "cumulus":
+                    # Cumulus will have specific output format or "cumulus" in response
+                    if result.returncode == 0 and ("cumulus" in output_lower or "hostname" in output_lower):
+                        self.vlog.log(
+                            f"✓ Detected Cumulus Linux on {switch_ip}",
+                            self.vlog.GREEN,
+                        )
+                        self.logger.info(
+                            f"Switch {switch_ip}: Cumulus Linux detected"
+                        )
+                        return ("cumulus", user, password)
+                elif expected_os == "onyx":
+                    # Onyx detection: Success if we see Onyx/Mellanox identifiers
+                    # OR if we get the "UNIX shell commands cannot be executed" message
+                    # (which means auth succeeded but account has restricted shell access)
+                    onyx_indicators = [
+                        "onyx" in output_lower,
+                        "mellanox" in output_lower,
+                        "product name" in output_lower,
+                        "unix shell commands cannot be executed" in output_lower,
+                    ]
+                    
+                    if any(onyx_indicators):
+                        self.vlog.log(
+                            f"✓ Detected Mellanox Onyx on {switch_ip}",
+                            self.vlog.GREEN,
+                        )
+                        self.logger.info(
+                            f"Switch {switch_ip}: Mellanox Onyx detected"
+                        )
+                        return ("onyx", user, password)
 
             except subprocess.TimeoutExpired:
                 self.vlog.log_warning(f"Timeout testing {expected_os} on {switch_ip}")
