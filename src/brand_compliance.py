@@ -875,28 +875,25 @@ class VastBrandCompliance:
                     "diagrams",
                     "lg_vast_watermark.png",
                 )
-                
+
                 if os.path.exists(watermark_path):
                     try:
                         from PIL import Image as PILImage
-                        
-                        self.logger.info(
-                            f"Applying watermark from: {watermark_path}"
-                        )
-                        
+
+                        self.logger.info(f"Applying watermark from: {watermark_path}")
+
                         # Get image dimensions
                         with PILImage.open(watermark_path) as img:
                             img_width, img_height = img.size
                         
-                        # Calculate available space (above the footer line)
-                        # Position watermark directly above the horizontal line
+                        # Calculate available space (fit within page width)
                         available_width = page_width - left_margin - right_margin
                         available_height = page_height - top_margin - bottom_margin
                         
-                        # Calculate scaling to fill the page while maintaining aspect ratio
+                        # Calculate scaling to fit within page width while maintaining aspect ratio
                         scale_x = available_width / img_width
                         scale_y = available_height / img_height
-                        scale = max(scale_x, scale_y)  # Use max to fill the page
+                        scale = min(scale_x, scale_y)  # Use min to fit within page bounds
                         
                         watermark_width = img_width * scale
                         watermark_height = img_height * scale
@@ -904,7 +901,7 @@ class VastBrandCompliance:
                         # Center the watermark on the page
                         x_position = (page_width - watermark_width) / 2
                         y_position = (page_height - watermark_height) / 2
-                        
+
                         # Draw watermark with transparency
                         canvas.saveState()
                         canvas.setFillAlpha(0.15)  # 15% opacity for subtle watermark
@@ -918,14 +915,12 @@ class VastBrandCompliance:
                             preserveAspectRatio=True,
                         )
                         canvas.restoreState()
-                        
+
                     except Exception as e:
                         self.logger.error(f"Error adding watermark: {e}")
                 else:
-                    self.logger.warning(
-                        f"Watermark image not found: {watermark_path}"
-                    )
-            
+                    self.logger.warning(f"Watermark image not found: {watermark_path}")
+
             # Draw horizontal line
             canvas.setStrokeColor(self.colors.BACKGROUND_DARK)
             canvas.setLineWidth(1)
