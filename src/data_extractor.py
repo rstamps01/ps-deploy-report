@@ -1785,11 +1785,11 @@ class VastDataExtractor:
             if "ipl_connections" in external_data:
                 for ipl in external_data["ipl_connections"]:
                     # Get switch designations
-                    sw1_ip = ipl['switch1_ip']
-                    sw2_ip = ipl['switch2_ip']
-                    sw1_port = ipl['switch1_port']
-                    sw2_port = ipl['switch2_port']
-                    
+                    sw1_ip = ipl["switch1_ip"]
+                    sw2_ip = ipl["switch2_ip"]
+                    sw1_port = ipl["switch1_port"]
+                    sw2_port = ipl["switch2_port"]
+
                     # Generate switch designations
                     sw1_designation = enhanced_mapper.generate_switch_designation(
                         sw1_ip, sw1_port
@@ -1797,20 +1797,22 @@ class VastDataExtractor:
                     sw2_designation = enhanced_mapper.generate_switch_designation(
                         sw2_ip, sw2_port
                     )
-                    
+
                     # Format as node connection entry for inclusion in port map table
                     # Switch Port = SWA-P29, Node Connection = SWB-P29, Notes = IPL
-                    ipl_formatted.append({
-                        "switch_designation": sw1_designation,
-                        "node_designation": sw2_designation,
-                        "notes": "IPL",
-                        "connection_type": "IPL",
-                        "switch1_ip": sw1_ip,
-                        "switch2_ip": sw2_ip,
-                        "switch1_port": sw1_port,
-                        "switch2_port": sw2_port,
-                    })
-            
+                    ipl_formatted.append(
+                        {
+                            "switch_designation": sw1_designation,
+                            "node_designation": sw2_designation,
+                            "notes": "IPL",
+                            "connection_type": "IPL",
+                            "switch1_ip": sw1_ip,
+                            "switch2_ip": sw2_ip,
+                            "switch1_port": sw1_port,
+                            "switch2_port": sw2_port,
+                        }
+                    )
+
             # Legacy IPL port collection (for backward compatibility)
             ipl_ports = []
             switch_ports = raw_data.get("switch_ports", [])
@@ -1849,7 +1851,7 @@ class VastDataExtractor:
             # Get IPL counts from external data
             total_ipl_connections = external_data.get("total_ipl_connections", 0)
             total_ipl_ports = external_data.get("total_ipl_ports", len(ipl_ports))
-            
+
             processed_data = {
                 "available": True,
                 "port_map": enhanced_data["port_map"],

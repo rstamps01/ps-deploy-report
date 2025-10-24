@@ -2960,9 +2960,9 @@ class VastReportBuilder:
                         table_data.append(
                             [
                                 switch_des,  # SWA-P29
-                                node_des,    # SWB-P29
-                                "A/B",       # Network (both)
-                                "100G",      # Speed
+                                node_des,  # SWB-P29
+                                "A/B",  # Network (both)
+                                "100G",  # Speed
                                 ipl_conn.get("notes", "IPL"),  # IPL
                             ]
                         )
@@ -2970,10 +2970,10 @@ class VastReportBuilder:
                         # This is Switch 2: swap the columns to show SWB-P29 → SWA-P29
                         table_data.append(
                             [
-                                node_des,    # SWB-P29 (was in node_designation)
+                                node_des,  # SWB-P29 (was in node_designation)
                                 switch_des,  # SWA-P29 (was in switch_designation)
-                                "A/B",       # Network (both)
-                                "100G",      # Speed
+                                "A/B",  # Network (both)
+                                "100G",  # Speed
                                 ipl_conn.get("notes", "IPL"),  # IPL
                             ]
                         )

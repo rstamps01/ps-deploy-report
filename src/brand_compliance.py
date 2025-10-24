@@ -16,6 +16,7 @@ Date: September 26, 2025
 """
 
 import logging
+import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -866,6 +867,65 @@ class VastBrandCompliance:
                     "VAST Professional Services | Automated As-Built Documentation"
                 )
 
+            # Add watermark (all pages except title page)
+            if page_num > 1:
+                watermark_path = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "assets",
+                    "diagrams",
+                    "lg_vast_watermark.png",
+                )
+                
+                if os.path.exists(watermark_path):
+                    try:
+                        from PIL import Image as PILImage
+                        
+                        self.logger.info(
+                            f"Applying watermark from: {watermark_path}"
+                        )
+                        
+                        # Get image dimensions
+                        with PILImage.open(watermark_path) as img:
+                            img_width, img_height = img.size
+                        
+                        # Calculate available space (above the footer line)
+                        # Position watermark directly above the horizontal line
+                        available_width = page_width - left_margin - right_margin
+                        available_height = page_height - top_margin - bottom_margin
+                        
+                        # Calculate scaling to fill the page while maintaining aspect ratio
+                        scale_x = available_width / img_width
+                        scale_y = available_height / img_height
+                        scale = max(scale_x, scale_y)  # Use max to fill the page
+                        
+                        watermark_width = img_width * scale
+                        watermark_height = img_height * scale
+                        
+                        # Center the watermark on the page
+                        x_position = (page_width - watermark_width) / 2
+                        y_position = (page_height - watermark_height) / 2
+                        
+                        # Draw watermark with transparency
+                        canvas.saveState()
+                        canvas.setFillAlpha(0.15)  # 15% opacity for subtle watermark
+                        canvas.drawImage(
+                            watermark_path,
+                            x_position,
+                            y_position,
+                            width=watermark_width,
+                            height=watermark_height,
+                            mask="auto",
+                            preserveAspectRatio=True,
+                        )
+                        canvas.restoreState()
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error adding watermark: {e}")
+                else:
+                    self.logger.warning(
+                        f"Watermark image not found: {watermark_path}"
+                    )
+            
             # Draw horizontal line
             canvas.setStrokeColor(self.colors.BACKGROUND_DARK)
             canvas.setLineWidth(1)
