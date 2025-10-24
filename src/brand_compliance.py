@@ -814,6 +814,8 @@ class VastBrandCompliance:
     def create_vast_page_template(self, generation_info: Dict[str, Any]) -> Any:
         """
         Create VAST brand-compliant page template with footer that repeats on all pages.
+        
+        Note: This uses a class-level attribute to store page count for multiBuild().
 
         Args:
             generation_info (Dict[str, Any]): Report generation information
@@ -847,23 +849,23 @@ class VastBrandCompliance:
             rightPadding=0,
             topPadding=0,
         )
-        
-        # Store to track the total page count between multiBuild passes
-        # This gets set after first pass and used during second pass
-        page_count_storage = {'total': 0}
+
+        # Store page count at instance level so it persists across multiBuild passes
+        # Reset it for this new document
+        self._page_count_total = 0
 
         def footer_canvas(canvas, doc):
             """Draw footer on every page."""
             # Get page number
             page_num = canvas.getPageNumber()
 
-            # Get total page count
+            # Get total page count using instance variable that persists across passes
             # During multiBuild's first pass, we track the highest page number
             # During the second pass, we use the stored total from first pass
-            if page_num > page_count_storage['total']:
-                page_count_storage['total'] = page_num
-            
-            total_pages = page_count_storage['total'] if page_count_storage['total'] > 0 else page_num
+            if page_num > self._page_count_total:
+                self._page_count_total = page_num
+
+            total_pages = self._page_count_total if self._page_count_total > 0 else page_num
 
             # Footer content
             if generation_info:
