@@ -1633,12 +1633,16 @@ class VastApiHandler:
                             vast_install_info = host.get("vast_install_info", {})
                             if vast_install_info.get("net_type"):
                                 net_type = vast_install_info.get("net_type")
-                                self.logger.info(f"Extracted net_type from network_settings: {net_type}")
+                                self.logger.info(
+                                    f"Extracted net_type from network_settings: {net_type}"
+                                )
                                 break
                     if net_type != "Unknown":
                         break
             else:
-                self.logger.warning("No boxes found in network_settings data for net_type extraction")
+                self.logger.warning(
+                    "No boxes found in network_settings data for net_type extraction"
+                )
 
             # Extract cluster network configuration
             network_config = {

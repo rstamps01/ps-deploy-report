@@ -38,3 +38,6 @@ jsonschema>=4.19.0
 
 # Environment variable management
 python-dotenv>=1.0.0
+
+# Interactive SSH for Mellanox Onyx switches
+pexpect>=4.9.0

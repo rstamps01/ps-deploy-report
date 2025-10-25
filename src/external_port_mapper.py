@@ -319,14 +319,14 @@ class ExternalPortMapper:
 
                 if expected_os == "cumulus":
                     # Cumulus will have specific output format or "cumulus" in response
-                    if result.returncode == 0 and ("cumulus" in output_lower or "hostname" in output_lower):
+                    if result.returncode == 0 and (
+                        "cumulus" in output_lower or "hostname" in output_lower
+                    ):
                         self.vlog.log(
                             f"✓ Detected Cumulus Linux on {switch_ip}",
                             self.vlog.GREEN,
                         )
-                        self.logger.info(
-                            f"Switch {switch_ip}: Cumulus Linux detected"
-                        )
+                        self.logger.info(f"Switch {switch_ip}: Cumulus Linux detected")
                         return ("cumulus", user, password)
                 elif expected_os == "onyx":
                     # Onyx detection: Success if we see Onyx/Mellanox identifiers
@@ -338,15 +338,13 @@ class ExternalPortMapper:
                         "product name" in output_lower,
                         "unix shell commands cannot be executed" in output_lower,
                     ]
-                    
+
                     if any(onyx_indicators):
                         self.vlog.log(
                             f"✓ Detected Mellanox Onyx on {switch_ip}",
                             self.vlog.GREEN,
                         )
-                        self.logger.info(
-                            f"Switch {switch_ip}: Mellanox Onyx detected"
-                        )
+                        self.logger.info(f"Switch {switch_ip}: Mellanox Onyx detected")
                         return ("onyx", user, password)
 
             except subprocess.TimeoutExpired:
@@ -362,6 +360,125 @@ class ExternalPortMapper:
         error_msg = f"Could not detect OS type for switch {switch_ip} - authentication failed with both credential sets"
         self.vlog.log_error(error_msg)
         raise Exception(error_msg)
+
+    def _run_onyx_interactive_command(
+        self,
+        switch_ip: str,
+        username: str,
+        password: str,
+        command: str,
+        timeout: int = 30,
+    ) -> Tuple[int, str, str]:
+        """
+        Run a command on an Onyx switch using interactive SSH (pexpect).
+
+        Onyx switches with 'admin' user account cannot execute commands non-interactively.
+        This method uses pexpect to:
+        1. SSH to the switch
+        2. Wait for password prompt
+        3. Enter password
+        4. Wait for CLI prompt
+        5. Send command
+        6. Capture output
+        7. Exit cleanly
+
+        Args:
+            switch_ip: IP address of the switch
+            username: SSH username (typically 'admin')
+            password: SSH password (typically 'admin')
+            command: CLI command to execute (e.g., 'show mac-address-table')
+            timeout: Command timeout in seconds
+
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+            - returncode: 0 for success, non-zero for failure
+            - stdout: Command output
+            - stderr: Error output (if any)
+        """
+        try:
+            import pexpect
+
+            self.vlog.log_operation(
+                f"Running interactive Onyx command on {switch_ip}: {command}"
+            )
+
+            # Build SSH command
+            ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile={self.known_hosts_file} {username}@{switch_ip}"
+
+            self.vlog.log_command([ssh_cmd], "Interactive SSH (pexpect)")
+
+            # Spawn SSH process
+            child = pexpect.spawn(ssh_cmd, timeout=timeout, encoding="utf-8")
+
+            # Enable logging to capture all interaction
+            child.logfile_read = None  # We'll manually log instead
+
+            # Wait for password prompt
+            i = child.expect([r"Password:", r"password:", pexpect.TIMEOUT, pexpect.EOF])
+
+            if i >= 2:  # Timeout or EOF
+                error_msg = f"Failed to get password prompt: {child.before}"
+                self.vlog.log(error_msg, self.vlog.RED)
+                return (1, "", error_msg)
+
+            # Send password
+            child.sendline(password)
+
+            # Wait for CLI prompt (Onyx format: "hostname [info] >")
+            # Examples: "rack6-1 [r6u35Bonzo99: standby] >"
+            i = child.expect([r"\[.*\]\s*>", pexpect.TIMEOUT, pexpect.EOF], timeout=15)
+
+            if i != 0:  # Didn't get prompt
+                error_msg = f"Failed to get CLI prompt: {child.before}"
+                self.vlog.log(error_msg, self.vlog.RED)
+                child.close()
+                return (1, "", error_msg)
+
+            # Send command
+            child.sendline(command)
+
+            # Wait for command completion (next prompt)
+            i = child.expect(
+                [r"\[.*\]\s*>", pexpect.TIMEOUT, pexpect.EOF], timeout=timeout
+            )
+
+            if i != 0:  # Command didn't complete
+                error_msg = f"Command timeout or connection lost: {child.before}"
+                self.vlog.log(error_msg, self.vlog.RED)
+                child.close()
+                return (1, "", error_msg)
+
+            # Capture output (everything before the final prompt)
+            output = child.before
+
+            # Clean up the output
+            # Remove the echoed command line (first line)
+            lines = output.split("\n")
+            if lines and command in lines[0]:
+                lines = lines[1:]
+            output = "\n".join(lines).strip()
+
+            # Exit cleanly
+            child.sendline("exit")
+            child.expect(pexpect.EOF, timeout=5)
+            child.close()
+
+            self.vlog.log_data(
+                "Onyx Command Output", {"lines": len(output.split("\n"))}
+            )
+            self.vlog.log(f"✅ Command succeeded: {len(output)} chars", self.vlog.GREEN)
+
+            return (0, output, "")
+
+        except ImportError:
+            error_msg = "pexpect library not installed. Run: pip install pexpect"
+            self.logger.error(error_msg)
+            return (1, "", error_msg)
+        except Exception as e:
+            error_msg = f"Interactive SSH error: {e}"
+            self.vlog.log(error_msg, self.vlog.RED)
+            self.logger.error(error_msg, exc_info=True)
+            return (1, "", error_msg)
 
     def collect_port_mapping(self) -> Dict[str, Any]:
         """
@@ -626,10 +743,20 @@ class ExternalPortMapper:
             Dict mapping node IPs to {interface: mac}
             Example: {'172.16.3.4': {'enp129s0f0': 'c4:70:bd:fa:45:0a'}}
         """
+        self.vlog.log_function_enter(
+            "_collect_node_macs_via_clush",
+            cnode_ip=self.cnode_ip,
+            node_user=self.node_user,
+        )
+
         try:
             self.logger.info(f"Collecting node MACs via clush from {self.cnode_ip}")
+            self.vlog.log_operation(
+                f"Collecting node MACs via clush from {self.cnode_ip}"
+            )
 
             # SSH to CNode and run clush to get all node interfaces
+            # Use /sbin/ip as the 'ip' command may not be in PATH
             cmd = [
                 "sshpass",
                 "-p",
@@ -640,19 +767,37 @@ class ExternalPortMapper:
                 "-o",
                 f"UserKnownHostsFile={self.known_hosts_file}",
                 f"{self.node_user}@{self.cnode_ip}",
-                "clush -a 'ip link show'",
+                "clush -a '/sbin/ip link show'",
             ]
 
+            self.vlog.log_command(cmd, "CLUSH NODE MAC COMMAND")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            self.vlog.log_result(result, "CLUSH NODE MAC RESULT")
 
             if result.returncode != 0:
-                raise Exception(f"clush command failed: {result.stderr}")
+                error_msg = f"clush command failed: {result.stderr}"
+                self.logger.error(error_msg)
+                self.vlog.log(f"❌ {error_msg}", self.vlog.RED)
+                self.vlog.log_function_exit(
+                    "_collect_node_macs_via_clush", "FAILED - non-zero return code"
+                )
+                raise Exception(error_msg)
 
             # Parse clush output
-            return self._parse_clush_output(result.stdout)
+            self.vlog.log_operation("Parsing clush output for node MACs")
+            node_macs = self._parse_clush_output(result.stdout)
+
+            self.vlog.log_data("node_macs", node_macs)
+            self.vlog.log_function_exit(
+                "_collect_node_macs_via_clush",
+                f"Collected MACs for {len(node_macs)} nodes",
+            )
+            return node_macs
 
         except Exception as e:
             self.logger.error(f"Error collecting node MACs via clush: {e}")
+            self.vlog.log_error("Failed to collect node MACs via clush", e)
+            self.vlog.log_function_exit("_collect_node_macs_via_clush", "FAILED")
             raise
 
     def _parse_clush_output(self, output: str) -> Dict[str, Dict[str, str]]:
@@ -692,20 +837,44 @@ class ExternalPortMapper:
             if mac_match and current_node_ip and current_interface:
                 mac = mac_match.group(1)
 
-                # Only capture physical data interfaces (enp*, not bond*, vlan*, etc.)
-                # And only capture once per interface (first MAC = physical interface MAC)
+                # Capture physical data interfaces (enp*, ens*, eth*, not bond*, vlan*, eno*, etc.)
+                # Skip management interfaces (enp0s25, eno1, eno2 typically used for IPMI/mgmt)
+                # Only capture once per interface (first MAC = physical interface MAC)
+                is_data_interface = (
+                    (
+                        current_interface.startswith("enp")
+                        and not current_interface.startswith("enp0s25")
+                    )
+                    or current_interface.startswith("ens")
+                    or current_interface.startswith("eth")
+                )
+                is_mgmt_interface = current_interface.startswith(
+                    "eno"
+                )  # eno1, eno2 are mgmt
+
                 if (
-                    current_interface.startswith("enp")
-                    and "@" not in line
+                    is_data_interface
+                    and not is_mgmt_interface
                     and current_interface not in node_macs[current_node_ip]
                 ):
-                    node_macs[current_node_ip][current_interface] = mac
-                    self.logger.debug(
-                        f"Found MAC: {current_node_ip} {current_interface} = {mac}"
-                    )
-                    self.vlog.log(
-                        f"Found MAC: {current_node_ip} {current_interface} = {mac}"
-                    )
+                    # VLAN subinterfaces (e.g., enp3s0f0.69@enp3s0f0) contain "@"
+                    # Extract the base interface name for VLAN subinterfaces
+                    if "@" in current_interface:
+                        # Format: enp3s0f0.69@enp3s0f0
+                        # We want to store as "enp3s0f0" (base interface before the dot)
+                        base_interface = current_interface.split(".")[0]
+                    else:
+                        base_interface = current_interface
+
+                    # Only store if we haven't already captured this base interface
+                    if base_interface not in node_macs[current_node_ip]:
+                        node_macs[current_node_ip][base_interface] = mac
+                        self.logger.debug(
+                            f"Found MAC: {current_node_ip} {base_interface} = {mac}"
+                        )
+                        self.vlog.log(
+                            f"Found MAC: {current_node_ip} {base_interface} = {mac} (from {current_interface})"
+                        )
 
         return node_macs
 
@@ -748,32 +917,48 @@ class ExternalPortMapper:
                     vlan69_cmd_str = "show mac-address-table vlan 69"
 
                 # Collect general MAC table
-                cmd = [
-                    "sshpass",
-                    "-p",
-                    password,
-                    "ssh",
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    f"UserKnownHostsFile={self.known_hosts_file}",
-                    f"{user}@{switch_ip}",
-                    mac_cmd,
-                ]
+                # For Onyx, use interactive SSH; for Cumulus, use direct command
+                if os_type == "onyx":
+                    # Use interactive SSH for Onyx
+                    returncode, stdout, stderr = self._run_onyx_interactive_command(
+                        switch_ip, user, password, mac_cmd, timeout=30
+                    )
+                    result_returncode = returncode
+                    result_stdout = stdout
+                    result_stderr = stderr
+                else:
+                    # Use subprocess for Cumulus
+                    cmd = [
+                        "sshpass",
+                        "-p",
+                        password,
+                        "ssh",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        f"UserKnownHostsFile={self.known_hosts_file}",
+                        f"{user}@{switch_ip}",
+                        mac_cmd,
+                    ]
 
-                self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-                self.vlog.log_result(result, "General MAC table result")
+                    self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30
+                    )
+                    self.vlog.log_result(result, "General MAC table result")
+                    result_returncode = result.returncode
+                    result_stdout = result.stdout
+                    result_stderr = result.stderr
 
-                if result.returncode == 0:
+                if result_returncode == 0:
                     # Parse based on OS type
                     if os_type == "cumulus":
                         switch_macs[switch_ip] = self._parse_cumulus_mac_table(
-                            result.stdout
+                            result_stdout
                         )
                     else:  # onyx
                         switch_macs[switch_ip] = self._parse_onyx_mac_table(
-                            result.stdout
+                            result_stdout
                         )
 
                     general_count = len(switch_macs[switch_ip])
@@ -785,7 +970,7 @@ class ExternalPortMapper:
                     )
                 else:
                     self.logger.warning(
-                        f"Failed to get MAC table from {switch_ip}: {result.stderr}"
+                        f"Failed to get MAC table from {switch_ip}: {result_stderr}"
                     )
                     switch_macs[switch_ip] = {}
 
@@ -794,35 +979,47 @@ class ExternalPortMapper:
                 self.vlog.log_operation(
                     f"Collecting VLAN 69 MAC table from {switch_ip}"
                 )
-                vlan69_cmd = [
-                    "sshpass",
-                    "-p",
-                    password,
-                    "ssh",
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    f"UserKnownHostsFile={self.known_hosts_file}",
-                    f"{user}@{switch_ip}",
-                    vlan69_cmd_str,
-                ]
 
-                self.vlog.log_command(
-                    vlan69_cmd, f"VLAN 69 MAC table query ({os_type})"
-                )
-                vlan69_result = subprocess.run(
-                    vlan69_cmd, capture_output=True, text=True, timeout=30
-                )
-                self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
+                # For Onyx, use interactive SSH; for Cumulus, use direct command
+                if os_type == "onyx":
+                    # Use interactive SSH for Onyx
+                    vlan69_returncode, vlan69_stdout, vlan69_stderr = (
+                        self._run_onyx_interactive_command(
+                            switch_ip, user, password, vlan69_cmd_str, timeout=30
+                        )
+                    )
+                else:
+                    # Use subprocess for Cumulus
+                    vlan69_cmd = [
+                        "sshpass",
+                        "-p",
+                        password,
+                        "ssh",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        f"UserKnownHostsFile={self.known_hosts_file}",
+                        f"{user}@{switch_ip}",
+                        vlan69_cmd_str,
+                    ]
 
-                if vlan69_result.returncode == 0:
+                    self.vlog.log_command(
+                        vlan69_cmd, f"VLAN 69 MAC table query ({os_type})"
+                    )
+                    vlan69_result = subprocess.run(
+                        vlan69_cmd, capture_output=True, text=True, timeout=30
+                    )
+                    self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
+                    vlan69_returncode = vlan69_result.returncode
+                    vlan69_stdout = vlan69_result.stdout
+                    vlan69_stderr = vlan69_result.stderr
+
+                if vlan69_returncode == 0:
                     # Parse based on OS type
                     if os_type == "cumulus":
-                        vlan69_macs = self._parse_cumulus_mac_table(
-                            vlan69_result.stdout
-                        )
+                        vlan69_macs = self._parse_cumulus_mac_table(vlan69_stdout)
                     else:  # onyx
-                        vlan69_macs = self._parse_onyx_mac_table(vlan69_result.stdout)
+                        vlan69_macs = self._parse_onyx_mac_table(vlan69_stdout)
 
                     # Merge VLAN 69 MACs into the main table
                     before_count = len(switch_macs[switch_ip])
@@ -846,7 +1043,7 @@ class ExternalPortMapper:
                         )
                 else:
                     self.vlog.log(
-                        f"VLAN 69 query failed or not supported: {vlan69_result.stderr}",
+                        f"VLAN 69 query failed or not supported: {vlan69_stderr}",
                         self.vlog.YELLOW,
                     )
 
@@ -930,27 +1127,30 @@ class ExternalPortMapper:
                 continue
 
             # Split line into columns
+            # Format: Vlan | Mac Address | Type | Port\Next Hop
             parts = line.split()
             if len(parts) >= 4:
                 try:
                     vlan = parts[0]
                     mac = parts[1]
-                    port = parts[2]
-                    # entry_type = parts[3]  # Not used, but available if needed
+                    entry_type = parts[2]  # Dynamic/Static
+                    port = parts[3]  # Port is the 4th column
 
                     # Validate MAC format (Onyx uses colon-separated hex)
                     # Format: 00:00:5E:00:01:01 or lowercase
                     mac_lower = mac.lower()
                     if re.match(r"^[0-9a-f:]{17}$", mac_lower):
-                        # Only include Eth* interfaces (exclude CPU, management, etc.)
-                        if port.startswith("Eth"):
-                            # Convert Onyx port naming (Eth1/5) to swp naming for consistency
-                            # Eth1/5 -> swp5
-                            if "/" in port:
+                        # Include Eth* and Po* (Port Channel) interfaces
+                        # Exclude CPU, management, etc.
+                        if port.startswith("Eth") or port.startswith("Po"):
+                            # Convert Onyx port naming to swp naming for consistency
+                            if port.startswith("Eth") and "/" in port:
+                                # Eth1/5 -> swp5
                                 port_num = port.split("/")[1]
                                 swp_port = f"swp{port_num}"
                             else:
-                                swp_port = port.lower()
+                                # Keep Po1, Po2, etc. as-is for now
+                                swp_port = port
 
                             mac_table[mac_lower] = {
                                 "port": swp_port,
@@ -1004,33 +1204,42 @@ class ExternalPortMapper:
                 else:  # onyx
                     lldp_cmd = "show lldp remote"
 
-                cmd = [
-                    "sshpass",
-                    "-p",
-                    password,
-                    "ssh",
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    f"UserKnownHostsFile={self.known_hosts_file}",
-                    f"{user}@{switch_ip}",
-                    lldp_cmd,
-                ]
+                # For Onyx, use interactive SSH; for Cumulus, use direct command
+                if os_type == "onyx":
+                    # Use interactive SSH for Onyx
+                    returncode, stdout, stderr = self._run_onyx_interactive_command(
+                        switch_ip, user, password, lldp_cmd, timeout=30
+                    )
+                else:
+                    # Use subprocess for Cumulus
+                    cmd = [
+                        "sshpass",
+                        "-p",
+                        password,
+                        "ssh",
+                        "-o",
+                        "StrictHostKeyChecking=no",
+                        "-o",
+                        f"UserKnownHostsFile={self.known_hosts_file}",
+                        f"{user}@{switch_ip}",
+                        lldp_cmd,
+                    ]
 
-                self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-                self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
+                    self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=30
+                    )
+                    self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
+                    returncode = result.returncode
+                    stdout = result.stdout
+                    stderr = result.stderr
 
-                if result.returncode == 0:
+                if returncode == 0:
                     # Parse based on OS type
                     if os_type == "cumulus":
-                        ipl_data = self._parse_cumulus_lldp_for_ipl(
-                            result.stdout, switch_ip
-                        )
+                        ipl_data = self._parse_cumulus_lldp_for_ipl(stdout, switch_ip)
                     else:  # onyx
-                        ipl_data = self._parse_onyx_lldp_for_ipl(
-                            result.stdout, switch_ip
-                        )
+                        ipl_data = self._parse_onyx_lldp_for_ipl(stdout, switch_ip)
 
                     # Deduplicate: only add if we haven't seen the reverse connection
                     for conn in ipl_data:
@@ -1049,7 +1258,7 @@ class ExternalPortMapper:
                             )
                 else:
                     self.logger.warning(
-                        f"Failed to get LLDP data from {switch_ip}: {result.stderr}"
+                        f"Failed to get LLDP data from {switch_ip}: {stderr}"
                     )
 
             except Exception as e:
@@ -1299,8 +1508,10 @@ class ExternalPortMapper:
 
             for interface, mac in interfaces.items():
                 # Find this MAC in switch tables
+                mac_found = False
                 for switch_ip, mac_table in switch_macs.items():
                     if mac in mac_table:
+                        mac_found = True
                         switch_entry = mac_table[mac]
 
                         # Determine network (A or B) based on WHICH SWITCH
@@ -1341,6 +1552,13 @@ class ExternalPortMapper:
                                 "network": network,
                             }
                         )
+
+                # Log if MAC was not found in any switch
+                if not mac_found:
+                    self.logger.warning(
+                        f"MAC not found in any switch table: {hostname} ({data_ip}) "
+                        f"{interface} = {mac}"
+                    )
 
         return port_map
 

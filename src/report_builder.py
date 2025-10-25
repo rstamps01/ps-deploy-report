@@ -2913,21 +2913,24 @@ class VastReportBuilder:
                 is_unknown = "UNKNOWN" in node_designation.upper()
 
                 # Primary interface logic (simplified):
-                # Show ONLY f0 and f1 interfaces - these are the primary physical ports
-                # f0 = First physical NIC port
-                # f1 = Second physical NIC port
-                # f2/f3 = Bonded/virtual interfaces (skip these)
+                # Show physical interfaces (f0, f1, f2, f3) - these are the primary physical ports
+                # Skip bonded/virtual interfaces (bonds, VLANs, etc.)
                 #
                 # Network assignment (A or B) is already correctly determined
                 # by which switch the connection is on, so we don't need to
                 # make assumptions about which interface goes to which network.
 
                 is_primary = False
-                if "f0" in interface or "f1" in interface:
+                if (
+                    "f0" in interface
+                    or "f1" in interface
+                    or "f2" in interface
+                    or "f3" in interface
+                ):
                     # This is a primary physical interface
                     is_primary = True
 
-                # Skip non-primary interfaces (f2, f3, bonds, VLANs, etc.)
+                # Skip non-primary interfaces (bonds, VLANs, etc.)
                 if not is_primary:
                     continue
 
@@ -3163,7 +3166,7 @@ class VastReportBuilder:
             switch_info_elements = self._create_cluster_info_table(
                 switch_info_data, None
             )
-            
+
             # Keep heading with first table (switch info)
             switch_section_elements = []
             switch_section_elements.extend(switch_details_heading)
@@ -3324,14 +3327,14 @@ class VastReportBuilder:
                 )
 
                 port_table.setStyle(table_style)
-                
+
                 # Create title and wrap with table in KeepTogether
                 table_title = f"Port Summary: {switch_name}"
                 title_para = Paragraph(
                     f"<b>{table_title}</b>",
                     self.brand_compliance.styles["vast_subheading"],
                 )
-                
+
                 # Keep title and table together on page breaks
                 port_summary_elements = [title_para, Spacer(1, 8), port_table]
                 content.append(KeepTogether(port_summary_elements))

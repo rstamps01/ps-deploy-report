@@ -597,7 +597,7 @@ function Show-InstallationSummary {
         }
         "production" {
             Write-Host "📦 Installation Type: Production Deployment" -ForegroundColor $Cyan
-            Write-Host "💾 Approximate Size: ~114 MB (47% smaller)" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~114 MB (47`% smaller)" -ForegroundColor $Cyan
             Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
             Write-Host "   • Virtual environment: ~107 MB" -ForegroundColor $Gray
             Write-Host "   • Git repository: Removed" -ForegroundColor $Gray
@@ -605,7 +605,7 @@ function Show-InstallationSummary {
         }
         "minimal" {
             Write-Host "📦 Installation Type: Minimal Installation" -ForegroundColor $Cyan
-            Write-Host "💾 Approximate Size: ~20 MB (91% smaller)" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~20 MB (91`% smaller)" -ForegroundColor $Cyan
             Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
             Write-Host "   • System Python packages: ~13 MB" -ForegroundColor $Gray
             Write-Host "   • Virtual environment: Not created" -ForegroundColor $Gray
