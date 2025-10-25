@@ -18,6 +18,16 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+# Define color variables for console output
+$Blue = "Blue"
+$Green = "Green"
+$Yellow = "Yellow"
+$Red = "Red"
+$Cyan = "Cyan"
+$White = "White"
+$Gray = "Gray"
+$Magenta = "Magenta"
+
 ################################################################################
 # Configuration
 ################################################################################
