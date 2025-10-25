@@ -666,7 +666,7 @@ function Show-InstallationMenu {
     Write-Host "  2) Production Deployment (Recommended)" -ForegroundColor $White
     Write-Host "     • Optimized for production without Git history" -ForegroundColor $Gray
     Write-Host "     • Cleaner deployment, smaller footprint" -ForegroundColor $Gray
-    Write-Host "     • Installation size: ~114 MB (47% smaller)" -ForegroundColor $Gray
+    Write-Host "     • Installation size: ~114 MB (47`% smaller)" -ForegroundColor $Gray
     Write-Host "     • Best for: Production servers, one-time deployments" -ForegroundColor $Gray
     Write-Host ""
     Write-Host "  3) Minimal Installation (Advanced)" -ForegroundColor $White
