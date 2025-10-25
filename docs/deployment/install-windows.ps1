@@ -6,6 +6,16 @@
 # Enable strict error handling
 $ErrorActionPreference = "Stop"
 
+# Define color variables for console output
+$Blue = "Blue"
+$Green = "Green"
+$Yellow = "Yellow"
+$Red = "Red"
+$Cyan = "Cyan"
+$White = "White"
+$Gray = "Gray"
+$Magenta = "Magenta"
+
 # Set up logging
 $LogFile = "install-windows.log"
 $LogPath = Join-Path $PSScriptRoot $LogFile
