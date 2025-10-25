@@ -448,7 +448,7 @@ $exitCode = Main
 if ($Host.Name -eq "ConsoleHost") {
     Write-Host ""
     Write-Host "Press any key to exit..."
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
 
 exit $exitCode
