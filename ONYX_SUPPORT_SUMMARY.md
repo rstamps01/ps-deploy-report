@@ -122,7 +122,7 @@ Full Onyx support has been successfully implemented for the external port mapper
 ```python
 For each switch:
   Try credentials: [(cumulus, password), (admin, admin)]
-  
+
   For each credential pair:
     - SSH with test command (nv show system or show version)
     - Check output for OS-specific strings:
@@ -240,4 +240,3 @@ All TODOs have been completed:
 - ✅ Add Onyx MAC table output parser
 
 The port mapper now provides full, transparent support for both Cumulus Linux and Mellanox Onyx switches.
-
