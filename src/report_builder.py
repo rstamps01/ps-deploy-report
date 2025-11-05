@@ -3008,6 +3008,32 @@ class VastReportBuilder:
             content.extend(table_elements)
             content.append(Spacer(1, 12))
 
+        # Add diagnostic summary if available
+        diagnostic_summary = port_mapping_data.get("diagnostic_summary")
+        if diagnostic_summary:
+            content.append(Spacer(1, 12))
+            diagnostic_style = ParagraphStyle(
+                "Diagnostic_Summary",
+                parent=styles["Normal"],
+                fontSize=self.config.font_size - 1,
+                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+                spaceAfter=8,
+                leftIndent=12,
+            )
+
+            diagnostic_text = (
+                f"<b>Collection Summary:</b><br/>"
+                f"• Nodes with MACs collected: {diagnostic_summary.get('nodes_collected', 0)}<br/>"
+                f"• CNode connections: {diagnostic_summary.get('cnode_connections', 0)}<br/>"
+                f"• DNode connections: {diagnostic_summary.get('dnode_connections', 0)}<br/>"
+                f"• Network A connections: {diagnostic_summary.get('network_a_connections', 0)}<br/>"
+                f"• Network B connections: {diagnostic_summary.get('network_b_connections', 0)}<br/>"
+                f"• Total MACs in switch tables: {diagnostic_summary.get('total_switch_macs', 0)}<br/>"
+                f"• Switches queried: {diagnostic_summary.get('switches_queried', 0)}"
+            )
+            content.append(Paragraph(diagnostic_text, diagnostic_style))
+            content.append(Spacer(1, 12))
+
         # Note: Cross-connection detection disabled - VAST dual-network design
         # naturally has both Network A and B on both switches for redundancy
         # Add cross-connection summary if any issues detected

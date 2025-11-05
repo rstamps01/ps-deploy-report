@@ -530,21 +530,59 @@ class ExternalPortMapper:
             node_macs = self._collect_node_macs_via_clush()
             self.logger.info(f"Collected MACs for {len(node_macs)} nodes")
 
-            # Step 3: Collect switch MAC tables
-            switch_macs = self._collect_switch_mac_tables()
-            self.logger.info(f"Collected MAC tables from {len(switch_macs)} switches")
+            # Diagnostic: Count CNodes vs DNodes by hostname pattern
+            # Build reverse mapping for diagnostic
+            ip_to_hostname_lookup = {ip: hostname for hostname, ip in hostname_to_ip.items()}
+            cnode_count = sum(1 for ip in node_macs.keys()
+                            if any("cnode" in hostname.lower() or "cn-" in hostname.lower()
+                                   for hostname in [ip_to_hostname_lookup.get(ip, "")]
+                                   if ip_to_hostname_lookup.get(ip)))
+            dnode_count = sum(1 for ip in node_macs.keys()
+                            if any("dnode" in hostname.lower() or "dn-" in hostname.lower()
+                                   for hostname in [ip_to_hostname_lookup.get(ip, "")]
+                                   if ip_to_hostname_lookup.get(ip)))
+            self.logger.info(f"Node breakdown: {cnode_count} CNodes, {dnode_count} DNodes (by hostname pattern)")
+            self.vlog.log(f"Node breakdown: {cnode_count} CNodes, {dnode_count} DNodes", self.vlog.CYAN)
 
-            # Step 4: Correlate node MACs with switch ports
+            # Step 4: Collect switch MAC tables
+            switch_macs = self._collect_switch_mac_tables()
+            total_switch_macs = sum(len(mac_table) for mac_table in switch_macs.values())
+            self.logger.info(f"Collected MAC tables from {len(switch_macs)} switches ({total_switch_macs} total MACs)")
+            self.vlog.log(f"Switch MAC tables: {total_switch_macs} total MACs across {len(switch_macs)} switches", self.vlog.CYAN)
+
+            # Step 5: Correlate node MACs with switch ports
             port_map = self._correlate_node_to_switch(
                 node_inventory, hostname_to_ip, node_macs, switch_macs
             )
             self.logger.info(f"Generated {len(port_map)} port mappings")
+
+            # Diagnostic: Count connections by node type and network
+            cnode_connections = sum(1 for conn in port_map if conn.get("node_type", "").lower() == "cnode")
+            dnode_connections = sum(1 for conn in port_map if conn.get("node_type", "").lower() == "dnode")
+            network_a_connections = sum(1 for conn in port_map if conn.get("network") == "A")
+            network_b_connections = sum(1 for conn in port_map if conn.get("network") == "B")
+
+            self.logger.info(f"Connection breakdown: {cnode_connections} CNode connections, {dnode_connections} DNode connections")
+            self.logger.info(f"Network breakdown: {network_a_connections} Network A, {network_b_connections} Network B")
+            self.vlog.log(f"Port mapping summary: {cnode_connections} CNode, {dnode_connections} DNode connections", self.vlog.GREEN)
+            self.vlog.log(f"Network distribution: {network_a_connections} Net A, {network_b_connections} Net B", self.vlog.GREEN)
 
             # Step 5: Collect IPL connections between switches
             ipl_connections = self._collect_ipl_connections()
 
             # Step 6: Detect cross-connections
             cross_connections = self._detect_cross_connections(port_map)
+
+            # Build diagnostic summary
+            diagnostic_summary = {
+                "nodes_collected": len(node_macs),
+                "cnode_connections": cnode_connections,
+                "dnode_connections": dnode_connections,
+                "network_a_connections": network_a_connections,
+                "network_b_connections": network_b_connections,
+                "total_switch_macs": total_switch_macs,
+                "switches_queried": len(switch_macs),
+            }
 
             return {
                 "available": True,
@@ -557,6 +595,7 @@ class ExternalPortMapper:
                 "total_ipl_connections": len(ipl_connections),
                 "total_ipl_ports": len(ipl_connections) * 2,
                 "data_source": "External SSH collection (clush + switch CLI)",
+                "diagnostic_summary": diagnostic_summary,
             }
 
         except Exception as e:
@@ -1492,27 +1531,43 @@ class ExternalPortMapper:
         # Build reverse mapping: data_ip -> hostname
         ip_to_hostname = {ip: hostname for hostname, ip in hostname_to_ip.items()}
 
+        # Track statistics for diagnostics
+        missing_hostname_count = 0
+        missing_inventory_count = 0
+        missing_mac_count = 0
+        found_mac_count = 0
+
         # Correlate each node MAC with switch ports
         for data_ip, interfaces in node_macs.items():
             # Find hostname for this data IP
             hostname = ip_to_hostname.get(data_ip)
             if not hostname:
-                self.logger.warning(f"No hostname found for data IP {data_ip}")
+                missing_hostname_count += 1
+                self.logger.warning(f"No hostname found for data IP {data_ip} (has {len(interfaces)} interfaces)")
+                self.vlog.log_warning(f"No hostname for IP {data_ip} - skipping {len(interfaces)} interfaces")
                 continue
 
             # Get node info from inventory
             node_info = node_inventory.get(hostname)
             if not node_info:
-                self.logger.warning(f"No inventory found for hostname {hostname}")
+                missing_inventory_count += 1
+                self.logger.warning(f"No inventory found for hostname {hostname} (IP: {data_ip})")
+                self.vlog.log_warning(f"No inventory for {hostname} ({data_ip})")
                 continue
+
+            node_type = node_info.get("node_type", "Unknown")
+            self.vlog.log(f"Processing {node_type} {hostname} ({data_ip}): {len(interfaces)} interfaces")
 
             for interface, mac in interfaces.items():
                 # Find this MAC in switch tables
                 mac_found = False
+                found_on_switch = None
                 for switch_ip, mac_table in switch_macs.items():
                     if mac in mac_table:
                         mac_found = True
+                        found_on_switch = switch_ip
                         switch_entry = mac_table[mac]
+                        found_mac_count += 1
 
                         # Determine network (A or B) based on WHICH SWITCH
                         # the MAC is found on. This is the correct way to
@@ -1555,10 +1610,27 @@ class ExternalPortMapper:
 
                 # Log if MAC was not found in any switch
                 if not mac_found:
+                    missing_mac_count += 1
                     self.logger.warning(
                         f"MAC not found in any switch table: {hostname} ({data_ip}) "
                         f"{interface} = {mac}"
                     )
+                    self.vlog.log_warning(
+                        f"MAC {mac} from {hostname} {interface} not found in switch tables"
+                    )
+
+        # Log correlation statistics
+        self.logger.info(
+            f"Correlation complete: {found_mac_count} MACs found, {missing_mac_count} MACs not found in switches"
+        )
+        self.logger.info(
+            f"Missing hostname: {missing_hostname_count}, Missing inventory: {missing_inventory_count}"
+        )
+        self.vlog.log(
+            f"Correlation stats: {found_mac_count} found, {missing_mac_count} missing MACs, "
+            f"{missing_hostname_count} missing hostnames, {missing_inventory_count} missing inventory",
+            self.vlog.YELLOW if missing_mac_count > 0 else self.vlog.GREEN
+        )
 
         return port_map
 
