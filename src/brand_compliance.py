@@ -509,15 +509,31 @@ class VastBrandCompliance:
                 0.12,  # Status
                 0.12,  # Rack Height
             ]  # ID, Model, Serial, Status, Rack Height
-        elif num_cols == 6:  # CBox/DBox Network Configuration (without Net Type)
-            col_ratios = [
-                0.08,  # ID
-                0.20,  # Hostname
-                0.18,  # Mgmt IP
-                0.18,  # IPMI IP
-                0.20,  # VAST OS
-                0.16,  # VMS Host/Position
-            ]
+        elif num_cols == 6:
+            # Check if this is the hardware inventory table with Rack column
+            if headers and headers[0] == "Rack":
+                # Hardware Inventory: Rack, Node, Model, Name/Serial Number, Status, Height
+                # Rack, Node, Status, and Height should be narrow
+                # Model column needs more width for long text
+                narrow_width = 0.08  # Narrow width for Rack, Node, Status, Height
+                col_ratios = [
+                    narrow_width,  # Rack (decreased)
+                    0.12,          # Node (decreased from 0.18)
+                    0.40,          # Model (increased from 0.30)
+                    0.24,          # Name/Serial Number
+                    narrow_width,  # Status
+                    narrow_width,  # Height (renamed from Position)
+                ]
+            else:
+                # CBox/DBox Network Configuration (without Net Type)
+                col_ratios = [
+                    0.08,  # ID
+                    0.28,  # Hostname (increased from 0.20)
+                    0.15,  # Mgmt IP (reduced from 0.18)
+                    0.15,  # IPMI IP (reduced from 0.18)
+                    0.20,  # VAST OS
+                    0.14,  # VMS Host/Position (reduced from 0.16)
+                ]
         else:  # Other hardware types
             col_ratios = [
                 0.15,

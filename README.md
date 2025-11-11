@@ -337,6 +337,61 @@ output/
     └── vast_report_generator.log
 ```
 
+### Regenerating Reports from JSON Data
+
+You can regenerate PDF reports from existing JSON data files without needing cluster access. This is useful for:
+- **Formatting adjustments**: Iterate on report layout and styling
+- **Template updates**: Test new report templates with existing data
+- **Offline work**: Work on reports without cluster connectivity
+- **Data preservation**: Regenerate reports from archived JSON files
+
+#### Basic Usage
+
+```bash
+# Regenerate from a JSON file (auto-generates output filename)
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json
+
+# Specify custom output file
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json output/custom_report.pdf
+
+# Use custom output directory
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json --output-dir ./test_reports
+```
+
+#### Examples
+
+**1. Regenerate latest report:**
+```bash
+# Find the latest JSON file
+ls -t output/vast_data_*.json | head -1
+
+# Regenerate it
+python3 scripts/regenerate_report.py $(ls -t output/vast_data_*.json | head -1)
+```
+
+**2. Test formatting changes:**
+```bash
+# Make formatting changes to src/report_builder.py
+# Then regenerate to see the changes
+python3 scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json output/test_formatting.pdf
+```
+
+**3. Batch regenerate multiple reports:**
+```bash
+for json_file in output/vast_data_*.json; do
+    python3 scripts/regenerate_report.py "$json_file"
+done
+```
+
+#### Command Options
+
+- `json_file`: Path to JSON data file (required)
+- `output_file`: Optional output PDF file path (default: auto-generated from JSON filename)
+- `--output-dir`: Output directory for generated reports (default: `output`)
+- `--log-level`: Logging level - DEBUG, INFO, WARNING, ERROR (default: INFO)
+
+**Note**: The regeneration utility uses the same report builder as the main tool, so any formatting changes you make to `src/report_builder.py` will be reflected in regenerated reports.
+
 ## Administration & Operations
 
 ### Monitoring and Logging

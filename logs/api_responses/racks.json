@@ -1,0 +1,22 @@
+[
+  {
+    "id": 2,
+    "name": "Rack1",
+    "column": null,
+    "row": null,
+    "ip_range": null,
+    "number_of_units": null,
+    "description": null,
+    "guid": "5d040401-c99c-4d4b-a301-50632e798dcc"
+  },
+  {
+    "id": 1,
+    "name": "Rack",
+    "column": null,
+    "row": null,
+    "ip_range": null,
+    "number_of_units": 42,
+    "description": "",
+    "guid": "5f61f768-f507-4433-9e58-c74a7133ec4e"
+  }
+]

@@ -227,7 +227,9 @@ class VastReportBuilder:
             # Add hardware inventory (includes Physical Rack Layout on Page 6)
             story.extend(self._create_hardware_inventory(processed_data))
             # Note: PageBreak is handled within hardware inventory for rack layout
-            # Do not add extra PageBreak here to keep rack on Page 6
+            # Add PageBreak to separate from next section (Network Configuration)
+            # This ensures proper section separation
+            story.append(PageBreak())
 
             # Add comprehensive network configuration (consolidated)
             story.extend(
@@ -977,57 +979,113 @@ class VastReportBuilder:
         cboxes: Dict[str, Any],
         cnodes: List[Dict[str, Any]],
         dboxes: Dict[str, Any],
+        dnodes: List[Dict[str, Any]],
         switches: List[Dict[str, Any]],
     ) -> List[Any]:
         """
         Create consolidated hardware inventory table with CBoxes, DBoxes, and Switches.
+        Hardware is grouped by rack name. Creates one row per CNode/DNode.
 
         Args:
             cboxes: CBox data from /api/v1/cboxes/
             cnodes: CNode data from /api/v7/cnodes/
             dboxes: DBox data from /api/v7/dboxes/
+            dnodes: DNode data from /api/v7/dnodes/
             switches: Switch data from switch inventory
 
         Returns:
             List[Any]: Table elements
         """
-        # Prepare table data
-        table_data = []
-        headers = ["ID", "Model", "Name/Serial Number", "Status", "Position"]
+        # Prepare table data - will be grouped by rack
+        all_rows = []
+        headers = ["Rack", "Node", "Model", "Name/Serial Number", "Status", "Height"]
+
+        # Build mapping of cbox_id to rack_name for CNodes
+        cbox_id_to_rack_name = {}
+        for cbox_name, cbox_data in cboxes.items():
+            cbox_id = cbox_data.get("id")
+            rack_name = cbox_data.get("rack_name") or "Unknown"
+            if cbox_id:
+                cbox_id_to_rack_name[cbox_id] = rack_name
+
+        # Build mapping of dbox_id to rack_name for DNodes
+        dbox_id_to_rack_name = {}
+        for dbox_name, dbox_data in dboxes.items():
+            dbox_id = dbox_data.get("id")
+            rack_name = dbox_data.get("rack_name") or "Unknown"
+            if dbox_id:
+                dbox_id_to_rack_name[dbox_id] = rack_name
 
         # Add CBoxes
         if cboxes and cnodes:
             # Create a mapping of cbox_id to box_vendor and status from cnodes
             cbox_vendor_map = {}
             cbox_status_map = {}
+            # Create a mapping of cbox_id to list of cnode names
+            cbox_to_cnode_names = {}
             for cnode in cnodes:
                 cbox_id = cnode.get("cbox_id")
                 box_vendor = cnode.get("box_vendor", "Unknown")
                 status = cnode.get("status", "Unknown")
+                # Use name field (programmatically generated) not hostname (customer-assigned)
+                # Name is based on deployment index (e.g., cnode-3-10, cnode-3-11, cnode-3-12)
+                cnode_name = (
+                    cnode.get("name") or
+                    f"cnode-{cnode.get('id', 'Unknown')}"
+                )
                 if cbox_id:
                     cbox_vendor_map[cbox_id] = box_vendor
                     cbox_status_map[cbox_id] = status
+                    # Build list of CNode names for this CBox
+                    if cbox_id not in cbox_to_cnode_names:
+                        cbox_to_cnode_names[cbox_id] = []
+                    cbox_to_cnode_names[cbox_id].append(cnode_name)
 
             cbox_rows = []
             for cbox_name, cbox_data in cboxes.items():
                 cbox_id = cbox_data.get("id", "Unknown")
                 name = cbox_data.get("name", "Unknown")
                 rack_unit = cbox_data.get("rack_unit", "Unknown")
+                rack_name = cbox_data.get("rack_name") or "Unknown"
 
                 # Get model and status from cnodes data using cbox_id
                 model = cbox_vendor_map.get(cbox_id, "Unknown")
                 status = cbox_status_map.get(cbox_id, "Unknown")
 
-                # Create row data with CB- prefix
-                row = [f"CB-{cbox_id}", model, name, status, rack_unit]
-                cbox_rows.append((cbox_id, row))
+                # Get CNode names for this CBox - create one row per CNode
+                cnode_names = cbox_to_cnode_names.get(cbox_id, [])
+                if cnode_names:
+                    # Create one row for each CNode
+                    for cnode_name in cnode_names:
+                        row = [rack_name, cnode_name, model, name, status, rack_unit]
+                        cbox_rows.append((rack_name, cbox_id, cnode_name, row))
+                else:
+                    # No CNodes found, create one row with N/A
+                    row = [rack_name, "N/A", model, name, status, rack_unit]
+                    cbox_rows.append((rack_name, cbox_id, "N/A", row))
 
-            # Sort by numeric ID
-            cbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
-            table_data.extend([row for _, row in cbox_rows])
+            # Sort by rack name, then by numeric ID, then by CNode name
+            cbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2]))
+            all_rows.extend([row for _, _, _, row in cbox_rows])
 
-        # Add DBoxes
-        if dboxes:
+        # Add DBoxes with DNode names
+        if dboxes and dnodes:
+            # Create a mapping of dbox_id to list of dnode names
+            dbox_to_dnode_names = {}
+            for dnode in dnodes:
+                dbox_id = dnode.get("dbox_id")
+                # Use name field (programmatically generated) not hostname (customer-assigned)
+                # Name is based on deployment index (e.g., dnode-3-112, dnode-3-113)
+                dnode_name = (
+                    dnode.get("name") or
+                    f"dnode-{dnode.get('id', 'Unknown')}"
+                )
+                if dbox_id:
+                    # Build list of DNode names for this DBox
+                    if dbox_id not in dbox_to_dnode_names:
+                        dbox_to_dnode_names[dbox_id] = []
+                    dbox_to_dnode_names[dbox_id].append(dnode_name)
+
             dbox_rows = []
             for dbox_name, dbox_data in dboxes.items():
                 dbox_id = dbox_data.get("id", "Unknown")
@@ -1035,16 +1093,45 @@ class VastReportBuilder:
                 name = dbox_data.get("name", "Unknown")
                 state = dbox_data.get("state", "Unknown")
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
+                rack_name = dbox_data.get("rack_name") or "Unknown"
 
-                # Create row data with DB- prefix
-                row = [f"DB-{dbox_id}", hardware_type, name, state, rack_unit]
-                dbox_rows.append((dbox_id, row))
+                # Get DNode names for this DBox - create one row per DNode
+                dnode_names = dbox_to_dnode_names.get(dbox_id, [])
+                if dnode_names:
+                    # Create one row for each DNode
+                    for dnode_name in dnode_names:
+                        row = [rack_name, dnode_name, hardware_type, name, state, rack_unit]
+                        dbox_rows.append((rack_name, dbox_id, dnode_name, row))
+                else:
+                    # No DNodes found, create one row with N/A
+                    row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                    dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
-            # Sort by numeric ID
-            dbox_rows.sort(key=lambda x: int(x[0]) if str(x[0]).isdigit() else 0)
-            table_data.extend([row for _, row in dbox_rows])
+            # Sort by rack name, then by numeric ID, then by DNode name
+            dbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2]))
+            all_rows.extend([row for _, _, _, row in dbox_rows])
+        elif dboxes:
+            # Fallback if no dnodes data available
+            dbox_rows = []
+            for dbox_name, dbox_data in dboxes.items():
+                dbox_id = dbox_data.get("id", "Unknown")
+                hardware_type = dbox_data.get("hardware_type", "Unknown")
+                name = dbox_data.get("name", "Unknown")
+                state = dbox_data.get("state", "Unknown")
+                rack_unit = dbox_data.get("rack_unit", "Unknown")
+                rack_name = dbox_data.get("rack_name") or "Unknown"
+
+                # Create row data with N/A for DNode column
+                row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                dbox_rows.append((rack_name, dbox_id, row))
+
+            # Sort by rack name, then by numeric ID
+            dbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0))
+            all_rows.extend([row for _, _, row in dbox_rows])
 
         # Add Switches
+        # Note: Switches don't have rack_name in API, so we'll assign them to racks
+        # based on which rack they're associated with (or use "Unknown" if not determinable)
         if switches:
             switch_rows = []
             for switch_num, switch in enumerate(switches, start=1):
@@ -1053,6 +1140,17 @@ class VastReportBuilder:
                 model = switch.get("model", "Unknown")
                 serial = switch.get("serial", "Unknown")
                 state = switch.get("state", "Unknown")
+
+                # Try to infer rack from hostname or use "Unknown"
+                # Hostname format might be like "se-var-1-1" where "1" could be rack
+                rack_name = "Unknown"
+                if hostname and "-" in hostname:
+                    parts = hostname.split("-")
+                    # Try to extract rack identifier from hostname
+                    # This is a heuristic - may need adjustment based on actual naming
+                    if len(parts) >= 3:
+                        # Could be rack identifier in hostname
+                        pass  # For now, use "Unknown"
 
                 # Get calculated position from rack diagram (if available)
                 position = ""
@@ -1063,29 +1161,58 @@ class VastReportBuilder:
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
-                # Create row data with SW- prefix using switch number
-                row = [f"SW-{switch_num}", model, serial, state, position]
-                switch_rows.append((hostname, row))
+                # Create row data with SW- prefix, rack name, and position (CNode column shows N/A for switches)
+                row = [rack_name, "N/A", model, serial, state, position]
+                switch_rows.append((rack_name, hostname, row))
 
-            # Sort by hostname before numbering
-            switch_rows.sort(key=lambda x: x[0])
+            # Sort by rack name, then by hostname
+            switch_rows.sort(key=lambda x: (x[0], x[1]))
 
             # Re-number switches sequentially after sorting and update positions
-            for idx, (hostname, row) in enumerate(switch_rows, start=1):
-                row[0] = f"SW-{idx}"
+            for idx, (rack_name, hostname, row) in enumerate(switch_rows, start=1):
+                # CNode column already set to "N/A", no update needed
+                pass
                 # Update position if available for this switch number
                 if hasattr(self, "switch_positions") and idx in self.switch_positions:
                     u_pos = self.switch_positions[idx]
-                    row[4] = f"U{u_pos}"  # Position is at index 4
+                    row[5] = f"U{u_pos}"  # Position is now at index 5
 
-            table_data.extend([row for _, row in switch_rows])
+            all_rows.extend([row for _, _, row in switch_rows])
 
-        if not table_data:
+        if not all_rows:
             return []
+
+        # Sort all rows by rack name first, then by hardware type (CBox, DBox, Switch)
+        # For CBoxes/DBoxes, sort by CNode/DNode name; for switches, use Name/Serial Number column
+        def sort_key(row):
+            rack_name = row[0] or "Unknown"
+            node_col = row[1]  # CNode/DNode column
+            name_col = row[3]  # Name/Serial Number column
+
+            # Determine hardware type based on CNode/DNode column content
+            if node_col != "N/A":
+                # Check if it's a CNode or DNode by the prefix
+                if node_col.startswith("cnode-"):
+                    hw_type = "A"  # CBox
+                elif node_col.startswith("dnode-"):
+                    hw_type = "B"  # DBox
+                else:
+                    hw_type = "A"  # Default to CBox for unknown node types
+                sort_value = node_col  # Sort by node name
+            elif name_col.startswith("dbox-") or "DB-" in name_col:
+                hw_type = "B"  # DBox (no nodes found)
+                sort_value = name_col
+            else:
+                hw_type = "C"  # Switch
+                sort_value = name_col
+
+            return (rack_name, hw_type, sort_value)
+
+        all_rows.sort(key=sort_key)
 
         # Create table with VAST styling
         return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            table_data, "Hardware Inventory", headers
+            all_rows, "Hardware Inventory", headers
         )
 
     def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
@@ -1399,6 +1526,7 @@ class VastReportBuilder:
             cboxes = hardware.get("cboxes", {})
             cnodes = hardware.get("cnodes", [])
             dboxes = hardware.get("dboxes", {})
+            dnodes = hardware.get("dnodes", [])
             switches = hardware.get("switches", [])
 
             # Pre-calculate switch positions for rack diagram
@@ -1452,7 +1580,7 @@ class VastReportBuilder:
         # Consolidated Hardware Inventory table with VAST styling
         if cboxes or dboxes or switches:
             inventory_elements = self._create_consolidated_inventory_table(
-                cboxes, cnodes, dboxes, switches
+                cboxes, cnodes, dboxes, dnodes, switches
             )
             content.extend(inventory_elements)
 
@@ -1467,36 +1595,30 @@ class VastReportBuilder:
             # Force page break to move heading to top of Page 6
             content.append(PageBreak())
 
-            # Add section heading at top of new page
-            heading_elements = self.brand_compliance.create_vast_section_heading(
-                "Physical Rack Layout", level=1
-            )
-            content.extend(heading_elements)
+            # Note: Section heading will be combined with first rack heading
+            # No separate heading needed here
 
-            # Add spacer after heading before diagram
-            content.append(Spacer(1, 0.3 * inch))
-
-            # Generate rack diagram
+            # Generate rack diagrams - one per rack
             try:
-                # Extract CBox and DBox data for rack diagram
-                cboxes_data = []
-                dboxes_data = []
+                # Group hardware by rack_name
+                racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], switches: []}
 
-                # Get CBox information
-                sections = data.get("sections", {})
-                cnodes = (
-                    sections.get("cnodes_network_configuration", {})
-                    .get("data", {})
-                    .get("cnodes", [])
-                )
-
-                # Also check hardware inventory for CBox data
+                # Get CBox information and group by rack
                 hw_cnodes = hardware.get("cnodes", [])
-
-                # Combine data from both sources, prefer hardware inventory
                 for cnode in hw_cnodes:
+                    cbox_id = cnode.get("cbox_id")
+                    # Find corresponding cbox to get rack_name
+                    rack_name = "Unknown"
+                    for cbox_name, cbox_data in cboxes.items():
+                        if cbox_data.get("id") == cbox_id:
+                            rack_name = cbox_data.get("rack_name") or "Unknown"
+                            break
+
+                    if rack_name not in racks_data:
+                        racks_data[rack_name] = {"cboxes": [], "dboxes": [], "switches": []}
+
                     cbox_data = {
-                        "id": cnode.get("id"),
+                        "id": cbox_id,
                         "model": cnode.get("model", cnode.get("box_vendor", "")),
                         "rack_unit": cnode.get(
                             "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
@@ -1504,72 +1626,178 @@ class VastReportBuilder:
                         "state": cnode.get("state", cnode.get("status", "ACTIVE")),
                     }
                     if cbox_data["rack_unit"]:  # Only add if has position
-                        cboxes_data.append(cbox_data)
+                        racks_data[rack_name]["cboxes"].append(cbox_data)
 
-                # Get DBox information (physical chassis, not individual nodes)
+                # Get DBox information and group by rack
                 hw_dboxes = hardware.get("dboxes", {})
-
                 for dbox_name, dbox_info in hw_dboxes.items():
                     rack_unit = dbox_info.get("rack_unit", "")
+                    rack_name = dbox_info.get("rack_name") or "Unknown"
+
                     if rack_unit:
+                        if rack_name not in racks_data:
+                            racks_data[rack_name] = {"cboxes": [], "dboxes": [], "switches": []}
+
                         dbox_data = {
                             "id": dbox_info.get("id"),
                             "model": dbox_info.get("hardware_type", "Unknown"),
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
                         }
-                        dboxes_data.append(dbox_data)
+                        racks_data[rack_name]["dboxes"].append(dbox_data)
 
-                # Get switch data for rack diagram
-                switches_data = []
+                # Get switch data - for now, assign switches to all racks or first rack
+                # (Switches don't have rack_name in API, so we'll need to handle this)
                 switches = hardware.get("switches", [])
+                switches_data = []
                 for switch in switches:
                     switch_data = {
-                        "id": switch.get("name", "Unknown"),  # Use name as ID
+                        "id": switch.get("name", "Unknown"),
                         "model": switch.get("model", "switch"),
                         "state": switch.get("state", "ACTIVE"),
                     }
                     switches_data.append(switch_data)
 
-                # Create rack diagram
-                if cboxes_data or dboxes_data:
-                    rack_gen = RackDiagram()
-                    rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
-                        cboxes_data,
-                        dboxes_data,
-                        switches_data if switches_data else None,
-                    )
+                # For switches, we'll add them to each rack that has hardware
+                # (In a real deployment, switches might be in specific racks)
+                for rack_name in racks_data.keys():
+                    if switches_data:
+                        racks_data[rack_name]["switches"] = switches_data.copy()
 
-                    # Store switch positions for use in inventory table
-                    self.switch_positions = switch_positions_map
+                # Generate one diagram per rack
+                if racks_data:
+                    # Build mapping of rack_name to rack_height_u from racks data if available
+                    rack_height_map = {}  # rack_name -> rack_height_u
+                    racks_info = data.get("racks", [])
+                    if racks_info:
+                        # Create mapping from rack_id to number_of_units
+                        rack_id_to_height = {}
+                        for rack in racks_info:
+                            rack_id = rack.get("id")
+                            number_of_units = rack.get("number_of_units")
+                            if rack_id is not None and number_of_units is not None:
+                                rack_id_to_height[rack_id] = number_of_units
 
-                    # Center the rack diagram on the page using a table
-                    from reportlab.platypus import Table as RLTable
+                        # Map rack_name to rack_height_u by finding matching rack_id
+                        # We need to match rack_name to rack_id - try to find it from cboxes/dboxes
+                        for rack_name in racks_data.keys():
+                            # Try to find rack_id from cboxes or dboxes
+                            rack_id = None
+                            for cbox_name, cbox_data in cboxes.items():
+                                if cbox_data.get("rack_name") == rack_name:
+                                    rack_id = cbox_data.get("rack_id")
+                                    if rack_id is not None:
+                                        break
 
-                    # Use letter page width (8.5 inches)
-                    page_width = 8.5 * inch
-                    rack_table = RLTable(
-                        [[rack_drawing]],
-                        colWidths=[
-                            page_width - (2 * 0.5 * inch)
-                        ],  # Page width minus margins
-                    )
-                    rack_table.setStyle(
-                        TableStyle(
-                            [
-                                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                            if rack_id is None:
+                                for dbox_name, dbox_data in hw_dboxes.items():
+                                    if dbox_data.get("rack_name") == rack_name:
+                                        rack_id = dbox_data.get("rack_id")
+                                        if rack_id is not None:
+                                            break
+
+                            # Get rack height from mapping
+                            if rack_id is not None and rack_id in rack_id_to_height:
+                                rack_height_map[rack_name] = rack_id_to_height[rack_id]
+
+                    # Sort racks by name for consistent ordering
+                    sorted_racks = sorted(racks_data.keys())
+
+                    for idx, rack_name in enumerate(sorted_racks):
+                        rack_hw = racks_data[rack_name]
+                        rack_cboxes = rack_hw["cboxes"]
+                        rack_dboxes = rack_hw["dboxes"]
+                        rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
+
+                        # Add placeholder Arista switches if no switches are present
+                        # These are 2U switches that will be placed between CNode and DNode hardware
+                        if not rack_switches and (rack_cboxes or rack_dboxes):
+                            rack_switches = [
+                                {
+                                    "id": "SWA",
+                                    "name": "SWA",
+                                    "model": "arista_7060dx5",
+                                    "state": "ACTIVE",
+                                },
+                                {
+                                    "id": "SWB",
+                                    "name": "SWB",
+                                    "model": "arista_7060dx5",
+                                    "state": "ACTIVE",
+                                },
                             ]
-                        )
-                    )
-                    content.append(rack_table)
+                            self.logger.info(
+                                f"Added 2 placeholder Arista switches to rack {rack_name}"
+                            )
 
-                    switch_msg = (
-                        f", {len(switches_data)} Switches" if switches_data else ""
-                    )
-                    self.logger.info(
-                        f"Added rack diagram with {len(cboxes_data)} CBoxes, {len(dboxes_data)} DBoxes{switch_msg}"
-                    )
+                        # Only generate diagram if rack has hardware
+                        if rack_cboxes or rack_dboxes:
+                            # Get rack height for this rack (default to 42U if not found)
+                            rack_height_u = rack_height_map.get(rack_name, 42)
+
+                            # Create rack diagram generator with appropriate rack height
+                            rack_gen = RackDiagram(rack_height_u=rack_height_u)
+
+                            # Generate rack diagram with rack name
+                            rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
+                                rack_cboxes,
+                                rack_dboxes,
+                                rack_switches,
+                                rack_name=rack_name,  # Pass rack name to diagram
+                            )
+
+                            # Add rack name heading before diagram
+                            # First rack gets combined heading, subsequent racks get simple heading
+                            rack_heading_style = ParagraphStyle(
+                                "Rack_Heading",
+                                parent=styles["Heading2"],
+                                fontSize=14,
+                                spaceAfter=8,
+                                spaceBefore=12 if idx > 0 else 0,  # No space before first heading
+                                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+                            )
+
+                            if idx == 0:
+                                # First rack: Combined heading with section title
+                                heading_text = f"Physical Rack Layout - Rack: {rack_name}"
+                            else:
+                                # Subsequent racks: Simple heading
+                                heading_text = f"Rack: {rack_name}"
+
+                            content.append(Paragraph(heading_text, rack_heading_style))
+                            content.append(Spacer(1, 0.2 * inch))
+
+                            # Center the rack diagram on the page using a table
+                            from reportlab.platypus import Table as RLTable
+
+                            # Use letter page width (8.5 inches)
+                            page_width = 8.5 * inch
+                            rack_table = RLTable(
+                                [[rack_drawing]],
+                                colWidths=[
+                                    page_width - (2 * 0.5 * inch)
+                                ],  # Page width minus margins
+                            )
+                            rack_table.setStyle(
+                                TableStyle(
+                                    [
+                                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                    ]
+                                )
+                            )
+                            content.append(rack_table)
+
+                            # Add page break between racks (except for last one)
+                            if rack_name != sorted_racks[-1]:
+                                content.append(PageBreak())
+
+                            switch_msg = (
+                                f", {len(rack_switches)} Switches" if rack_switches else ""
+                            )
+                            self.logger.info(
+                                f"Added rack diagram for {rack_name}: {len(rack_cboxes)} CBoxes, {len(rack_dboxes)} DBoxes{switch_msg}"
+                            )
                 else:
                     # Fallback to placeholder if no position data
                     layout_elements = (
@@ -2167,6 +2395,29 @@ class VastReportBuilder:
 
         return content
 
+    def _ip_sort_key(self, node: Dict[str, Any]) -> Tuple[int, ...]:
+        """
+        Convert IP address to tuple for sorting (lowest to highest).
+
+        Args:
+            node: Node dictionary with mgmt_ip field
+
+        Returns:
+            Tuple of integers for IP sorting, or (999, 999, 999, 999) for invalid/unknown IPs
+        """
+        mgmt_ip = node.get("mgmt_ip", "Unknown")
+        if mgmt_ip == "Unknown":
+            return (999, 999, 999, 999)  # Sort Unknown to end
+        try:
+            # Split IP and convert each octet to int
+            parts = mgmt_ip.split(".")
+            if len(parts) == 4:
+                return tuple(int(part) for part in parts)
+            else:
+                return (999, 999, 999, 999)  # Invalid IPs to end
+        except (ValueError, AttributeError):
+            return (999, 999, 999, 999)  # Invalid IPs to end
+
     def _create_comprehensive_network_configuration(
         self, data: Dict[str, Any]
     ) -> List[Any]:
@@ -2196,8 +2447,7 @@ class VastReportBuilder:
 
         content = []
 
-        # Start on new page (Page 7)
-        content.append(PageBreak())
+        # Note: PageBreak is handled by main build function, no need to add here
 
         # Add section heading with VAST styling
         heading_elements = self.brand_compliance.create_vast_section_heading(
@@ -2376,6 +2626,8 @@ class VastReportBuilder:
         total_cnodes = cnodes_network_config.get("total_cnodes", 0)
 
         if cnodes:
+            # Sort CNodes by Mgmt IP (lowest to highest)
+            cnodes = sorted(cnodes, key=self._ip_sort_key)
 
             # Create table for CNodes with scale-out support
             headers = [
@@ -2416,6 +2668,9 @@ class VastReportBuilder:
         dnodes = dnodes_network_config.get("dnodes", [])
 
         if dnodes:
+            # Sort DNodes by Mgmt IP (lowest to highest)
+            dnodes = sorted(dnodes, key=self._ip_sort_key)
+
             # Create table for DNodes with scale-out support
             headers = [
                 "ID",
@@ -3371,7 +3626,8 @@ class VastReportBuilder:
         port_mapping_data = port_mapping_section.get("data", {})
 
         if port_mapping_data.get("available"):
-            content.append(PageBreak())
+            # Add spacer instead of page break to keep within switch configuration section
+            content.append(Spacer(1, 0.3 * inch))
             port_mapping_content = self._create_port_mapping_section(
                 port_mapping_data, switches
             )

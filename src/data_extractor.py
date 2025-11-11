@@ -508,6 +508,7 @@ class VastDataExtractor:
         processed_node = {
             "id": node_data.get("id", "Unknown"),
             "type": node_type,
+            "name": node_data.get("name"),  # Programmatically generated name (e.g., cnode-3-10, dnode-3-112)
             "model": node_data.get("model", "Unknown"),
             "serial_number": node_data.get("serial_number", "Unknown"),
             "status": node_data.get("status", "unknown"),
@@ -517,9 +518,10 @@ class VastDataExtractor:
             "cbox_id": node_data.get("cbox_id"),
         }
 
-        # For dnodes, also capture hardware_type for rack diagram
+        # For dnodes, also capture hardware_type and dbox_id for rack diagram
         if node_type == "dnode":
             processed_node["hardware_type"] = node_data.get("hardware_type", "Unknown")
+            processed_node["dbox_id"] = node_data.get("dbox_id")
 
         # Add enhanced information if available
         if processed_node["rack_position"] is not None:
@@ -2052,6 +2054,7 @@ class VastDataExtractor:
                 },
                 "cluster_summary": asdict(cluster_summary),
                 "hardware_inventory": asdict(hardware_inventory),
+                "racks": raw_data.get("racks", []),  # Include racks data for rack height information
                 "sections": {
                     "network_configuration": asdict(network_config),
                     "cluster_network_configuration": asdict(cluster_network_config),
