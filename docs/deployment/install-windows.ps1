@@ -360,6 +360,10 @@ function New-VirtualEnvironment {
 # Function to install Python dependencies
 function Install-PythonDependencies {
     Write-Status "Installing Python dependencies..."
+    Write-Status "This includes enhanced features:"
+    Write-Status "  • Port mapping collection (pexpect for interactive SSH)"
+    Write-Status "  • Network topology generation"
+    Write-Status "  • Enhanced hardware inventory processing"
 
     # Handle installation based on mode
     if ($script:InstallMode -eq "minimal") {
@@ -373,6 +377,7 @@ function Install-PythonDependencies {
     }
 
     Write-Success "Python dependencies installed successfully"
+    Write-Success "Enhanced features (port mapping, interactive SSH) are now available"
 }
 
 # Function to setup configuration
@@ -564,6 +569,13 @@ function Show-UsageInstructions {
     Write-Host "   set VAST_USERNAME=admin" -ForegroundColor $Green
     Write-Host "   set VAST_PASSWORD=your_password" -ForegroundColor $Green
     Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
+    Write-Host ""
+    Write-Host "   # Generate report with port mapping (enhanced feature)" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 \" -ForegroundColor $Green
+    Write-Host "     --username support --password <PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --node-user vastdata --node-password <NODE_PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --switch-user cumulus --switch-password <SWITCH_PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --enable-port-mapping --output .\output" -ForegroundColor $Green
     Write-Host ""
     Write-Host "   # Verbose output for debugging" -ForegroundColor $Green
     Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output --verbose" -ForegroundColor $Green

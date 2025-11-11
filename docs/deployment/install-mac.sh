@@ -317,6 +317,10 @@ create_virtual_environment() {
 # Function to install Python dependencies
 install_python_dependencies() {
     print_status "Installing Python dependencies..."
+    print_status "This includes enhanced features:"
+    print_status "  • Port mapping collection (pexpect for interactive SSH)"
+    print_status "  • Network topology generation"
+    print_status "  • Enhanced hardware inventory processing"
 
     # Handle installation based on mode
     if [ "$INSTALL_MODE" = "minimal" ]; then
@@ -330,6 +334,7 @@ install_python_dependencies() {
     fi
 
     print_success "Python dependencies installed successfully"
+    print_success "Enhanced features (port mapping, interactive SSH) are now available"
 }
 
 # Function to create configuration
@@ -459,6 +464,13 @@ display_usage_instructions() {
     echo "   export VAST_USERNAME=admin"
     echo "   export VAST_PASSWORD=your_password"
     echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output"
+    echo
+    echo "   # Generate report with port mapping (enhanced feature)"
+    echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 \\"
+    echo "     --username support --password <PASSWORD> \\"
+    echo "     --node-user vastdata --node-password <NODE_PASSWORD> \\"
+    echo "     --switch-user cumulus --switch-password <SWITCH_PASSWORD> \\"
+    echo "     --enable-port-mapping --output ./output"
     echo
     echo "   # Verbose output for debugging"
     echo "   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output --verbose"
