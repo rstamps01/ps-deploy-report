@@ -90,7 +90,7 @@ deactivate
 
 **1. Download the uninstall script:**
 ```bash
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/uninstall-mac.sh
 chmod +x uninstall-mac.sh
 ```
 
@@ -115,7 +115,7 @@ chmod +x uninstall-mac.sh
 
 **1. Download the uninstall script:**
 ```powershell
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/uninstall-windows.ps1" -OutFile "uninstall-windows.ps1"
 ```
 
 **2. Set execution policy (if needed):**

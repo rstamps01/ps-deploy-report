@@ -5,6 +5,21 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2025-11-12
+
+### Added
+- **Installation Script Documentation**: Enhanced installation scripts now document enhanced features during dependency installation
+- **Port Mapping Usage Examples**: Added port mapping collection examples to both Mac and Windows installation scripts
+- **Enhanced Features Verification**: Installation scripts now verify and confirm installation of enhanced feature dependencies
+
+### Changed
+- **Installation Process**: Improved user experience with clear messaging about enhanced features being installed
+- **Documentation**: Updated installation scripts to include port mapping usage examples
+
+### Technical Details
+- Updated `docs/deployment/install-mac.sh`: Added enhanced features documentation and port mapping examples
+- Updated `docs/deployment/install-windows.ps1`: Added enhanced features documentation and port mapping examples
+
 ## [1.2.0] - 2025-11-11
 
 ### Added

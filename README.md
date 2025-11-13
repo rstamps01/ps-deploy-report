@@ -64,7 +64,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -72,7 +72,7 @@ chmod +x install-mac.sh
 **For Windows Users:**
 ```powershell
 # Download and run the automated installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -700,11 +700,18 @@ For issues, questions, or contributions, please refer to the project's GitHub re
 
 ---
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Target VAST Version**: 5.3+
 **API Version**: v7 (with v1 fallback)
 **Status**: Production Ready
-**Last Updated**: November 11, 2025
+**Last Updated**: November 12, 2025
+
+## Recent Updates (v1.3.0)
+
+### Installation Script Enhancements
+- **Enhanced Features Documentation**: Installation scripts now document enhanced features during installation
+- **Port Mapping Examples**: Added port mapping usage examples to installation instructions
+- **Dependency Verification**: Installation scripts verify and document all enhanced feature dependencies
 
 ## Recent Updates (v1.2.0)
 
