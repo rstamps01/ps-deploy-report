@@ -1,0 +1,53 @@
+[
+  {
+    "id": 1,
+    "guid": "a70ff50c-385a-4dd8-bbe0-bef8e506e131",
+    "name": "cbox-S929986X5306437",
+    "url": "https://10.143.11.204/api/v7/cboxes/1",
+    "title": "cbox-S929986X5306437",
+    "uid": "S929986X5306437",
+    "state": "UNKNOWN",
+    "cluster": "selab-var-204",
+    "cluster_id": 1,
+    "description": null,
+    "subsystem": null,
+    "index_in_rack": null,
+    "rack_id": 1,
+    "rack_unit": "U23",
+    "rack_name": "Rack"
+  },
+  {
+    "id": 3,
+    "guid": "ceb619fd-ef5c-47d7-b2d7-93b25b3cda75",
+    "name": "cbox-S929986X5306720",
+    "url": "https://10.143.11.204/api/v7/cboxes/3",
+    "title": "cbox-S929986X5306720",
+    "uid": "S929986X5306720",
+    "state": "UNKNOWN",
+    "cluster": "selab-var-204",
+    "cluster_id": 1,
+    "description": null,
+    "subsystem": null,
+    "index_in_rack": null,
+    "rack_id": 1,
+    "rack_unit": "U24",
+    "rack_name": "Rack"
+  },
+  {
+    "id": 4,
+    "guid": "6b277e6e-3750-42bb-a486-9368396f4cb1",
+    "name": "cbox-S929986X5306758",
+    "url": "https://10.143.11.204/api/v7/cboxes/4",
+    "title": "cbox-S929986X5306758",
+    "uid": "S929986X5306758",
+    "state": "UNKNOWN",
+    "cluster": "selab-var-204",
+    "cluster_id": 1,
+    "description": null,
+    "subsystem": null,
+    "index_in_rack": null,
+    "rack_id": 1,
+    "rack_unit": "U25",
+    "rack_name": "Rack"
+  }
+]

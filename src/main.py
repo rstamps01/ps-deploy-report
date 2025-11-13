@@ -718,7 +718,7 @@ Examples:
     )
 
     parser.add_argument(
-        "--version", action="version", version="VAST As-Built Report Generator 1.1.0"
+        "--version", action="version", version="VAST As-Built Report Generator 1.3.0"
     )
 
     return parser

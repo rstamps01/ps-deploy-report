@@ -31,11 +31,20 @@ class RackDiagram:
     """Generate visual rack diagrams for VAST hardware deployments."""
 
     # Physical rack dimensions (in inches)
-    RACK_INTERNAL_HEIGHT = 73.5  # inches
     RACK_INTERNAL_WIDTH = 19.0  # inches
     RACK_EXTERNAL_HEIGHT = 79.0  # inches
     RACK_EXTERNAL_WIDTH = 24.0  # inches
     U_HEIGHT = 1.75  # inches per U
+
+    # Rack height configurations (internal height in inches)
+    # Standard 42U rack: 42 * 1.75 = 73.5 inches
+    # Standard 48U rack: 48 * 1.75 = 84.0 inches
+    RACK_HEIGHTS = {
+        42: 73.5,   # 42U rack internal height
+        48: 84.0,   # 48U rack internal height
+    }
+
+    DEFAULT_RACK_HEIGHT = 42  # Default to 42U for backward compatibility
 
     # VAST brand colors
     BRAND_DARK = HexColor("#2F2042")
@@ -50,16 +59,38 @@ class RackDiagram:
     LABEL_MAX_HEIGHT = 1.5  # inches (less than 1U)
     LABEL_FONT_SIZE = 8  # points
 
-    def __init__(self, page_width: float = 7.5 * inch, page_height: float = 8.5 * inch):
+    def __init__(
+        self,
+        page_width: float = 7.5 * inch,
+        page_height: float = 8.5 * inch,
+        rack_height_u: int = None
+    ):
         """
         Initialize rack diagram generator.
 
         Args:
             page_width: Available page width in points (default 7.5" for content area)
             page_height: Available page height in points (default 8.5" to maximize space)
+            rack_height_u: Number of rack units (U) for this rack (42, 48, etc.).
+                         Defaults to 42U for backward compatibility.
         """
         self.page_width = page_width
         self.page_height = page_height
+
+        # Set rack height (default to 42U if not specified)
+        if rack_height_u is None:
+            rack_height_u = self.DEFAULT_RACK_HEIGHT
+
+        # Validate rack height
+        if rack_height_u not in self.RACK_HEIGHTS:
+            logger.warning(
+                f"Unsupported rack height {rack_height_u}U, defaulting to {self.DEFAULT_RACK_HEIGHT}U. "
+                f"Supported heights: {list(self.RACK_HEIGHTS.keys())}"
+            )
+            rack_height_u = self.DEFAULT_RACK_HEIGHT
+
+        self.rack_height_u = rack_height_u
+        self.rack_internal_height = self.RACK_HEIGHTS[rack_height_u]
 
         # Calculate scaling to fit rack on page with margins
         self.margin = 0.3 * inch  # Reduced margins for larger diagram
@@ -69,18 +100,18 @@ class RackDiagram:
         # Calculate scale factor to fit rack on page
         # Use internal dimensions for the main rack area
         width_scale = self.available_width / (self.RACK_INTERNAL_WIDTH * inch)
-        height_scale = self.available_height / (self.RACK_INTERNAL_HEIGHT * inch)
+        height_scale = self.available_height / (self.rack_internal_height * inch)
         self.scale = (
             min(width_scale, height_scale) * 0.95
         )  # 95% to maximize rack size while ensuring it fits
 
         # Scaled dimensions
         self.rack_width = self.RACK_INTERNAL_WIDTH * inch * self.scale
-        self.rack_height = self.RACK_INTERNAL_HEIGHT * inch * self.scale
+        self.rack_height = self.rack_internal_height * inch * self.scale
         self.u_height = self.U_HEIGHT * inch * self.scale
 
         logger.info(
-            f"Rack diagram initialized: scale={self.scale:.3f}, "
+            f"Rack diagram initialized: {rack_height_u}U rack, scale={self.scale:.3f}, "
             f"rack_size={self.rack_width:.1f}x{self.rack_height:.1f}pts, "
             f"drawing_size={self.page_width:.1f}x{self.page_height:.1f}pts"
         )
@@ -97,6 +128,7 @@ class RackDiagram:
         """
         image_map = {
             "supermicro_gen5_cbox": HARDWARE_IMAGE_DIR / "supermicro_gen5_cbox_1u.png",
+            "hpe_genoa_cbox": HARDWARE_IMAGE_DIR / "hpe_genoa_cbox.png",  # HPE Genoa 1U CBox
             "broadwell": HARDWARE_IMAGE_DIR
             / "broadwell_cbox_2u.png",  # Broadwell 2U CBox
             "cascadelake": HARDWARE_IMAGE_DIR
@@ -110,6 +142,10 @@ class RackDiagram:
             / "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
             "msn2100-cb2f": HARDWARE_IMAGE_DIR
             / "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
+            "arista_7060dx5": HARDWARE_IMAGE_DIR
+            / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",  # Arista 7060DX5 2U switch
+            "arista": HARDWARE_IMAGE_DIR
+            / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",  # Generic Arista switch mapping
             # Add more hardware models as images become available
         }
 
@@ -164,6 +200,7 @@ class RackDiagram:
         # 1U devices
         one_u_models = [
             "supermicro_gen5_cbox",
+            "hpe_genoa_cbox",  # HPE Genoa 1U CBox
             "ceres_v2",
             "sanmina",  # Sanmina 1U DBox
             "msn3700-vs2fc",  # Mellanox MSN3700 switch
@@ -177,6 +214,8 @@ class RackDiagram:
             "cascadelake",  # CascadeLake 2U CBox
             "ceres_4u",  # Example, may need adjustment
             "maverick_1.5",  # Maverick 2U DBox
+            "arista_7060dx5",  # Arista 7060DX5 2U switch
+            "arista",  # Generic Arista switch (2U)
         ]
 
         model_lower = model.lower() if model else ""
@@ -203,7 +242,7 @@ class RackDiagram:
             position: Rack position string
 
         Returns:
-            Rack unit number (1-42)
+            Rack unit number (1 to rack_height_u)
         """
         if not position:
             return 0
@@ -213,11 +252,11 @@ class RackDiagram:
 
         try:
             u_number = int(pos_str)
-            if 1 <= u_number <= 42:
+            if 1 <= u_number <= self.rack_height_u:
                 return u_number
             else:
                 logger.warning(
-                    f"Invalid rack position {position}, must be between U1-U42"
+                    f"Invalid rack position {position}, must be between U1-U{self.rack_height_u}"
                 )
                 return 0
         except ValueError:
@@ -275,7 +314,7 @@ class RackDiagram:
         drawing.add(rack_frame)
 
         # Draw U divisions (horizontal lines for each U)
-        for u in range(1, 43):  # U1 to U42
+        for u in range(1, self.rack_height_u + 1):  # U1 to U{rack_height_u}
             y_pos = start_y + ((u - 1) * self.u_height)
 
             # Horizontal line for U division
@@ -523,18 +562,21 @@ class RackDiagram:
         cboxes: List[Dict[str, Any]],
         dboxes: List[Dict[str, Any]],
         num_switches: int,
+        switches: Optional[List[Dict[str, Any]]] = None,
     ) -> List[int]:
         """
         Calculate optimal switch positions in the rack between CBoxes and DBoxes.
 
         For 2 switches:
-        - If gap is even (2U, 4U, 6U, etc.): Place switches in center-most positions
-        - If gap is odd (3U, 5U, 7U, etc.): Place switches in center with 1U gap between them
+        - 1U switches: If gap is even (2U, 4U, 6U, etc.): Place switches in center-most positions
+        - 1U switches: If gap is odd (3U, 5U, 7U, etc.): Place switches in center with 1U gap between them
+        - 2U switches: Need at least 4U gap, placed with 1U gap between them
 
         Args:
             cboxes: List of CBox device dictionaries
             dboxes: List of DBox device dictionaries
             num_switches: Number of switches to place (currently only supports 2)
+            switches: Optional list of switch dictionaries to determine switch height
 
         Returns:
             List of U positions for switches (empty list if cannot calculate)
@@ -544,6 +586,13 @@ class RackDiagram:
                 f"Switch placement logic currently only supports 2 switches, got {num_switches}"
             )
             return []
+
+        # Determine switch height (1U or 2U) from first switch model
+        switch_height = 1  # Default to 1U
+        if switches and len(switches) > 0:
+            first_switch_model = switches[0].get("model", "")
+            switch_height = self._get_device_height_units(first_switch_model)
+            logger.info(f"Switch height determined: {switch_height}U (model: {first_switch_model})")
 
         # Find the highest CBox position and lowest DBox position
         cbox_positions = []
@@ -592,35 +641,90 @@ class RackDiagram:
             f"Gap between CBoxes and DBoxes: {gap_size}U (U{gap_bottom} to U{gap_top})"
         )
 
-        if gap_size < 2:
-            logger.warning(f"Insufficient gap size ({gap_size}U) for 2 switches")
-            return []
-
-        # Calculate switch positions (switches are 1U each)
-        # SW-1 should be below SW-2, so list lower U position first
+        # Calculate switch positions based on switch height
         switch_positions = []
 
-        if gap_size % 2 == 0:
-            # Even gap: Place switches in center-most positions
-            # Example: 4U gap (U19-U22): SW-1 at U20, SW-2 at U21
-            center_top = gap_bottom + (gap_size // 2)
-            center_bottom = center_top - 1
-            # Return lower position first (SW-1 below SW-2)
-            switch_positions = [center_bottom, center_top]
+        if switch_height == 2:
+            # 2U switches: Need at least 9U gap total
+            # - 2U gap between top switch and lowest CBox
+            # - 2U for top switch (SW-2)
+            # - 1U gap between switches
+            # - 2U for lower switch (SW-1)
+            # - 2U gap between lower switch and top DBox
+            # Total: 2 + 2 + 1 + 2 + 2 = 9U minimum
+            if gap_size < 9:
+                logger.warning(
+                    f"Insufficient gap size ({gap_size}U) for 2 switches of 2U each "
+                    f"with required spacing (need at least 9U: 2U+2U+1U+2U+2U)"
+                )
+                return []
+
+            # Place 2U switches with specific spacing requirements:
+            # - 2U gap between top switch (SW-2) and lowest CBox
+            # - 1U gap between the two switches
+            # - 2U gap between lower switch (SW-1) and top DBox
+
+            # Calculate positions from boundaries:
+            # gap_bottom = highest_dbox + 1 (first U above top DBox)
+            # gap_top = lowest_cbox - 1 (first U below lowest CBox)
+
+            # SW-1 (lower switch): 2U gap above top DBox, then switch at U16 (occupies U15-U16)
+            # gap_bottom = highest_dbox + 1 (first U above top DBox)
+            # Need 2U gap above DBox, so SW-1 top = gap_bottom + 3
+            # Example: If gap_bottom = U13, then SW-1 top = U16 (U13-U14 empty, U15-U16 switch)
+            sw1_top = gap_bottom + 3  # 2U gap (gap_bottom, gap_bottom+1) + 1U to start switch
+            sw1_bottom = sw1_top - switch_height + 1  # SW-1 occupies U(sw1_bottom) to U(sw1_top)
+            
+            # SW-2 (top switch): 2U gap below lowest CBox, switch at U19 (occupies U18-U19)
+            # gap_top = lowest_cbox - 1 (first U below lowest CBox)
+            # Need 2U gap below CBox, so SW-2 top = gap_top - 2
+            # Example: If gap_top = U21, then SW-2 top = U19 (U20-U21 empty, U18-U19 switch)
+            sw2_top = gap_top - 2  # 2U gap (gap_top-1, gap_top) below CBox
+            sw2_bottom = sw2_top - switch_height + 1  # SW-2 occupies U(sw2_bottom) to U(sw2_top)
+            
+            # Verify 1U gap between switches
+            gap_between_switches = sw2_bottom - sw1_top - 1
+            if gap_between_switches != 1:
+                logger.warning(
+                    f"Gap between switches is {gap_between_switches}U, expected 1U. "
+                    f"Gap size: {gap_size}U, SW-1 top: U{sw1_top}, SW-2 bottom: U{sw2_bottom}"
+                )
+                # If gap is not exactly 1U, we may need to adjust, but for now proceed
+                # The switches will still be placed, just with different spacing
+
+            # Return top U position for each switch (SW-1 below SW-2)
+            switch_positions = [sw1_top, sw2_top]
             logger.info(
-                f"Even gap ({gap_size}U): Placing SW-1 at U{center_bottom}, SW-2 at U{center_top}"
+                f"2U switches: Placing SW-1 at U{sw1_bottom}-U{sw1_top}, SW-2 at U{sw2_bottom}-U{sw2_top} "
+                f"(2U gap to DBox, 1U gap between, 2U gap to CBox)"
             )
         else:
-            # Odd gap: Place switches in center with 1U gap between them
-            # Example: 5U gap (U19-U23): SW-1 at U20, SW-2 at U22 (leaving U21 empty)
-            center_u = gap_bottom + (gap_size // 2)
-            switch_top = center_u + 1
-            switch_bottom = center_u - 1
-            # Return lower position first (SW-1 below SW-2)
-            switch_positions = [switch_bottom, switch_top]
-            logger.info(
-                f"Odd gap ({gap_size}U): Placing SW-1 at U{switch_bottom}, SW-2 at U{switch_top} (U{center_u} empty)"
-            )
+            # 1U switches: Original logic
+            if gap_size < 2:
+                logger.warning(f"Insufficient gap size ({gap_size}U) for 2 switches")
+                return []
+
+            if gap_size % 2 == 0:
+                # Even gap: Place switches in center-most positions
+                # Example: 4U gap (U19-U22): SW-1 at U20, SW-2 at U21
+                center_top = gap_bottom + (gap_size // 2)
+                center_bottom = center_top - 1
+                # Return lower position first (SW-1 below SW-2)
+                switch_positions = [center_bottom, center_top]
+                logger.info(
+                    f"Even gap ({gap_size}U): Placing SW-1 at U{center_bottom}, SW-2 at U{center_top}"
+                )
+            else:
+                # Odd gap: Place switches in center with 1U gap between them
+                # Example: 5U gap (U19-U23): SW-1 at U20, SW-2 at U22 (leaving U21 empty)
+                center_u = gap_bottom + (gap_size // 2)
+                switch_top = center_u + 1
+                switch_bottom = center_u - 1
+                # Return lower position first (SW-1 below SW-2)
+                switch_positions = [switch_bottom, switch_top]
+                logger.info(
+                    f"Odd gap ({gap_size}U): Placing SW-1 at U{switch_bottom}, SW-2 at U{switch_top} (U{center_u} empty)"
+                )
 
         return switch_positions
 
@@ -629,6 +733,7 @@ class RackDiagram:
         cboxes: List[Dict[str, Any]],
         dboxes: List[Dict[str, Any]],
         switches: Optional[List[Dict[str, Any]]] = None,
+        rack_name: Optional[str] = None,
     ) -> Tuple[Drawing, Dict[int, int]]:
         """
         Generate a complete rack diagram with all devices.
@@ -637,6 +742,7 @@ class RackDiagram:
             cboxes: List of CBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
             dboxes: List of DBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
             switches: Optional list of switch dictionaries with 'id', 'model', 'state'
+            rack_name: Optional rack name to display on the diagram
 
         Returns:
             Tuple of:
@@ -649,11 +755,28 @@ class RackDiagram:
         # Create empty rack background
         self._create_empty_rack_background(drawing)
 
+        # Add rack name label at the top of the diagram
+        if rack_name and rack_name != "Unknown":
+            start_x = (self.page_width - self.rack_width) / 2
+            start_y = self.margin + 0.5 * inch
+            rack_label_y = start_y + self.rack_height + 0.1 * inch
+
+            rack_label = String(
+                start_x + (self.rack_width / 2),
+                rack_label_y,
+                f"Rack: {rack_name}",
+                textAnchor="middle",
+                fontSize=12,
+                fillColor=self.BRAND_DARK,
+                fontName="Helvetica-Bold",
+            )
+            drawing.add(rack_label)
+
         # Calculate switch positions if switches are provided
         switch_positions_map = {}
         if switches and len(switches) > 0:
             calculated_positions = self._calculate_switch_positions(
-                cboxes, dboxes, len(switches)
+                cboxes, dboxes, len(switches), switches
             )
             if calculated_positions:
                 # Map switch number to U position
@@ -715,17 +838,30 @@ class RackDiagram:
                     # Use explicit position for switch
                     u_position = self._parse_rack_position(explicit_position)
                     if u_position > 0:
+                        # Get switch height from model
+                        switch_height = self._get_device_height_units(model)
                         logger.info(
-                            f"Placing switch {switch_num} at explicit position U{u_position} (model: {model})"
+                            f"Placing switch {switch_num} at explicit position U{u_position} (model: {model}, height: {switch_height}U)"
                         )
                         self._create_device_representation(
-                            drawing, "switch", switch_num, u_position, 1, model, status
+                            drawing, "switch", switch_num, u_position, switch_height, model, status
                         )
                 elif switch_positions_map and switch_num in switch_positions_map:
                     # Use calculated position
                     u_position = switch_positions_map[switch_num]
+                    # Get switch height from model
+                    switch_height = self._get_device_height_units(model)
+                    logger.info(
+                        f"Placing switch {switch_num} (model: {model}) at calculated position U{u_position} "
+                        f"(height: {switch_height}U, occupies U{u_position - switch_height + 1}-U{u_position})"
+                    )
                     self._create_device_representation(
-                        drawing, "switch", switch_num, u_position, 1, model, status
+                        drawing, "switch", switch_num, u_position, switch_height, model, status
+                    )
+                else:
+                    logger.warning(
+                        f"Switch {switch_num} (model: {model}) has no position in switch_positions_map. "
+                        f"Available positions: {switch_positions_map}"
                     )
 
         device_count_msg = f"{len(cboxes)} CBoxes, {len(dboxes)} DBoxes"

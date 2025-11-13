@@ -1,0 +1,60 @@
+[
+  {
+    "id": 2,
+    "guid": "1b0a92e0-355f-4aad-b2b9-7d82002e795b",
+    "name": "DTray-dbox-515-25042300200055-left",
+    "url": "https://10.143.11.204/api/v7/dtrays/2",
+    "title": "DTray-dbox-515-25042300200055-left",
+    "dbox": "dbox-515-25042300200055",
+    "position": "left",
+    "state": "ACTIVE",
+    "enabled": true,
+    "mcu_state": "standby",
+    "mcu_version": "0.0.6.5",
+    "cluster": "selab-var-204",
+    "sync": "SYNCED",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": "0.17.1",
+    "dnodes": [
+      "https://10.143.11.204/api/v7/dnodes/2"
+    ],
+    "pcie_switch_mfg_version": "1.4.0.9",
+    "pcie_switch_firmware_version": "1.4.4.5",
+    "serial_number": "C15-25042300200021",
+    "bmc_ip": "10.143.11.44",
+    "led_status": "off",
+    "dbox_id": 1,
+    "cpld_version": "0x00000000",
+    "hardware_type": "ceres_v2"
+  },
+  {
+    "id": 1,
+    "guid": "12530f64-e0ed-45c3-8e9d-81347428db6f",
+    "name": "DTray-dbox-515-25042300200055-right",
+    "url": "https://10.143.11.204/api/v7/dtrays/1",
+    "title": "DTray-dbox-515-25042300200055-right",
+    "dbox": "dbox-515-25042300200055",
+    "position": "right",
+    "state": "ACTIVE",
+    "enabled": true,
+    "mcu_state": "active",
+    "mcu_version": "0.0.6.5",
+    "cluster": "selab-var-204",
+    "sync": "SYNCED",
+    "bmc_state": "PASSED",
+    "bmc_state_reason": "BMC responsive",
+    "bmc_fw_version": "0.17.1",
+    "dnodes": [
+      "https://10.143.11.204/api/v7/dnodes/1"
+    ],
+    "pcie_switch_mfg_version": "1.4.0.9",
+    "pcie_switch_firmware_version": "1.4.4.5",
+    "serial_number": "C15-25042300200017",
+    "bmc_ip": "10.143.11.42",
+    "led_status": "off",
+    "dbox_id": 1,
+    "cpld_version": "0x00000000",
+    "hardware_type": "ceres_v2"
+  }
+]

@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "guid": "76df5de5-7ced-43f4-b669-599d239591d8",
+    "name": "dbox-515-25042300200055",
+    "url": "https://10.143.11.204/api/v7/dboxes/1",
+    "title": "dbox-515-25042300200055",
+    "uid": "515-25042300200055",
+    "state": "ACTIVE",
+    "cluster": "selab-var-204",
+    "cluster_id": 1,
+    "drive_type": "ACTIVE_PASSIVE",
+    "description": null,
+    "sync": "SYNCED",
+    "sync_time": "2025-11-05T21:12:57.185611Z",
+    "arch_type": "aarch64",
+    "is_conclude_possible": false,
+    "is_replace_possible": true,
+    "subsystem": null,
+    "index_in_rack": null,
+    "rack_id": 1,
+    "rack_unit": "U18",
+    "box_vendor": "BlueField, SoC PCIe Bridge",
+    "is_migrate_target": false,
+    "is_migrate_source": false,
+    "rack_name": "Rack",
+    "hardware_type": "ceres_v2",
+    "failure_domain": ""
+  }
+]

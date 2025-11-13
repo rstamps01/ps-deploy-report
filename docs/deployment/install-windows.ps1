@@ -6,6 +6,16 @@
 # Enable strict error handling
 $ErrorActionPreference = "Stop"
 
+# Define color variables for console output
+$Blue = "Blue"
+$Green = "Green"
+$Yellow = "Yellow"
+$Red = "Red"
+$Cyan = "Cyan"
+$White = "White"
+$Gray = "Gray"
+$Magenta = "Magenta"
+
 # Set up logging
 $LogFile = "install-windows.log"
 $LogPath = Join-Path $PSScriptRoot $LogFile
@@ -350,6 +360,10 @@ function New-VirtualEnvironment {
 # Function to install Python dependencies
 function Install-PythonDependencies {
     Write-Status "Installing Python dependencies..."
+    Write-Status "This includes enhanced features:"
+    Write-Status "  • Port mapping collection (pexpect for interactive SSH)"
+    Write-Status "  • Network topology generation"
+    Write-Status "  • Enhanced hardware inventory processing"
 
     # Handle installation based on mode
     if ($script:InstallMode -eq "minimal") {
@@ -363,6 +377,7 @@ function Install-PythonDependencies {
     }
 
     Write-Success "Python dependencies installed successfully"
+    Write-Success "Enhanced features (port mapping, interactive SSH) are now available"
 }
 
 # Function to setup configuration
@@ -555,6 +570,13 @@ function Show-UsageInstructions {
     Write-Host "   set VAST_PASSWORD=your_password" -ForegroundColor $Green
     Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output" -ForegroundColor $Green
     Write-Host ""
+    Write-Host "   # Generate report with port mapping (enhanced feature)" -ForegroundColor $Green
+    Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 \" -ForegroundColor $Green
+    Write-Host "     --username support --password <PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --node-user vastdata --node-password <NODE_PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --switch-user cumulus --switch-password <SWITCH_PASSWORD> \" -ForegroundColor $Green
+    Write-Host "     --enable-port-mapping --output .\output" -ForegroundColor $Green
+    Write-Host ""
     Write-Host "   # Verbose output for debugging" -ForegroundColor $Green
     Write-Host "   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output --verbose" -ForegroundColor $Green
     Write-Host ""
@@ -597,7 +619,7 @@ function Show-InstallationSummary {
         }
         "production" {
             Write-Host "📦 Installation Type: Production Deployment" -ForegroundColor $Cyan
-            Write-Host "💾 Approximate Size: ~114 MB (47% smaller)" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~114 MB (47`% smaller)" -ForegroundColor $Cyan
             Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
             Write-Host "   • Virtual environment: ~107 MB" -ForegroundColor $Gray
             Write-Host "   • Git repository: Removed" -ForegroundColor $Gray
@@ -605,7 +627,7 @@ function Show-InstallationSummary {
         }
         "minimal" {
             Write-Host "📦 Installation Type: Minimal Installation" -ForegroundColor $Cyan
-            Write-Host "💾 Approximate Size: ~20 MB (91% smaller)" -ForegroundColor $Cyan
+            Write-Host "💾 Approximate Size: ~20 MB (91`% smaller)" -ForegroundColor $Cyan
             Write-Host "   • Application code: ~7 MB" -ForegroundColor $Gray
             Write-Host "   • System Python packages: ~13 MB" -ForegroundColor $Gray
             Write-Host "   • Virtual environment: Not created" -ForegroundColor $Gray
@@ -666,7 +688,7 @@ function Show-InstallationMenu {
     Write-Host "  2) Production Deployment (Recommended)" -ForegroundColor $White
     Write-Host "     • Optimized for production without Git history" -ForegroundColor $Gray
     Write-Host "     • Cleaner deployment, smaller footprint" -ForegroundColor $Gray
-    Write-Host "     • Installation size: ~114 MB (47% smaller)" -ForegroundColor $Gray
+    Write-Host "     • Installation size: ~114 MB (47`% smaller)" -ForegroundColor $Gray
     Write-Host "     • Best for: Production servers, one-time deployments" -ForegroundColor $Gray
     Write-Host ""
     Write-Host "  3) Minimal Installation (Advanced)" -ForegroundColor $White

@@ -64,7 +64,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-mac.sh
+curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
@@ -72,7 +72,7 @@ chmod +x install-mac.sh
 **For Windows Users:**
 ```powershell
 # Download and run the automated installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.1.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 .\install-windows.ps1
 ```
@@ -241,11 +241,16 @@ python3 -m src.main [OPTIONS]
 ```
 
 **Available options:**
-- `--cluster-ip CLUSTER_IP`: IP address of the VAST Management Service (required)
-- `--output-dir OUTPUT_DIR`: Output directory for generated reports (required)
-- `--username USERNAME`: VAST username (will prompt if not provided)
-- `--password PASSWORD`: VAST password (will prompt if not provided)
-- `--token TOKEN`: API token for authentication (alternative to username/password)
+- `--cluster-ip CLUSTER_IP` or `--cluster CLUSTER_IP`: IP address of the VAST Management Service (required)
+- `--output-dir OUTPUT_DIR` or `--output OUTPUT_DIR`: Output directory for generated reports (required)
+- `--username USERNAME` or `-u USERNAME`: VAST username (will prompt if not provided)
+- `--password PASSWORD` or `-p PASSWORD`: VAST password (will prompt if not provided)
+- `--token TOKEN` or `-t TOKEN`: API token for authentication (alternative to username/password)
+- `--enable-port-mapping`: Enable port mapping collection via switch SSH access
+- `--switch-user SWITCH_USER`: SSH username for switches (default: cumulus)
+- `--switch-password SWITCH_PASSWORD`: SSH password for switches
+- `--node-user NODE_USER`: SSH username for VAST nodes (default: vastdata)
+- `--node-password NODE_PASSWORD`: SSH password for VAST nodes
 - `--config CONFIG`: Path to configuration file (optional)
 - `--verbose`: Enable verbose output for debugging
 - `--enable-port-mapping`: Enable automatic port mapping collection via switch SSH (optional)
@@ -294,6 +299,15 @@ python3 -m src.main --cluster-ip <CLUSTER_IP> --output-dir ./reports --enable-po
 python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir ./reports --verbose
 ```
 
+**7. Generate report with port mapping:**
+```bash
+python3 -m src.main --cluster 10.143.11.204 \
+  --username support --password <PASSWORD> \
+  --node-user vastdata --node-password <NODE_PASSWORD> \
+  --switch-user cumulus --switch-password <SWITCH_PASSWORD> \
+  --enable-port-mapping \
+  --output output
+```
 **7. Batch processing with script:**
 ```bash
 #!/bin/bash
@@ -314,12 +328,17 @@ The tool generates comprehensive output in multiple formats:
   2. Executive Summary with cluster and hardware overview
   3. Cluster Information with configuration and feature flags
   4. Hardware Summary with storage capacity metrics
-  5. Hardware Inventory with CBox/DBox tables and images
+  5. Hardware Inventory with enhanced node-level detail:
+     - **Node column**: Shows programmatically generated CNode/DNode names (e.g., `cnode-3-10`, `dnode-3-112`)
+     - **One row per node**: Each CNode and DNode has its own row for detailed tracking
+     - **Multiple nodes per box**: If a CBox or DBox contains multiple nodes, each appears on a separate row
+     - **Optimized column widths**: Model column expanded for better readability
   6. Physical Rack Layout with visual 42U rack diagram
   7. Network Configuration with detailed network settings
-  8. Logical Network Diagram with topology visualization
+  8. Logical Network Diagram with topology visualization (includes port mapping connections when available)
   9. Logical Configuration (VIP pools, tenants, views, policies)
   10. Security & Authentication settings
+  11. Port Mapping (when enabled via `--enable-port-mapping`)
 
 #### 2. JSON Data File (`vast_data_{cluster_name}_{timestamp}.json`)
 - **Machine-readable structured data**
@@ -349,6 +368,61 @@ output/
 └── logs/
     └── vast_report_generator.log
 ```
+
+### Regenerating Reports from JSON Data
+
+You can regenerate PDF reports from existing JSON data files without needing cluster access. This is useful for:
+- **Formatting adjustments**: Iterate on report layout and styling
+- **Template updates**: Test new report templates with existing data
+- **Offline work**: Work on reports without cluster connectivity
+- **Data preservation**: Regenerate reports from archived JSON files
+
+#### Basic Usage
+
+```bash
+# Regenerate from a JSON file (auto-generates output filename)
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json
+
+# Specify custom output file
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json output/custom_report.pdf
+
+# Use custom output directory
+python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json --output-dir ./test_reports
+```
+
+#### Examples
+
+**1. Regenerate latest report:**
+```bash
+# Find the latest JSON file
+ls -t output/vast_data_*.json | head -1
+
+# Regenerate it
+python3 scripts/regenerate_report.py $(ls -t output/vast_data_*.json | head -1)
+```
+
+**2. Test formatting changes:**
+```bash
+# Make formatting changes to src/report_builder.py
+# Then regenerate to see the changes
+python3 scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json output/test_formatting.pdf
+```
+
+**3. Batch regenerate multiple reports:**
+```bash
+for json_file in output/vast_data_*.json; do
+    python3 scripts/regenerate_report.py "$json_file"
+done
+```
+
+#### Command Options
+
+- `json_file`: Path to JSON data file (required)
+- `output_file`: Optional output PDF file path (default: auto-generated from JSON filename)
+- `--output-dir`: Output directory for generated reports (default: `output`)
+- `--log-level`: Logging level - DEBUG, INFO, WARNING, ERROR (default: INFO)
+
+**Note**: The regeneration utility uses the same report builder as the main tool, so any formatting changes you make to `src/report_builder.py` will be reflected in regenerated reports.
 
 ## Administration & Operations
 
@@ -638,8 +712,38 @@ For issues, questions, or contributions, please refer to the project's GitHub re
 
 ---
 
-**Version**: 1.0.0
+**Version**: 1.3.0
 **Target VAST Version**: 5.3+
 **API Version**: v7 (with v1 fallback)
 **Status**: Production Ready
-**Last Updated**: October 17, 2025
+**Last Updated**: November 12, 2025
+
+## Recent Updates (v1.3.0)
+
+### Installation Script Enhancements
+- **Enhanced Features Documentation**: Installation scripts now document enhanced features during installation
+- **Port Mapping Examples**: Added port mapping usage examples to installation instructions
+- **Dependency Verification**: Installation scripts verify and document all enhanced feature dependencies
+
+## Recent Updates (v1.2.0)
+
+### Hardware Inventory Enhancements
+- **Node Column**: Replaced ID column with "Node" column showing programmatically generated CNode/DNode names
+- **One Row Per Node**: Each CNode and DNode now appears on its own row for better tracking
+- **Multiple Nodes Support**: CBoxes and DBoxes with multiple nodes display each node on a separate row
+- **Column Renaming**: 
+  - "CNode/DNode" → "Node"
+  - "Position" → "Height"
+- **Optimized Column Widths**: Model column expanded, Rack/Node/Height columns narrowed for better layout
+- **Node Name Source**: Uses programmatically generated `name` field (e.g., `cnode-3-10`) instead of customer-assigned hostnames
+
+### Port Mapping Improvements
+- Enhanced port mapping collection via SSH
+- Support for Cumulus and Onyx switch operating systems
+- Automatic IPL (Inter-Peer Link) connection detection
+- Network topology diagram includes port mapping connections when available
+
+### Data Collection Enhancements
+- Improved CNode and DNode name extraction from API
+- Enhanced DBox association for DNodes
+- Better handling of multiple nodes per physical box

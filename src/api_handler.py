@@ -128,6 +128,7 @@ class VastHardwareInfo:
     model: str = "Unknown"
     status: str = "unknown"
     rack_position: Optional[int] = None  # Enhanced: Rack height/U position
+    hostname: Optional[str] = None  # Network hostname (more descriptive than name)
 
     # Network information
     primary_ip: Optional[str] = None
@@ -1137,6 +1138,7 @@ class VastApiHandler:
                     node_id=str(cnode.get("id", "Unknown")),
                     node_type="cnode",
                     name=cnode.get("name", "Unknown"),
+                    hostname=cnode.get("hostname"),  # Extract hostname from API
                     serial_number=cnode.get(
                         "sn", cnode.get("serial_number", "Unknown")
                     ),
@@ -1245,11 +1247,15 @@ class VastApiHandler:
                 dbox_name = dnode.get("dbox")
                 dbox_info = dboxes.get(dbox_name, {}) if dbox_name else {}
 
+                # Get dbox_id from API response or from dbox_info
+                dbox_id = dnode.get("dbox_id") or dbox_info.get("id")
+
                 # Extract comprehensive hardware information
                 hardware_info = VastHardwareInfo(
                     node_id=str(dnode.get("id", "Unknown")),
                     node_type="dnode",
                     name=dnode.get("name", "Unknown"),
+                    hostname=dnode.get("hostname"),  # Extract hostname from API (for reference)
                     serial_number=dnode.get(
                         "sn", dnode.get("serial_number", "Unknown")
                     ),
@@ -1262,7 +1268,7 @@ class VastApiHandler:
                     mgmt_ip=dnode.get("mgmt_ip"),
                     ipmi_ip=dnode.get("ipmi_ip"),
                     # Hardware details
-                    box_id=dnode.get("box_id"),
+                    box_id=dbox_id,  # Store dbox_id in box_id field for DNodes
                     box_vendor=dnode.get("box", "Unknown"),
                     bios_version=dnode.get("bios_version"),
                     cpld_version=dnode.get("cpld"),
@@ -1621,6 +1627,29 @@ class VastApiHandler:
                 self.logger.warning("No data field found in network settings response")
                 return {}
 
+            # Extract net_type from the first host in boxes array (cluster-level setting)
+            net_type = "Unknown"
+            boxes = data.get("boxes", [])
+            if boxes:
+                self.logger.debug(f"Found {len(boxes)} boxes in network_settings data")
+                for box in boxes:
+                    hosts = box.get("hosts", [])
+                    if hosts:
+                        for host in hosts:
+                            vast_install_info = host.get("vast_install_info", {})
+                            if vast_install_info.get("net_type"):
+                                net_type = vast_install_info.get("net_type")
+                                self.logger.info(
+                                    f"Extracted net_type from network_settings: {net_type}"
+                                )
+                                break
+                    if net_type != "Unknown":
+                        break
+            else:
+                self.logger.warning(
+                    "No boxes found in network_settings data for net_type extraction"
+                )
+
             # Extract cluster network configuration
             network_config = {
                 "management_vips": data.get("management_vips", []),
@@ -1634,6 +1663,7 @@ class VastApiHandler:
                 "ib_mtu": data.get("ib_mtu", "Unknown"),
                 "ipmi_gateway": data.get("ipmi_gateway", "Unknown"),
                 "ipmi_netmask": data.get("ipmi_netmask", "Unknown"),
+                "net_type": net_type,
             }
 
             self.logger.info(
@@ -2449,6 +2479,26 @@ class VastApiHandler:
             self.logger.error(f"Error processing switch inventory: {e}")
             return {}
 
+    def get_racks(self) -> List[Dict[str, Any]]:
+        """
+        Get rack inventory information including rack height (number_of_units).
+
+        Returns:
+            List[Dict[str, Any]]: List of rack information including id, name, and number_of_units
+        """
+        try:
+            self.logger.info("Fetching rack inventory information")
+            response = self._make_api_request("GET", "/api/v7/racks/")
+            if response and isinstance(response, list):
+                self.logger.info(f"Retrieved {len(response)} racks")
+                return response
+            else:
+                self.logger.warning("No rack data returned or unexpected format")
+                return []
+        except Exception as e:
+            self.logger.warning(f"Error fetching racks data: {e}")
+            return []
+
     def get_all_data(self) -> Dict[str, Any]:
         """
         Collect all available data from the VAST cluster.
@@ -2547,6 +2597,11 @@ class VastApiHandler:
                     "ipmi_netmask": cluster_info.ipmi_netmask,
                 }
 
+            # Rack inventory (for rack height information)
+            racks = self.get_racks()
+            if racks:
+                all_data["racks"] = racks
+
             # Hardware inventory
             cnodes = self.get_cnode_details()
             dnodes = self.get_dnode_details()
@@ -2557,6 +2612,8 @@ class VastApiHandler:
                     {
                         "id": cnode.node_id,
                         "type": cnode.node_type,
+                        "name": cnode.name,  # CNode name (e.g., cnode-3-10)
+                        "hostname": cnode.hostname,  # CNode hostname (e.g., se-az-arrow-cb4-cn-1)
                         "model": cnode.model,
                         "serial_number": cnode.serial_number,
                         "rack_position": cnode.rack_position,
@@ -2570,11 +2627,13 @@ class VastApiHandler:
                     {
                         "id": dnode.node_id,
                         "type": dnode.node_type,
+                        "name": dnode.name,  # DNode name (programmatically generated)
                         "model": dnode.model,
                         "hardware_type": dnode.hardware_type,
                         "serial_number": dnode.serial_number,
                         "rack_position": dnode.rack_position,
                         "status": dnode.status,
+                        "dbox_id": dnode.box_id,  # DBox ID (stored in box_id field for DNodes)
                     }
                     for dnode in dnodes
                 ],

@@ -509,15 +509,31 @@ class VastBrandCompliance:
                 0.12,  # Status
                 0.12,  # Rack Height
             ]  # ID, Model, Serial, Status, Rack Height
-        elif num_cols == 6:  # CBox/DBox Network Configuration (without Net Type)
-            col_ratios = [
-                0.08,  # ID
-                0.20,  # Hostname
-                0.18,  # Mgmt IP
-                0.18,  # IPMI IP
-                0.20,  # VAST OS
-                0.16,  # VMS Host/Position
-            ]
+        elif num_cols == 6:
+            # Check if this is the hardware inventory table with Rack column
+            if headers and headers[0] == "Rack":
+                # Hardware Inventory: Rack, Node, Model, Name/Serial Number, Status, Height
+                # Rack, Node, Status, and Height should be narrow
+                # Model column needs more width for long text
+                narrow_width = 0.08  # Narrow width for Rack, Node, Status, Height
+                col_ratios = [
+                    narrow_width,  # Rack (decreased)
+                    0.12,          # Node (decreased from 0.18)
+                    0.40,          # Model (increased from 0.30)
+                    0.24,          # Name/Serial Number
+                    narrow_width,  # Status
+                    narrow_width,  # Height (renamed from Position)
+                ]
+            else:
+                # CBox/DBox Network Configuration (without Net Type)
+                col_ratios = [
+                    0.08,  # ID
+                    0.28,  # Hostname (increased from 0.20)
+                    0.15,  # Mgmt IP (reduced from 0.18)
+                    0.15,  # IPMI IP (reduced from 0.18)
+                    0.20,  # VAST OS
+                    0.14,  # VMS Host/Position (reduced from 0.16)
+                ]
         else:  # Other hardware types
             col_ratios = [
                 0.15,
@@ -944,16 +960,14 @@ class VastBrandCompliance:
             # Footer content
             if generation_info:
                 timestamp = generation_info.get("timestamp", "Unknown")
+                mgmt_vip = generation_info.get("mgmt_vip", "Unknown")
 
-                # Footer text (removed Data Completeness)
-                footer_text = (
-                    f"VAST Professional Services | Automated As-Built Documentation | "
-                    f"Generated: {timestamp}"
-                )
+                # Footer components (labels removed, values only)
+                generated_text = timestamp
+                center_text = f"VAST Professional Services | Automated As-Built Report | {mgmt_vip}"
             else:
-                footer_text = (
-                    "VAST Professional Services | Automated As-Built Documentation"
-                )
+                generated_text = "Unknown"
+                center_text = "VAST Professional Services | Automated As-Built Report"
 
             # Add watermark (all pages except title page)
             if page_num > 1:
@@ -1021,18 +1035,20 @@ class VastBrandCompliance:
                 bottom_margin - 0.1 * inch,
             )
 
-            # Draw centered footer text (single line)
+            # Draw footer text with new layout
             canvas.setFont(self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
             canvas.setFillColor(self.colors.DARK_GRAY)
-
-            # Calculate text width for centering
-            text_width = canvas.stringWidth(
-                footer_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
-            )
-            x_position = (page_width - text_width) / 2
             y_position = bottom_margin - 0.3 * inch
 
-            canvas.drawString(x_position, y_position, footer_text)
+            # Draw "Generated:" on far left
+            canvas.drawString(left_margin, y_position, generated_text)
+
+            # Draw center text (VAST PS | Documentation | Management VIP)
+            center_text_width = canvas.stringWidth(
+                center_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
+            )
+            center_x_position = (page_width - center_text_width) / 2
+            canvas.drawString(center_x_position, y_position, center_text)
 
             # Draw page number (right aligned on same line)
             page_text = f"Page {page_num}"

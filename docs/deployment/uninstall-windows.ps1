@@ -43,24 +43,24 @@ function Write-ColorOutput {
     switch ($Type) {
         'Header' {
             Write-Host ""
-            Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-            Write-Host "  $Message" -ForegroundColor Cyan
-            Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
+            Write-Host "═══════════════════════════════════════════════════════════════"
+            Write-Host "  $Message"
+            Write-Host "═══════════════════════════════════════════════════════════════"
             Write-Host ""
         }
         'Section' {
             Write-Host ""
-            Write-Host "▶ $Message" -ForegroundColor Cyan
+            Write-Host "▶ $Message"
             Write-Host "─────────────────────────────────────────────────────────────"
         }
         'Success' {
-            Write-Host "✓ $Message" -ForegroundColor Green
+            Write-Host "✓ $Message"
         }
         'Warning' {
-            Write-Host "⚠ $Message" -ForegroundColor Yellow
+            Write-Host "⚠ $Message"
         }
         'Error' {
-            Write-Host "✗ $Message" -ForegroundColor Red
+            Write-Host "✗ $Message"
         }
         'Info' {
             Write-Host "  $Message"
@@ -436,8 +436,8 @@ function Main {
 
 # Check PowerShell version
 if ($PSVersionTable.PSVersion.Major -lt 5) {
-    Write-Host "This script requires PowerShell 5.1 or higher" -ForegroundColor Red
-    Write-Host "Current version: $($PSVersionTable.PSVersion)" -ForegroundColor Yellow
+    Write-Host "This script requires PowerShell 5.1 or higher"
+    Write-Host "Current version: $($PSVersionTable.PSVersion)"
     exit 1
 }
 
@@ -447,8 +447,8 @@ $exitCode = Main
 # Pause before closing (if running interactively)
 if ($Host.Name -eq "ConsoleHost") {
     Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor Gray
-    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    Write-Host "Press any key to exit..."
+    $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
 }
 
 exit $exitCode
