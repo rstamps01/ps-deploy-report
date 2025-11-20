@@ -61,6 +61,13 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 
 ### Quick Start for PS Engineers
 
+The automated installation scripts handle all setup automatically, including:
+- ✅ Virtual environment creation and activation
+- ✅ pip upgrade to latest version
+- ✅ Dependency installation with verification
+- ✅ Package version verification
+- ✅ Application functionality testing
+
 **For Mac Users:**
 ```bash
 # Download and run the automated installation script
@@ -97,14 +104,26 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
    venv\Scripts\activate
    ```
 
-3. **Install dependencies:**
+3. **Upgrade pip (recommended):**
+   ```bash
+   pip install --upgrade pip
+   ```
+
+4. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Verify installation:**
+5. **Verify installation:**
    ```bash
+   # Verify critical packages are installed
+   pip list | grep -E "requests|reportlab|PyYAML|pexpect"
+
+   # Test application version
    python3 src/main.py --version
+
+   # Test critical module imports
+   python3 -c "import requests; import reportlab; import yaml; import pexpect; print('All modules imported successfully')"
    ```
 
 ### Documentation & Guides
@@ -117,8 +136,22 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
 
 ### Installation Scripts
 
+The installation scripts provide automated setup with comprehensive verification:
+
 - **🍎 [macOS Install](docs/deployment/install-mac.sh)**: Automated installation for Mac
+  - Creates and activates virtual environment
+  - Upgrades pip to latest version
+  - Installs all dependencies with verification
+  - Verifies critical packages are installed correctly
+  - Tests application functionality
+
 - **🪟 [Windows Install](docs/deployment/install-windows.ps1)**: Automated installation for Windows
+  - Creates and activates virtual environment
+  - Upgrades pip to latest version
+  - Installs all dependencies with verification
+  - Verifies critical packages are installed correctly
+  - Tests application functionality
+
 - **🍎 [macOS Uninstall](docs/deployment/uninstall-mac.sh)**: Automated uninstallation for Mac
 - **🪟 [Windows Uninstall](docs/deployment/uninstall-windows.ps1)**: Automated uninstallation for Windows
 
@@ -448,6 +481,49 @@ grep "ERROR" logs/vast_report_generator.log
 
 ### Troubleshooting
 
+#### Installation Issues
+
+**1. Missing Dependencies After Installation**
+```bash
+# Verify virtual environment is activated
+which python3  # Should show path with 'venv'
+
+# Reinstall dependencies
+pip install --upgrade pip
+pip install -r requirements.txt --force-reinstall
+
+# Verify critical packages
+pip show requests reportlab PyYAML pexpect
+```
+
+**2. Virtual Environment Not Activated**
+```bash
+# macOS/Linux
+source venv/bin/activate
+
+# Windows
+venv\Scripts\activate
+
+# Verify activation
+which python3  # Should show venv path
+```
+
+**3. Package Import Errors**
+```bash
+# Test critical module imports
+python3 -c "import requests; import reportlab; import yaml; import pexpect; print('All modules imported successfully')"
+
+# If imports fail, reinstall specific package
+pip install --force-reinstall requests reportlab PyYAML pexpect
+```
+
+**4. Installation Script Errors**
+- Check installation logs:
+  - macOS: `install-mac.log` in the directory where you ran the script
+  - Windows: Review PowerShell output
+- Ensure you have internet connectivity
+- Verify Python 3.8+ is installed: `python3 --version`
+
 #### Common Issues
 
 **1. Insufficient API Permissions**
@@ -724,6 +800,10 @@ For issues, questions, or contributions, please refer to the project's GitHub re
 - **Enhanced Features Documentation**: Installation scripts now document enhanced features during installation
 - **Port Mapping Examples**: Added port mapping usage examples to installation instructions
 - **Dependency Verification**: Installation scripts verify and document all enhanced feature dependencies
+- **Improved Installation Sequence**: Scripts now ensure proper order: venv creation → activation → pip upgrade → dependency installation
+- **Package Verification**: Automatic verification of critical packages (requests, reportlab, PyYAML, pexpect, etc.) with version reporting
+- **Enhanced Testing**: Installation scripts now test Python/pip versions, package installations, and critical module imports
+- **Better Error Handling**: Clear error messages if virtual environment activation or package installation fails
 
 ## Recent Updates (v1.2.0)
 
@@ -731,7 +811,7 @@ For issues, questions, or contributions, please refer to the project's GitHub re
 - **Node Column**: Replaced ID column with "Node" column showing programmatically generated CNode/DNode names
 - **One Row Per Node**: Each CNode and DNode now appears on its own row for better tracking
 - **Multiple Nodes Support**: CBoxes and DBoxes with multiple nodes display each node on a separate row
-- **Column Renaming**: 
+- **Column Renaming**:
   - "CNode/DNode" → "Node"
   - "Position" → "Height"
 - **Optimized Column Widths**: Model column expanded, Rack/Node/Height columns narrowed for better layout
