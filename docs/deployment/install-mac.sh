@@ -296,6 +296,16 @@ create_virtual_environment() {
 
     print_status "Creating Python virtual environment..."
 
+    # Ensure we're in the project directory
+    local project_dir="$HOME/vast-asbuilt-reporter"
+    if [ "$(pwd)" != "$project_dir" ]; then
+        print_status "Changing to project directory: $project_dir"
+        cd "$project_dir" || {
+            print_error "Failed to change to project directory"
+            return 1
+        }
+    fi
+
     # Remove existing virtual environment if it exists
     if [ -d "venv" ]; then
         print_status "Removing existing virtual environment..."
@@ -303,15 +313,39 @@ create_virtual_environment() {
     fi
 
     # Create new virtual environment
-    python3 -m venv venv
+    print_status "Creating virtual environment with Python $(python3 --version)..."
+    if ! python3 -m venv venv; then
+        print_error "Failed to create virtual environment"
+        return 1
+    fi
 
     # Activate virtual environment
+    print_status "Activating virtual environment..."
+    if [ ! -f "venv/bin/activate" ]; then
+        print_error "Virtual environment activation script not found"
+        return 1
+    fi
     source venv/bin/activate
 
-    # Upgrade pip
-    pip install --upgrade pip
+    # Verify activation
+    if [ -z "${VIRTUAL_ENV:-}" ]; then
+        print_error "Virtual environment activation failed"
+        return 1
+    fi
+    print_success "Virtual environment activated: $VIRTUAL_ENV"
 
-    print_success "Virtual environment created successfully"
+    # Upgrade pip before installing dependencies
+    print_status "Upgrading pip to latest version..."
+    if ! pip install --upgrade pip; then
+        print_error "Failed to upgrade pip"
+        return 1
+    fi
+
+    # Verify pip version
+    local pip_version=$(pip --version | awk '{print $2}')
+    print_success "pip upgraded to version: $pip_version"
+
+    print_success "Virtual environment created and activated successfully"
 }
 
 # Function to install Python dependencies
@@ -322,15 +356,51 @@ install_python_dependencies() {
     print_status "  • Network topology generation"
     print_status "  • Enhanced hardware inventory processing"
 
+    # Ensure we're in the project directory
+    local project_dir="$HOME/vast-asbuilt-reporter"
+    if [ "$(pwd)" != "$project_dir" ]; then
+        print_status "Changing to project directory: $project_dir"
+        cd "$project_dir" || {
+            print_error "Failed to change to project directory"
+            return 1
+        }
+    fi
+
     # Handle installation based on mode
     if [ "$INSTALL_MODE" = "minimal" ]; then
         # Minimal: Install to system Python
         print_warning "Installing to system Python (minimal mode)"
-        pip3 install -r requirements.txt --user
+        if ! pip3 install -r requirements.txt --user; then
+            print_error "Failed to install Python dependencies"
+            return 1
+        fi
     else
         # Full or Production: Install to virtual environment
-        source venv/bin/activate
-        pip install -r requirements.txt
+        # Ensure virtual environment is activated
+        if [ -z "${VIRTUAL_ENV:-}" ]; then
+            print_status "Activating virtual environment..."
+            if [ ! -f "venv/bin/activate" ]; then
+                print_error "Virtual environment not found. Please run create_virtual_environment first."
+                return 1
+            fi
+            source venv/bin/activate
+        fi
+
+        # Verify we're using the venv Python
+        local python_path=$(which python3)
+        if [[ "$python_path" != *"venv"* ]]; then
+            print_error "Not using virtual environment Python: $python_path"
+            print_error "Expected path to include 'venv'"
+            return 1
+        fi
+        print_success "Using virtual environment Python: $python_path"
+
+        # Install dependencies
+        print_status "Installing packages from requirements.txt..."
+        if ! pip install -r requirements.txt; then
+            print_error "Failed to install Python dependencies"
+            return 1
+        fi
     fi
 
     print_success "Python dependencies installed successfully"
@@ -402,26 +472,143 @@ EOF
     print_success "Desktop shortcut created: VAST As-Built Reporter.command"
 }
 
+# Function to verify package installations
+verify_package_installations() {
+    print_status "Verifying package installations..."
+
+    # Ensure we're in the project directory
+    local project_dir="$HOME/vast-asbuilt-reporter"
+    if [ "$(pwd)" != "$project_dir" ]; then
+        cd "$project_dir" || return 1
+    fi
+
+    # Activate virtual environment if not already activated
+    if [ "$INSTALL_MODE" != "minimal" ]; then
+        if [ -z "${VIRTUAL_ENV:-}" ]; then
+            if [ -f "venv/bin/activate" ]; then
+                source venv/bin/activate
+            else
+                print_error "Virtual environment not found"
+                return 1
+            fi
+        fi
+    fi
+
+    # List of critical packages to verify
+    local critical_packages=(
+        "requests"
+        "reportlab"
+        "PyYAML"
+        "pexpect"
+        "colorlog"
+        "python-dateutil"
+    )
+
+    local failed_packages=()
+    local verified_packages=()
+
+    for package in "${critical_packages[@]}"; do
+        if pip show "$package" >/dev/null 2>&1; then
+            local version=$(pip show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}')
+            print_success "✓ $package: $version"
+            verified_packages+=("$package")
+        else
+            print_error "✗ $package: NOT INSTALLED"
+            failed_packages+=("$package")
+        fi
+    done
+
+    # Verify additional packages
+    print_status "Verifying additional packages..."
+    local additional_packages=(
+        "urllib3"
+        "click"
+        "jsonschema"
+        "python-dotenv"
+    )
+
+    for package in "${additional_packages[@]}"; do
+        if pip show "$package" >/dev/null 2>&1; then
+            local version=$(pip show "$package" 2>/dev/null | grep "^Version:" | awk '{print $2}')
+            print_success "✓ $package: $version"
+        else
+            print_warning "⚠ $package: Not found (may be optional)"
+        fi
+    done
+
+    # Report results
+    echo
+    if [ ${#failed_packages[@]} -eq 0 ]; then
+        print_success "All critical packages verified successfully"
+        print_success "Verified ${#verified_packages[@]} critical packages"
+        return 0
+    else
+        print_error "Failed to verify ${#failed_packages[@]} package(s): ${failed_packages[*]}"
+        print_error "Please reinstall dependencies: pip install -r requirements.txt"
+        return 1
+    fi
+}
+
 # Function to test installation
 test_installation() {
     print_status "Testing installation..."
 
-    # Activate virtual environment
-    source venv/bin/activate
+    # Ensure we're in the project directory
+    local project_dir="$HOME/vast-asbuilt-reporter"
+    if [ "$(pwd)" != "$project_dir" ]; then
+        cd "$project_dir" || return 1
+    fi
+
+    # Activate virtual environment if not already activated
+    if [ "$INSTALL_MODE" != "minimal" ]; then
+        if [ -z "${VIRTUAL_ENV:-}" ]; then
+            if [ -f "venv/bin/activate" ]; then
+                source venv/bin/activate
+            else
+                print_error "Virtual environment not found"
+                return 1
+            fi
+        fi
+    fi
 
     # Test Python version
-    local python_version=$(python3 --version)
+    local python_version=$(python3 --version 2>&1)
     print_success "Python version: $python_version"
 
+    # Test pip version
+    local pip_version=$(pip --version 2>&1 | awk '{print $2}')
+    print_success "pip version: $pip_version"
+
+    # Verify package installations
+    verify_package_installations
+
     # Test application version
-    local app_version=$(python3 src/main.py --version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "Unknown")
-    print_success "Application version: $app_version"
+    print_status "Testing application..."
+    local app_version_output
+    if app_version_output=$(python3 src/main.py --version 2>&1); then
+        local app_version=$(echo "$app_version_output" | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' || echo "Unknown")
+        print_success "Application version: $app_version"
+    else
+        print_error "Failed to get application version"
+        print_error "Output: $app_version_output"
+        return 1
+    fi
 
     # Test help command
     if python3 src/main.py --help >/dev/null 2>&1; then
         print_success "Application help command working"
     else
         print_error "Application help command failed"
+        return 1
+    fi
+
+    # Test import of critical modules
+    print_status "Testing critical module imports..."
+    if python3 -c "import requests; import reportlab; import yaml; import pexpect" 2>/dev/null; then
+        print_success "All critical modules import successfully"
+    else
+        print_error "Failed to import one or more critical modules"
+        python3 -c "import requests; import reportlab; import yaml; import pexpect" 2>&1
         return 1
     fi
 
@@ -694,13 +881,13 @@ main() {
     # Install system dependencies
     install_system_dependencies
 
-    # Setup project
+    # Setup project (must be done first to get project directory)
     setup_project
 
-    # Create virtual environment
+    # Create virtual environment (must be done before installing dependencies)
     create_virtual_environment
 
-    # Install Python dependencies
+    # Install Python dependencies (requires venv to be created and activated)
     install_python_dependencies
 
     # Setup configuration

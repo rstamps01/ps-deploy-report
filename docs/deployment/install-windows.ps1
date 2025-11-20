@@ -339,6 +339,17 @@ function New-VirtualEnvironment {
 
     Write-Status "Creating Python virtual environment..."
 
+    # Ensure we're in the project directory
+    $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
+    if ((Get-Location).Path -ne $projectDir) {
+        Write-Status "Changing to project directory: $projectDir"
+        Set-Location $projectDir
+        if ((Get-Location).Path -ne $projectDir) {
+            Write-Error "Failed to change to project directory"
+            return $false
+        }
+    }
+
     # Remove existing virtual environment if it exists
     if (Test-Path "venv") {
         Write-Status "Removing existing virtual environment..."
@@ -346,15 +357,41 @@ function New-VirtualEnvironment {
     }
 
     # Create new virtual environment
-    python -m venv venv
+    $pythonVersion = python --version 2>&1
+    Write-Status "Creating virtual environment with $pythonVersion..."
+    if (-not (python -m venv venv)) {
+        Write-Error "Failed to create virtual environment"
+        return $false
+    }
 
     # Activate virtual environment
+    Write-Status "Activating virtual environment..."
+    if (-not (Test-Path "venv\Scripts\Activate.ps1")) {
+        Write-Error "Virtual environment activation script not found"
+        return $false
+    }
     & ".\venv\Scripts\Activate.ps1"
 
-    # Upgrade pip
-    python -m pip install --upgrade pip
+    # Verify activation
+    if (-not $env:VIRTUAL_ENV) {
+        Write-Error "Virtual environment activation failed"
+        return $false
+    }
+    Write-Success "Virtual environment activated: $env:VIRTUAL_ENV"
 
-    Write-Success "Virtual environment created successfully"
+    # Upgrade pip before installing dependencies
+    Write-Status "Upgrading pip to latest version..."
+    if (-not (python -m pip install --upgrade pip)) {
+        Write-Error "Failed to upgrade pip"
+        return $false
+    }
+
+    # Verify pip version
+    $pipVersion = pip --version 2>&1 | Select-String -Pattern '\d+\.\d+\.\d+' | ForEach-Object { $_.Matches[0].Value }
+    Write-Success "pip upgraded to version: $pipVersion"
+
+    Write-Success "Virtual environment created and activated successfully"
+    return $true
 }
 
 # Function to install Python dependencies
@@ -365,19 +402,57 @@ function Install-PythonDependencies {
     Write-Status "  • Network topology generation"
     Write-Status "  • Enhanced hardware inventory processing"
 
+    # Ensure we're in the project directory
+    $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
+    if ((Get-Location).Path -ne $projectDir) {
+        Write-Status "Changing to project directory: $projectDir"
+        Set-Location $projectDir
+        if ((Get-Location).Path -ne $projectDir) {
+            Write-Error "Failed to change to project directory"
+            return $false
+        }
+    }
+
     # Handle installation based on mode
     if ($script:InstallMode -eq "minimal") {
         # Minimal: Install to system Python
         Write-Warning "Installing to system Python (minimal mode)"
-        python -m pip install -r requirements.txt --user
+        if (-not (python -m pip install -r requirements.txt --user)) {
+            Write-Error "Failed to install Python dependencies"
+            return $false
+        }
     } else {
         # Full or Production: Install to virtual environment
-        & ".\venv\Scripts\Activate.ps1"
-        pip install -r requirements.txt
+        # Ensure virtual environment is activated
+        if (-not $env:VIRTUAL_ENV) {
+            Write-Status "Activating virtual environment..."
+            if (-not (Test-Path "venv\Scripts\Activate.ps1")) {
+                Write-Error "Virtual environment not found. Please run New-VirtualEnvironment first."
+                return $false
+            }
+            & ".\venv\Scripts\Activate.ps1"
+        }
+
+        # Verify we're using the venv Python
+        $pythonPath = (Get-Command python).Source
+        if ($pythonPath -notlike "*venv*") {
+            Write-Error "Not using virtual environment Python: $pythonPath"
+            Write-Error "Expected path to include 'venv'"
+            return $false
+        }
+        Write-Success "Using virtual environment Python: $pythonPath"
+
+        # Install dependencies
+        Write-Status "Installing packages from requirements.txt..."
+        if (-not (pip install -r requirements.txt)) {
+            Write-Error "Failed to install Python dependencies"
+            return $false
+        }
     }
 
     Write-Success "Python dependencies installed successfully"
     Write-Success "Enhanced features (port mapping, interactive SSH) are now available"
+    return $true
 }
 
 # Function to setup configuration
@@ -497,23 +572,135 @@ function New-StartMenuShortcut {
     Write-Success "Start Menu shortcut created"
 }
 
+# Function to verify package installations
+function Test-PackageInstallations {
+    Write-Status "Verifying package installations..."
+
+    # Ensure we're in the project directory
+    $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
+    if ((Get-Location).Path -ne $projectDir) {
+        Set-Location $projectDir
+    }
+
+    # Activate virtual environment if not already activated
+    if ($script:InstallMode -ne "minimal") {
+        if (-not $env:VIRTUAL_ENV) {
+            if (Test-Path "venv\Scripts\Activate.ps1") {
+                & ".\venv\Scripts\Activate.ps1"
+            } else {
+                Write-Error "Virtual environment not found"
+                return $false
+            }
+        }
+    }
+
+    # List of critical packages to verify
+    $criticalPackages = @(
+        "requests",
+        "reportlab",
+        "PyYAML",
+        "pexpect",
+        "colorlog",
+        "python-dateutil"
+    )
+
+    $failedPackages = @()
+    $verifiedPackages = @()
+
+    foreach ($package in $criticalPackages) {
+        $packageInfo = pip show $package 2>$null
+        if ($LASTEXITCODE -eq 0 -and $packageInfo) {
+            $version = ($packageInfo | Select-String -Pattern "^Version:\s+(.+)$").Matches[0].Groups[1].Value
+            Write-Success "✓ $package`: $version"
+            $verifiedPackages += $package
+        } else {
+            Write-Error "✗ $package`: NOT INSTALLED"
+            $failedPackages += $package
+        }
+    }
+
+    # Verify additional packages
+    Write-Status "Verifying additional packages..."
+    $additionalPackages = @(
+        "urllib3",
+        "click",
+        "jsonschema",
+        "python-dotenv"
+    )
+
+    foreach ($package in $additionalPackages) {
+        $packageInfo = pip show $package 2>$null
+        if ($LASTEXITCODE -eq 0 -and $packageInfo) {
+            $version = ($packageInfo | Select-String -Pattern "^Version:\s+(.+)$").Matches[0].Groups[1].Value
+            Write-Success "✓ $package`: $version"
+        } else {
+            Write-Warning "⚠ $package`: Not found (may be optional)"
+        }
+    }
+
+    # Report results
+    Write-Host ""
+    if ($failedPackages.Count -eq 0) {
+        Write-Success "All critical packages verified successfully"
+        Write-Success "Verified $($verifiedPackages.Count) critical packages"
+        return $true
+    } else {
+        Write-Error "Failed to verify $($failedPackages.Count) package(s): $($failedPackages -join ', ')"
+        Write-Error "Please reinstall dependencies: pip install -r requirements.txt"
+        return $false
+    }
+}
+
 # Function to test installation
 function Test-Installation {
     Write-Status "Testing installation..."
 
-    # Activate virtual environment
-    & ".\venv\Scripts\Activate.ps1"
+    # Ensure we're in the project directory
+    $projectDir = "$env:USERPROFILE\vast-asbuilt-reporter"
+    if ((Get-Location).Path -ne $projectDir) {
+        Set-Location $projectDir
+    }
+
+    # Activate virtual environment if not already activated
+    if ($script:InstallMode -ne "minimal") {
+        if (-not $env:VIRTUAL_ENV) {
+            if (Test-Path "venv\Scripts\Activate.ps1") {
+                & ".\venv\Scripts\Activate.ps1"
+            } else {
+                Write-Error "Virtual environment not found"
+                return $false
+            }
+        }
+    }
 
     # Test Python version
-    $pythonVersion = python --version
+    $pythonVersion = python --version 2>&1
     Write-Success "Python version: $pythonVersion"
 
+    # Test pip version
+    $pipVersion = pip --version 2>&1 | Select-String -Pattern '\d+\.\d+\.\d+' | ForEach-Object { $_.Matches[0].Value }
+    Write-Success "pip version: $pipVersion"
+
+    # Verify package installations
+    if (-not (Test-PackageInstallations)) {
+        return $false
+    }
+
     # Test application version
+    Write-Status "Testing application..."
     try {
-        $appVersion = python src\main.py --version 2>$null | Select-String -Pattern '\d+\.\d+\.\d+' | ForEach-Object { $_.Matches[0].Value }
-        Write-Success "Application version: $appVersion"
+        $appVersionOutput = python src\main.py --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $appVersion = $appVersionOutput | Select-String -Pattern '\d+\.\d+\.\d+' | ForEach-Object { $_.Matches[0].Value }
+            Write-Success "Application version: $appVersion"
+        } else {
+            Write-Error "Failed to get application version"
+            Write-Error "Output: $appVersionOutput"
+            return $false
+        }
     } catch {
-        Write-Warning "Could not determine application version"
+        Write-Error "Failed to get application version: $($_.Exception.Message)"
+        return $false
     }
 
     # Test help command
@@ -522,6 +709,22 @@ function Test-Installation {
         Write-Success "Application help command working"
     } catch {
         Write-Error "Application help command failed"
+        return $false
+    }
+
+    # Test import of critical modules
+    Write-Status "Testing critical module imports..."
+    try {
+        $importTest = python -c "import requests; import reportlab; import yaml; import pexpect" 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "All critical modules import successfully"
+        } else {
+            Write-Error "Failed to import one or more critical modules"
+            Write-Error $importTest
+            return $false
+        }
+    } catch {
+        Write-Error "Failed to test module imports: $($_.Exception.Message)"
         return $false
     }
 
