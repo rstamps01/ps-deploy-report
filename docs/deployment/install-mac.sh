@@ -414,11 +414,56 @@ install_python_dependencies() {
         local pip_version=$(pip --version | awk '{print $2}')
         print_success "pip version: $pip_version"
 
+        # Upgrade build tools for Python 3.14+ compatibility
+        print_status "Upgrading build tools (wheel, setuptools) for Python 3.14+ compatibility..."
+        if ! pip install --upgrade wheel setuptools; then
+            print_warning "Failed to upgrade build tools, continuing anyway..."
+        else
+            print_success "Build tools upgraded successfully"
+        fi
+
         # Install dependencies
         print_status "Installing packages from requirements.txt..."
-        if ! pip install -r requirements.txt; then
-            print_error "Failed to install Python dependencies"
-            return 1
+
+        # Check Python version for compatibility handling
+        local python_version=$(python3 --version 2>&1 | awk '{print $2}' | cut -d. -f1,2)
+        local python_major=$(echo "$python_version" | cut -d. -f1)
+        local python_minor=$(echo "$python_version" | cut -d. -f2)
+
+        # For Python 3.14+, handle rl-renderPM separately as it may not have wheels
+        if [ "$python_major" -eq 3 ] && [ "$python_minor" -ge 14 ]; then
+            print_status "Detected Python 3.14+, using compatibility installation strategy..."
+
+            # Create temporary requirements without rl-renderPM
+            local temp_requirements=$(mktemp)
+            grep -v "^rl-renderPM" requirements.txt > "$temp_requirements" || true
+
+            # Install dependencies without rl-renderPM first
+            if ! pip install -r "$temp_requirements"; then
+                rm -f "$temp_requirements"
+                print_error "Failed to install core Python dependencies"
+                return 1
+            fi
+            rm -f "$temp_requirements"
+
+            # Try to install rl-renderPM separately
+            print_status "Attempting to install rl-renderPM (may require building from source)..."
+            if pip install rl-renderPM>=4.0.3 2>&1 | tee -a "$LOG_FILE"; then
+                print_success "rl-renderPM installed successfully"
+            else
+                print_warning "rl-renderPM installation failed - this is common on Python 3.14"
+                print_warning "The tool will work without rl-renderPM, but PNG conversion features may be limited"
+                print_warning "You can try installing it manually later with:"
+                print_warning "  pip install rl-renderPM --no-build-isolation"
+                print_warning "  OR"
+                print_warning "  pip install rl-renderPM --upgrade --force-reinstall"
+            fi
+        else
+            # Standard installation for Python < 3.14
+            if ! pip install -r requirements.txt; then
+                print_error "Failed to install Python dependencies"
+                return 1
+            fi
         fi
 
         # Verify critical packages were installed
