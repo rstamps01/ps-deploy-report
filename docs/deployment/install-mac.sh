@@ -12,6 +12,15 @@ LOG_FILE="install-mac.log"
 exec 1> >(tee -a "$LOG_FILE")
 exec 2> >(tee -a "$LOG_FILE" >&2)
 
+# Ensure we can read from stdin (for prompts)
+if [ ! -t 0 ]; then
+    # If stdin is not a terminal, we may have issues with prompts
+    # Try to redirect from /dev/tty if available
+    if [ -c /dev/tty ]; then
+        exec 0</dev/tty
+    fi
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -233,11 +242,15 @@ setup_project() {
 
     if [ -d "$project_dir" ]; then
         print_warning "Project directory already exists: $project_dir"
-        read -p "Do you want to update the existing installation? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            print_status "Installation cancelled"
-            exit 0
+        if [ -t 0 ]; then
+            read -p "Do you want to update the existing installation? (y/N): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                print_status "Installation cancelled"
+                exit 0
+            fi
+        else
+            print_warning "Non-interactive mode: Updating existing installation"
         fi
         print_status "Updating existing installation..."
     else
@@ -316,36 +329,20 @@ create_virtual_environment() {
     print_status "Creating virtual environment with Python $(python3 --version)..."
     if ! python3 -m venv venv; then
         print_error "Failed to create virtual environment"
+        print_error "Please ensure Python 3.8+ is installed: python3 --version"
         return 1
     fi
 
-    # Activate virtual environment
-    print_status "Activating virtual environment..."
-    if [ ! -f "venv/bin/activate" ]; then
-        print_error "Virtual environment activation script not found"
-        return 1
-    fi
-    source venv/bin/activate
-
-    # Verify activation
-    if [ -z "${VIRTUAL_ENV:-}" ]; then
-        print_error "Virtual environment activation failed"
-        return 1
-    fi
-    print_success "Virtual environment activated: $VIRTUAL_ENV"
-
-    # Upgrade pip before installing dependencies
-    print_status "Upgrading pip to latest version..."
-    if ! pip install --upgrade pip; then
-        print_error "Failed to upgrade pip"
+    # Verify venv was created
+    if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+        print_error "Virtual environment creation failed - venv directory or activate script not found"
         return 1
     fi
 
-    # Verify pip version
-    local pip_version=$(pip --version | awk '{print $2}')
-    print_success "pip upgraded to version: $pip_version"
+    print_success "Virtual environment created successfully"
 
-    print_success "Virtual environment created and activated successfully"
+    # Note: We don't activate here because activation doesn't persist across function calls
+    # Activation will happen in install_python_dependencies() where it's needed
 }
 
 # Function to install Python dependencies
@@ -376,24 +373,46 @@ install_python_dependencies() {
         fi
     else
         # Full or Production: Install to virtual environment
-        # Ensure virtual environment is activated
-        if [ -z "${VIRTUAL_ENV:-}" ]; then
-            print_status "Activating virtual environment..."
-            if [ ! -f "venv/bin/activate" ]; then
-                print_error "Virtual environment not found. Please run create_virtual_environment first."
-                return 1
-            fi
-            source venv/bin/activate
+        # Verify venv exists before trying to activate
+        if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+            print_error "Virtual environment not found at $project_dir/venv"
+            print_error "Expected venv directory or activate script is missing"
+            print_error "Please ensure create_virtual_environment() completed successfully"
+            return 1
         fi
+
+        # Activate virtual environment (must be done in current shell, not subshell)
+        print_status "Activating virtual environment..."
+        source venv/bin/activate
+
+        # Verify activation worked
+        if [ -z "${VIRTUAL_ENV:-}" ]; then
+            print_error "Virtual environment activation failed"
+            print_error "VIRTUAL_ENV variable is not set"
+            return 1
+        fi
+        print_success "Virtual environment activated: $VIRTUAL_ENV"
 
         # Verify we're using the venv Python
         local python_path=$(which python3)
         if [[ "$python_path" != *"venv"* ]]; then
             print_error "Not using virtual environment Python: $python_path"
             print_error "Expected path to include 'venv'"
+            print_error "Current VIRTUAL_ENV: ${VIRTUAL_ENV:-not set}"
             return 1
         fi
         print_success "Using virtual environment Python: $python_path"
+
+        # Upgrade pip before installing dependencies
+        print_status "Upgrading pip to latest version..."
+        if ! pip install --upgrade pip; then
+            print_error "Failed to upgrade pip"
+            return 1
+        fi
+
+        # Verify pip version
+        local pip_version=$(pip --version | awk '{print $2}')
+        print_success "pip version: $pip_version"
 
         # Install dependencies
         print_status "Installing packages from requirements.txt..."
@@ -401,6 +420,21 @@ install_python_dependencies() {
             print_error "Failed to install Python dependencies"
             return 1
         fi
+
+        # Verify critical packages were installed
+        print_status "Verifying critical packages..."
+        local missing_packages=()
+        for package in requests reportlab PyYAML pexpect; do
+            if ! pip show "$package" >/dev/null 2>&1; then
+                missing_packages+=("$package")
+            fi
+        done
+
+        if [ ${#missing_packages[@]} -gt 0 ]; then
+            print_error "Critical packages not installed: ${missing_packages[*]}"
+            return 1
+        fi
+        print_success "All critical packages verified"
     fi
 
     print_success "Python dependencies installed successfully"
@@ -563,9 +597,14 @@ test_installation() {
     if [ "$INSTALL_MODE" != "minimal" ]; then
         if [ -z "${VIRTUAL_ENV:-}" ]; then
             if [ -f "venv/bin/activate" ]; then
+                print_status "Activating virtual environment for testing..."
                 source venv/bin/activate
+                if [ -z "${VIRTUAL_ENV:-}" ]; then
+                    print_error "Failed to activate virtual environment for testing"
+                    return 1
+                fi
             else
-                print_error "Virtual environment not found"
+                print_error "Virtual environment not found at $project_dir/venv"
                 return 1
             fi
         fi
@@ -803,8 +842,13 @@ get_installation_choice() {
                 echo
                 echo "You will be able to update using: git pull origin main"
                 echo
-                read -p "$(echo -e ${YELLOW}Continue with Full Installation? [y/N]:${NC} )" confirm
-                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                if [ -t 0 ]; then
+                    read -p "$(echo -e ${YELLOW}Continue with Full Installation? [y/N]:${NC} )" confirm
+                    [[ $confirm =~ ^[Yy]$ ]] && return 0
+                else
+                    print_warning "Non-interactive mode: Proceeding with Full Installation"
+                    return 0
+                fi
                 ;;
             2)
                 INSTALL_MODE="production"
@@ -817,8 +861,13 @@ get_installation_choice() {
                 echo
                 echo "Note: Updates require manual download of new version"
                 echo
-                read -p "$(echo -e ${YELLOW}Continue with Production Deployment? [y/N]:${NC} )" confirm
-                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                if [ -t 0 ]; then
+                    read -p "$(echo -e ${YELLOW}Continue with Production Deployment? [y/N]:${NC} )" confirm
+                    [[ $confirm =~ ^[Yy]$ ]] && return 0
+                else
+                    print_warning "Non-interactive mode: Proceeding with Production Deployment"
+                    return 0
+                fi
                 ;;
             3)
                 INSTALL_MODE="minimal"
@@ -833,8 +882,13 @@ get_installation_choice() {
                 print_warning "WARNING: This method may cause package conflicts!"
                 print_warning "Not recommended for production use."
                 echo
-                read -p "$(echo -e ${YELLOW}Are you sure you want to continue? [y/N]:${NC} )" confirm
-                [[ $confirm =~ ^[Yy]$ ]] && return 0
+                if [ -t 0 ]; then
+                    read -p "$(echo -e ${YELLOW}Are you sure you want to continue? [y/N]:${NC} )" confirm
+                    [[ $confirm =~ ^[Yy]$ ]] && return 0
+                else
+                    print_warning "Non-interactive mode: Proceeding with Minimal Installation"
+                    return 0
+                fi
                 ;;
             4)
                 print_status "Installation cancelled by user."
@@ -862,11 +916,16 @@ main() {
     echo
     echo "📋 Installation will be logged to: $LOG_FILE"
     echo
-    read -p "Do you want to continue? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ ! $REPLY == "" ]]; then
-        print_status "Installation cancelled by user"
-        exit 0
+    # Ensure we can read from terminal
+    if [ -t 0 ]; then
+        read -p "Do you want to continue? (Y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]] && [[ ! $REPLY == "" ]]; then
+            print_status "Installation cancelled by user"
+            exit 0
+        fi
+    else
+        print_warning "Running in non-interactive mode - proceeding automatically"
     fi
 
     # Check macOS version
@@ -884,11 +943,47 @@ main() {
     # Setup project (must be done first to get project directory)
     setup_project
 
+    # Change to project directory for remaining operations
+    local project_dir="$HOME/vast-asbuilt-reporter"
+    cd "$project_dir" || {
+        print_error "Failed to change to project directory: $project_dir"
+        exit 1
+    }
+
     # Create virtual environment (must be done before installing dependencies)
-    create_virtual_environment
+    if ! create_virtual_environment; then
+        print_error "Failed to create virtual environment"
+        print_error "Installation cannot continue without virtual environment"
+        exit 1
+    fi
+
+    # Verify venv was created (for non-minimal modes)
+    if [ "$INSTALL_MODE" != "minimal" ]; then
+        if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
+            print_error "Virtual environment verification failed"
+            print_error "venv directory or activate script not found at $project_dir/venv"
+            exit 1
+        fi
+        print_success "Virtual environment verified: $project_dir/venv"
+    fi
 
     # Install Python dependencies (requires venv to be created and activated)
-    install_python_dependencies
+    # Note: venv activation happens inside this function and persists in current shell
+    if ! install_python_dependencies; then
+        print_error "Failed to install Python dependencies"
+        print_error "Please check the error messages above"
+        exit 1
+    fi
+
+    # Verify venv is still activated after dependency installation (for non-minimal modes)
+    if [ "$INSTALL_MODE" != "minimal" ]; then
+        if [ -z "${VIRTUAL_ENV:-}" ]; then
+            print_error "Virtual environment is not activated after dependency installation"
+            print_error "This indicates a problem with the installation process"
+            exit 1
+        fi
+        print_success "Virtual environment still active: $VIRTUAL_ENV"
+    fi
 
     # Setup configuration
     setup_configuration

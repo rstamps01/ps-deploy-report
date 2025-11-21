@@ -229,64 +229,103 @@ class VastReportBuilder:
             story.append(PageBreak())
 
         # Add executive summary
-        story.extend(self._create_executive_summary(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("exec_summary", page_tracker))
+        story.extend(
+            self._create_executive_summary(
+                processed_data, page_tracker, "exec_summary" if is_first_pass else None
+            )
+        )
         story.append(PageBreak())
 
         # Add cluster information
-        story.extend(self._create_cluster_information(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("cluster_info", page_tracker))
+        story.extend(
+            self._create_cluster_information(
+                processed_data, page_tracker, "cluster_info" if is_first_pass else None
+            )
+        )
         story.append(PageBreak())
 
         # Add hardware inventory (includes Physical Rack Layout)
-        story.extend(self._create_hardware_inventory(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("hardware_summary", page_tracker))
-            # Check if rack layout was included
-            if processed_data.get("hardware_inventory", {}).get(
-                "rack_positions_available", False
-            ):
-                story.append(PageMarker("rack_layout", page_tracker))
+        # Pass hardware_summary key for main section, and rack_layout key if rack positions are available
+        hardware_section_key = "hardware_summary" if is_first_pass else None
+        rack_layout_key = (
+            "rack_layout"
+            if (
+                is_first_pass
+                and processed_data.get("hardware_inventory", {}).get(
+                    "rack_positions_available", False
+                )
+            )
+            else None
+        )
+        story.extend(
+            self._create_hardware_inventory(
+                processed_data, page_tracker, hardware_section_key, rack_layout_key
+            )
+        )
         story.append(PageBreak())
 
         # Add comprehensive network configuration
-        story.extend(self._create_comprehensive_network_configuration(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("network_config", page_tracker))
+        story.extend(
+            self._create_comprehensive_network_configuration(
+                processed_data,
+                page_tracker,
+                "network_config" if is_first_pass else None,
+            )
+        )
         story.append(PageBreak())
 
         # Add switch configuration section
-        story.extend(self._create_switch_configuration(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("switch_config", page_tracker))
+        story.extend(
+            self._create_switch_configuration(
+                processed_data, page_tracker, "switch_config" if is_first_pass else None
+            )
+        )
         story.append(PageBreak())
 
         # Add port mapping (if available)
         port_mapping = processed_data.get("sections", {}).get("port_mapping", {})
         if port_mapping.get("available") and port_mapping.get("status") == "complete":
-            story.extend(self._create_port_mapping_section(processed_data))
-            if is_first_pass:
-                story.append(PageMarker("port_mapping", page_tracker))
+            # Extract port mapping data and switches for the method
+            hardware = processed_data.get("hardware_inventory", {})
+            switches = hardware.get("switches", [])
+            story.extend(
+                self._create_port_mapping_section(
+                    port_mapping,
+                    switches,
+                    page_tracker,
+                    "port_mapping" if is_first_pass else None,
+                )
+            )
             story.append(PageBreak())
 
         # Add logical network diagram
-        story.extend(self._create_logical_network_diagram(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("network_diagram", page_tracker))
+        story.extend(
+            self._create_logical_network_diagram(
+                processed_data,
+                page_tracker,
+                "network_diagram" if is_first_pass else None,
+            )
+        )
         story.append(PageBreak())
 
         # Add logical configuration
-        story.extend(self._create_logical_configuration(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("logical_config", page_tracker))
+        story.extend(
+            self._create_logical_configuration(
+                processed_data,
+                page_tracker,
+                "logical_config" if is_first_pass else None,
+            )
+        )
         story.append(PageBreak())
 
         # Add security configuration
-        story.extend(self._create_security_configuration(processed_data))
-        if is_first_pass:
-            story.append(PageMarker("security_config", page_tracker))
+        story.extend(
+            self._create_security_configuration(
+                processed_data,
+                page_tracker,
+                "security_config" if is_first_pass else None,
+            )
+        )
         story.append(PageBreak())
 
         return story
@@ -347,6 +386,9 @@ class VastReportBuilder:
             self.logger.info(
                 f"First pass complete: Captured {len(page_tracker)} page numbers"
             )
+            # Log captured page numbers for verification
+            for section_key, page_num in sorted(page_tracker.items()):
+                self.logger.info(f"  {section_key}: page {page_num}")
             self.logger.debug(f"Page tracker: {page_tracker}")
 
             # PASS 2: Generate final PDF with dynamic TOC
@@ -1195,7 +1237,12 @@ class VastReportBuilder:
 
         return content
 
-    def _create_executive_summary(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_executive_summary(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create VAST brand-compliant executive summary section."""
         content = []
 
@@ -1204,6 +1251,10 @@ class VastReportBuilder:
             "Executive Summary", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -1567,7 +1618,12 @@ class VastReportBuilder:
             all_rows, "Hardware Inventory", headers
         )
 
-    def _create_cluster_information(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_cluster_information(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create VAST brand-compliant cluster information section."""
         content = []
 
@@ -1576,6 +1632,10 @@ class VastReportBuilder:
             "Cluster Information", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -1721,7 +1781,13 @@ class VastReportBuilder:
 
         return content
 
-    def _create_hardware_inventory(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_hardware_inventory(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+        rack_layout_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create VAST brand-compliant hardware inventory section."""
         content = []
 
@@ -1730,6 +1796,10 @@ class VastReportBuilder:
             "Hardware Summary", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -2128,6 +2198,14 @@ class VastReportBuilder:
                                 heading_text = (
                                     f"Physical Rack Layout - Rack: {rack_name}"
                                 )
+                                # Place page marker for Physical Rack Layout section immediately after first heading
+                                if (
+                                    page_tracker is not None
+                                    and rack_layout_key == "rack_layout"
+                                ):
+                                    content.append(
+                                        PageMarker("rack_layout", page_tracker)
+                                    )
                             else:
                                 # Subsequent racks: Simple heading
                                 heading_text = f"Rack: {rack_name}"
@@ -2789,7 +2867,10 @@ class VastReportBuilder:
             return (999, 999, 999, 999)  # Invalid IPs to end
 
     def _create_comprehensive_network_configuration(
-        self, data: Dict[str, Any]
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
     ) -> List[Any]:
         """Create comprehensive network configuration section consolidating all network data."""
         styles = getSampleStyleSheet()
@@ -2824,6 +2905,10 @@ class VastReportBuilder:
             "Network Configuration", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         overview_style = ParagraphStyle(
@@ -3075,12 +3160,19 @@ class VastReportBuilder:
 
         return content
 
-    def _create_logical_network_diagram(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_logical_network_diagram(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """
         Create logical network diagram section.
 
         Args:
             data: Processed cluster data
+            page_tracker: Optional dictionary to capture page numbers
+            section_key: Optional section key for page tracking
 
         Returns:
             List of reportlab flowables for the section
@@ -3092,6 +3184,10 @@ class VastReportBuilder:
             "Logical Network Diagram", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -3437,7 +3533,11 @@ class VastReportBuilder:
             return "Data Plane"
 
     def _create_port_mapping_section(
-        self, port_mapping_data: Dict[str, Any], switches: List[Dict[str, Any]]
+        self,
+        port_mapping_data: Dict[str, Any],
+        switches: List[Dict[str, Any]],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
     ) -> List[Any]:
         """
         Create port mapping section with detailed port-to-device mappings.
@@ -3445,6 +3545,8 @@ class VastReportBuilder:
         Args:
             port_mapping_data: Port mapping data from data extractor
             switches: List of switch hardware data
+            page_tracker: Optional dictionary to capture page numbers
+            section_key: Optional section key for page tracking
 
         Returns:
             List of ReportLab elements for port mapping section
@@ -3457,6 +3559,10 @@ class VastReportBuilder:
             "Port Mapping", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         overview_style = ParagraphStyle(
@@ -3722,7 +3828,12 @@ class VastReportBuilder:
 
         return content
 
-    def _create_switch_configuration(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_switch_configuration(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create switch configuration section with port details."""
         content = []
 
@@ -3731,6 +3842,10 @@ class VastReportBuilder:
             "Switch Configuration", level=1
         )
         content.extend(heading_elements)
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         styles = getSampleStyleSheet()
@@ -3999,13 +4114,18 @@ class VastReportBuilder:
             # Add spacer instead of page break to keep within switch configuration section
             content.append(Spacer(1, 0.3 * inch))
             port_mapping_content = self._create_port_mapping_section(
-                port_mapping_data, switches
+                port_mapping_data, switches, None, None
             )
             content.extend(port_mapping_content)
 
         return content
 
-    def _create_logical_configuration(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_logical_configuration(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create logical configuration section."""
         styles = getSampleStyleSheet()
 
@@ -4020,6 +4140,10 @@ class VastReportBuilder:
 
         content.append(Paragraph("Logical Configuration", heading_style))
         content.append(Spacer(1, 12))
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         overview_style = ParagraphStyle(
@@ -4192,7 +4316,12 @@ class VastReportBuilder:
 
         return content
 
-    def _create_security_configuration(self, data: Dict[str, Any]) -> List[Any]:
+    def _create_security_configuration(
+        self,
+        data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
         """Create security configuration section."""
         styles = getSampleStyleSheet()
 
@@ -4207,6 +4336,10 @@ class VastReportBuilder:
 
         content.append(Paragraph("Security & Authentication", heading_style))
         content.append(Spacer(1, 12))
+
+        # Place page marker immediately after heading to capture section start page
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
 
         # Section Overview
         overview_style = ParagraphStyle(
