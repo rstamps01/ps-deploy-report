@@ -1831,6 +1831,13 @@ class VastReportBuilder:
 
         hardware = data.get("hardware_inventory", {})
 
+        # Extract hardware collections early (used by inventory table and switch placement)
+        cboxes = hardware.get("cboxes", {})
+        cnodes = hardware.get("cnodes", [])
+        dboxes = hardware.get("dboxes", {})
+        dnodes = hardware.get("dnodes", [])
+        switches = hardware.get("switches", [])
+
         # Add storage capacity section
         cluster_info = data.get("cluster_summary", {})
         if any(
@@ -1949,14 +1956,6 @@ class VastReportBuilder:
                 )
                 content.extend(storage_table_elements)
                 content.append(Spacer(1, 12))
-
-            # Calculate switch positions early (before creating inventory table)
-            # This allows us to populate the Position column for switches
-            cboxes = hardware.get("cboxes", {})
-            cnodes = hardware.get("cnodes", [])
-            dboxes = hardware.get("dboxes", {})
-            dnodes = hardware.get("dnodes", [])
-            switches = hardware.get("switches", [])
 
             # Pre-calculate switch positions for rack diagram.
             self.switch_rack_name = None

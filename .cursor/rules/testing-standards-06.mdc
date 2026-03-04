@@ -21,7 +21,7 @@ alwaysApply: false
 - Verify graceful degradation returns partial data, not exceptions
 
 ```python
-@patch("src.api_handler.requests.Session")
+@patch("api_handler.requests.Session")
 def test_endpoint_failure_returns_unavailable(self, mock_session):
     mock_session.return_value.get.side_effect = ConnectionError("timeout")
     result = handler.get_cluster_info()

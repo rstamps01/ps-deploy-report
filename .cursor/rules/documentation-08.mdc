@@ -12,6 +12,7 @@ Every code change must be evaluated for documentation impact. Update docs when:
 - Configuration options change → update `config/config.yaml.template` and `README.md`
 - Installation or deployment changes → update `docs/deployment/` guides
 - A new release is prepared → create `RELEASE_NOTES_v<X.Y.Z>.md`
+- Web UI routes or templates change → update inline docstrings in `src/app.py`
 
 ## Documentation Files and Ownership
 | File | Update When |
@@ -20,6 +21,7 @@ Every code change must be evaluated for documentation impact. Update docs when:
 | `CHANGELOG.md` | Every user-facing change (Keep a Changelog format) |
 | `docs/deployment/*.md` | Install, update, uninstall, permissions changes |
 | `docs/development/*.md` | Internal implementation patterns change |
+| `docs/confluence/*.md` | Synced from Confluence page 6664028496; refresh before major releases |
 | `config/config.yaml.template` | New or renamed config keys |
 
 ## CHANGELOG Format (Keep a Changelog)
@@ -35,14 +37,11 @@ Every code change must be evaluated for documentation impact. Update docs when:
 
 ## Docstring Standard (Google Style)
 ```python
-def get_cluster_info(self, include_psnt: bool = True) -> Dict[str, Any]:
+def get_cluster_info(self) -> Optional[VastClusterInfo]:
     """Retrieve cluster configuration and identity.
 
-    Args:
-        include_psnt: Whether to fetch PSNT from cluster endpoint.
-
     Returns:
-        Dict with cluster name, version, capacity, and optional PSNT.
+        Optional[VastClusterInfo]: Cluster info or None if endpoint unreachable.
 
     Raises:
         VastApiError: If cluster endpoint is unreachable after retries.
@@ -51,3 +50,4 @@ def get_cluster_info(self, include_psnt: bool = True) -> Dict[str, Any]:
 
 ## Confluence Sync
 Major releases should be reflected on the Confluence project page (ID: 6664028496). Update the RFE table and version references after each release.
+Local copies are stored in `docs/confluence/` and should be refreshed from Confluence before major releases using the Atlassian MCP tools.

@@ -133,6 +133,7 @@ class TestVastReportGenerator(unittest.TestCase):
 
         self.assertFalse(result)
 
+    @patch.dict(os.environ, {'VAST_USERNAME': '', 'VAST_PASSWORD': '', 'VAST_TOKEN': ''})
     @patch('main.create_vast_api_handler')
     @patch('builtins.input')
     @patch('getpass.getpass')
@@ -143,11 +144,13 @@ class TestVastReportGenerator(unittest.TestCase):
         mock_handler.authenticate.return_value = True
         mock_create_handler.return_value = mock_handler
 
-        # Mock credential input
-        mock_input.return_value = 'admin'
+        # Mock credential input: auth method 2 (username/password), then username
+        mock_input.side_effect = ['2', 'admin']
         mock_getpass.return_value = 'password'
 
-        args = argparse.Namespace(cluster_ip='192.168.1.100', username=None, password=None)
+        args = argparse.Namespace(
+            cluster_ip='192.168.1.100', username=None, password=None, token=None
+        )
 
         result = self.generator._connect_to_cluster(args)
 
@@ -171,59 +174,67 @@ class TestVastReportGenerator(unittest.TestCase):
 
     def test_get_credentials_from_args(self):
         """Test getting credentials from command-line arguments."""
-        args = argparse.Namespace(username='admin', password='password')
+        args = argparse.Namespace(username='admin', password='password', token=None)
 
-        username, password = self.generator._get_credentials(args)
+        username, password, token = self.generator._get_credentials(args)
 
         self.assertEqual(username, 'admin')
         self.assertEqual(password, 'password')
+        self.assertIsNone(token)
 
-    @patch.dict(os.environ, {'VAST_USERNAME': 'env_user', 'VAST_PASSWORD': 'env_pass'})
+    @patch.dict(os.environ, {'VAST_USERNAME': 'env_user', 'VAST_PASSWORD': 'env_pass', 'VAST_TOKEN': ''})
     def test_get_credentials_from_env(self):
         """Test getting credentials from environment variables."""
-        args = argparse.Namespace()
+        args = argparse.Namespace(username=None, password=None, token=None)
 
-        username, password = self.generator._get_credentials(args)
+        username, password, token = self.generator._get_credentials(args)
 
         self.assertEqual(username, 'env_user')
         self.assertEqual(password, 'env_pass')
+        self.assertIsNone(token)
 
+    @patch.dict(os.environ, {'VAST_USERNAME': '', 'VAST_PASSWORD': '', 'VAST_TOKEN': ''})
     @patch('builtins.input')
     @patch('getpass.getpass')
     def test_get_credentials_interactive(self, mock_getpass, mock_input):
         """Test getting credentials interactively."""
-        mock_input.return_value = 'admin'
+        mock_input.side_effect = ['2', 'admin']  # auth method 2, then username
         mock_getpass.return_value = 'password'
 
-        args = argparse.Namespace(username=None, password=None)
+        args = argparse.Namespace(username=None, password=None, token=None)
 
-        username, password = self.generator._get_credentials(args)
+        username, password, token = self.generator._get_credentials(args)
 
         self.assertEqual(username, 'admin')
         self.assertEqual(password, 'password')
-        mock_input.assert_called_once_with("VAST Username: ")
+        self.assertIsNone(token)
+        mock_input.assert_any_call("VAST Username: ")
         mock_getpass.assert_called_once_with("VAST Password: ")
 
+    @patch.dict(os.environ, {'VAST_USERNAME': '', 'VAST_PASSWORD': '', 'VAST_TOKEN': ''})
     def test_get_credentials_empty_username(self):
         """Test getting credentials with empty username."""
-        args = argparse.Namespace(username=None, password=None)
+        args = argparse.Namespace(username=None, password=None, token=None)
 
         with patch('builtins.input', return_value=''):
-            username, password = self.generator._get_credentials(args)
+            username, password, token = self.generator._get_credentials(args)
 
             self.assertIsNone(username)
             self.assertIsNone(password)
+            self.assertIsNone(token)
 
+    @patch.dict(os.environ, {'VAST_USERNAME': '', 'VAST_PASSWORD': '', 'VAST_TOKEN': ''})
     def test_get_credentials_empty_password(self):
         """Test getting credentials with empty password."""
-        args = argparse.Namespace(username=None, password=None)
+        args = argparse.Namespace(username=None, password=None, token=None)
 
-        with patch('builtins.input', return_value='admin'), \
+        with patch('builtins.input', side_effect=['2', 'admin']), \
              patch('getpass.getpass', return_value=''):
-            username, password = self.generator._get_credentials(args)
+            username, password, token = self.generator._get_credentials(args)
 
             self.assertIsNone(username)
             self.assertIsNone(password)
+            self.assertIsNone(token)
 
     def test_collect_data_success(self):
         """Test successful data collection."""
@@ -258,7 +269,9 @@ class TestVastReportGenerator(unittest.TestCase):
         result = self.generator._process_data(self.mock_raw_data)
 
         self.assertEqual(result, self.mock_processed_data)
-        mock_extractor.extract_all_data.assert_called_once_with(self.mock_raw_data)
+        mock_extractor.extract_all_data.assert_called_once_with(
+            self.mock_raw_data, use_external_port_mapping=None
+        )
 
     def test_process_data_failure(self):
         """Test data processing failure."""
@@ -280,10 +293,14 @@ class TestVastReportGenerator(unittest.TestCase):
         mock_output_dir.mkdir.return_value = None
         mock_output_dir.__truediv__.return_value = Path('test_output.json')
 
-        # Mock data extractor
+        # Mock data extractor and report builder
         mock_extractor = MagicMock()
         mock_extractor.save_processed_data.return_value = True
         self.generator.data_extractor = mock_extractor
+
+        mock_report_builder = MagicMock()
+        mock_report_builder.generate_pdf_report.return_value = True
+        self.generator.report_builder = mock_report_builder
 
         args = argparse.Namespace(output_dir='./test_output')
 
@@ -291,6 +308,7 @@ class TestVastReportGenerator(unittest.TestCase):
 
         self.assertTrue(result)
         mock_extractor.save_processed_data.assert_called_once()
+        mock_report_builder.generate_pdf_report.assert_called_once()
 
     def test_generate_reports_save_failure(self):
         """Test report generation with save failure."""

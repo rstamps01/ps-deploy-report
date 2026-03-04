@@ -21,12 +21,12 @@ Never push directly to `main`. All changes go through `develop` first.
 ```
 
 **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-**Scopes:** `api`, `extractor`, `report`, `cli`, `config`, `tests`, `docs`, `port-mapping`
+**Scopes:** `api`, `extractor`, `report`, `cli`, `config`, `tests`, `docs`, `port-mapping`, `web`, `ui`, `packaging`
 
 Examples:
 - `feat(api): add rack height detection for v7 endpoints`
 - `fix(extractor): handle missing PSNT field gracefully`
-- `docs(deployment): update macOS install script for Python 3.14`
+- `docs(docs): update macOS install script for Python 3.14`
 - `test(api): add retry behavior tests for auth failures`
 
 ## Pre-Commit Checklist
@@ -35,11 +35,11 @@ Before every commit, verify:
 2. No lint errors: `flake8 src/ tests/`
 3. No credentials or secrets in staged files
 4. CHANGELOG.md updated for user-facing changes
-5. Version bump in `main.py` if releasing
+5. Version bump if releasing: update `src/main.py` (APP_VERSION) and `src/__init__.py` (__version__)
 
 ## Release Process
 1. Create `release/v<X.Y.Z>` from `develop`
-2. Update version in `src/main.py`, `CHANGELOG.md`, `README.md`
+2. Update version in `src/main.py` (APP_VERSION), `src/__init__.py` (__version__), `CHANGELOG.md`, `README.md`
 3. Create `RELEASE_NOTES_v<X.Y.Z>.md`
 4. Merge to `main`, tag `v<X.Y.Z>`
 5. Push tag and create GitHub release

@@ -31,7 +31,7 @@ class TestFlaskAppFactory(unittest.TestCase):
 
     def test_app_config_defaults(self):
         app = create_flask_app()
-        self.assertIn("OUTPUT_DIR", app.config)
+        self.assertIn("DEFAULT_OUTPUT_DIR", app.config)
         self.assertIn("CONFIG_PATH", app.config)
         self.assertFalse(app.config["JOB_RUNNING"])
         self.assertIsNone(app.config["JOB_RESULT"])
@@ -160,9 +160,12 @@ class TestReportsRoutes(unittest.TestCase):
         self.app = create_flask_app()
         self.client = self.app.test_client()
         self.tmpdir = tempfile.mkdtemp()
-        self.app.config["OUTPUT_DIR"] = self.tmpdir
-        (Path(self.tmpdir) / "report.pdf").write_bytes(b"%PDF-fake")
-        (Path(self.tmpdir) / "data.json").write_text('{"test": true}')
+        self.app.config["DEFAULT_OUTPUT_DIR"] = self.tmpdir
+        self.app.config["OUTPUT_DIRS"] = {self.tmpdir}
+        self.pdf_name = "vast_asbuilt_report_test_20260304_120000.pdf"
+        self.json_name = "vast_data_test_20260304_120000.json"
+        (Path(self.tmpdir) / self.pdf_name).write_bytes(b"%PDF-fake")
+        (Path(self.tmpdir) / self.json_name).write_text('{"test": true}')
 
     def test_reports_page_returns_200(self):
         resp = self.client.get("/reports")
@@ -170,22 +173,22 @@ class TestReportsRoutes(unittest.TestCase):
 
     def test_reports_page_lists_files(self):
         resp = self.client.get("/reports")
-        self.assertIn(b"report.pdf", resp.data)
-        self.assertIn(b"data.json", resp.data)
+        self.assertIn(self.pdf_name.encode(), resp.data)
+        self.assertIn(self.json_name.encode(), resp.data)
 
     def test_reports_download(self):
-        resp = self.client.get("/reports/download/report.pdf")
+        resp = self.client.get(f"/reports/download/{self.pdf_name}")
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b"%PDF-fake", resp.data)
 
     def test_reports_view(self):
-        resp = self.client.get("/reports/view/data.json")
+        resp = self.client.get(f"/reports/view/{self.json_name}")
         self.assertEqual(resp.status_code, 200)
 
     def test_reports_delete_existing(self):
-        resp = self.client.post("/reports/delete/report.pdf")
+        resp = self.client.post(f"/reports/delete/{self.pdf_name}")
         self.assertEqual(resp.status_code, 200)
-        self.assertFalse((Path(self.tmpdir) / "report.pdf").exists())
+        self.assertFalse((Path(self.tmpdir) / self.pdf_name).exists())
 
     def test_reports_delete_missing_returns_404(self):
         resp = self.client.post("/reports/delete/nonexistent.pdf")
@@ -207,34 +210,35 @@ class TestHelperFunctions(unittest.TestCase):
 
     def test_list_reports_empty_dir(self):
         with tempfile.TemporaryDirectory() as d:
-            result = _list_reports(d)
+            result = _list_reports([d])
             self.assertEqual(result, [])
 
     def test_list_reports_nonexistent_dir(self):
-        result = _list_reports("/nonexistent/path")
+        result = _list_reports(["/nonexistent/path"])
         self.assertEqual(result, [])
 
     def test_list_reports_with_files(self):
         with tempfile.TemporaryDirectory() as d:
-            (Path(d) / "a.pdf").write_bytes(b"fake")
-            (Path(d) / "b.json").write_text("{}")
-            (Path(d) / "c.txt").write_text("ignored")
-            result = _list_reports(d)
+            (Path(d) / "vast_asbuilt_report_a.pdf").write_bytes(b"fake")
+            (Path(d) / "vast_data_b.json").write_text("{}")
+            (Path(d) / "random.txt").write_text("ignored")
+            (Path(d) / "other.pdf").write_bytes(b"ignored")
+            result = _list_reports([d])
             names = [r["name"] for r in result]
-            self.assertIn("a.pdf", names)
-            self.assertIn("b.json", names)
-            self.assertNotIn("c.txt", names)
+            self.assertIn("vast_asbuilt_report_a.pdf", names)
+            self.assertIn("vast_data_b.json", names)
+            self.assertNotIn("random.txt", names)
+            self.assertNotIn("other.pdf", names)
 
     def test_list_reports_sorted_newest_first(self):
         with tempfile.TemporaryDirectory() as d:
-            old_path = Path(d) / "old.pdf"
-            new_path = Path(d) / "new.pdf"
+            old_path = Path(d) / "vast_asbuilt_report_old.pdf"
+            new_path = Path(d) / "vast_asbuilt_report_new.pdf"
             old_path.write_bytes(b"old")
             new_path.write_bytes(b"new")
-            # Force "old.pdf" to have a much earlier mtime
             os.utime(old_path, (1_000_000, 1_000_000))
-            result = _list_reports(d)
-            self.assertEqual(result[0]["name"], "new.pdf")
+            result = _list_reports([d])
+            self.assertEqual(result[0]["name"], "vast_asbuilt_report_new.pdf")
 
     def test_read_config_missing_file(self):
         result = _read_config("/does/not/exist.yaml")

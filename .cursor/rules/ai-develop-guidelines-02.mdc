@@ -5,6 +5,6 @@ alwaysApply: true
 # AI Development Reference Guide
 
 Follow code development guidelines outlined in this document:
-@7a-As-Built Report Generator_ AI Development Reference Guide.md
+@docs/confluence/07-AI-Guardrails.md
 
 If the referenced file is unavailable, follow the standards in rules 03–11 as the canonical source.

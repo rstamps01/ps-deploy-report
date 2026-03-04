@@ -38,9 +38,9 @@ except VastApiError as e:
 
 ## Imports
 - Standard library → third-party → local, separated by blank lines
-- Never use `sys.path.insert` in new code; use relative imports within `src/`
+- Avoid sys.path.insert in library code; acceptable in entry points (main.py, app.py) and test files for module resolution
 
 ## Logging
-- Use `from src.utils.logger import get_logger; logger = get_logger(__name__)`
+- Use `from utils.logger import get_logger; logger = get_logger(__name__)`
 - Never log credentials, tokens, or passwords
 - Use structured context: `logger.info("Collected %d cnodes", count)`

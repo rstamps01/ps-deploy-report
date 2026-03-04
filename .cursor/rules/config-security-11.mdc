@@ -12,10 +12,10 @@ alwaysApply: true
 
 ## Config Structure
 ```yaml
-api:         # timeout, retries, retry_delay, verify_ssl, version
-logging:     # level, format, file_path, rotation, console_colors
-report:      # organization, template, pdf_options
-output:      # default_dir, filename_patterns
+api:         # timeout, max_retries, retry_delay, verify_ssl, version
+logging:     # level, format, file_path, rotation_size, backup_count, console_colors
+report:      # organization, template, pdf
+output:      # default_directory, pdf_filename, json_filename
 data_collection:  # sections, concurrent_requests, validate_responses, graceful_degradation
 security:    # prompt_for_credentials, session_timeout, sanitize_logs
 ```

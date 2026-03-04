@@ -4,14 +4,13 @@ VAST As-Built Report Generator
 A Python package for automatically generating comprehensive as-built reports
 for VAST Data clusters following deployment by Professional Services.
 
-Author: Manus AI
-Version: 1.0.0-dev
+Version: 1.4.0
 Target VAST Version: 5.3
 API Version: 7
 """
 
-__version__ = "1.0.0-dev"
-__author__ = "Manus AI"
-__email__ = "support@manus.im"
+__version__ = "1.4.0"
+__author__ = "VAST Data Professional Services"
+__email__ = ""
 __description__ = "VAST Data As-Built Report Generator"
 
