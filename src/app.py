@@ -36,11 +36,26 @@ APP_VERSION = "1.4.0"
 # Flask application factory
 # ---------------------------------------------------------------------------
 
+def _resolve_base_dirs():
+    """Return (bundle_dir, data_dir) handling both dev and PyInstaller frozen modes."""
+    if getattr(sys, "frozen", False):
+        bundle_dir = Path(sys._MEIPASS)
+        app_exe = Path(sys.executable)
+        if app_exe.parent.name == "MacOS":
+            data_dir = app_exe.parent.parent.parent.parent
+        else:
+            data_dir = app_exe.parent
+    else:
+        bundle_dir = Path(__file__).resolve().parent.parent
+        data_dir = bundle_dir
+    return bundle_dir, data_dir
+
+
 def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """Build and configure the Flask application."""
-    base_dir = Path(__file__).resolve().parent.parent
-    template_dir = base_dir / "frontend" / "templates"
-    static_dir = base_dir / "frontend" / "static"
+    bundle_dir, data_dir = _resolve_base_dirs()
+    template_dir = bundle_dir / "frontend" / "templates"
+    static_dir = bundle_dir / "frontend" / "static"
 
     app = Flask(
         __name__,
@@ -49,12 +64,24 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     )
     app.secret_key = os.urandom(24)
 
-    app.config["BASE_DIR"] = str(base_dir)
-    app.config["DEFAULT_OUTPUT_DIR"] = str(base_dir / "reports")
-    app.config["OUTPUT_DIRS"] = {str(base_dir / "reports")}
-    app.config["CONFIG_PATH"] = str(base_dir / "config" / "config.yaml")
-    app.config["CONFIG_TEMPLATE"] = str(base_dir / "config" / "config.yaml.template")
-    app.config["PROFILES_PATH"] = str(base_dir / "config" / "cluster_profiles.json")
+    reports_dir = data_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    config_dir = data_dir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    config_path = config_dir / "config.yaml"
+    if not config_path.exists():
+        template_src = bundle_dir / "config" / "config.yaml"
+        if template_src.exists():
+            config_path.write_text(template_src.read_text())
+
+    app.config["BASE_DIR"] = str(data_dir)
+    app.config["BUNDLE_DIR"] = str(bundle_dir)
+    app.config["DEFAULT_OUTPUT_DIR"] = str(reports_dir)
+    app.config["OUTPUT_DIRS"] = {str(reports_dir)}
+    app.config["CONFIG_PATH"] = str(config_path)
+    app.config["CONFIG_TEMPLATE"] = str(bundle_dir / "config" / "config.yaml.template")
+    app.config["PROFILES_PATH"] = str(config_dir / "cluster_profiles.json")
     app.config["REPORT_CONFIG"] = config or {}
 
     # Background job state shared across requests
