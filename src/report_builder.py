@@ -349,7 +349,7 @@ class VastReportBuilder:
                 ),
             }
             page_template = self.brand_compliance.create_vast_page_template(
-                generation_info
+                generation_info, page_size=page_size
             )
 
             # Create document with page template
@@ -588,7 +588,7 @@ class VastReportBuilder:
             return content
 
         # Read TOC data from Excel (A1:C60)
-        available_width = 7.5 * inch
+        available_width = A4[0] - 1.0 * inch
         toc_table_data = []
 
         for row in range(1, 61):
@@ -880,7 +880,7 @@ class VastReportBuilder:
                 filtered_structure.append(entry)
 
         # Build TOC table with calculated dot leaders
-        available_width = 7.5 * inch
+        available_width = A4[0] - 1.0 * inch
         toc_table_data = []
 
         # List of subsections that should have extra space after them
@@ -1093,7 +1093,7 @@ class VastReportBuilder:
         # Build TOC table with calculated dot leaders for perfect alignment
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        available_width = 7.5 * inch  # Page width minus margins
+        available_width = A4[0] - 1.0 * inch  # Page width minus margins
         toc_table_data = []
 
         # List of subsections that should have extra space after them (to separate section groups)
@@ -1533,29 +1533,42 @@ class VastReportBuilder:
             all_rows.extend([row for _, _, row in dbox_rows])
 
         # Add Switches
-        # Note: Switches don't have rack_name in API, so we'll assign them to racks
-        # based on which rack they're associated with (or use "Unknown" if not determinable)
         if switches:
+            manual_rack_map = getattr(self, "manual_rack_placements", {})
+
+            # Build per-switch rack lookup from manual placements
+            manual_sw_rack: Dict[str, str] = {}
+            if manual_rack_map:
+                for rn, placements in manual_rack_map.items():
+                    for p in placements:
+                        sw_name = p.get("name", p.get("hostname", ""))
+                        if sw_name:
+                            manual_sw_rack[sw_name] = rn
+
+            if not manual_sw_rack:
+                if hasattr(self, "switch_rack_name") and self.switch_rack_name:
+                    default_rack = self.switch_rack_name
+                else:
+                    known_rack_names = sorted(
+                        set(
+                            list(cbox_id_to_rack_name.values())
+                            + list(dbox_id_to_rack_name.values())
+                        )
+                    )
+                    default_rack = known_rack_names[0] if known_rack_names else "Unknown"
+            else:
+                default_rack = "Unknown"
+
             switch_rows = []
             for switch_num, switch in enumerate(switches, start=1):
-                switch_name = switch.get("name", "Unknown")
-                hostname = switch.get("hostname", switch_name)
+                sw_name = switch.get("name", switch.get("hostname", "Unknown"))
+                hostname = switch.get("hostname", sw_name)
                 model = switch.get("model", "Unknown")
                 serial = switch.get("serial", "Unknown")
                 state = switch.get("state", "Unknown")
 
-                # Try to infer rack from hostname or use "Unknown"
-                # Hostname format might be like "se-var-1-1" where "1" could be rack
-                rack_name = "Unknown"
-                if hostname and "-" in hostname:
-                    parts = hostname.split("-")
-                    # Try to extract rack identifier from hostname
-                    # This is a heuristic - may need adjustment based on actual naming
-                    if len(parts) >= 3:
-                        # Could be rack identifier in hostname
-                        pass  # For now, use "Unknown"
+                rack_name = manual_sw_rack.get(sw_name, default_rack)
 
-                # Get calculated position from rack diagram (if available)
                 position = ""
                 if (
                     hasattr(self, "switch_positions")
@@ -1564,21 +1577,15 @@ class VastReportBuilder:
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
-                # Create row data with SW- prefix, rack name, and position (CNode column shows N/A for switches)
                 row = [rack_name, "N/A", model, serial, state, position]
                 switch_rows.append((rack_name, hostname, row))
 
-            # Sort by rack name, then by hostname
             switch_rows.sort(key=lambda x: (x[0], x[1]))
 
-            # Re-number switches sequentially after sorting and update positions
-            for idx, (rack_name, hostname, row) in enumerate(switch_rows, start=1):
-                # CNode column already set to "N/A", no update needed
-                pass
-                # Update position if available for this switch number
+            for idx, (_rn, _hn, row) in enumerate(switch_rows, start=1):
                 if hasattr(self, "switch_positions") and idx in self.switch_positions:
                     u_pos = self.switch_positions[idx]
-                    row[5] = f"U{u_pos}"  # Position is now at index 5
+                    row[5] = f"U{u_pos}"
 
             all_rows.extend([row for _, _, row in switch_rows])
 
@@ -1951,16 +1958,41 @@ class VastReportBuilder:
             dnodes = hardware.get("dnodes", [])
             switches = hardware.get("switches", [])
 
-            # Pre-calculate switch positions for rack diagram
-            if switches and len(switches) == 2:
-                # Prepare CBox and DBox data for calculation
-                temp_rack_gen = RackDiagram()
+            # Pre-calculate switch positions for rack diagram.
+            self.switch_rack_name = None
+            self.manual_rack_placements: Dict[str, list] = {}
 
-                # Build CBox data for switch calculation
-                cboxes_data = []
+            manual_placements = data.get("manual_switch_placements")
+            if manual_placements and switches:
+                # --- Manual placement: user-specified rack + U position ---
+                sw_by_name = {
+                    sw.get("name", sw.get("hostname", "")): sw for sw in switches
+                }
+                for idx, mp in enumerate(manual_placements, start=1):
+                    rn = mp.get("rack_name", "Unknown")
+                    u_pos = int(mp.get("u_position", 0))
+                    self.switch_positions[idx] = u_pos
+                    self.manual_rack_placements.setdefault(rn, []).append(
+                        {**sw_by_name.get(mp.get("switch_name"), {}), "u_position": u_pos}
+                    )
+                self.switch_rack_name = sorted(self.manual_rack_placements.keys())[0]
+                self.logger.info(
+                    "Manual switch placement: %s", self.switch_positions
+                )
+            elif switches and len(switches) == 2:
+                # --- Auto placement: cascade through racks ---
                 hw_cnodes = hardware.get("cnodes", [])
+                hw_dboxes_raw = hardware.get("dboxes", {})
+
+                per_rack_cboxes: Dict[str, list] = {}
                 for cnode in hw_cnodes:
-                    cbox_data = {
+                    cbox_id = cnode.get("cbox_id")
+                    rack_name = "Unknown"
+                    for _cn, cb in cboxes.items():
+                        if cb.get("id") == cbox_id:
+                            rack_name = cb.get("rack_name") or "Unknown"
+                            break
+                    cbox_entry = {
                         "id": cnode.get("id"),
                         "model": cnode.get("model", cnode.get("box_vendor", "")),
                         "rack_unit": cnode.get(
@@ -1968,35 +2000,51 @@ class VastReportBuilder:
                         ),
                         "state": cnode.get("state", cnode.get("status", "ACTIVE")),
                     }
-                    if cbox_data["rack_unit"]:  # Only add if has position
-                        cboxes_data.append(cbox_data)
+                    if cbox_entry["rack_unit"]:
+                        per_rack_cboxes.setdefault(rack_name, []).append(cbox_entry)
 
-                # Build DBox data for switch calculation
-                # Use dboxes (physical chassis) not dnodes (individual nodes)
-                dboxes_data = []
-                hw_dboxes = hardware.get("dboxes", {})
-                for dbox_name, dbox_info in hw_dboxes.items():
+                per_rack_dboxes: Dict[str, list] = {}
+                for dbox_name, dbox_info in hw_dboxes_raw.items():
                     rack_unit = dbox_info.get("rack_unit", "")
+                    rack_name = dbox_info.get("rack_name") or "Unknown"
                     if rack_unit:
-                        dbox_data = {
+                        dbox_entry = {
                             "id": dbox_info.get("id"),
                             "model": dbox_info.get("hardware_type", "Unknown"),
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
                         }
-                        dboxes_data.append(dbox_data)
+                        per_rack_dboxes.setdefault(rack_name, []).append(dbox_entry)
 
-                # Calculate switch positions
-                calculated_positions = temp_rack_gen._calculate_switch_positions(
-                    cboxes_data, dboxes_data, len(switches)
+                all_rack_names = sorted(
+                    set(list(per_rack_cboxes.keys()) + list(per_rack_dboxes.keys()))
                 )
-                if calculated_positions:
-                    self.switch_positions = {
-                        idx: u_pos
-                        for idx, u_pos in enumerate(calculated_positions, start=1)
-                    }
-                    self.logger.info(
-                        f"Pre-calculated switch positions: {self.switch_positions}"
+
+                for try_rack in all_rack_names:
+                    rack_cb = per_rack_cboxes.get(try_rack, [])
+                    rack_db = per_rack_dboxes.get(try_rack, [])
+                    if not rack_cb and not rack_db:
+                        continue
+                    temp_rack_gen = RackDiagram()
+                    calculated_positions = temp_rack_gen._calculate_switch_positions(
+                        rack_cb, rack_db, len(switches), switches=switches
+                    )
+                    if calculated_positions:
+                        self.switch_positions = {
+                            idx: u_pos
+                            for idx, u_pos in enumerate(calculated_positions, start=1)
+                        }
+                        self.switch_rack_name = try_rack
+                        self.logger.info(
+                            f"Switches assigned to rack '{try_rack}': "
+                            f"positions {self.switch_positions}"
+                        )
+                        break
+
+                if self.switch_rack_name is None:
+                    self.logger.warning(
+                        "Auto switch placement failed for all racks — "
+                        "switches will not appear in rack diagrams"
                     )
 
         # Consolidated Hardware Inventory table with VAST styling
@@ -2076,23 +2124,47 @@ class VastReportBuilder:
                         }
                         racks_data[rack_name]["dboxes"].append(dbox_data)
 
-                # Get switch data - for now, assign switches to all racks or first rack
-                # (Switches don't have rack_name in API, so we'll need to handle this)
+                # Assign switches to racks for diagram generation.
                 switches = hardware.get("switches", [])
-                switches_data = []
-                for switch in switches:
-                    switch_data = {
-                        "id": switch.get("name", "Unknown"),
-                        "model": switch.get("model", "switch"),
-                        "state": switch.get("state", "ACTIVE"),
-                    }
-                    switches_data.append(switch_data)
+                manual_rack_map = getattr(self, "manual_rack_placements", {})
 
-                # For switches, we'll add them to each rack that has hardware
-                # (In a real deployment, switches might be in specific racks)
-                for rack_name in racks_data.keys():
-                    if switches_data:
-                        racks_data[rack_name]["switches"] = switches_data.copy()
+                if manual_rack_map:
+                    # Manual placement: distribute switches to their specified racks
+                    # with explicit rack_unit so generate_rack_diagram uses them directly.
+                    for rn, placements in manual_rack_map.items():
+                        if rn not in racks_data:
+                            continue
+                        sw_list = []
+                        for p in placements:
+                            sw_list.append({
+                                "id": p.get("name", "Unknown"),
+                                "model": p.get("model", "switch"),
+                                "state": p.get("state", "ACTIVE"),
+                                "rack_unit": f"U{p['u_position']}",
+                            })
+                        racks_data[rn]["switches"] = sw_list
+                        self.logger.info(
+                            f"Manual: assigned {len(sw_list)} switches to rack '{rn}'"
+                        )
+                elif switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
+                    # Auto placement: all switches go to the single winning rack.
+                    switches_data = []
+                    for switch in switches:
+                        switches_data.append({
+                            "id": switch.get("name", "Unknown"),
+                            "model": switch.get("model", "switch"),
+                            "state": switch.get("state", "ACTIVE"),
+                        })
+                    target_rack = self.switch_rack_name
+                    if target_rack in racks_data:
+                        racks_data[target_rack]["switches"] = switches_data
+                        self.logger.info(
+                            f"Auto: assigned {len(switches_data)} switches to rack '{target_rack}'"
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Switch target rack '{target_rack}' not found in racks_data"
+                        )
 
                 # Generate one diagram per rack
                 if racks_data:
@@ -2141,9 +2213,18 @@ class VastReportBuilder:
                             rack_hw["switches"] if rack_hw["switches"] else None
                         )
 
-                        # Add placeholder Arista switches if no switches are present
-                        # These are 2U switches that will be placed between CNode and DNode hardware
-                        if not rack_switches and (rack_cboxes or rack_dboxes):
+                        # Add placeholder Arista switches only when the cluster
+                        # has NO discovered switches at all (e.g., pre-deployment).
+                        # When real switches exist they are assigned to a single rack;
+                        # other racks intentionally have no switches.
+                        has_real_switches = bool(
+                            hardware.get("switches")
+                        )
+                        if (
+                            not rack_switches
+                            and not has_real_switches
+                            and (rack_cboxes or rack_dboxes)
+                        ):
                             rack_switches = [
                                 {
                                     "id": "SWA",
@@ -2681,7 +2762,7 @@ class VastReportBuilder:
                 )
 
             # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
             table = Table(
                 table_data,
                 colWidths=[
@@ -2799,7 +2880,7 @@ class VastReportBuilder:
                 )
 
             # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
             table = Table(
                 table_data,
                 colWidths=[
@@ -4000,7 +4081,7 @@ class VastReportBuilder:
 
                 # Create custom port summary table with specific column widths
                 # Port Count: 15%, Speed: 15%, Port Numbers: 70%
-                page_width = 7.5 * inch
+                page_width = A4[0] - 1.0 * inch
                 col_widths = [
                     page_width * 0.15,  # Port Count (matches Speed column)
                     page_width * 0.15,  # Speed (reduced by 50%)

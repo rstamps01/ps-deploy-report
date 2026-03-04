@@ -61,7 +61,7 @@ class RackDiagram:
 
     def __init__(
         self,
-        page_width: float = 7.5 * inch,
+        page_width: float = 7.27 * inch,
         page_height: float = 8.5 * inch,
         rack_height_u: int = None
     ):
@@ -557,29 +557,193 @@ class RackDiagram:
         )
         drawing.add(device_icon)
 
+    def _gather_device_boundaries(
+        self,
+        cboxes: List[Dict[str, Any]],
+        dboxes: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Optional[int]]]:
+        """
+        Parse CBox/DBox positions and return boundary U values needed for placement.
+
+        Returns dict with keys: lowest_cbox_bottom, highest_cbox_top,
+        highest_dbox_top, lowest_dbox_bottom.  Values are None when the
+        corresponding device list has no valid positions.  Returns None only
+        when *both* CBox and DBox data are missing.
+        """
+        cbox_tops = []
+        cbox_bottoms = []
+        for cbox in cboxes:
+            u_pos = self._parse_rack_position(cbox.get("rack_unit", ""))
+            if u_pos > 0:
+                model = cbox.get("model", "")
+                u_height = self._get_device_height_units(model)
+                cbox_tops.append(u_pos)
+                cbox_bottoms.append(u_pos - u_height + 1)
+
+        dbox_tops = []
+        dbox_bottoms = []
+        for dbox in dboxes:
+            u_pos = self._parse_rack_position(dbox.get("rack_unit", ""))
+            if u_pos > 0:
+                hw_type = dbox.get("hardware_type", dbox.get("model", ""))
+                u_height = self._get_device_height_units(hw_type)
+                dbox_tops.append(u_pos)
+                dbox_bottoms.append(u_pos - u_height + 1)
+
+        if not cbox_tops and not dbox_tops:
+            logger.warning(
+                "Cannot calculate switch positions: no CBox or DBox position data"
+            )
+            return None
+
+        return {
+            "highest_cbox_top": max(cbox_tops) if cbox_tops else None,
+            "lowest_cbox_bottom": min(cbox_bottoms) if cbox_bottoms else None,
+            "highest_dbox_top": max(dbox_tops) if dbox_tops else None,
+            "lowest_dbox_bottom": min(dbox_bottoms) if dbox_bottoms else None,
+        }
+
+    def _try_center_placement(
+        self,
+        lowest_cbox_bottom: int,
+        highest_dbox_top: int,
+        switch_height: int,
+    ) -> List[int]:
+        """
+        Strategy A: place switches in the center gap between CBoxes and DBoxes.
+
+        Returns list of [SW1_top, SW2_top] positions or empty list on failure.
+        """
+        gap_top = lowest_cbox_bottom - 1
+        gap_bottom = highest_dbox_top + 1
+
+        if gap_top < gap_bottom:
+            logger.info(
+                "Strategy A (center): No gap between CBoxes and DBoxes"
+            )
+            return []
+
+        gap_size = gap_top - gap_bottom + 1
+        logger.info(
+            f"Strategy A (center): gap={gap_size}U (U{gap_bottom}–U{gap_top})"
+        )
+
+        if switch_height == 2:
+            if gap_size < 9:
+                logger.info(
+                    f"Strategy A (center): gap {gap_size}U too small for 2x 2U switches (need 9U)"
+                )
+                return []
+            sw1_top = gap_bottom + 3
+            sw2_top = gap_top - 2
+            logger.info(
+                f"Strategy A (center): 2U switches — SW-1 top U{sw1_top}, SW-2 top U{sw2_top}"
+            )
+            return [sw1_top, sw2_top]
+
+        # 1U switches
+        if gap_size < 2:
+            logger.info(
+                f"Strategy A (center): gap {gap_size}U too small for 2x 1U switches (need 2U)"
+            )
+            return []
+
+        if gap_size % 2 == 0:
+            center_top = gap_bottom + (gap_size // 2)
+            center_bottom = center_top - 1
+            logger.info(
+                f"Strategy A (center): even gap — SW-1 at U{center_bottom}, SW-2 at U{center_top}"
+            )
+            return [center_bottom, center_top]
+
+        center_u = gap_bottom + (gap_size // 2)
+        sw_bottom = center_u - 1
+        sw_top = center_u + 1
+        logger.info(
+            f"Strategy A (center): odd gap — SW-1 at U{sw_bottom}, SW-2 at U{sw_top} (U{center_u} empty)"
+        )
+        return [sw_bottom, sw_top]
+
+    def _try_above_placement(
+        self,
+        highest_cbox_top: int,
+        switch_height: int,
+        rack_height: int,
+    ) -> List[int]:
+        """
+        Strategy B: place switches above the topmost CBox.
+
+        SW-1 sits 1U above the top CBox, SW-2 sits 1U above SW-1.
+        Returns list of [SW1_top, SW2_top] positions or empty list if exceeds rack.
+        """
+        sw1_top = highest_cbox_top + 1 + switch_height  # 1U gap + switch
+        sw2_top = sw1_top + 1 + switch_height            # 1U gap + switch
+
+        if sw2_top > rack_height:
+            logger.info(
+                f"Strategy B (above CBox): SW-2 would be at U{sw2_top}, "
+                f"exceeds rack height {rack_height}U"
+            )
+            return []
+
+        logger.info(
+            f"Strategy B (above CBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top} "
+            f"(rack height {rack_height}U)"
+        )
+        return [sw1_top, sw2_top]
+
+    def _try_below_placement(
+        self,
+        lowest_dbox_bottom: int,
+        switch_height: int,
+    ) -> List[int]:
+        """
+        Strategy C: place switches below the bottommost DBox.
+
+        SW-2 sits 1U below the bottom DBox, SW-1 sits 1U below SW-2.
+        Returns list of [SW1_top, SW2_top] positions or empty list if below U1.
+        """
+        sw2_top = lowest_dbox_bottom - 1 - 1  # 1U gap below DBox, top of SW-2
+        sw1_top = sw2_top - switch_height - 1  # 1U gap below SW-2, top of SW-1
+        sw1_bottom = sw1_top - switch_height + 1
+
+        if sw1_bottom < 1:
+            logger.info(
+                f"Strategy C (below DBox): SW-1 bottom would be at U{sw1_bottom}, "
+                f"below rack floor"
+            )
+            return []
+
+        logger.info(
+            f"Strategy C (below DBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top}"
+        )
+        return [sw1_top, sw2_top]
+
     def _calculate_switch_positions(
         self,
         cboxes: List[Dict[str, Any]],
         dboxes: List[Dict[str, Any]],
         num_switches: int,
         switches: Optional[List[Dict[str, Any]]] = None,
+        rack_height: Optional[int] = None,
     ) -> List[int]:
         """
-        Calculate optimal switch positions in the rack between CBoxes and DBoxes.
+        Calculate optimal switch positions using cascading placement strategies.
 
-        For 2 switches:
-        - 1U switches: If gap is even (2U, 4U, 6U, etc.): Place switches in center-most positions
-        - 1U switches: If gap is odd (3U, 5U, 7U, etc.): Place switches in center with 1U gap between them
-        - 2U switches: Need at least 4U gap, placed with 1U gap between them
+        Tries three strategies in order:
+          A) Center gap between CBoxes and DBoxes (original logic)
+          B) Above the topmost CBox with 1U spacing
+          C) Below the bottommost DBox with 1U spacing
 
         Args:
             cboxes: List of CBox device dictionaries
             dboxes: List of DBox device dictionaries
             num_switches: Number of switches to place (currently only supports 2)
             switches: Optional list of switch dictionaries to determine switch height
+            rack_height: Rack height in U (defaults to self.rack_height_u)
 
         Returns:
-            List of U positions for switches (empty list if cannot calculate)
+            List of U positions (top U) for switches, or empty list if all strategies fail
         """
         if num_switches != 2:
             logger.warning(
@@ -587,146 +751,55 @@ class RackDiagram:
             )
             return []
 
-        # Determine switch height (1U or 2U) from first switch model
-        switch_height = 1  # Default to 1U
+        switch_height = 1
         if switches and len(switches) > 0:
             first_switch_model = switches[0].get("model", "")
             switch_height = self._get_device_height_units(first_switch_model)
             logger.info(f"Switch height determined: {switch_height}U (model: {first_switch_model})")
 
-        # Find the highest CBox position and lowest DBox position
-        cbox_positions = []
-        for cbox in cboxes:
-            rack_pos = cbox.get("rack_unit", "")
-            u_pos = self._parse_rack_position(rack_pos)
-            if u_pos > 0:
-                model = cbox.get("model", "")
-                u_height = self._get_device_height_units(model)
-                # Record the bottom of the CBox
-                bottom_u = u_pos - u_height + 1
-                cbox_positions.append(bottom_u)
-
-        dbox_positions = []
-        for dbox in dboxes:
-            rack_pos = dbox.get("rack_unit", "")
-            u_pos = self._parse_rack_position(rack_pos)
-            if u_pos > 0:
-                dbox_positions.append(u_pos)  # Top of DBox
-
-        if not cbox_positions or not dbox_positions:
-            logger.warning(
-                "Cannot calculate switch positions: insufficient CBox or DBox data"
-            )
+        bounds = self._gather_device_boundaries(cboxes, dboxes)
+        if bounds is None:
             return []
 
-        # Find the gap between the lowest CBox and highest DBox
-        lowest_cbox = min(cbox_positions)  # Bottom-most U occupied by any CBox
-        highest_dbox = max(dbox_positions)  # Top-most U occupied by any DBox
+        effective_rack_height = rack_height or self.rack_height_u
 
-        # Calculate available gap (inclusive)
-        # Gap is from (lowest_cbox - 1) down to (highest_dbox + 1)
-        gap_top = lowest_cbox - 1
-        gap_bottom = highest_dbox + 1
+        has_cbox = bounds["lowest_cbox_bottom"] is not None
+        has_dbox = bounds["highest_dbox_top"] is not None
 
-        if gap_top < gap_bottom:
-            logger.warning(
-                f"No gap between CBoxes and DBoxes: CBox bottom={lowest_cbox}, DBox top={highest_dbox}"
+        # Strategy A: center gap (requires both CBox and DBox)
+        if has_cbox and has_dbox:
+            positions = self._try_center_placement(
+                bounds["lowest_cbox_bottom"],
+                bounds["highest_dbox_top"],
+                switch_height,
             )
-            return []
+            if positions:
+                return positions
 
-        # Calculate gap size
-        gap_size = gap_top - gap_bottom + 1  # Inclusive count
+        # Strategy B: above top CBox (requires CBox data)
+        if has_cbox:
+            positions = self._try_above_placement(
+                bounds["highest_cbox_top"],
+                switch_height,
+                effective_rack_height,
+            )
+            if positions:
+                return positions
 
-        logger.info(
-            f"Gap between CBoxes and DBoxes: {gap_size}U (U{gap_bottom} to U{gap_top})"
+        # Strategy C: below bottom DBox (requires DBox data)
+        if has_dbox:
+            positions = self._try_below_placement(
+                bounds["lowest_dbox_bottom"],
+                switch_height,
+            )
+            if positions:
+                return positions
+
+        logger.warning(
+            "All auto switch placement strategies exhausted — "
+            "switches will not appear in the rack diagram. Use Manual placement."
         )
-
-        # Calculate switch positions based on switch height
-        switch_positions = []
-
-        if switch_height == 2:
-            # 2U switches: Need at least 9U gap total
-            # - 2U gap between top switch and lowest CBox
-            # - 2U for top switch (SW-2)
-            # - 1U gap between switches
-            # - 2U for lower switch (SW-1)
-            # - 2U gap between lower switch and top DBox
-            # Total: 2 + 2 + 1 + 2 + 2 = 9U minimum
-            if gap_size < 9:
-                logger.warning(
-                    f"Insufficient gap size ({gap_size}U) for 2 switches of 2U each "
-                    f"with required spacing (need at least 9U: 2U+2U+1U+2U+2U)"
-                )
-                return []
-
-            # Place 2U switches with specific spacing requirements:
-            # - 2U gap between top switch (SW-2) and lowest CBox
-            # - 1U gap between the two switches
-            # - 2U gap between lower switch (SW-1) and top DBox
-
-            # Calculate positions from boundaries:
-            # gap_bottom = highest_dbox + 1 (first U above top DBox)
-            # gap_top = lowest_cbox - 1 (first U below lowest CBox)
-
-            # SW-1 (lower switch): 2U gap above top DBox, then switch at U16 (occupies U15-U16)
-            # gap_bottom = highest_dbox + 1 (first U above top DBox)
-            # Need 2U gap above DBox, so SW-1 top = gap_bottom + 3
-            # Example: If gap_bottom = U13, then SW-1 top = U16 (U13-U14 empty, U15-U16 switch)
-            sw1_top = gap_bottom + 3  # 2U gap (gap_bottom, gap_bottom+1) + 1U to start switch
-            sw1_bottom = sw1_top - switch_height + 1  # SW-1 occupies U(sw1_bottom) to U(sw1_top)
-            
-            # SW-2 (top switch): 2U gap below lowest CBox, switch at U19 (occupies U18-U19)
-            # gap_top = lowest_cbox - 1 (first U below lowest CBox)
-            # Need 2U gap below CBox, so SW-2 top = gap_top - 2
-            # Example: If gap_top = U21, then SW-2 top = U19 (U20-U21 empty, U18-U19 switch)
-            sw2_top = gap_top - 2  # 2U gap (gap_top-1, gap_top) below CBox
-            sw2_bottom = sw2_top - switch_height + 1  # SW-2 occupies U(sw2_bottom) to U(sw2_top)
-            
-            # Verify 1U gap between switches
-            gap_between_switches = sw2_bottom - sw1_top - 1
-            if gap_between_switches != 1:
-                logger.warning(
-                    f"Gap between switches is {gap_between_switches}U, expected 1U. "
-                    f"Gap size: {gap_size}U, SW-1 top: U{sw1_top}, SW-2 bottom: U{sw2_bottom}"
-                )
-                # If gap is not exactly 1U, we may need to adjust, but for now proceed
-                # The switches will still be placed, just with different spacing
-
-            # Return top U position for each switch (SW-1 below SW-2)
-            switch_positions = [sw1_top, sw2_top]
-            logger.info(
-                f"2U switches: Placing SW-1 at U{sw1_bottom}-U{sw1_top}, SW-2 at U{sw2_bottom}-U{sw2_top} "
-                f"(2U gap to DBox, 1U gap between, 2U gap to CBox)"
-            )
-        else:
-            # 1U switches: Original logic
-            if gap_size < 2:
-                logger.warning(f"Insufficient gap size ({gap_size}U) for 2 switches")
-                return []
-
-            if gap_size % 2 == 0:
-                # Even gap: Place switches in center-most positions
-                # Example: 4U gap (U19-U22): SW-1 at U20, SW-2 at U21
-                center_top = gap_bottom + (gap_size // 2)
-                center_bottom = center_top - 1
-                # Return lower position first (SW-1 below SW-2)
-                switch_positions = [center_bottom, center_top]
-                logger.info(
-                    f"Even gap ({gap_size}U): Placing SW-1 at U{center_bottom}, SW-2 at U{center_top}"
-                )
-            else:
-                # Odd gap: Place switches in center with 1U gap between them
-                # Example: 5U gap (U19-U23): SW-1 at U20, SW-2 at U22 (leaving U21 empty)
-                center_u = gap_bottom + (gap_size // 2)
-                switch_top = center_u + 1
-                switch_bottom = center_u - 1
-                # Return lower position first (SW-1 below SW-2)
-                switch_positions = [switch_bottom, switch_top]
-                logger.info(
-                    f"Odd gap ({gap_size}U): Placing SW-1 at U{switch_bottom}, SW-2 at U{switch_top} (U{center_u} empty)"
-                )
-
-        return switch_positions
+        return []
 
     def generate_rack_diagram(
         self,

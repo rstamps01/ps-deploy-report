@@ -1,0 +1,50 @@
+---
+description: Change control — git workflow, branching strategy, commit conventions, and release process
+alwaysApply: true
+---
+# Change Control & Git Workflow
+
+## Branch Strategy
+- `main` — protected, production-ready releases only (tagged)
+- `develop` — primary development branch, all features merge here first
+- `feature/<name>` — feature branches off `develop`
+- `fix/<name>` — bugfix branches off `develop`
+- `release/v<X.Y.Z>` — release prep branches
+
+Never push directly to `main`. All changes go through `develop` first.
+
+## Commit Message Format (Conventional Commits)
+```
+<type>(<scope>): <short description>
+
+<optional body explaining why, not what>
+```
+
+**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+**Scopes:** `api`, `extractor`, `report`, `cli`, `config`, `tests`, `docs`, `port-mapping`
+
+Examples:
+- `feat(api): add rack height detection for v7 endpoints`
+- `fix(extractor): handle missing PSNT field gracefully`
+- `docs(deployment): update macOS install script for Python 3.14`
+- `test(api): add retry behavior tests for auth failures`
+
+## Pre-Commit Checklist
+Before every commit, verify:
+1. All tests pass: `python3 -m pytest tests/ -v`
+2. No lint errors: `flake8 src/ tests/`
+3. No credentials or secrets in staged files
+4. CHANGELOG.md updated for user-facing changes
+5. Version bump in `main.py` if releasing
+
+## Release Process
+1. Create `release/v<X.Y.Z>` from `develop`
+2. Update version in `src/main.py`, `CHANGELOG.md`, `README.md`
+3. Create `RELEASE_NOTES_v<X.Y.Z>.md`
+4. Merge to `main`, tag `v<X.Y.Z>`
+5. Push tag and create GitHub release
+
+## Semantic Versioning
+- **MAJOR**: breaking CLI or config changes
+- **MINOR**: new features, new report sections, new API support
+- **PATCH**: bug fixes, doc updates, minor improvements

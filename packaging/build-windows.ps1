@@ -1,0 +1,52 @@
+# Build VAST As-Built Reporter for Windows.
+#
+# Prerequisites:
+#   pip install pyinstaller
+#
+# Usage:
+#   cd <project-root>
+#   powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1
+
+$ErrorActionPreference = "Stop"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir
+$DistDir = Join-Path $ProjectRoot "dist"
+
+Write-Host "=== VAST Reporter Windows Build ===" -ForegroundColor Cyan
+Write-Host "Project root: $ProjectRoot"
+
+# 1. Clean previous build
+if (Test-Path $DistDir) { Remove-Item -Recurse -Force $DistDir }
+$BuildDir = Join-Path $ProjectRoot "build"
+if (Test-Path $BuildDir) { Remove-Item -Recurse -Force $BuildDir }
+
+# 2. Run PyInstaller
+Write-Host "Running PyInstaller..." -ForegroundColor Yellow
+Push-Location $ProjectRoot
+try {
+    pyinstaller packaging/vast-reporter.spec --noconfirm
+} finally {
+    Pop-Location
+}
+
+# 3. Verify output
+$AppDir = Join-Path $DistDir "VAST Reporter"
+if (-not (Test-Path $AppDir)) {
+    Write-Host "ERROR: Build output not found at $AppDir" -ForegroundColor Red
+    exit 1
+}
+Write-Host "App folder created: $AppDir" -ForegroundColor Green
+
+# 4. Create ZIP archive
+$Version = "1.4.0"
+$ZipName = "VAST-Reporter-v$Version-win.zip"
+$ZipPath = Join-Path $DistDir $ZipName
+Write-Host "Creating ZIP: $ZipName" -ForegroundColor Yellow
+Compress-Archive -Path $AppDir -DestinationPath $ZipPath -Force
+Write-Host "ZIP created: $ZipPath" -ForegroundColor Green
+
+Write-Host ""
+Write-Host "=== Build complete ===" -ForegroundColor Cyan
+Write-Host "Output: $DistDir\"
+Get-ChildItem $DistDir | Format-Table Name, Length, LastWriteTime -AutoSize

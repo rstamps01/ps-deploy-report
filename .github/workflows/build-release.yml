@@ -1,0 +1,120 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------------
+  # Run tests before building
+  # -------------------------------------------------------------------
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest tests/ -v
+
+  # -------------------------------------------------------------------
+  # Build platform-specific bundles
+  # -------------------------------------------------------------------
+  build:
+    needs: test
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: VAST-Reporter-mac
+            script: bash packaging/build-mac.sh
+          - os: windows-latest
+            artifact: VAST-Reporter-win
+            script: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime + PyInstaller
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build
+        run: ${{ matrix.script }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
+
+  # -------------------------------------------------------------------
+  # Create GitHub release and attach assets
+  # -------------------------------------------------------------------
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VAST-Reporter-mac
+          path: artifacts/mac
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VAST-Reporter-win
+          path: artifacts/win
+
+      - name: Prepare release assets
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # macOS — DMG or zip the .app
+          if ls artifacts/mac/*.dmg 1>/dev/null 2>&1; then
+            cp artifacts/mac/*.dmg "VAST-Reporter-${TAG}-mac.dmg"
+          else
+            cd artifacts/mac && zip -r "../../VAST-Reporter-${TAG}-mac.zip" "VAST Reporter" && cd ../..
+          fi
+          # Windows — zip already created by build script
+          if ls artifacts/win/*.zip 1>/dev/null 2>&1; then
+            cp artifacts/win/*.zip "VAST-Reporter-${TAG}-win.zip"
+          else
+            cd artifacts/win && zip -r "../../VAST-Reporter-${TAG}-win.zip" "VAST Reporter" && cd ../..
+          fi
+
+      - name: Extract release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VER="${TAG#v}"
+          NOTES_FILE="RELEASE_NOTES_${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "body_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "body_path=CHANGELOG.md" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: ${{ steps.notes.outputs.body_path }}
+          files: |
+            VAST-Reporter-*.dmg
+            VAST-Reporter-*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

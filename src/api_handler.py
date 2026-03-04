@@ -2488,7 +2488,7 @@ class VastApiHandler:
         """
         try:
             self.logger.info("Fetching rack inventory information")
-            response = self._make_api_request("GET", "/api/v7/racks/")
+            response = self._make_api_request("racks/")
             if response and isinstance(response, list):
                 self.logger.info(f"Retrieved {len(response)} racks")
                 return response

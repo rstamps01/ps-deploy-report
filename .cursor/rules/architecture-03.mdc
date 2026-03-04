@@ -1,0 +1,40 @@
+---
+description: Architectural design patterns, module boundaries, and layered pipeline structure
+alwaysApply: true
+---
+# Architecture Guardrails
+
+## Layered Pipeline (do not violate)
+The application follows a strict three-stage pipeline. Each layer only depends on the one before it:
+
+1. **API Handler** (`api_handler.py`) — connects to VAST cluster, authenticates, collects raw API data
+2. **Data Extractor** (`data_extractor.py`) — transforms raw API responses into structured report sections
+3. **Report Builder** (`report_builder.py`) — renders structured data into PDF and JSON output
+
+`main.py` orchestrates the pipeline; it is the only module that instantiates all three layers.
+
+## Module Boundaries
+- `api_handler.py` must never import from `data_extractor` or `report_builder`
+- `data_extractor.py` must never import from `report_builder`
+- `report_builder.py` must never call the VAST API directly
+- Shared utilities belong in `src/utils/`
+- Port mapping modules (`external_port_mapper.py`, `enhanced_port_mapper.py`, `port_mapper.py`, `vnetmap_parser.py`) feed data into `data_extractor`
+
+## Design Principles
+- **Graceful degradation**: every section must handle missing data without crashing
+- **Config-driven**: behavior changes go in `config/config.yaml`, not hardcoded
+- **Single Responsibility**: one class per module, one concern per method
+- **Factory helpers**: use `create_*` functions for object construction in `main.py`
+
+## Data Flow Contract
+```
+Raw API dict → VastDataExtractor.extract_all() → Dict[str, ReportSection] → VastReportBuilder.generate()
+```
+Never bypass this contract. If a new data source is added (e.g., SSH port mapping), it must be integrated at the Data Extractor layer.
+
+## Adding New Report Sections
+1. Add API endpoint in `api_handler.py` with retry logic
+2. Add `_extract_<section>()` method in `data_extractor.py` returning a `ReportSection`
+3. Add `_create_<section>_section()` in `report_builder.py` consuming the `ReportSection`
+4. Register the section key in the dynamic TOC (`PageMarker`)
+5. Add unit tests for all three layers

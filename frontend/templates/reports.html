@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Reports - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Reports</h1>
+    <p class="subtitle">Browse and manage generated reports</p>
+</div>
+
+<div class="card dir-management-card">
+    <h3>Output Directory</h3>
+    <div class="dir-add-row">
+        <input type="text" id="outputDirInput" value="{{ output_dir }}" readonly>
+        <button type="button" class="btn btn-sm" onclick="openBrowse()">Browse</button>
+        <button class="btn btn-sm btn-primary" onclick="setDir()">Set</button>
+    </div>
+</div>
+
+<div id="browseModal" class="browse-modal-overlay hidden">
+    <div class="browse-modal">
+        <div class="browse-modal-header">
+            <h3>Select Directory</h3>
+            <button type="button" class="browse-modal-close" onclick="closeBrowse()">&times;</button>
+        </div>
+        <div class="browse-path-bar">
+            <button type="button" class="btn btn-sm" onclick="browseUp()" id="btnBrowseUp" title="Parent directory">&uarr; Up</button>
+            <span id="browseCurrent" class="browse-current-path"></span>
+        </div>
+        <div class="browse-list" id="browseList"></div>
+        <div class="browse-modal-footer">
+            <button type="button" class="btn btn-sm" onclick="closeBrowse()">Cancel</button>
+            <button type="button" class="btn btn-sm btn-primary" onclick="selectBrowsed()">Select This Folder</button>
+        </div>
+    </div>
+</div>
+
+{% if reports %}
+<div class="card">
+    <table class="data-table" id="reportsTable">
+        <thead>
+            <tr>
+                <th>File Name</th>
+                <th class="text-center">Type</th>
+                <th class="text-center">Size</th>
+                <th class="text-center">Generated</th>
+                <th class="text-right">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in reports %}
+            <tr id="row-{{ loop.index }}">
+                <td class="filename">{{ r.name }}</td>
+                <td class="text-center">{% if r.type == 'PDF' %}<span class="file-icon file-icon-pdf" title="PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="7" y="17" font-size="6" font-weight="700" fill="currentColor" stroke="none">PDF</text></svg></span>{% else %}<span class="file-icon file-icon-json" title="JSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="5" y="17" font-size="5.5" font-weight="700" fill="currentColor" stroke="none">JSON</text></svg></span>{% endif %}</td>
+                <td class="text-center">{{ "%.1f"|format(r.size / 1024) }} KB</td>
+                <td class="text-center">{{ r.modified }}</td>
+                <td class="actions"><span class="actions-inner">
+                    {% if r.type == 'PDF' %}
+                    <a href="{{ url_for('reports_view', filename=r.name) }}" target="_blank" class="btn btn-sm btn-secondary">View</a>
+                    {% endif %}
+                    <a href="{{ url_for('reports_download', filename=r.name) }}" class="btn btn-sm">Download</a>
+                    <button class="btn-icon-delete" onclick="deleteReport('{{ r.name }}', 'row-{{ loop.index }}')" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                </span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="card empty-state">
+    <p>No VAST reports found in the output directory.</p>
+    <a href="{{ url_for('generate_form') }}" class="btn btn-primary">Generate a Report</a>
+</div>
+{% endif %}
+
+<script>
+async function deleteReport(filename, rowId) {
+    if (!confirm('Delete ' + filename + '?')) return;
+    try {
+        const resp = await fetch('/reports/delete/' + encodeURIComponent(filename), {method: 'POST'});
+        if (resp.ok) {
+            document.getElementById(rowId).remove();
+        }
+    } catch (err) { /* ignore */ }
+}
+
+async function setDir() {
+    const input = document.getElementById('outputDirInput');
+    const dir = input.value.trim();
+    if (!dir) return;
+    try {
+        const resp = await fetch('/reports/dirs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({dir: dir})
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to set directory'); return; }
+        location.reload();
+    } catch (e) { alert('Network error: ' + e.message); }
+}
+
+// -- Directory browser modal --
+let browseCurrentPath = '';
+
+function openBrowse() {
+    document.getElementById('browseModal').classList.remove('hidden');
+    const seed = document.getElementById('outputDirInput').value.trim();
+    browseTo(seed || '');
+}
+
+function closeBrowse() {
+    document.getElementById('browseModal').classList.add('hidden');
+}
+
+function selectBrowsed() {
+    document.getElementById('outputDirInput').value = browseCurrentPath;
+    closeBrowse();
+}
+
+function browseUp() {
+    const el = document.getElementById('browseCurrent');
+    const parent = el.dataset.parent;
+    if (parent) browseTo(parent);
+}
+
+async function browseTo(path) {
+    const list = document.getElementById('browseList');
+    list.innerHTML = '<p style="padding:0.5rem;color:#888">Loading...</p>';
+    try {
+        const url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (!resp.ok) { list.innerHTML = '<p style="padding:0.5rem;color:red">' + (data.error || 'Error') + '</p>'; return; }
+        browseCurrentPath = data.current;
+        const curEl = document.getElementById('browseCurrent');
+        curEl.textContent = data.current;
+        curEl.dataset.parent = data.parent || '';
+        document.getElementById('btnBrowseUp').disabled = !data.parent;
+
+        list.innerHTML = '';
+        if (data.dirs.length === 0) {
+            list.innerHTML = '<p style="padding:0.5rem;color:#888">No subdirectories</p>';
+            return;
+        }
+        for (const name of data.dirs) {
+            const row = document.createElement('div');
+            row.className = 'browse-item';
+            row.textContent = name;
+            row.onclick = function() { browseTo(data.current + '/' + name); };
+            list.appendChild(row);
+        }
+    } catch (e) {
+        list.innerHTML = '<p style="padding:0.5rem;color:red">Network error</p>';
+    }
+}
+</script>
+{% endblock %}

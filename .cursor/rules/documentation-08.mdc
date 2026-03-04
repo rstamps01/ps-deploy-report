@@ -1,0 +1,53 @@
+---
+description: Documentation update requirements — when and what to update after code changes
+alwaysApply: true
+---
+# Documentation Standards
+
+## When to Update Documentation
+Every code change must be evaluated for documentation impact. Update docs when:
+- A new feature or CLI option is added → update `README.md`
+- A bug fix changes user-visible behavior → update `CHANGELOG.md`
+- API endpoints are added/changed → update `docs/` and inline docstrings
+- Configuration options change → update `config/config.yaml.template` and `README.md`
+- Installation or deployment changes → update `docs/deployment/` guides
+- A new release is prepared → create `RELEASE_NOTES_v<X.Y.Z>.md`
+
+## Documentation Files and Ownership
+| File | Update When |
+|------|-------------|
+| `README.md` | Features, CLI options, usage, requirements change |
+| `CHANGELOG.md` | Every user-facing change (Keep a Changelog format) |
+| `docs/deployment/*.md` | Install, update, uninstall, permissions changes |
+| `docs/development/*.md` | Internal implementation patterns change |
+| `config/config.yaml.template` | New or renamed config keys |
+
+## CHANGELOG Format (Keep a Changelog)
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+### Added
+- New feature description
+### Changed
+- Modified behavior description
+### Fixed
+- Bug fix description
+```
+
+## Docstring Standard (Google Style)
+```python
+def get_cluster_info(self, include_psnt: bool = True) -> Dict[str, Any]:
+    """Retrieve cluster configuration and identity.
+
+    Args:
+        include_psnt: Whether to fetch PSNT from cluster endpoint.
+
+    Returns:
+        Dict with cluster name, version, capacity, and optional PSNT.
+
+    Raises:
+        VastApiError: If cluster endpoint is unreachable after retries.
+    """
+```
+
+## Confluence Sync
+Major releases should be reflected on the Confluence project page (ID: 6664028496). Update the RFE table and version references after each release.

@@ -1,0 +1,45 @@
+---
+description: Testing standards — unit tests, mocks, coverage targets, and test organization
+globs: "tests/**/*.py"
+alwaysApply: false
+---
+# Testing Standards
+
+## Framework
+- Use `pytest` as the test runner (it supports unittest-style tests)
+- Test files: `tests/test_<module>.py` mirroring `src/<module>.py`
+- Test data: `tests/data/` for fixtures and mock API responses
+
+## Coverage Target
+- Minimum 80% line coverage (`pytest --cov=src --cov-report=html`)
+- All new features and bug fixes require corresponding tests
+
+## Test Patterns
+- Mock all external dependencies (API calls, file I/O, network)
+- Use `unittest.mock.patch` for `requests.Session` and API responses
+- Test both success paths and error/degradation paths
+- Verify graceful degradation returns partial data, not exceptions
+
+```python
+@patch("src.api_handler.requests.Session")
+def test_endpoint_failure_returns_unavailable(self, mock_session):
+    mock_session.return_value.get.side_effect = ConnectionError("timeout")
+    result = handler.get_cluster_info()
+    assert result["available"] is False
+```
+
+## Test Naming
+- `test_<method>_<scenario>` (e.g., `test_authenticate_with_expired_token`)
+- Group related tests in classes: `TestVastApiHandler`, `TestVastDataExtractor`
+
+## What to Test for Each Layer
+- **api_handler**: auth flows, endpoint responses, retry behavior, error mapping
+- **data_extractor**: section extraction, completeness calculation, missing data handling
+- **report_builder**: config validation, section rendering (mock ReportLab), TOC generation
+
+## Running Tests
+```bash
+python3 -m pytest tests/ -v              # all tests
+python3 -m pytest tests/ --cov=src       # with coverage
+python3 -m pytest tests/test_main.py -v  # single module
+```

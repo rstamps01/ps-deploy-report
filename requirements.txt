@@ -1,4 +1,6 @@
-# VAST As-Built Report Generator Dependencies
+# VAST As-Built Report Generator - Runtime Dependencies
+# These are the packages bundled into the self-contained application.
+
 # Core HTTP and API libraries
 requests>=2.31.0
 urllib3>=2.0.0
@@ -6,29 +8,17 @@ urllib3>=2.0.0
 # Configuration management
 PyYAML>=6.0.1
 
-# PDF generation
+# PDF generation (primary engine)
 reportlab>=4.0.0
-weasyprint>=60.0
 
 # Dynamic diagram generation (PNG conversion)
 rl-renderPM>=4.0.3
-cairocffi>=1.7.0
-pycairo>=1.28.0
 
 # Image processing for diagram sizing
 Pillow>=10.0.0
 
-# CLI argument parsing (built-in argparse is sufficient, but click is an alternative)
+# CLI argument parsing
 click>=8.1.0
-
-# Testing framework
-pytest>=7.4.0
-pytest-cov>=4.1.0
-pytest-mock>=3.11.0
-
-# Code quality and linting
-flake8>=6.0.0
-black>=23.0.0
 
 # Logging enhancements
 colorlog>=6.7.0
@@ -42,5 +32,11 @@ jsonschema>=4.19.0
 # Environment variable management
 python-dotenv>=1.0.0
 
-# Interactive SSH for Mellanox Onyx switches
-pexpect>=4.9.0
+# Web UI (Flask-based GUI)
+flask>=3.0.0
+
+# Cross-platform SSH (used for port mapping on all platforms)
+paramiko>=3.4.0
+
+# Interactive SSH for Mellanox Onyx switches (macOS/Linux only)
+pexpect>=4.9.0; sys_platform != "win32"

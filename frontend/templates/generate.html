@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block title %}Generate Report - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Generate Report</h1>
+    <p class="subtitle">Connect to a VAST cluster and generate an as-built report</p>
+</div>
+
+<div class="generate-layout">
+    <!-- Left: Form -->
+    <div class="card form-card">
+        <form id="generateForm">
+            <fieldset id="formFields">
+                <legend>Cluster Profile</legend>
+                <div class="form-group">
+                    <label for="profileSelect">Saved Profiles</label>
+                    <div class="profile-controls">
+                        <select id="profileSelect" onchange="loadProfile()">
+                            <option value="">-- Select a profile --</option>
+                        </select>
+                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    </div>
+                </div>
+
+                <legend>Cluster Connection</legend>
+                <div class="form-group">
+                    <label for="cluster_ip">Cluster IP / Hostname *</label>
+                    <input type="text" id="cluster_ip" name="cluster_ip" required
+                           placeholder="e.g. 10.143.11.204">
+                </div>
+
+                <div class="form-group">
+                    <label for="auth_method">Authentication</label>
+                    <select id="auth_method" name="auth_method" onchange="toggleAuth()">
+                        <option value="password">Username / Password</option>
+                        <option value="token">API Token</option>
+                    </select>
+                </div>
+
+                <div id="passwordFields">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" value="support"
+                               placeholder="support">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password"
+                               placeholder="Cluster password">
+                    </div>
+                </div>
+
+                <div id="tokenFields" class="hidden">
+                    <div class="form-group">
+                        <label for="token">API Token</label>
+                        <input type="password" id="token" name="token"
+                               placeholder="Paste API token">
+                    </div>
+                </div>
+
+                <legend>Advanced</legend>
+                <div class="form-group toggle-row">
+                    <label>Switch Placement Mode</label>
+                    <div class="toggle-control">
+                        <span class="toggle-label-text toggle-spacer">Auto</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="switch_placement_toggle" onchange="toggleSwitchPlacement()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label-text">Manual</span>
+                    </div>
+                    <input type="hidden" id="switch_placement" name="switch_placement" value="auto">
+                    <small id="autoPlacementHint" class="form-hint">Auto tries center, then above CBoxes, then below DBoxes</small>
+                </div>
+
+                <div id="manualPlacementPanel" class="hidden">
+                    <small id="discoverStatus" class="discover-status"></small>
+                    <div class="form-group action-row">
+                        <span class="action-label">Racks &amp; Switches</span>
+                        <button type="button" class="btn btn-accent btn-action" onclick="discoverSwitches()">Discovery</button>
+                    </div>
+
+                    <div id="assignmentControls" class="hidden">
+                        <div class="form-row placement-controls">
+                            <div class="form-group third">
+                                <label for="rackSelect">Rack</label>
+                                <select id="rackSelect"></select>
+                            </div>
+                            <div class="form-group third">
+                                <label for="switchSelect">Switch</label>
+                                <select id="switchSelect"></select>
+                            </div>
+                            <div class="form-group sixth">
+                                <label for="uPositionInput">Height</label>
+                                <input type="number" id="uPositionInput" min="1" max="48" placeholder="U">
+                            </div>
+                            <div class="form-group sixth" style="align-self:flex-end">
+                                <button type="button" class="btn-icon-add" onclick="addSwitchPlacement()" title="Add switch placement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                            </div>
+                        </div>
+
+                        <div id="placedSwitchesContainer" class="hidden">
+                            <label class="placed-title">Placed Switches</label>
+                            <table class="placed-switches-table">
+                                <thead><tr><th>Rack</th><th>Switch</th><th>Model</th><th>Position</th><th></th></tr></thead>
+                                <tbody id="placedSwitchesBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <input type="hidden" id="manual_placements" name="manual_placements" value="[]">
+                </div>
+
+                <div class="form-group toggle-row toggle-option">
+                    <div class="toggle-control">
+                        <span class="toggle-spacer"></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="enable_port_mapping" name="enable_port_mapping"
+                                   onchange="togglePortMapping()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label-text">Port Mapping (SSH)</span>
+                    </div>
+                </div>
+
+                <div id="portMappingFields" class="hidden">
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="node_user">Node User</label>
+                            <input type="text" id="node_user" name="node_user" value="vastdata">
+                        </div>
+                        <div class="form-group half">
+                            <label for="node_password">Node Password</label>
+                            <input type="password" id="node_password" name="node_password">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="switch_user">Switch User</label>
+                            <input type="text" id="switch_user" name="switch_user" value="cumulus">
+                        </div>
+                        <div class="form-group half">
+                            <label for="switch_password">Switch Password</label>
+                            <input type="password" id="switch_password" name="switch_password">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group toggle-row toggle-option">
+                    <div class="toggle-control">
+                        <span class="toggle-spacer"></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="verbose" name="verbose">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label-text">Verbose Logging</span>
+                    </div>
+                </div>
+
+                <div class="form-group action-row">
+                    <span class="action-label">As-Built Report</span>
+                    <button type="submit" class="btn btn-accent btn-action" id="btnGenerate">Generate</button>
+                </div>
+            </fieldset>
+        </form>
+    </div>
+
+    <!-- Right: Live Progress -->
+    <div class="card log-card">
+        <h3>Progress</h3>
+        <div id="statusBanner" class="status-banner hidden"></div>
+        <div id="logOutput" class="log-output">
+            <p class="log-placeholder">Logs will appear here once generation starts...</p>
+        </div>
+        <div id="resultPanel" class="result-panel hidden">
+            <h4>Report Generated</h4>
+            <p id="resultMessage"></p>
+            <div id="resultLinks"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAuth() {
+    const method = document.getElementById('auth_method').value;
+    document.getElementById('passwordFields').classList.toggle('hidden', method === 'token');
+    document.getElementById('tokenFields').classList.toggle('hidden', method !== 'token');
+}
+
+function togglePortMapping() {
+    const checked = document.getElementById('enable_port_mapping').checked;
+    document.getElementById('portMappingFields').classList.toggle('hidden', !checked);
+}
+
+// -- Cluster Profiles --
+const profileFields = [
+    'cluster_ip', 'auth_method', 'username', 'password', 'token',
+    'switch_placement',
+    'switch_user', 'switch_password', 'node_user', 'node_password'
+];
+
+async function fetchProfiles() {
+    try {
+        const resp = await fetch('/profiles');
+        const profiles = await resp.json();
+        const sel = document.getElementById('profileSelect');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">-- Select a profile --</option>';
+        for (const name of Object.keys(profiles).sort()) {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+        return profiles;
+    } catch (e) { return {}; }
+}
+
+async function loadProfile() {
+    const sel = document.getElementById('profileSelect');
+    const name = sel.value;
+    if (!name) return;
+    const profiles = await fetchProfiles();
+    const p = profiles[name];
+    if (!p) return;
+    for (const field of profileFields) {
+        const el = document.getElementById(field);
+        if (el) el.value = p[field] || '';
+    }
+    const pm = document.getElementById('enable_port_mapping');
+    if (pm) {
+        pm.checked = !!p.enable_port_mapping;
+        togglePortMapping();
+    }
+    toggleAuth();
+}
+
+async function saveProfile() {
+    let name = document.getElementById('profileSelect').value;
+    if (!name) {
+        name = prompt('Profile name (e.g. "selab-var-202"):');
+        if (!name) return;
+    }
+    const data = {name: name};
+    for (const field of profileFields) {
+        const el = document.getElementById(field);
+        data[field] = el ? el.value : '';
+    }
+    const pm = document.getElementById('enable_port_mapping');
+    data.enable_port_mapping = pm ? pm.checked : false;
+    try {
+        const resp = await fetch('/profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        if (resp.ok) {
+            await fetchProfiles();
+            document.getElementById('profileSelect').value = name;
+        }
+    } catch (e) { /* ignore */ }
+}
+
+async function deleteProfile() {
+    const name = document.getElementById('profileSelect').value;
+    if (!name) return;
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+        await fetch('/profiles/' + encodeURIComponent(name), {method: 'DELETE'});
+        await fetchProfiles();
+    } catch (e) { /* ignore */ }
+}
+
+// Load profiles on page load
+fetchProfiles();
+
+// -- Switch Placement --
+let discoveredRacks = [];
+let discoveredSwitches = [];
+let placedSwitches = [];
+
+function toggleSwitchPlacement() {
+    const isManual = document.getElementById('switch_placement_toggle').checked;
+    document.getElementById('switch_placement').value = isManual ? 'manual' : 'auto';
+    document.getElementById('manualPlacementPanel').classList.toggle('hidden', !isManual);
+    document.getElementById('autoPlacementHint').classList.toggle('hidden', isManual);
+}
+
+async function discoverSwitches() {
+    const statusEl = document.getElementById('discoverStatus');
+    statusEl.textContent = 'Discovering...';
+    const ip = document.getElementById('cluster_ip').value.trim();
+    if (!ip) { statusEl.textContent = 'Enter Cluster IP first'; return; }
+
+    const payload = {
+        cluster_ip: ip,
+        auth_method: document.getElementById('auth_method').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        token: document.getElementById('token').value
+    };
+    try {
+        const resp = await fetch('/api/discover', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok) { statusEl.textContent = 'Error: ' + (data.error || resp.status); return; }
+
+        discoveredRacks = data.racks || [];
+        discoveredSwitches = data.switches || [];
+        placedSwitches = [];
+        renderPlacementUI();
+        statusEl.textContent = discoveredRacks.length + ' rack(s), ' + discoveredSwitches.length + ' switch(es) found';
+        document.getElementById('assignmentControls').classList.remove('hidden');
+    } catch (e) {
+        statusEl.textContent = 'Network error: ' + e.message;
+    }
+}
+
+function renderPlacementUI() {
+    const rackSel = document.getElementById('rackSelect');
+    rackSel.innerHTML = '';
+    for (const r of discoveredRacks) {
+        const opt = document.createElement('option');
+        opt.value = r.name;
+        opt.textContent = r.name + ' (' + r.height_u + 'U)';
+        rackSel.appendChild(opt);
+    }
+
+    renderSwitchDropdown();
+    renderPlacedTable();
+}
+
+function renderSwitchDropdown() {
+    const swSel = document.getElementById('switchSelect');
+    swSel.innerHTML = '';
+    const placedNames = new Set(placedSwitches.map(p => p.switch_name));
+    const available = discoveredSwitches.filter(s => !placedNames.has(s.name));
+    for (const s of available) {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = s.name + ' (' + s.model + ', ' + s.height_u + 'U)';
+        swSel.appendChild(opt);
+    }
+}
+
+function addSwitchPlacement() {
+    const rackName = document.getElementById('rackSelect').value;
+    const swName = document.getElementById('switchSelect').value;
+    const uPos = parseInt(document.getElementById('uPositionInput').value, 10);
+    if (!rackName || !swName) { return; }
+    if (!uPos || uPos < 1) { alert('Enter a valid U position'); return; }
+
+    const sw = discoveredSwitches.find(s => s.name === swName);
+    placedSwitches.push({
+        switch_name: swName,
+        rack_name: rackName,
+        u_position: uPos,
+        model: sw ? sw.model : 'Unknown',
+        height_u: sw ? sw.height_u : 1
+    });
+    document.getElementById('uPositionInput').value = '';
+    renderSwitchDropdown();
+    renderPlacedTable();
+    syncManualPlacements();
+}
+
+function removeSwitchPlacement(idx) {
+    placedSwitches.splice(idx, 1);
+    renderSwitchDropdown();
+    renderPlacedTable();
+    syncManualPlacements();
+}
+
+function renderPlacedTable() {
+    const tbody = document.getElementById('placedSwitchesBody');
+    const container = document.getElementById('placedSwitchesContainer');
+    tbody.innerHTML = '';
+    if (placedSwitches.length === 0) { container.classList.add('hidden'); return; }
+    container.classList.remove('hidden');
+    for (let i = 0; i < placedSwitches.length; i++) {
+        const p = placedSwitches[i];
+        const posLabel = p.height_u > 1
+            ? 'U' + (p.u_position - p.height_u + 1) + '-U' + p.u_position
+            : 'U' + p.u_position;
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + p.rack_name + '</td>'
+            + '<td>' + p.switch_name + '</td>'
+            + '<td>' + p.model + '</td>'
+            + '<td>' + posLabel + '</td>'
+            + '<td><button type="button" class="btn-icon-delete" onclick="removeSwitchPlacement(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
+        tbody.appendChild(tr);
+    }
+}
+
+function syncManualPlacements() {
+    const arr = placedSwitches.map(p => ({
+        switch_name: p.switch_name,
+        rack_name: p.rack_name,
+        u_position: p.u_position
+    }));
+    document.getElementById('manual_placements').value = JSON.stringify(arr);
+}
+</script>
+{% endblock %}

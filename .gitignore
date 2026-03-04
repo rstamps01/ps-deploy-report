@@ -27,11 +27,10 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+# PyInstaller build artifacts (keep the .spec source file)
 *.manifest
-*.spec
+dist/
+build/
 
 # Installer logs
 pip-log.txt
@@ -130,8 +129,9 @@ dmypy.json
 
 # Project-specific
 logs/*.log
-output/*.pdf
-output/*.json
+output/**/*.pdf
+output/**/*.png
+output/**/*.json
 config/local_config.yaml
 # .vscode/  # Commented out to allow VSCode configuration to be committed
 # VSCode user-specific settings (keep project config, exclude user settings)
@@ -151,12 +151,15 @@ credentials.yaml
 secrets.yaml
 .env.local
 .env.production
+config/cluster_profiles.json
 
 # Local archive directory (not tracked in git)
 .archive/
 .DS_Store
 
-# Development reports (not tracked in git)
+# Generated report output files (not tracked in git)
+reports/*.pdf
+reports/*.json
 reports/development_reports/
 
 # SSH workspace for known_hosts (not tracked in git)
@@ -169,6 +172,11 @@ MELLANOX_ONYX_PORT_MAPPING_COMMANDS.md
 MELLANOX_ONYX_ANALYSIS_MSN2100.md
 SSH_KEY_SETUP_REQUIRED.md
 HARDWARE_IMAGE_IMPLEMENTATION_COMPLETE.md
+
+# Generated launch scripts (created by installer, not source code)
+run-vast-asbuilt-reporter.sh
+run-vast-asbuilt-reporter.bat
+run-vast-asbuilt-reporter.ps1
 
 # VNetMap tool (contains AWS credentials - keep local only)
 src/vnetmap.py

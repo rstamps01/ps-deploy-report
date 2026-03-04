@@ -19,11 +19,55 @@ Date: September 12, 2025
 import logging
 import logging.handlers
 import os
+import queue
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Any
 import yaml
 import colorlog
+
+
+# Global queue for SSE log streaming to the web UI
+_sse_log_queue: Optional[queue.Queue] = None
+
+
+class SSELogHandler(logging.Handler):
+    """Pushes formatted log records onto a queue consumed by the SSE endpoint."""
+
+    def __init__(self, log_queue: queue.Queue, level=logging.DEBUG):
+        super().__init__(level)
+        self.log_queue = log_queue
+
+    def emit(self, record):
+        try:
+            entry = {
+                "timestamp": self.format(record).split(" - ")[0] if " - " in self.format(record) else "",
+                "level": record.levelname,
+                "module": record.module,
+                "message": record.getMessage(),
+            }
+            self.log_queue.put_nowait(entry)
+        except queue.Full:
+            pass
+
+
+def get_sse_queue() -> queue.Queue:
+    """Return the global SSE log queue, creating it if needed."""
+    global _sse_log_queue
+    if _sse_log_queue is None:
+        _sse_log_queue = queue.Queue(maxsize=500)
+    return _sse_log_queue
+
+
+def enable_sse_logging() -> queue.Queue:
+    """Attach an SSE handler to the root logger and return the queue."""
+    log_queue = get_sse_queue()
+    handler = SSELogHandler(log_queue)
+    handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                                           datefmt="%Y-%m-%d %H:%M:%S"))
+    handler.addFilter(SensitiveDataFilter())
+    logging.getLogger().addHandler(handler)
+    return log_queue
 
 
 class ColoredFormatter(colorlog.ColoredFormatter):

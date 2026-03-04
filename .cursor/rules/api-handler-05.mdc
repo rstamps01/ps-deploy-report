@@ -1,0 +1,38 @@
+---
+description: VAST API handler conventions — authentication, endpoints, retries, and version compatibility
+globs: src/api_handler.py
+alwaysApply: false
+---
+# API Handler Conventions
+
+## Authentication (strict order)
+1. API token (CLI `--token` or `VAST_API_TOKEN` env var)
+2. Existing tokens on cluster
+3. Basic auth (username/password)
+4. New token creation (respect 5-token limit)
+
+Never store credentials in config files or logs. Use `getpass` for interactive prompts.
+
+## API Version Strategy
+- Target: VAST REST API v7 (cluster 5.3+)
+- Fallback: v1 endpoints for cboxes/dboxes when v7 unavailable
+- Always detect version before collecting data via `_detect_api_version()`
+
+## Endpoint Pattern
+Every new endpoint method must:
+1. Use the session-based HTTP client (never raw `requests.get`)
+2. Include retry logic with exponential backoff
+3. Handle 401 (re-auth), 403 (insufficient permissions), 404 (not found) explicitly
+4. Return `{"available": False, "error": ...}` on failure, never raise to caller
+5. Log the endpoint and response status
+
+## Required Endpoints
+Core: `/api/clusters/`, `/api/cnodes/`, `/api/dnodes/`, `/api/cboxes/`, `/api/dboxes/`
+Network: `/api/vippools/`, `/api/dns/`, `/api/ntp/`, `/api/switches/`
+Logical: `/api/tenants/`, `/api/views/`, `/api/viewpolicies/`
+Security: `/api/activedirectory/`, `/api/ldap/`
+
+## Enhanced Features
+- Rack heights: `index_in_rack` field on CBox/DBox (detect support first)
+- PSNT: `psnt` field on cluster endpoint
+- SSL: configurable via `api.verify_ssl` in config

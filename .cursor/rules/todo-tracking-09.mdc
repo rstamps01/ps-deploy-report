@@ -1,0 +1,46 @@
+---
+description: Task tracking — TODO management, session handoff, and status reporting conventions
+alwaysApply: true
+---
+# Task & TODO Tracking
+
+## Session Start Protocol
+At the start of every development session:
+1. Read `5-Development-Status.md` (or the latest status reference) to understand current state
+2. Review open TODOs and pending work items
+3. Check `CHANGELOG.md` for recent changes
+4. Run `python3 -m pytest tests/ -v` to confirm baseline health
+
+## During Development
+- Use Cursor's TODO tracking to manage multi-step tasks
+- Only one task `in_progress` at a time
+- Mark tasks `completed` immediately after finishing
+- Break complex work into small, testable increments
+
+## Session End Protocol
+Before ending a session:
+1. Run all tests and confirm they pass
+2. Commit all changes with conventional commit messages
+3. Update `CHANGELOG.md` if user-facing changes were made
+4. Update status documentation with:
+   - What was completed
+   - What is in progress
+   - Known issues or blockers
+   - Next steps
+5. Push to `develop` branch
+
+## Status Update Format
+```markdown
+## Session Update — YYYY-MM-DD
+### Completed
+- [scope] Description of completed work
+### In Progress
+- [scope] Description of ongoing work
+### Known Issues
+- [scope] Description of issue and workaround
+### Next Steps
+- [scope] Description of planned work
+```
+
+## RFE Tracking
+Requests for Enhancement from Confluence (page 6664028496) should be tracked as GitHub issues or referenced in development status when work begins.

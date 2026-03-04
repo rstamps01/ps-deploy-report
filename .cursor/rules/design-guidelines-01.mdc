@@ -1,6 +1,9 @@
 ---
+description: Project design docs and reference material for alignment with PRD, design guide, and implementation plans
 alwaysApply: true
 ---
+# Project Reference Documents
+
 Reference the following files to stay on track with project alignments:
 @1-Concept.pdf
 @2-Project-Requirements-Document.md

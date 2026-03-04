@@ -1,0 +1,47 @@
+---
+description: Configuration management and security practices — YAML config, credentials, SSL, and sensitive data
+alwaysApply: true
+---
+# Configuration & Security
+
+## Configuration Management
+- All runtime settings in `config/config.yaml` (YAML format)
+- Template: `config/config.yaml.template` (committed, no secrets)
+- Environment-specific overrides via env vars or CLI args
+- New config keys must be added to both `config.yaml.template` and documented in `README.md`
+
+## Config Structure
+```yaml
+api:         # timeout, retries, retry_delay, verify_ssl, version
+logging:     # level, format, file_path, rotation, console_colors
+report:      # organization, template, pdf_options
+output:      # default_dir, filename_patterns
+data_collection:  # sections, concurrent_requests, validate_responses, graceful_degradation
+security:    # prompt_for_credentials, session_timeout, sanitize_logs
+```
+
+## Credential Security (mandatory)
+- NEVER hardcode credentials in source code, config files, or comments
+- NEVER log tokens, passwords, or session cookies
+- Credentials flow: CLI args → env vars → interactive `getpass` prompt
+- API tokens stored in memory only; destroyed after session
+- Log sanitization must filter: password, token, secret, credential, authorization
+
+## SSL/TLS
+- Default: `verify_ssl: true`
+- Self-signed certs: configurable via `api.verify_ssl: false` (warn in logs)
+- Always use HTTPS for API communication
+
+## Sensitive Data in Reports
+- Reports contain cluster configuration, not credentials
+- JSON export must not include auth tokens or passwords
+- Sanitize any field that could contain credentials before writing output
+
+## Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `VAST_API_TOKEN` | API token authentication |
+| `VAST_USERNAME` | Cluster username |
+| `VAST_PASSWORD` | Cluster password |
+| `VAST_NODE_USER` / `VAST_NODE_PASSWORD` | SSH node credentials |
+| `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` | SSH switch credentials |

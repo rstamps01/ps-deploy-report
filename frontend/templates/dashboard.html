@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <p class="subtitle">VAST As-Built Report Generator</p>
+</div>
+
+<div class="card-grid">
+    <div class="card card-action">
+        <div class="card-icon">+</div>
+        <h3>Generate Report</h3>
+        <p>Connect to a VAST cluster and generate a new as-built report.</p>
+        <a href="{{ url_for('generate_form') }}" class="btn btn-primary">New Report</a>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">&#9776;</div>
+        <h3>Browse Reports</h3>
+        <p>View, download, or manage previously generated PDF and JSON reports.</p>
+        <a href="{{ url_for('reports_page') }}" class="btn btn-secondary">View Reports</a>
+    </div>
+
+    <div class="card">
+        <div class="card-icon">&#9881;</div>
+        <h3>Configuration</h3>
+        <p>Edit API settings, logging, report formatting, and security options.</p>
+        <a href="{{ url_for('config_page') }}" class="btn btn-secondary">Edit Config</a>
+    </div>
+</div>
+
+{% if reports %}
+<section class="section">
+    <h2>Recent Reports</h2>
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>File</th>
+                <th class="text-center">Type</th>
+                <th class="text-center">Size</th>
+                <th class="text-center">Generated</th>
+                <th class="text-center">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in reports %}
+            <tr>
+                <td class="filename">{{ r.name }}</td>
+                <td class="text-center">{% if r.type == 'PDF' %}<span class="file-icon file-icon-pdf" title="PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="7" y="17" font-size="6" font-weight="700" fill="currentColor" stroke="none">PDF</text></svg></span>{% else %}<span class="file-icon file-icon-json" title="JSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="5" y="17" font-size="5.5" font-weight="700" fill="currentColor" stroke="none">JSON</text></svg></span>{% endif %}</td>
+                <td class="text-center">{{ "%.1f"|format(r.size / 1024) }} KB</td>
+                <td class="text-center">{{ r.modified }}</td>
+                <td class="actions"><span class="actions-inner">
+                    <a href="{{ url_for('reports_download', filename=r.name) }}" class="btn btn-sm">Download</a>
+                </span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% else %}
+<section class="section empty-state">
+    <p>No reports generated yet. Click <strong>New Report</strong> above to get started.</p>
+</section>
+{% endif %}
+{% endblock %}

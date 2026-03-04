@@ -357,7 +357,7 @@ class VastBrandCompliance:
         table_data.extend(data)
 
         # Create table with VAST styling and page-width sizing
-        page_width = 7.5 * inch  # A4 width minus 0.5" margins on each side
+        page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
         num_cols = len(table_data[0]) if table_data else 1
         col_width = page_width / num_cols if num_cols > 0 else page_width
 
@@ -496,7 +496,7 @@ class VastBrandCompliance:
         full_table_data.extend(table_data)
 
         # Calculate optimal column widths based on content
-        page_width = 7.5 * inch  # A4 width minus 0.5" margins
+        page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins
         num_cols = len(headers)
 
         # Define column width ratios based on typical content length
@@ -827,22 +827,24 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_page_template(self, generation_info: Dict[str, Any]) -> Any:
+    def create_vast_page_template(self, generation_info: Dict[str, Any], page_size=None) -> Any:
         """
         Create VAST brand-compliant page template with footer that repeats on all pages.
 
         Args:
             generation_info (Dict[str, Any]): Report generation information
+            page_size: Tuple of (width, height) in points. Defaults to A4.
 
         Returns:
             Any: Page template with footer
         """
-        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import inch
         from reportlab.platypus import Frame, PageTemplate
 
-        # Define page size and margins
-        page_width, page_height = letter
+        if page_size is None:
+            page_size = A4
+        page_width, page_height = page_size
         left_margin = 0.5 * inch
         right_margin = 0.5 * inch
         top_margin = 0.5 * inch
@@ -864,166 +866,74 @@ class VastBrandCompliance:
             topPadding=0,
         )
 
-        def footer_canvas(canvas, doc):
-            """Draw watermark and footer on every page."""
-            # Get page number
+        def watermark_overlay(canvas, doc):
+            """Draw watermark on top of page content (runs after content is rendered)."""
             page_num = canvas.getPageNumber()
+            if page_num <= 1:
+                return
 
-            # Draw watermark on all pages except the title page (page 1)
-            if page_num > 1:
-                try:
-                    from pathlib import Path
+            watermark_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "assets",
+                "diagrams",
+                "lg_vast_watermark.png",
+            )
 
-                    from reportlab.lib.utils import ImageReader
+            if not os.path.exists(watermark_path):
+                if page_num == 2:
+                    self.logger.warning(f"Watermark image not found: {watermark_path}")
+                return
 
-                    # Path to watermark image
-                    watermark_path = (
-                        Path(__file__).parent.parent
-                        / "assets"
-                        / "diagrams"
-                        / "lg_vast_watermark.png"
-                    )
+            try:
+                from PIL import Image as PILImage
 
-                    if watermark_path.exists():
-                        # Log watermark application (only once)
-                        if page_num == 2:
-                            self.logger.info(
-                                f"Applying watermark from: {watermark_path}"
-                            )
+                if page_num == 2:
+                    self.logger.info(f"Applying watermark from: {watermark_path}")
 
-                        # Get page dimensions (use variables from outer scope)
-                        page_height_size = page_height
-                        page_width_size = page_width
+                with PILImage.open(watermark_path) as img:
+                    img_width, img_height = img.size
 
-                        # Load image to get aspect ratio
-                        img = ImageReader(str(watermark_path))
-                        img_width, img_height = img.getSize()
-                        aspect_ratio = img_width / img_height
+                available_width = page_width - left_margin - right_margin
+                available_height = page_height - top_margin - bottom_margin
 
-                        # Calculate watermark dimensions to fit at bottom of page
-                        # Use width-based sizing for footer area
-                        target_width = page_width_size * 0.9
-                        watermark_width = target_width
-                        watermark_height = target_width / aspect_ratio
+                scale = min(available_width / img_width, available_height / img_height)
+                watermark_width = img_width * scale
+                watermark_height = img_height * scale
 
-                        # Position watermark at bottom, just above the footer line
-                        # Footer line is at bottom_margin - 0.1 * inch
-                        # Position watermark to end just above the footer line with small gap
-                        x_centered = (page_width_size - watermark_width) / 2
-                        y_position = (
-                            bottom_margin + 0.1 * inch
-                        )  # Just above the footer line
-                        y_centered = y_position
+                x_position = (page_width - watermark_width) / 2
+                y_position = (page_height - watermark_height) / 2
 
-                        # Log dimensions on first page with watermark
-                        if page_num == 2:
-                            self.logger.info(
-                                f"Watermark dimensions: {watermark_width:.1f}x{watermark_height:.1f} at ({x_centered:.1f}, {y_centered:.1f})"
-                            )
-                            self.logger.info(
-                                f"Page dimensions: {page_width_size:.1f}x{page_height_size:.1f}"
-                            )
+                canvas.saveState()
+                canvas.setFillAlpha(0.55)
+                canvas.drawImage(
+                    watermark_path,
+                    x_position,
+                    y_position,
+                    width=watermark_width,
+                    height=watermark_height,
+                    mask="auto",
+                    preserveAspectRatio=True,
+                )
+                canvas.restoreState()
 
-                        # Save graphics state before applying transparency
-                        canvas.saveState()
+            except Exception as e:
+                if page_num == 2:
+                    self.logger.error(f"Error adding watermark: {e}")
 
-                        # Set transparency for watermark
-                        # Note: Using 0.15 (15% opacity) for subtle effect
-                        canvas.setFillAlpha(0.15)
-                        canvas.setStrokeAlpha(0.15)
-
-                        # Draw watermark image
-                        # Using mask='auto' to handle PNG transparency
-                        canvas.drawImage(
-                            str(watermark_path),
-                            x_centered,
-                            y_centered,
-                            width=watermark_width,
-                            height=watermark_height,
-                            mask="auto",
-                        )
-
-                        # Restore graphics state
-                        canvas.restoreState()
-                    else:
-                        # Log warning if watermark not found (only on first occurrence)
-                        if page_num == 2:
-                            self.logger.warning(
-                                f"Watermark image not found: {watermark_path}"
-                            )
-
-                except Exception as e:
-                    # Log error but don't fail report generation
-                    if page_num == 2:
-                        self.logger.error(f"Error adding watermark: {e}")
+        def footer_canvas(canvas, doc):
+            """Draw footer on every page (runs before content)."""
+            page_num = canvas.getPageNumber()
 
             # Footer content
             if generation_info:
                 timestamp = generation_info.get("timestamp", "Unknown")
                 mgmt_vip = generation_info.get("mgmt_vip", "Unknown")
 
-                # Footer components (labels removed, values only)
                 generated_text = timestamp
                 center_text = f"VAST Professional Services | Automated As-Built Report | {mgmt_vip}"
             else:
                 generated_text = "Unknown"
                 center_text = "VAST Professional Services | Automated As-Built Report"
-
-            # Add watermark (all pages except title page)
-            if page_num > 1:
-                watermark_path = os.path.join(
-                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                    "assets",
-                    "diagrams",
-                    "lg_vast_watermark.png",
-                )
-
-                if os.path.exists(watermark_path):
-                    try:
-                        from PIL import Image as PILImage
-
-                        self.logger.info(f"Applying watermark from: {watermark_path}")
-
-                        # Get image dimensions
-                        with PILImage.open(watermark_path) as img:
-                            img_width, img_height = img.size
-
-                        # Calculate available space (fit within page width)
-                        available_width = page_width - left_margin - right_margin
-                        available_height = page_height - top_margin - bottom_margin
-
-                        # Calculate scaling to fit within page width while maintaining aspect ratio
-                        scale_x = available_width / img_width
-                        scale_y = available_height / img_height
-                        scale = min(
-                            scale_x, scale_y
-                        )  # Use min to fit within page bounds
-
-                        watermark_width = img_width * scale
-                        watermark_height = img_height * scale
-
-                        # Center the watermark on the page
-                        x_position = (page_width - watermark_width) / 2
-                        y_position = (page_height - watermark_height) / 2
-
-                        # Draw watermark with transparency
-                        canvas.saveState()
-                        canvas.setFillAlpha(0.15)  # 15% opacity for subtle watermark
-                        canvas.drawImage(
-                            watermark_path,
-                            x_position,
-                            y_position,
-                            width=watermark_width,
-                            height=watermark_height,
-                            mask="auto",
-                            preserveAspectRatio=True,
-                        )
-                        canvas.restoreState()
-
-                    except Exception as e:
-                        self.logger.error(f"Error adding watermark: {e}")
-                else:
-                    self.logger.warning(f"Watermark image not found: {watermark_path}")
 
             # Draw horizontal line
             canvas.setStrokeColor(self.colors.BACKGROUND_DARK)
@@ -1059,6 +969,7 @@ class VastBrandCompliance:
             id="VastPage",
             frames=[main_frame],
             onPage=footer_canvas,
+            onPageEnd=watermark_overlay,
         )
 
         return page_template

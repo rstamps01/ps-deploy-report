@@ -1,0 +1,46 @@
+---
+description: Python coding standards — PEP 8, naming, error handling, type hints, and imports
+globs: "**/*.py"
+alwaysApply: false
+---
+# Python Coding Standards
+
+## Style
+- **PEP 8** with 120-character line limit
+- Format with `black`, lint with `flake8`, type-check with `mypy`
+- All public classes and functions require docstrings (Google style)
+
+## Naming Conventions
+- Classes: `PascalCase` with `Vast` prefix for domain classes (e.g., `VastApiHandler`)
+- Functions/methods: `snake_case`; private methods prefixed with `_`
+- Constants: `UPPER_SNAKE_CASE`
+- Config keys: `snake_case`
+
+## Error Handling
+- Use specific exception classes (`VastApiError`, `DataExtractionError`), never bare `except:`
+- Always log errors before re-raising
+- Implement retries with exponential backoff for network calls
+- Return partial results with status rather than raising on missing data
+
+```python
+# Correct pattern
+try:
+    data = self._fetch_endpoint(endpoint)
+except VastApiError as e:
+    self.logger.error("Failed to fetch %s: %s", endpoint, e)
+    return {"available": False, "error": str(e)}
+```
+
+## Type Hints
+- All function signatures must include type hints
+- Use `Dict[str, Any]` for unstructured API data, dataclasses for structured data
+- Import types from `typing` for Python 3.8 compatibility
+
+## Imports
+- Standard library → third-party → local, separated by blank lines
+- Never use `sys.path.insert` in new code; use relative imports within `src/`
+
+## Logging
+- Use `from src.utils.logger import get_logger; logger = get_logger(__name__)`
+- Never log credentials, tokens, or passwords
+- Use structured context: `logger.info("Collected %d cnodes", count)`

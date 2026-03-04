@@ -1,0 +1,43 @@
+---
+description: Report builder patterns — PDF generation, VAST branding, TOC, and section structure
+globs: "src/report_builder.py,src/rack_diagram.py,src/network_diagram.py,src/brand_compliance.py"
+alwaysApply: false
+---
+# Report Builder & Branding
+
+## PDF Generation
+- Primary engine: ReportLab (required); WeasyPrint (optional fallback)
+- Two-pass build: Pass 1 captures page numbers via `PageMarker`, Pass 2 renders final PDF with dynamic TOC
+- All sections are self-contained methods: `_create_<section>_section()`
+
+## VAST Brand Compliance
+- Primary color: VAST Blue RGB(0, 77, 153) → ReportLab (0.0, 0.3, 0.6)
+- Headings: sans-serif (Helvetica), body: serif where appropriate
+- Tables: alternating row colors for readability
+- All reports must include VAST logo on title page
+- Professional formatting: proper margins, page numbers, TOC with dot leaders
+
+## Report Section Order (do not reorder without approval)
+1. Title Page (cluster name, PSNT, date, organization)
+2. Table of Contents (dynamic, auto-generated)
+3. Executive Summary (cluster overview, hardware counts)
+4. Cluster Information (version, features, config)
+5. Hardware Summary (capacity metrics, storage)
+6. Hardware Inventory (CBox/DBox tables with images)
+7. Physical Rack Layout (42U rack diagrams)
+8. Network Configuration (interfaces, VIPs, DNS, NTP)
+9. Switch Port Mapping (when enabled)
+10. Logical Network Diagram (topology visualization)
+11. Logical Configuration (tenants, views, policies)
+12. Security & Authentication
+
+## Adding a New Section
+1. Create `_create_<section>_section(story, data)` in `report_builder.py`
+2. Add a `PageMarker("<section_key>")` flowable for TOC tracking
+3. Register the section key in `_create_table_of_contents_dynamic()`
+4. Follow existing patterns for table styling and error handling
+5. Handle missing data gracefully — display "Data not available" rather than omitting
+
+## Output Naming
+- PDF: `vast_asbuilt_report_{cluster_name}_{YYYYMMDD_HHMMSS}.pdf`
+- JSON: `vast_data_{cluster_name}_{YYYYMMDD_HHMMSS}.json`

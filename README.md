@@ -1,12 +1,20 @@
 # VAST As-Built Report Generator
 
-A comprehensive Python command-line tool that automatically generates professional "as-built" reports for VAST Data clusters following deployment by Professional Services. This tool achieves 80% automation in data collection and provides enhanced features for rack positioning and PSNT tracking.
+A self-contained application that automatically generates professional "as-built" reports for VAST Data clusters following deployment by Professional Services. Features a browser-based GUI and a full CLI, packaged as a standalone download with no Python installation required.
 
 ## Overview
 
 The VAST As-Built Report Generator connects to VAST Data clusters via the REST API v7, extracts comprehensive configuration and status information, and generates both professional PDF reports and machine-readable JSON data files. It is designed to streamline the post-deployment documentation process for VAST Professional Services engineers while providing enhanced automation and professional reporting capabilities.
 
 ## Key Features
+
+### 🖥 **Desktop Application with Web UI (v1.4.0)**
+- **Self-Contained Package**: Download, extract, and run — no Python or pip required
+- **Browser-Based GUI**: Modern web interface at `localhost:5173` with VAST branding
+- **Live Progress**: Real-time log streaming via Server-Sent Events during report generation
+- **Report Browser**: View, download, and manage previously generated reports
+- **Configuration Editor**: Edit YAML configuration directly from the GUI
+- **CLI Preserved**: Full command-line interface available via `--cli` flag
 
 ### 🚀 **Enhanced Automation (80% Target Achieved)**
 - **Automated Data Collection**: Comprehensive cluster data extraction with 80% automation
@@ -53,11 +61,31 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 - **Note**: Standard user accounts may have insufficient permissions for complete report generation
 
 ### Dependencies
-- All Python dependencies are listed in `requirements.txt`
-- PDF generation requires ReportLab (included) or WeasyPrint (optional)
-- Additional system libraries may be required for WeasyPrint (see troubleshooting section)
+- Runtime dependencies are listed in `requirements.txt` (bundled into the desktop app)
+- Development and testing dependencies are in `requirements-dev.txt`
+- PDF generation uses ReportLab (bundled)
 
 ## Installation
+
+### Desktop Application (Recommended)
+
+Download the pre-built application from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases):
+
+**macOS:**
+1. Download `VAST-Reporter-vX.Y.Z-mac.dmg`
+2. Open the DMG and drag **VAST Reporter** to Applications
+3. Double-click to launch (opens web UI in your browser)
+4. To uninstall: drag to Trash
+
+**Windows:**
+1. Download `VAST-Reporter-vX.Y.Z-win.zip`
+2. Extract to a folder of your choice
+3. Run `vast-reporter.exe` (opens web UI in your browser)
+4. To uninstall: delete the folder
+
+No Python installation, virtual environment, or package management required.
+
+### Developer Installation
 
 ### Quick Start for PS Engineers
 
@@ -257,9 +285,37 @@ security:
 
 ## Usage
 
+### Web UI (Default)
+
+Simply launch the application with no arguments:
+
+```bash
+# Desktop app: double-click, or from terminal:
+./vast-reporter
+
+# Developer mode:
+python3 src/main.py
+```
+
+This starts the web server at `http://127.0.0.1:5173` and opens your default browser. The GUI provides:
+
+- **Generate**: Enter cluster IP and credentials, click Generate, watch live progress
+- **Reports**: Browse, download, preview, and delete generated reports
+- **Configuration**: Edit `config.yaml` settings directly in the browser
+
 ### Command Line Interface
 
-The VAST As-Built Report Generator provides a comprehensive command-line interface with multiple options for different deployment scenarios.
+Use the `--cli` flag (or pass `--cluster` directly) for scripted/headless usage:
+
+```bash
+# Explicit CLI mode
+python3 src/main.py --cli --cluster 10.143.11.204 --output ./reports
+
+# Legacy syntax (auto-detected)
+python3 src/main.py --cluster 10.143.11.204 --output ./reports
+```
+
+The CLI provides a comprehensive interface with multiple options for different deployment scenarios.
 
 #### Basic Usage
 ```bash

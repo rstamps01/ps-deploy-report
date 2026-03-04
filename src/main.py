@@ -718,7 +718,7 @@ Examples:
     )
 
     parser.add_argument(
-        "--version", action="version", version="VAST As-Built Report Generator 1.3.0"
+        "--version", action="version", version="VAST As-Built Report Generator 1.4.0"
     )
 
     return parser
@@ -755,22 +755,14 @@ def load_configuration(config_path: Optional[str] = None) -> Dict[str, Any]:
         return {}
 
 
-def main() -> int:
-    """
-    Main entry point for the application.
-
-    Returns:
-        int: Exit code (0 for success, 1 for failure)
-    """
+def run_cli() -> int:
+    """Run the application in CLI mode (original workflow)."""
     try:
-        # Parse command-line arguments
         parser = create_argument_parser()
         args = parser.parse_args()
 
-        # Load configuration
         config = load_configuration(args.config)
 
-        # Set up logging
         log_level = "DEBUG" if args.verbose else "INFO"
         if "logging" not in config:
             config["logging"] = {}
@@ -779,7 +771,6 @@ def main() -> int:
         setup_logging(config)
         logger = get_logger(__name__)
 
-        # Validate arguments
         if not args.cluster_ip:
             logger.error("Cluster IP address is required")
             return 1
@@ -788,7 +779,6 @@ def main() -> int:
             logger.error("Output directory is required")
             return 1
 
-        # Create and run application
         app = VastReportGenerator(config)
         return app.run(args)
 
@@ -798,6 +788,59 @@ def main() -> int:
     except Exception as e:
         print(f"Fatal error: {e}")
         return 1
+
+
+def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
+    """Launch the Flask web UI and open the default browser."""
+    import threading
+    import webbrowser
+
+    from app import create_flask_app
+    from utils.logger import enable_sse_logging
+
+    config = load_configuration()
+    setup_logging(config)
+    enable_sse_logging()
+
+    flask_app = create_flask_app(config)
+
+    url = f"http://{host}:{port}"
+    print(f"\n  VAST As-Built Reporter — Web UI")
+    print(f"  Running at {url}")
+    print(f"  Press Ctrl+C to stop\n")
+
+    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+
+    try:
+        flask_app.run(host=host, port=port, debug=False, use_reloader=False)
+    except KeyboardInterrupt:
+        print("\nShutting down...")
+    return 0
+
+
+def main() -> int:
+    """
+    Main entry point — routes to GUI or CLI mode.
+
+    Default (no args or --gui): launches the web UI.
+    --cli: runs the original command-line workflow.
+    """
+    if len(sys.argv) > 1 and sys.argv[1] == "--gui":
+        sys.argv.pop(1)
+        return run_gui()
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        sys.argv.pop(1)
+        return run_cli()
+
+    # If no recognised subcommand and no --cluster flag, default to GUI
+    if len(sys.argv) == 1 or not any(
+        a.startswith("--cluster") for a in sys.argv[1:]
+    ):
+        return run_gui()
+
+    # Legacy usage: direct CLI args like --cluster ... --output ...
+    return run_cli()
 
 
 if __name__ == "__main__":

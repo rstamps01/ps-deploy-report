@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Configuration - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Configuration</h1>
+    <p class="subtitle">Edit application settings (config/config.yaml)</p>
+</div>
+
+<div class="card">
+    <form id="configForm">
+        <div class="config-toolbar">
+            <button type="submit" class="btn btn-primary" id="btnSave">Save</button>
+            <button type="button" class="btn btn-secondary" id="btnReset">Reset to Template</button>
+            <span id="configStatus" class="config-status"></span>
+        </div>
+        <textarea id="config_text" name="config_text" class="config-editor" rows="30" spellcheck="false">{{ config_text }}</textarea>
+    </form>
+</div>
+
+<script>
+document.getElementById('configForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const status = document.getElementById('configStatus');
+    try {
+        const resp = await fetch('/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({config_text: document.getElementById('config_text').value})
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+            status.textContent = 'Saved successfully';
+            status.className = 'config-status success';
+        } else {
+            status.textContent = data.error || 'Save failed';
+            status.className = 'config-status error';
+        }
+    } catch (err) {
+        status.textContent = 'Network error';
+        status.className = 'config-status error';
+    }
+    setTimeout(() => status.textContent = '', 4000);
+});
+
+document.getElementById('btnReset').addEventListener('click', async function() {
+    if (!confirm('Reset configuration to the default template?')) return;
+    try {
+        const resp = await fetch('/config/reset', {method: 'POST'});
+        const data = await resp.json();
+        if (data.config_text) document.getElementById('config_text').value = data.config_text;
+        const status = document.getElementById('configStatus');
+        status.textContent = 'Reset to template';
+        status.className = 'config-status success';
+        setTimeout(() => status.textContent = '', 4000);
+    } catch (err) { /* ignore */ }
+});
+</script>
+{% endblock %}
