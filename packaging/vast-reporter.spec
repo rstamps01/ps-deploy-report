@@ -21,8 +21,10 @@ IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
 APP_NAME = "VAST Reporter"
-ICON_MAC = str(ROOT / "packaging" / "icons" / "icon.icns")
-ICON_WIN = str(ROOT / "packaging" / "icons" / "icon.ico")
+_icon_mac = ROOT / "packaging" / "icons" / "icon.icns"
+_icon_win = ROOT / "packaging" / "icons" / "icon.ico"
+ICON_MAC = str(_icon_mac) if _icon_mac.exists() else None
+ICON_WIN = str(_icon_win) if _icon_win.exists() else None
 
 # Collect all source modules
 src_dir = ROOT / "src"

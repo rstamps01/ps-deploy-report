@@ -76,40 +76,34 @@ class TestVastApiHandler(unittest.TestCase):
         self.assertIn('User-Agent', session.headers)
         self.assertEqual(session.headers['Content-Type'], 'application/json')
 
-    @patch('requests.Session.post')
-    def test_successful_authentication(self, mock_post):
+    @patch.object(VastApiHandler, '_detect_cluster_capabilities')
+    @patch.object(VastApiHandler, '_try_existing_tokens', return_value=True)
+    @patch.object(VastApiHandler, '_detect_api_version', return_value='v7')
+    def test_successful_authentication(self, mock_detect, mock_tokens, mock_caps):
         """Test successful authentication."""
-        # Mock successful authentication response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {'status': 'success'}
-        mock_post.return_value = mock_response
-
         result = self.handler.authenticate()
 
         self.assertTrue(result)
         self.assertTrue(self.handler.authenticated)
-        mock_post.assert_called_once()
+        mock_detect.assert_called_once()
+        mock_tokens.assert_called_once()
+        mock_caps.assert_called_once()
 
-    @patch('requests.Session.post')
-    def test_failed_authentication(self, mock_post):
-        """Test failed authentication."""
-        # Mock failed authentication response
-        mock_response = Mock()
-        mock_response.status_code = 401
-        mock_response.text = 'Authentication failed'
-        mock_post.return_value = mock_response
-
+    @patch.object(VastApiHandler, '_check_token_availability', return_value=False)
+    @patch.object(VastApiHandler, '_try_basic_auth', return_value=False)
+    @patch.object(VastApiHandler, '_try_existing_tokens', return_value=False)
+    @patch.object(VastApiHandler, '_detect_api_version', return_value='v7')
+    def test_failed_authentication(self, mock_detect, mock_tokens, mock_basic, mock_avail):
+        """Test failed authentication when all methods fail."""
         result = self.handler.authenticate()
 
         self.assertFalse(result)
         self.assertFalse(self.handler.authenticated)
 
-    @patch('requests.Session.post')
-    def test_authentication_request_exception(self, mock_post):
+    @patch.object(VastApiHandler, '_detect_api_version',
+                  side_effect=requests.exceptions.RequestException("Network error"))
+    def test_authentication_request_exception(self, mock_detect):
         """Test authentication with request exception."""
-        mock_post.side_effect = requests.exceptions.RequestException("Network error")
-
         result = self.handler.authenticate()
 
         self.assertFalse(result)
@@ -117,8 +111,8 @@ class TestVastApiHandler(unittest.TestCase):
 
     def test_detect_cluster_capabilities(self):
         """Test cluster capability detection."""
-        # Mock cluster info response
         cluster_data = {'version': '5.3.0'}
+        self.handler.api_version = 'v7'
 
         with patch.object(self.handler, '_make_api_request', return_value=cluster_data):
             self.handler._detect_cluster_capabilities()
@@ -138,6 +132,7 @@ class TestVastApiHandler(unittest.TestCase):
     def test_determine_supported_features_new_version(self):
         """Test feature detection for newer cluster versions."""
         self.handler.cluster_version = "5.3.0"
+        self.handler.api_version = "v7"
         self.handler._determine_supported_features()
 
         self.assertTrue(self.handler.rack_height_supported)
@@ -509,6 +504,7 @@ class TestVastHardwareInfo(unittest.TestCase):
         hardware = VastHardwareInfo(
             node_id='node-1',
             node_type='cnode',
+            name='cnode-1-1',
             model='CBox-100',
             serial_number='SN123456',
             rack_position=5,
@@ -517,6 +513,7 @@ class TestVastHardwareInfo(unittest.TestCase):
 
         self.assertEqual(hardware.node_id, 'node-1')
         self.assertEqual(hardware.node_type, 'cnode')
+        self.assertEqual(hardware.name, 'cnode-1-1')
         self.assertEqual(hardware.model, 'CBox-100')
         self.assertEqual(hardware.serial_number, 'SN123456')
         self.assertEqual(hardware.rack_position, 5)
@@ -527,12 +524,14 @@ class TestVastHardwareInfo(unittest.TestCase):
         hardware = VastHardwareInfo(
             node_id='node-1',
             node_type='dnode',
+            name='dnode-1-1',
             model='DBox-100',
             serial_number='SN789012'
         )
 
         self.assertEqual(hardware.node_id, 'node-1')
         self.assertEqual(hardware.node_type, 'dnode')
+        self.assertEqual(hardware.name, 'dnode-1-1')
         self.assertIsNone(hardware.rack_position)
         self.assertEqual(hardware.status, 'unknown')
 
