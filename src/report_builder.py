@@ -32,6 +32,7 @@ from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
 
 # Import rack diagram module
 from rack_diagram import RackDiagram
+from utils import get_bundle_dir, get_data_dir
 from utils.logger import get_logger
 
 try:
@@ -3345,13 +3346,11 @@ class VastReportBuilder:
                 f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['switches'])} Switches"
             )
 
-            # Create output directory
-            diagrams_dir = Path(__file__).parent.parent / "output" / "diagrams"
+            diagrams_dir = get_data_dir() / "output" / "diagrams"
             diagrams_dir.mkdir(parents=True, exist_ok=True)
 
-            # Generate diagram
             diagram_generator = NetworkDiagramGenerator(
-                assets_path=str(Path(__file__).parent.parent / "assets")
+                assets_path=str(get_bundle_dir() / "assets")
             )
 
             diagram_path = diagrams_dir / "network_topology.pdf"
@@ -3476,19 +3475,9 @@ class VastReportBuilder:
         except Exception as e:
             self.logger.error(f"Error generating network diagram: {e}", exc_info=True)
 
-        # Check if static network diagram image exists (try PNG first, then JPG)
-        diagram_path_png = (
-            Path(__file__).parent.parent
-            / "assets"
-            / "diagrams"
-            / "network_topology_placeholder.png"
-        )
-        diagram_path_jpg = (
-            Path(__file__).parent.parent
-            / "assets"
-            / "diagrams"
-            / "network_topology_placeholder.jpg"
-        )
+        _bundle = get_bundle_dir()
+        diagram_path_png = _bundle / "assets" / "diagrams" / "network_topology_placeholder.png"
+        diagram_path_jpg = _bundle / "assets" / "diagrams" / "network_topology_placeholder.jpg"
 
         diagram_path = None
         if diagram_path_png.exists():

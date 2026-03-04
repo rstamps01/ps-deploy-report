@@ -23,8 +23,9 @@ from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyl
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# Hardware image library paths
-HARDWARE_IMAGE_DIR = Path(__file__).parent.parent / "assets" / "hardware_images"
+from utils import get_bundle_dir
+
+HARDWARE_IMAGE_DIR = get_bundle_dir() / "assets" / "hardware_images"
 
 
 class RackDiagram:

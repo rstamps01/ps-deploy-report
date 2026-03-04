@@ -26,6 +26,7 @@ from flask import (
 # Ensure src/ is on the path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+from utils import get_bundle_dir, get_data_dir
 from utils.logger import enable_sse_logging, get_logger, get_sse_queue
 
 logger = get_logger(__name__)
@@ -36,24 +37,10 @@ APP_VERSION = "1.4.0"
 # Flask application factory
 # ---------------------------------------------------------------------------
 
-def _resolve_base_dirs():
-    """Return (bundle_dir, data_dir) handling both dev and PyInstaller frozen modes."""
-    if getattr(sys, "frozen", False):
-        bundle_dir = Path(sys._MEIPASS)
-        app_exe = Path(sys.executable)
-        if app_exe.parent.name == "MacOS":
-            data_dir = app_exe.parent.parent.parent.parent
-        else:
-            data_dir = app_exe.parent
-    else:
-        bundle_dir = Path(__file__).resolve().parent.parent
-        data_dir = bundle_dir
-    return bundle_dir, data_dir
-
-
 def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """Build and configure the Flask application."""
-    bundle_dir, data_dir = _resolve_base_dirs()
+    bundle_dir = get_bundle_dir()
+    data_dir = get_data_dir()
     template_dir = bundle_dir / "frontend" / "templates"
     static_dir = bundle_dir / "frontend" / "static"
 

@@ -242,13 +242,9 @@ class VastBrandCompliance:
 
             from reportlab.platypus import Image
 
-            # Use the new lg_vast_logo.png from assets/diagrams
-            logo_path = (
-                Path(__file__).parent.parent
-                / "assets"
-                / "diagrams"
-                / "lg_vast_logo.png"
-            )
+            from utils import get_bundle_dir
+
+            logo_path = get_bundle_dir() / "assets" / "diagrams" / "lg_vast_logo.png"
 
             # Load image with larger size and preserved aspect ratio
             # Increased from 2" to 4.5" width to fill more space
