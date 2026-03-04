@@ -26,6 +26,13 @@ _icon_win = ROOT / "packaging" / "icons" / "icon.ico"
 ICON_MAC = str(_icon_mac) if _icon_mac.exists() else None
 ICON_WIN = str(_icon_win) if _icon_win.exists() else None
 
+# Locate reportlab T1 font files for renderPM PNG support
+_rl_font_dir = None
+for _candidate in (ROOT / "venv" / "lib").rglob("reportlab/fonts"):
+    if _candidate.is_dir():
+        _rl_font_dir = _candidate
+        break
+
 # Collect all source modules
 src_dir = ROOT / "src"
 a = Analysis(
@@ -43,7 +50,7 @@ a = Analysis(
         # Assets (logos, hardware images)
         (str(ROOT / "assets" / "diagrams"), "assets/diagrams"),
         (str(ROOT / "assets" / "hardware_images"), "assets/hardware_images"),
-    ],
+    ] + ([(str(_rl_font_dir), "reportlab/fonts")] if _rl_font_dir else []),
     hiddenimports=[
         "flask",
         "jinja2",

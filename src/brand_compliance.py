@@ -868,11 +868,10 @@ class VastBrandCompliance:
             if page_num <= 1:
                 return
 
-            watermark_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "assets",
-                "diagrams",
-                "lg_vast_watermark.png",
+            from utils import get_bundle_dir
+
+            watermark_path = str(
+                get_bundle_dir() / "assets" / "diagrams" / "lg_vast_watermark.png"
             )
 
             if not os.path.exists(watermark_path):
