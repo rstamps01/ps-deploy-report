@@ -69,6 +69,10 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["CONFIG_PATH"] = str(config_path)
     app.config["CONFIG_TEMPLATE"] = str(bundle_dir / "config" / "config.yaml.template")
     app.config["PROFILES_PATH"] = str(config_dir / "cluster_profiles.json")
+    app.config["LIBRARY_PATH"] = str(config_dir / "device_library.json")
+    user_images_dir = config_dir / "hardware_images"
+    user_images_dir.mkdir(parents=True, exist_ok=True)
+    app.config["USER_IMAGES_DIR"] = str(user_images_dir)
     app.config["REPORT_CONFIG"] = config or {}
 
     # Background job state shared across requests
@@ -329,6 +333,103 @@ def _register_routes(app: Flask) -> None:
             "dirs": subdirs,
         })
 
+    # -- Hardware Device Library ---------------------------------------------
+
+    @app.route("/library")
+    def library_page():
+        builtin = _get_builtin_devices()
+        user_lib = _load_library(app.config["LIBRARY_PATH"])
+        devices = []
+        for key, info in builtin.items():
+            devices.append({**info, "key": key, "source": "built-in"})
+        for key, info in user_lib.items():
+            devices.append({**info, "key": key, "source": "user"})
+        from rack_diagram import get_unrecognized_models
+        unrecognized = get_unrecognized_models()
+        return render_template(
+            "library.html",
+            version=APP_VERSION,
+            devices=devices,
+            unrecognized=sorted(unrecognized),
+        )
+
+    @app.route("/api/library", methods=["GET"])
+    def api_library_list():
+        builtin = _get_builtin_devices()
+        user_lib = _load_library(app.config["LIBRARY_PATH"])
+        merged = []
+        for key, info in builtin.items():
+            merged.append({**info, "key": key, "source": "built-in"})
+        for key, info in user_lib.items():
+            merged.append({**info, "key": key, "source": "user"})
+        return jsonify(merged)
+
+    @app.route("/api/library", methods=["POST"])
+    def api_library_add():
+        key = request.form.get("key", "").strip().lower().replace(" ", "_")
+        if not key:
+            return jsonify({"error": "Identifier key is required"}), 400
+        device_type = request.form.get("type", "cbox").lower()
+        if device_type not in ("cbox", "dbox", "switch"):
+            return jsonify({"error": "Type must be cbox, dbox, or switch"}), 400
+        try:
+            height_u = int(request.form.get("height_u", 1))
+        except (ValueError, TypeError):
+            height_u = 1
+        if height_u not in (1, 2):
+            return jsonify({"error": "Height must be 1 or 2"}), 400
+        description = request.form.get("description", "").strip()
+
+        image_file = request.files.get("image")
+        err = _validate_image(image_file)
+        if err:
+            return jsonify({"error": err}), 400
+
+        image_filename = None
+        if image_file and image_file.filename:
+            ext = Path(image_file.filename).suffix.lower()
+            image_filename = f"{key}_{height_u}u{ext}"
+            dest = Path(app.config["USER_IMAGES_DIR"]) / image_filename
+            image_file.save(str(dest))
+
+        library = _load_library(app.config["LIBRARY_PATH"])
+        library[key] = {
+            "type": device_type,
+            "height_u": height_u,
+            "image_filename": image_filename,
+            "description": description,
+            "added": datetime.now().isoformat(),
+        }
+        _save_library(app.config["LIBRARY_PATH"], library)
+        return jsonify({"status": "added", "key": key})
+
+    @app.route("/api/library/<key>", methods=["DELETE"])
+    def api_library_delete(key):
+        library = _load_library(app.config["LIBRARY_PATH"])
+        if key not in library:
+            return jsonify({"error": "Device not found in user library"}), 404
+        entry = library.pop(key)
+        if entry.get("image_filename"):
+            img_path = Path(app.config["USER_IMAGES_DIR"]) / entry["image_filename"]
+            if img_path.exists():
+                img_path.unlink()
+        _save_library(app.config["LIBRARY_PATH"], library)
+        return jsonify({"status": "deleted", "key": key})
+
+    @app.route("/api/library/unrecognized", methods=["GET"])
+    def api_library_unrecognized():
+        from rack_diagram import get_unrecognized_models
+        return jsonify(sorted(get_unrecognized_models()))
+
+    @app.route("/library/images/<path:filename>")
+    def library_image(filename):
+        return send_from_directory(app.config["USER_IMAGES_DIR"], filename)
+
+    @app.route("/library/builtin-images/<path:filename>")
+    def library_builtin_image(filename):
+        hw_dir = str(Path(app.config["BUNDLE_DIR"]) / "assets" / "hardware_images")
+        return send_from_directory(hw_dir, filename)
+
     # -- Reports browser ----------------------------------------------------
 
     @app.route("/reports")
@@ -430,7 +531,10 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             config=config,
         )
         data_extractor = create_data_extractor(config)
-        report_builder = create_report_builder()
+        report_builder = create_report_builder(
+            library_path=app.config.get("LIBRARY_PATH"),
+            user_images_dir=app.config.get("USER_IMAGES_DIR"),
+        )
 
         # Authenticate
         job_logger.info("Authenticating with VAST cluster...")
@@ -613,3 +717,64 @@ def _save_profiles(path: str, profiles: Dict[str, Any]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
         json.dump(profiles, f, indent=2)
+
+
+def _load_library(path: str) -> Dict[str, Any]:
+    try:
+        with open(path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_library(path: str, library: Dict[str, Any]) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(library, f, indent=2)
+
+
+_ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg"}
+_MAX_IMAGE_BYTES = 1 * 1024 * 1024  # 1 MB
+
+
+def _validate_image(file_storage) -> Optional[str]:
+    """Validate an uploaded image file. Returns error message or None."""
+    if not file_storage or not file_storage.filename:
+        return None  # no file is OK (generic image used)
+    ext = Path(file_storage.filename).suffix.lower()
+    if ext not in _ALLOWED_IMAGE_EXT:
+        return f"Invalid format '{ext}'. Allowed: PNG, JPG, JPEG"
+    file_storage.seek(0, 2)
+    size = file_storage.tell()
+    file_storage.seek(0)
+    if size > _MAX_IMAGE_BYTES:
+        return f"File too large ({size / 1024:.0f} KB). Max: 1 MB"
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(file_storage)
+        w, h = img.size
+        if w < 60 or w > 2000:
+            return f"Width {w}px out of range (60-2000 px)"
+        file_storage.seek(0)
+    except Exception as e:
+        return f"Cannot read image: {e}"
+    return None
+
+
+def _get_builtin_devices() -> Dict[str, Any]:
+    """Return the built-in device map (read-only, from rack_diagram.py)."""
+    builtin = {
+        "supermicro_gen5_cbox": {"type": "cbox", "height_u": 1, "image_filename": "supermicro_gen5_cbox_1u.png", "description": "Supermicro Gen5 CBox", "source": "built-in"},
+        "hpe_genoa_cbox": {"type": "cbox", "height_u": 1, "image_filename": "hpe_genoa_cbox.png", "description": "HPE Genoa CBox", "source": "built-in"},
+        "broadwell": {"type": "cbox", "height_u": 2, "image_filename": "broadwell_cbox_2u.png", "description": "Broadwell 2U CBox", "source": "built-in"},
+        "cascadelake": {"type": "cbox", "height_u": 2, "image_filename": "cascadelake_cbox_2u.png", "description": "CascadeLake 2U CBox", "source": "built-in"},
+        "ceres_v2": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres v2 DBox", "source": "built-in"},
+        "dbox-515": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "DBox-515", "source": "built-in"},
+        "sanmina": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Sanmina DBox", "source": "built-in"},
+        "maverick_1.5": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick 2U DBox", "source": "built-in"},
+        "msn3700-vs2fc": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png", "description": "Mellanox MSN3700 Switch", "source": "built-in"},
+        "msn2100-cb2f": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png", "description": "Mellanox MSN2100 Switch", "source": "built-in"},
+        "arista_7060dx5": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista 7060DX5 Switch", "source": "built-in"},
+        "arista": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista Switch (generic)", "source": "built-in"},
+    }
+    return builtin

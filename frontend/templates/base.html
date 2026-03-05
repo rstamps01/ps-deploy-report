@@ -19,6 +19,7 @@
             <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">Dashboard</a>
             <a href="{{ url_for('generate_form') }}" class="nav-link {% if request.endpoint in ['generate_form','generate_start'] %}active{% endif %}">Generate</a>
             <a href="{{ url_for('reports_page') }}" class="nav-link {% if request.endpoint == 'reports_page' %}active{% endif %}">Reports</a>
+            <a href="{{ url_for('library_page') }}" class="nav-link {% if request.endpoint == 'library_page' %}active{% endif %}">Library</a>
             <a href="{{ url_for('config_page') }}" class="nav-link {% if request.endpoint == 'config_page' %}active{% endif %}">Configuration</a>
         </div>
     </nav>

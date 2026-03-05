@@ -137,16 +137,25 @@ class VastReportBuilder:
     with enhanced features for rack positioning and PSNT tracking.
     """
 
-    def __init__(self, config: Optional[ReportConfig] = None):
+    def __init__(
+        self,
+        config: Optional[ReportConfig] = None,
+        library_path: Optional[str] = None,
+        user_images_dir: Optional[str] = None,
+    ):
         """
         Initialize the report builder.
 
         Args:
             config (ReportConfig, optional): Report configuration
+            library_path: Path to user device_library.json
+            user_images_dir: Path to user-uploaded hardware images directory
         """
         self.logger = get_logger(__name__)
         self.config = config or ReportConfig()
-        self.switch_positions = {}  # Will store calculated switch U positions
+        self.library_path = library_path
+        self.user_images_dir = user_images_dir
+        self.switch_positions = {}
 
         # Check for required libraries
         if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
@@ -2025,7 +2034,10 @@ class VastReportBuilder:
                     rack_db = per_rack_dboxes.get(try_rack, [])
                     if not rack_cb and not rack_db:
                         continue
-                    temp_rack_gen = RackDiagram()
+                    temp_rack_gen = RackDiagram(
+                        library_path=self.library_path,
+                        user_images_dir=self.user_images_dir,
+                    )
                     calculated_positions = temp_rack_gen._calculate_switch_positions(
                         rack_cb, rack_db, len(switches), switches=switches
                     )
@@ -2249,7 +2261,11 @@ class VastReportBuilder:
                             rack_height_u = rack_height_map.get(rack_name, 42)
 
                             # Create rack diagram generator with appropriate rack height
-                            rack_gen = RackDiagram(rack_height_u=rack_height_u)
+                            rack_gen = RackDiagram(
+                                rack_height_u=rack_height_u,
+                                library_path=self.library_path,
+                                user_images_dir=self.user_images_dir,
+                            )
 
                             # Generate rack diagram with rack name
                             rack_drawing, switch_positions_map = (
@@ -3350,7 +3366,9 @@ class VastReportBuilder:
             diagrams_dir.mkdir(parents=True, exist_ok=True)
 
             diagram_generator = NetworkDiagramGenerator(
-                assets_path=str(get_bundle_dir() / "assets")
+                assets_path=str(get_bundle_dir() / "assets"),
+                library_path=self.library_path,
+                user_images_dir=self.user_images_dir,
             )
 
             diagram_path = diagrams_dir / "network_topology.pdf"
@@ -4851,17 +4869,23 @@ class VastReportBuilder:
 
 
 # Convenience function for easy usage
-def create_report_builder(config: Optional[ReportConfig] = None) -> VastReportBuilder:
+def create_report_builder(
+    config: Optional[ReportConfig] = None,
+    library_path: Optional[str] = None,
+    user_images_dir: Optional[str] = None,
+) -> VastReportBuilder:
     """
     Create and return a configured VastReportBuilder instance.
 
     Args:
         config (ReportConfig, optional): Report configuration
+        library_path: Path to user device_library.json
+        user_images_dir: Path to user-uploaded hardware images directory
 
     Returns:
         VastReportBuilder: Configured report builder instance
     """
-    return VastReportBuilder(config)
+    return VastReportBuilder(config, library_path, user_images_dir)
 
 
 if __name__ == "__main__":

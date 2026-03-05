@@ -15,6 +15,7 @@ Color coding:
 - Purple lines: IPL/MLAG connections between switches
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,31 +31,49 @@ from reportlab.lib.units import inch
 logger = logging.getLogger(__name__)
 
 
+def _load_user_library_net(library_path: Optional[str]) -> Dict[str, Any]:
+    if not library_path:
+        return {}
+    try:
+        with open(library_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
 class NetworkDiagramGenerator:
     """Generate logical network topology diagrams."""
 
-    def __init__(self, assets_path: str = "assets"):
+    def __init__(
+        self,
+        assets_path: str = "assets",
+        library_path: Optional[str] = None,
+        user_images_dir: Optional[str] = None,
+    ):
         """
         Initialize the network diagram generator.
 
         Args:
             assets_path: Path to assets directory containing hardware images
+            library_path: Path to user device_library.json file.
+            user_images_dir: Path to directory with user-uploaded hardware images.
         """
         self.logger = logging.getLogger(__name__)
         self.assets_path = Path(assets_path)
         self.hardware_images_path = self.assets_path / "hardware_images"
+        self.library_path = library_path
+        self.user_images_dir = user_images_dir
 
-        # Colors
-        self.switch_a_color = colors.HexColor("#00aa00")  # Green
-        self.switch_b_color = colors.HexColor("#0066cc")  # Blue
-        self.ipl_color = colors.HexColor("#9933cc")  # Purple
+        self.switch_a_color = colors.HexColor("#00aa00")
+        self.switch_b_color = colors.HexColor("#0066cc")
+        self.ipl_color = colors.HexColor("#9933cc")
 
-        # Image cache
-        self.image_cache = {}
+        self.image_cache: Dict[str, Optional[str]] = {}
+        self._user_library = _load_user_library_net(library_path)
 
     def load_hardware_image(self, hardware_type: str) -> Optional[str]:
         """
-        Load hardware image path for a given hardware type.
+        Load hardware image path using cascade: built-in -> user library -> generic.
 
         Args:
             hardware_type: Hardware type identifier
@@ -62,25 +81,42 @@ class NetworkDiagramGenerator:
         Returns:
             Path to image file or None if not found
         """
-        # Map hardware types to image files
         image_map = {
             "supermicro_gen5_cbox": "supermicro_gen5_cbox_1u.png",
-            "broadwell": "broadwell_cbox_2u.png",  # Broadwell 2U CBox
-            "cascadelake": "cascadelake_cbox_2u.png",  # CascadeLake 2U CBox
+            "broadwell": "broadwell_cbox_2u.png",
+            "cascadelake": "cascadelake_cbox_2u.png",
             "ceres_v2": "ceres_v2_1u.png",
             "dbox-515": "ceres_v2_1u.png",
-            "sanmina": "ceres_v2_1u.png",  # Sanmina 1U DBox
-            "maverick_1.5": "maverick_2u.png",  # Maverick 2U DBox
-            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
-            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
+            "sanmina": "ceres_v2_1u.png",
+            "maverick_1.5": "maverick_2u.png",
+            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",
+            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",
         }
 
-        # Find matching image
+        hw_lower = hardware_type.lower()
+
         for key, filename in image_map.items():
-            if key.lower() in hardware_type.lower():
+            if key in hw_lower:
                 image_path = self.hardware_images_path / filename
                 if image_path.exists():
                     return str(image_path)
+
+        if self._user_library and self.user_images_dir:
+            udir = Path(self.user_images_dir)
+            for key, entry in self._user_library.items():
+                if key in hw_lower:
+                    fname = entry.get("image_filename")
+                    if fname:
+                        img_path = udir / fname
+                        if img_path.exists():
+                            return str(img_path)
+
+        generic = self.hardware_images_path / "generic_1u.png"
+        if generic.exists():
+            self.logger.warning(
+                f"No image for hardware type '{hardware_type}' — using generic placeholder"
+            )
+            return str(generic)
 
         self.logger.warning(f"No image found for hardware type: {hardware_type}")
         return None
@@ -689,17 +725,21 @@ class NetworkDiagramGenerator:
 
 def create_network_diagram_generator(
     assets_path: str = "assets",
+    library_path: Optional[str] = None,
+    user_images_dir: Optional[str] = None,
 ) -> NetworkDiagramGenerator:
     """
     Create and return a NetworkDiagramGenerator instance.
 
     Args:
         assets_path: Path to assets directory
+        library_path: Path to user device_library.json
+        user_images_dir: Path to user-uploaded hardware images directory
 
     Returns:
         NetworkDiagramGenerator instance
     """
-    return NetworkDiagramGenerator(assets_path)
+    return NetworkDiagramGenerator(assets_path, library_path, user_images_dir)
 
 
 if __name__ == "__main__":

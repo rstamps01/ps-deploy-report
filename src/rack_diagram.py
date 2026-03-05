@@ -5,10 +5,11 @@ This module generates visual rack diagrams showing physical hardware placement
 in 42U data center racks with proper scaling, positioning, and labeling.
 """
 
+import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Circle, Drawing, Group, Line, Rect, String
@@ -20,12 +21,28 @@ from reportlab.platypus import Image
 from reportlab.platypus import Image as RLImage
 from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 from utils import get_bundle_dir
 
 HARDWARE_IMAGE_DIR = get_bundle_dir() / "assets" / "hardware_images"
+
+_unrecognized_models: Set[str] = set()
+
+
+def get_unrecognized_models() -> Set[str]:
+    """Return the set of model identifiers encountered but not matched."""
+    return set(_unrecognized_models)
+
+
+def _load_user_library(library_path: Optional[str]) -> Dict[str, Any]:
+    if not library_path:
+        return {}
+    try:
+        with open(library_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
 
 
 class RackDiagram:
@@ -64,7 +81,9 @@ class RackDiagram:
         self,
         page_width: float = 7.27 * inch,
         page_height: float = 8.5 * inch,
-        rack_height_u: int = None
+        rack_height_u: int = None,
+        library_path: Optional[str] = None,
+        user_images_dir: Optional[str] = None,
     ):
         """
         Initialize rack diagram generator.
@@ -74,11 +93,14 @@ class RackDiagram:
             page_height: Available page height in points (default 8.5" to maximize space)
             rack_height_u: Number of rack units (U) for this rack (42, 48, etc.).
                          Defaults to 42U for backward compatibility.
+            library_path: Path to user device_library.json file.
+            user_images_dir: Path to directory with user-uploaded hardware images.
         """
         self.page_width = page_width
         self.page_height = page_height
+        self.library_path = library_path
+        self.user_images_dir = user_images_dir
 
-        # Set rack height (default to 42U if not specified)
         if rack_height_u is None:
             rack_height_u = self.DEFAULT_RACK_HEIGHT
 
@@ -122,116 +144,126 @@ class RackDiagram:
 
     def _load_hardware_images(self) -> Dict[str, Optional[Path]]:
         """
-        Load available hardware images from the assets directory.
+        Load available hardware images from built-in assets and user library.
 
         Returns:
             Dictionary mapping model names to image file paths
         """
         image_map = {
             "supermicro_gen5_cbox": HARDWARE_IMAGE_DIR / "supermicro_gen5_cbox_1u.png",
-            "hpe_genoa_cbox": HARDWARE_IMAGE_DIR / "hpe_genoa_cbox.png",  # HPE Genoa 1U CBox
-            "broadwell": HARDWARE_IMAGE_DIR
-            / "broadwell_cbox_2u.png",  # Broadwell 2U CBox
-            "cascadelake": HARDWARE_IMAGE_DIR
-            / "cascadelake_cbox_2u.png",  # CascadeLake 2U CBox
+            "hpe_genoa_cbox": HARDWARE_IMAGE_DIR / "hpe_genoa_cbox.png",
+            "broadwell": HARDWARE_IMAGE_DIR / "broadwell_cbox_2u.png",
+            "cascadelake": HARDWARE_IMAGE_DIR / "cascadelake_cbox_2u.png",
             "ceres_v2": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
-            "dbox-515": HARDWARE_IMAGE_DIR
-            / "ceres_v2_1u.png",  # Map dbox-515 to ceres_v2 image
-            "sanmina": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",  # Sanmina 1U DBox
-            "maverick_1.5": HARDWARE_IMAGE_DIR / "maverick_2u.png",  # Maverick 2U DBox
-            "msn3700-vs2fc": HARDWARE_IMAGE_DIR
-            / "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
-            "msn2100-cb2f": HARDWARE_IMAGE_DIR
-            / "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
-            "arista_7060dx5": HARDWARE_IMAGE_DIR
-            / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",  # Arista 7060DX5 2U switch
-            "arista": HARDWARE_IMAGE_DIR
-            / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",  # Generic Arista switch mapping
-            # Add more hardware models as images become available
+            "dbox-515": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
+            "sanmina": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
+            "maverick_1.5": HARDWARE_IMAGE_DIR / "maverick_2u.png",
+            "msn3700-vs2fc": HARDWARE_IMAGE_DIR / "mellanox_msn3700_1x32p_200g_switch_1u.png",
+            "msn2100-cb2f": HARDWARE_IMAGE_DIR / "mellanox_msn2100_2x16p_100g_switch_1u.png",
+            "arista_7060dx5": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "arista": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
         }
 
-        # Check which images actually exist
-        available_images = {}
+        available_images: Dict[str, Optional[Path]] = {}
         for model, path in image_map.items():
             if path.exists():
                 available_images[model] = path
                 logger.info(f"Loaded hardware image for {model}: {path}")
             else:
                 available_images[model] = None
-                logger.debug(
-                    f"No image found for {model} at {path}, will use fallback rendering"
-                )
+                logger.debug(f"No image found for {model} at {path}")
 
+        user_lib = _load_user_library(self.library_path)
+        if user_lib and self.user_images_dir:
+            udir = Path(self.user_images_dir)
+            for key, entry in user_lib.items():
+                if key in available_images:
+                    continue
+                fname = entry.get("image_filename")
+                if fname:
+                    img_path = udir / fname
+                    if img_path.exists():
+                        available_images[key] = img_path
+                        logger.info(f"Loaded user library image for {key}: {img_path}")
+                    else:
+                        available_images[key] = None
+                        logger.debug(f"User library image missing for {key}: {img_path}")
+                else:
+                    available_images[key] = None
+
+        self._user_library = user_lib
         return available_images
 
     def _get_hardware_image_path(self, model: str) -> Optional[Path]:
         """
-        Get the image path for a hardware model.
+        Get the image path for a hardware model using a three-tier cascade:
+        1. Built-in + user library (exact then partial match)
+        2. Generic fallback (generic_1u.png / generic_2u.png)
 
-        Args:
-            model: Hardware model name
-
-        Returns:
-            Path to image file if available, None otherwise
+        Unrecognized models are tracked for the Library page.
         """
         model_clean = model.lower().strip()
 
-        # Check for exact match
         if model_clean in self.hardware_images:
             return self.hardware_images[model_clean]
 
-        # Check for partial matches
         for key in self.hardware_images:
             if key in model_clean:
                 return self.hardware_images[key]
 
+        _unrecognized_models.add(model_clean)
+        height_u = self._get_device_height_units(model)
+        generic = HARDWARE_IMAGE_DIR / f"generic_{height_u}u.png"
+        if generic.exists():
+            logger.warning(
+                f"No image for model '{model}' — using generic {height_u}U placeholder. "
+                f"Add this device to the Library to improve diagram accuracy."
+            )
+            return generic
+
+        logger.warning(f"No image found for hardware type: {model}")
         return None
 
     def _get_device_height_units(self, model: str) -> int:
         """
         Determine the height in rack units (U) for a device based on its model.
 
-        Args:
-            model: Hardware model name
-
-        Returns:
-            Number of rack units (1U or 2U)
+        Checks built-in patterns first, then the user library.
         """
-        # Map of model patterns to U height
-        # 1U devices
         one_u_models = [
             "supermicro_gen5_cbox",
-            "hpe_genoa_cbox",  # HPE Genoa 1U CBox
+            "hpe_genoa_cbox",
             "ceres_v2",
-            "sanmina",  # Sanmina 1U DBox
-            "msn3700-vs2fc",  # Mellanox MSN3700 switch
-            "msn2100-cb2f",  # Mellanox MSN2100 switch
+            "sanmina",
+            "msn3700-vs2fc",
+            "msn2100-cb2f",
         ]
 
-        # 2U devices (add patterns as needed)
         two_u_models = [
             "supermicro_2u_cbox",
-            "broadwell",  # Broadwell 2U CBox
-            "cascadelake",  # CascadeLake 2U CBox
-            "ceres_4u",  # Example, may need adjustment
-            "maverick_1.5",  # Maverick 2U DBox
-            "arista_7060dx5",  # Arista 7060DX5 2U switch
-            "arista",  # Generic Arista switch (2U)
+            "broadwell",
+            "cascadelake",
+            "ceres_4u",
+            "maverick_1.5",
+            "arista_7060dx5",
+            "arista",
         ]
 
         model_lower = model.lower() if model else ""
 
-        # Check for 2U devices first
         for pattern in two_u_models:
             if pattern in model_lower:
                 return 2
 
-        # Default to 1U for known 1U devices
         for pattern in one_u_models:
             if pattern in model_lower:
                 return 1
 
-        # Default to 1U if unknown
+        user_lib = getattr(self, "_user_library", {}) or {}
+        for key, entry in user_lib.items():
+            if key in model_lower:
+                return entry.get("height_u", 1)
+
         logger.warning(f"Unknown model '{model}', defaulting to 1U")
         return 1
 

@@ -740,6 +740,92 @@ legend:first-of-type { margin-top: 0; }
     border-top: 1px solid var(--border);
 }
 
+/* ---- Library Page ---- */
+.lib-add-form { margin-top: 0.75rem; }
+.lib-requirements {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+.lib-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.75rem 1rem;
+    margin-bottom: 1rem;
+}
+.lib-form-grid .lib-image-group { grid-column: span 3; }
+.lib-upload-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.lib-preview {
+    width: 120px;
+    height: 48px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-input);
+}
+.lib-preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lib-form-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+.lib-thumb {
+    height: 28px;
+    max-width: 120px;
+    object-fit: contain;
+    border-radius: 3px;
+    background: var(--bg-input);
+    padding: 2px;
+}
+.lib-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.lib-badge-builtin {
+    background: rgba(139, 148, 158, 0.18);
+    color: var(--text-secondary);
+}
+.lib-badge-user {
+    background: rgba(26, 111, 181, 0.18);
+    color: var(--accent);
+}
+.unrecognized-alert {
+    border-left: 3px solid var(--warning);
+}
+.unrecognized-alert h3 { color: var(--warning); }
+.unrecognized-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+.unrecognized-tag {
+    display: inline-block;
+    font-family: monospace;
+    font-size: 0.82rem;
+    padding: 3px 10px;
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--warning);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.unrecognized-tag:hover {
+    background: rgba(245, 158, 11, 0.22);
+}
+
 /* ---- Footer ---- */
 .footer {
     text-align: center;
