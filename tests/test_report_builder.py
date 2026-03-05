@@ -209,9 +209,8 @@ class TestVastReportBuilder(unittest.TestCase):
         self.assertEqual(builder.config.font_size, 12)
 
     @patch('report_builder.REPORTLAB_AVAILABLE', False)
-    @patch('report_builder.WEASYPRINT_AVAILABLE', False)
     def test_initialization_no_libraries(self):
-        """Test initialization when no PDF libraries are available."""
+        """Test initialization when ReportLab is not available."""
         with self.assertRaises(ReportGenerationError):
             VastReportBuilder()
 
@@ -225,28 +224,6 @@ class TestVastReportBuilder(unittest.TestCase):
 
         self.assertTrue(result)
         self.assertTrue(Path(output_path).exists())
-
-    @unittest.skip("WeasyPrint requires system dependencies that may not be available")
-    @patch('report_builder.REPORTLAB_AVAILABLE', False)
-    @patch('report_builder.WEASYPRINT_AVAILABLE', True)
-    def test_generate_pdf_report_weasyprint(self):
-        """Test PDF generation with WeasyPrint."""
-        # Mock WeasyPrint classes
-        with patch('weasyprint.HTML') as mock_html, \
-             patch('weasyprint.CSS') as mock_css:
-
-            mock_html_doc = MagicMock()
-            mock_css_doc = MagicMock()
-            mock_html.return_value = mock_html_doc
-            mock_css.return_value = mock_css_doc
-
-            builder = VastReportBuilder()
-            output_path = str(Path(self.temp_dir) / 'test_report.pdf')
-
-            result = builder.generate_pdf_report(self.sample_data, output_path)
-
-            self.assertTrue(result)
-            self.assertTrue(Path(output_path).exists())
 
     def test_generate_pdf_report_invalid_data(self):
         """Test PDF generation with invalid data."""
@@ -365,26 +342,6 @@ class TestVastReportBuilder(unittest.TestCase):
 
         self.assertIsInstance(content, list)
         self.assertGreater(len(content), 0)
-
-    def test_generate_html_content(self):
-        """Test HTML content generation."""
-        builder = VastReportBuilder()
-
-        html_content = builder._generate_html_content(self.sample_data)
-
-        self.assertIsInstance(html_content, str)
-        self.assertIn('VAST As-Built Report', html_content)
-        self.assertIn('Test Cluster', html_content)
-
-    def test_generate_css_content(self):
-        """Test CSS content generation."""
-        builder = VastReportBuilder()
-
-        css_content = builder._generate_css_content()
-
-        self.assertIsInstance(css_content, str)
-        self.assertIn('body', css_content)
-        self.assertIn('h1', css_content)
 
     def test_create_report_builder(self):
         """Test convenience function for creating report builder."""

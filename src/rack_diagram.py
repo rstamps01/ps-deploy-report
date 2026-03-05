@@ -12,12 +12,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from reportlab.graphics import renderPDF
-from reportlab.graphics.shapes import Circle, Drawing, Group, Line, Rect, String
+from reportlab.graphics.shapes import Circle, Drawing, Group, Image as GraphicsImage, Line, Rect, String
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
-from reportlab.platypus import Image
 from reportlab.platypus import Image as RLImage
 from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyle
 
@@ -150,17 +149,31 @@ class RackDiagram:
             Dictionary mapping model names to image file paths
         """
         image_map = {
+            # CBoxes
             "supermicro_gen5_cbox": HARDWARE_IMAGE_DIR / "supermicro_gen5_cbox_1u.png",
             "hpe_genoa_cbox": HARDWARE_IMAGE_DIR / "hpe_genoa_cbox.png",
+            "hpe_icelake": HARDWARE_IMAGE_DIR / "hpe_il_cbox_2u.png",
+            "dell_icelake": HARDWARE_IMAGE_DIR / "dell_il_cbox_2u.png",
+            "dell_turin_cbox": HARDWARE_IMAGE_DIR / "dell_turin_r6715_cbox_1u.png",
+            "smc_turin_cbox": HARDWARE_IMAGE_DIR / "smc_turin_cbox_1u.png",
             "broadwell": HARDWARE_IMAGE_DIR / "broadwell_cbox_2u.png",
             "cascadelake": HARDWARE_IMAGE_DIR / "cascadelake_cbox_2u.png",
+            # DBoxes
             "ceres_v2": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
             "dbox-515": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
-            "sanmina": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
+            "dbox-516": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
+            "sanmina": HARDWARE_IMAGE_DIR / "maverick_2u.png",
             "maverick_1.5": HARDWARE_IMAGE_DIR / "maverick_2u.png",
+            # Switches
+            "msn2700": HARDWARE_IMAGE_DIR / "mellanox_msn2700_1x32p_100g_switch_1u.png",
             "msn3700-vs2fc": HARDWARE_IMAGE_DIR / "mellanox_msn3700_1x32p_200g_switch_1u.png",
             "msn2100-cb2f": HARDWARE_IMAGE_DIR / "mellanox_msn2100_2x16p_100g_switch_1u.png",
+            "msn4600c": HARDWARE_IMAGE_DIR / "mellanox_msn4600C_1x64p_100g_switch_2u.png",
+            "msn4600": HARDWARE_IMAGE_DIR / "mellanox_msn4600_1x64p_200g_switch_2u.png",
+            "sn5600": HARDWARE_IMAGE_DIR / "mellanox_sn5600_1x64p_800g_switch_2u.png",
             "arista_7060dx5": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "arista_7050cx4": HARDWARE_IMAGE_DIR / "arista_7050cx4_24d_400g_switch_1u.png",
+            "arista_7050dx4": HARDWARE_IMAGE_DIR / "arista_7050dx4_32s_400g_switch_1u.png",
             "arista": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
         }
 
@@ -207,7 +220,7 @@ class RackDiagram:
         if model_clean in self.hardware_images:
             return self.hardware_images[model_clean]
 
-        for key in self.hardware_images:
+        for key in sorted(self.hardware_images, key=len, reverse=True):
             if key in model_clean:
                 return self.hardware_images[key]
 
@@ -233,34 +246,47 @@ class RackDiagram:
         one_u_models = [
             "supermicro_gen5_cbox",
             "hpe_genoa_cbox",
+            "dell_turin_cbox",
+            "smc_turin_cbox",
             "ceres_v2",
-            "sanmina",
+            "dbox-515",
+            "dbox-516",
+            "msn2700",
             "msn3700-vs2fc",
             "msn2100-cb2f",
+            "arista_7050cx4",
+            "arista_7050dx4",
         ]
 
         two_u_models = [
             "supermicro_2u_cbox",
+            "hpe_icelake",
+            "dell_icelake",
             "broadwell",
             "cascadelake",
             "ceres_4u",
+            "sanmina",
             "maverick_1.5",
+            "msn4600c",
+            "msn4600",
+            "sn5600",
             "arista_7060dx5",
             "arista",
         ]
 
         model_lower = model.lower() if model else ""
 
-        for pattern in two_u_models:
+        for pattern in sorted(two_u_models, key=len, reverse=True):
             if pattern in model_lower:
                 return 2
 
-        for pattern in one_u_models:
+        for pattern in sorted(one_u_models, key=len, reverse=True):
             if pattern in model_lower:
                 return 1
 
         user_lib = getattr(self, "_user_library", {}) or {}
-        for key, entry in user_lib.items():
+        for key in sorted(user_lib, key=len, reverse=True):
+            entry = user_lib[key]
             if key in model_lower:
                 return entry.get("height_u", 1)
 
@@ -467,17 +493,11 @@ class RackDiagram:
         if image_path and image_path.exists():
             # Use hardware image
             try:
-                from reportlab.graphics.shapes import Image as GraphicsImage
-
-                # Calculate device width with some padding
-                device_width = self.rack_width - 4
-
-                # Create image element scaled to fit the device space
                 hw_image = GraphicsImage(
-                    start_x + 2,
+                    start_x,
                     device_y,
-                    device_width,
-                    device_height - 1,
+                    self.rack_width,
+                    device_height,
                     str(image_path),
                 )
                 drawing.add(hw_image)

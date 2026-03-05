@@ -790,10 +790,27 @@ def run_cli() -> int:
         return 1
 
 
+def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
+    """Poll until the Flask server is accepting connections."""
+    import socket
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     """Launch the Flask web UI and open the default browser."""
     import threading
     import webbrowser
+
+    from werkzeug.serving import make_server
 
     from app import create_flask_app
     from utils.logger import enable_sse_logging
@@ -804,17 +821,28 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
 
     flask_app = create_flask_app(config)
 
+    server = make_server(host, port, flask_app, threaded=True)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    if not _wait_for_server(host, port):
+        print("ERROR: Flask server failed to start.")
+        return 1
+
     url = f"http://{host}:{port}"
-    print(f"\n  VAST As-Built Reporter — Web UI")
+    print("\n  VAST As-Built Reporter — Web UI")
     print(f"  Running at {url}")
-    print(f"  Press Ctrl+C to stop\n")
+    print("  Press Ctrl+C to stop\n")
 
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-
+    webbrowser.open(url)
     try:
-        flask_app.run(host=host, port=port, debug=False, use_reloader=False)
+        server_thread.join()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        pass
+    finally:
+        print("Shutting down server…")
+        server.shutdown()
+
     return 0
 
 

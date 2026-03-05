@@ -79,6 +79,7 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["JOB_RUNNING"] = False
     app.config["JOB_RESULT"] = None
     app.config["JOB_LOCK"] = threading.Lock()
+    app.config["JOB_CANCEL"] = threading.Event()
 
     _register_routes(app)
     return app
@@ -146,6 +147,7 @@ def _register_routes(app: Flask) -> None:
             except (json.JSONDecodeError, TypeError):
                 return jsonify({"error": "Invalid manual_placements JSON"}), 400
 
+        app.config["JOB_CANCEL"].clear()
         thread = threading.Thread(
             target=_run_report_job, args=(app, params), daemon=True
         )
@@ -154,10 +156,26 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/generate/status")
     def generate_status():
-        return jsonify({
+        resp = jsonify({
             "running": app.config["JOB_RUNNING"],
             "result": app.config["JOB_RESULT"],
         })
+        resp.headers["Cache-Control"] = "no-store"
+        resp.headers["Pragma"] = "no-cache"
+        return resp
+
+    @app.route("/generate/cancel", methods=["POST"])
+    def generate_cancel():
+        with app.config["JOB_LOCK"]:
+            if not app.config["JOB_RUNNING"]:
+                return jsonify({"status": "no_job"})
+            app.config["JOB_CANCEL"].set()
+            app.config["JOB_RUNNING"] = False
+            app.config["JOB_RESULT"] = {
+                "success": False,
+                "error": "Report generation cancelled by user",
+            }
+        return jsonify({"status": "cancelled"})
 
     # -- SSE log stream -----------------------------------------------------
 
@@ -488,6 +506,16 @@ def _register_routes(app: Flask) -> None:
 # Background report generation
 # ---------------------------------------------------------------------------
 
+class _JobCancelled(Exception):
+    """Raised when the user cancels a running report job."""
+
+
+def _check_cancel(app: Flask) -> None:
+    """Raise _JobCancelled if the cancel event has been set."""
+    if app.config["JOB_CANCEL"].is_set():
+        raise _JobCancelled("Cancelled by user")
+
+
 def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
     """Execute the report pipeline in a background thread."""
     from api_handler import create_vast_api_handler
@@ -500,6 +528,8 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         app.config["JOB_RESULT"] = None
 
     try:
+        _check_cancel(app)
+
         config_path = app.config["CONFIG_PATH"]
         config = _load_yaml(config_path)
         if params.get("verbose"):
@@ -522,6 +552,8 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             username = params.get("username")
             password = params.get("password")
 
+        _check_cancel(app)
+
         # Build components
         api_handler = create_vast_api_handler(
             cluster_ip=params["cluster_ip"],
@@ -537,18 +569,21 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         )
 
         # Authenticate
+        _check_cancel(app)
         job_logger.info("Authenticating with VAST cluster...")
         if not api_handler.authenticate():
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
 
         # Collect data
+        _check_cancel(app)
         job_logger.info("Collecting cluster data...")
         raw_data = api_handler.get_all_data()
         if not raw_data:
             raise RuntimeError("Data collection returned empty results")
 
         # Optional port mapping
+        _check_cancel(app)
         if params.get("enable_port_mapping"):
             job_logger.info("Collecting port mapping data...")
             port_data = _collect_port_mapping_web(params, raw_data, api_handler)
@@ -556,6 +591,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 raw_data["port_mapping_external"] = port_data
 
         # Process data
+        _check_cancel(app)
         job_logger.info("Processing collected data...")
         use_ext = params.get("enable_port_mapping") and "port_mapping_external" in raw_data
         processed_data = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext)
@@ -571,6 +607,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             )
 
         # Generate reports
+        _check_cancel(app)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         cluster_name = processed_data.get("cluster_summary", {}).get("name", "unknown")
 
@@ -578,6 +615,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         data_extractor.save_processed_data(processed_data, str(json_path))
         job_logger.info("JSON saved: %s", json_path.name)
 
+        _check_cancel(app)
         pdf_path = output_dir / f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
         if not report_builder.generate_pdf_report(processed_data, str(pdf_path)):
             raise RuntimeError("PDF generation failed")
@@ -587,18 +625,23 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         job_logger.info("Report generation completed successfully")
 
         with app.config["JOB_LOCK"]:
-            app.config["JOB_RESULT"] = {
-                "success": True,
-                "pdf": pdf_path.name,
-                "json": json_path.name,
-                "cluster": cluster_name,
-            }
+            if not app.config["JOB_CANCEL"].is_set():
+                app.config["JOB_RESULT"] = {
+                    "success": True,
+                    "pdf": pdf_path.name,
+                    "json": json_path.name,
+                    "cluster": cluster_name,
+                }
 
+    except _JobCancelled:
+        job_logger = get_logger("job")
+        job_logger.info("Report generation cancelled by user")
     except Exception as exc:
         err_logger = get_logger("job")
         err_logger.error("Report generation failed: %s", exc)
         with app.config["JOB_LOCK"]:
-            app.config["JOB_RESULT"] = {"success": False, "error": str(exc)}
+            if not app.config["JOB_CANCEL"].is_set():
+                app.config["JOB_RESULT"] = {"success": False, "error": str(exc)}
     finally:
         with app.config["JOB_LOCK"]:
             app.config["JOB_RUNNING"] = False
@@ -764,17 +807,31 @@ def _validate_image(file_storage) -> Optional[str]:
 def _get_builtin_devices() -> Dict[str, Any]:
     """Return the built-in device map (read-only, from rack_diagram.py)."""
     builtin = {
+        # CBoxes
         "supermicro_gen5_cbox": {"type": "cbox", "height_u": 1, "image_filename": "supermicro_gen5_cbox_1u.png", "description": "Supermicro Gen5 CBox", "source": "built-in"},
         "hpe_genoa_cbox": {"type": "cbox", "height_u": 1, "image_filename": "hpe_genoa_cbox.png", "description": "HPE Genoa CBox", "source": "built-in"},
+        "hpe_icelake": {"type": "cbox", "height_u": 2, "image_filename": "hpe_il_cbox_2u.png", "description": "HPE IceLake 2U CBox", "source": "built-in"},
+        "dell_icelake": {"type": "cbox", "height_u": 2, "image_filename": "dell_il_cbox_2u.png", "description": "Dell IceLake 2U CBox", "source": "built-in"},
+        "dell_turin_cbox": {"type": "cbox", "height_u": 1, "image_filename": "dell_turin_r6715_cbox_1u.png", "description": "Dell Gen6 Turin CBox (R6715)", "source": "built-in"},
+        "smc_turin_cbox": {"type": "cbox", "height_u": 1, "image_filename": "smc_turin_cbox_1u.png", "description": "SMC Gen6 Turin CBox", "source": "built-in"},
         "broadwell": {"type": "cbox", "height_u": 2, "image_filename": "broadwell_cbox_2u.png", "description": "Broadwell 2U CBox", "source": "built-in"},
         "cascadelake": {"type": "cbox", "height_u": 2, "image_filename": "cascadelake_cbox_2u.png", "description": "CascadeLake 2U CBox", "source": "built-in"},
-        "ceres_v2": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres v2 DBox", "source": "built-in"},
-        "dbox-515": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "DBox-515", "source": "built-in"},
-        "sanmina": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Sanmina DBox", "source": "built-in"},
-        "maverick_1.5": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick 2U DBox", "source": "built-in"},
-        "msn3700-vs2fc": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png", "description": "Mellanox MSN3700 Switch", "source": "built-in"},
-        "msn2100-cb2f": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png", "description": "Mellanox MSN2100 Switch", "source": "built-in"},
-        "arista_7060dx5": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista 7060DX5 Switch", "source": "built-in"},
+        # DBoxes
+        "ceres_v2": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
+        "dbox-515": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
+        "dbox-516": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
+        "sanmina": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick 2U DBox", "source": "built-in"},
+        "maverick_1.5": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick/MLK 2U DBox", "source": "built-in"},
+        # Switches
+        "msn2100-cb2f": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png", "description": "Mellanox SN2100 100Gb 16pt Switch", "source": "built-in"},
+        "msn2700": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2700_1x32p_100g_switch_1u.png", "description": "Mellanox SN2700 100Gb 32pt Switch", "source": "built-in"},
+        "msn3700-vs2fc": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png", "description": "Mellanox SN3700 200Gb 32pt Switch", "source": "built-in"},
+        "msn4600c": {"type": "switch", "height_u": 2, "image_filename": "mellanox_msn4600C_1x64p_100g_switch_2u.png", "description": "Mellanox SN4600C 100Gb 64pt Switch", "source": "built-in"},
+        "msn4600": {"type": "switch", "height_u": 2, "image_filename": "mellanox_msn4600_1x64p_200g_switch_2u.png", "description": "Mellanox SN4600 200Gb 64pt Switch", "source": "built-in"},
+        "sn5600": {"type": "switch", "height_u": 2, "image_filename": "mellanox_sn5600_1x64p_800g_switch_2u.png", "description": "Mellanox SN5600 800Gb 64pt Switch", "source": "built-in"},
+        "arista_7060dx5": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista 7060DX5 800Gb Switch", "source": "built-in"},
+        "arista_7050cx4": {"type": "switch", "height_u": 1, "image_filename": "arista_7050cx4_24d_400g_switch_1u.png", "description": "Arista 7050CX4 400Gb Switch", "source": "built-in"},
+        "arista_7050dx4": {"type": "switch", "height_u": 1, "image_filename": "arista_7050dx4_32s_400g_switch_1u.png", "description": "Arista 7050DX4 400Gb Switch", "source": "built-in"},
         "arista": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista Switch (generic)", "source": "built-in"},
     }
     return builtin

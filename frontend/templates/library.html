@@ -68,50 +68,67 @@
 <div class="card">
     <h3>Device Definitions</h3>
     <table class="data-table" id="libraryTable">
+        {% set row_counter = namespace(n=0) %}
+        {% for section in [
+            {'type': 'cbox',   'label': 'CBox Hardware',   'pending': false},
+            {'type': 'dbox',   'label': 'DBox Hardware',   'pending': false},
+            {'type': 'switch', 'label': 'Switch Hardware', 'pending': false},
+            {'type': 'ebox',   'label': 'EBox Hardware',   'pending': true},
+        ] %}
         <thead>
+            <tr class="lib-section-header">
+                <th colspan="7">{{ section.label }}{% if section.pending %} <span class="lib-badge lib-badge-pending">Support Pending</span>{% endif %}</th>
+            </tr>
             <tr>
                 <th>Identifier Key</th>
-                <th class="text-center">Type</th>
                 <th class="text-center">Height</th>
                 <th class="text-center">Image</th>
                 <th>Description</th>
                 <th class="text-center">Source</th>
-                <th class="text-right">Actions</th>
+                <th class="text-right" colspan="2">Actions</th>
             </tr>
         </thead>
         <tbody>
-            {% for d in devices %}
-            <tr id="lib-row-{{ loop.index }}">
-                <td><code>{{ d.key }}</code></td>
-                <td class="text-center">{{ d.type | upper }}</td>
-                <td class="text-center">{{ d.height_u }}U</td>
-                <td class="text-center">
-                    {% if d.image_filename %}
-                    <img class="lib-thumb"
-                         src="{% if d.source == 'built-in' %}{{ url_for('library_builtin_image', filename=d.image_filename) }}{% else %}{{ url_for('library_image', filename=d.image_filename) }}{% endif %}"
-                         alt="{{ d.key }}" title="{{ d.image_filename }}">
-                    {% else %}
-                    <span class="text-muted">generic</span>
-                    {% endif %}
-                </td>
-                <td>{{ d.description or '—' }}</td>
-                <td class="text-center">
-                    {% if d.source == 'built-in' %}
-                    <span class="lib-badge lib-badge-builtin">Built-in</span>
-                    {% else %}
-                    <span class="lib-badge lib-badge-user">User</span>
-                    {% endif %}
-                </td>
-                <td class="actions">
-                    {% if d.source == 'user' %}
-                    <span class="actions-inner">
-                        <button class="btn-icon-delete" onclick="deleteDevice('{{ d.key }}', 'lib-row-{{ loop.index }}')" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
-                    </span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
+            {% set section_devices = devices | selectattr('type', 'equalto', section.type) | list %}
+            {% if section_devices %}
+                {% for d in section_devices %}
+                {% set row_counter.n = row_counter.n + 1 %}
+                <tr id="lib-row-{{ row_counter.n }}">
+                    <td><code>{{ d.key }}</code></td>
+                    <td class="text-center">{{ d.height_u }}U</td>
+                    <td class="text-center">
+                        {% if d.image_filename %}
+                        <img class="lib-thumb"
+                             src="{% if d.source == 'built-in' %}{{ url_for('library_builtin_image', filename=d.image_filename) }}{% else %}{{ url_for('library_image', filename=d.image_filename) }}{% endif %}"
+                             alt="{{ d.key }}" title="{{ d.image_filename }}">
+                        {% else %}
+                        <span class="text-muted">generic</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.description or '—' }}</td>
+                    <td class="text-center">
+                        {% if d.source == 'built-in' %}
+                        <span class="lib-badge lib-badge-builtin">Built-in</span>
+                        {% else %}
+                        <span class="lib-badge lib-badge-user">User</span>
+                        {% endif %}
+                    </td>
+                    <td class="actions" colspan="2">
+                        {% if d.source == 'user' %}
+                        <span class="actions-inner">
+                            <button class="btn-icon-delete" onclick="deleteDevice('{{ d.key }}', 'lib-row-{{ row_counter.n }}')" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted">{% if section.pending %}Not yet supported{% else %}No {{ section.type | upper }} devices defined{% endif %}</td>
+                </tr>
+            {% endif %}
         </tbody>
+        {% endfor %}
     </table>
 </div>
 

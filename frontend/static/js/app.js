@@ -19,6 +19,7 @@
     const resultLinks = document.getElementById("resultLinks");
     const btnGenerate = document.getElementById("btnGenerate");
 
+    const btnCancel = document.getElementById("btnCancel");
     let evtSource = null;
     let pollTimer = null;
 
@@ -43,6 +44,7 @@
         statusBanner.textContent = "Generating report...";
         btnGenerate.disabled = true;
         btnGenerate.textContent = "Generating...";
+        if (btnCancel) btnCancel.classList.remove("hidden");
 
         // Submit the form data
         const body = new URLSearchParams(new FormData(form));
@@ -100,16 +102,21 @@
 
     async function checkStatus() {
         try {
-            const resp = await fetch("/generate/status");
+            const resp = await fetch("/generate/status?_t=" + Date.now());
             const data = await resp.json();
             if (!data.running && data.result) {
                 clearInterval(pollTimer);
                 if (evtSource) evtSource.close();
 
-                if (data.result.success) {
-                    showSuccess(data.result);
-                } else {
-                    showError(data.result.error || "Unknown error");
+                try {
+                    if (data.result.success) {
+                        showSuccess(data.result);
+                    } else {
+                        showError(data.result.error || "Unknown error");
+                    }
+                } catch (renderErr) {
+                    console.error("Render error:", renderErr);
+                    showError("Display error — check console");
                 }
                 resetButton();
             }
@@ -153,6 +160,21 @@
         resultLinks.appendChild(dlJson);
     }
 
+    if (btnCancel) {
+        btnCancel.addEventListener("click", async function () {
+            btnCancel.disabled = true;
+            btnCancel.textContent = "Cancelling...";
+            try {
+                await fetch("/generate/cancel", { method: "POST" });
+            } catch (_) { /* best effort */ }
+            clearInterval(pollTimer);
+            if (evtSource) evtSource.close();
+            statusBanner.className = "status-banner error";
+            statusBanner.textContent = "Report generation cancelled";
+            resetButton();
+        });
+    }
+
     function showError(msg) {
         statusBanner.className = "status-banner error";
         statusBanner.textContent = "Error: " + msg;
@@ -161,5 +183,10 @@
     function resetButton() {
         btnGenerate.disabled = false;
         btnGenerate.textContent = "Generate";
+        if (btnCancel) {
+            btnCancel.classList.add("hidden");
+            btnCancel.disabled = false;
+            btnCancel.textContent = "Cancel";
+        }
     }
 })();

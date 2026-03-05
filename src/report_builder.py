@@ -62,15 +62,6 @@ try:
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
-try:
-    import weasyprint
-    from weasyprint import CSS, HTML
-
-    WEASYPRINT_AVAILABLE = True
-except (ImportError, OSError):
-    # OSError can occur when system libraries are missing
-    WEASYPRINT_AVAILABLE = False
-
 
 @dataclass
 class ReportConfig:
@@ -157,10 +148,9 @@ class VastReportBuilder:
         self.user_images_dir = user_images_dir
         self.switch_positions = {}
 
-        # Check for required libraries
-        if not REPORTLAB_AVAILABLE and not WEASYPRINT_AVAILABLE:
+        if not REPORTLAB_AVAILABLE:
             raise ReportGenerationError(
-                "Neither ReportLab nor WeasyPrint is available. Please install one of them."
+                "ReportLab is not available. Please install it: pip install reportlab"
             )
 
         # Initialize VAST brand compliance
@@ -188,13 +178,7 @@ class VastReportBuilder:
             output_file = Path(output_path)
             output_file.parent.mkdir(parents=True, exist_ok=True)
 
-            if REPORTLAB_AVAILABLE:
-                return self._generate_with_reportlab(processed_data, str(output_file))
-            elif WEASYPRINT_AVAILABLE:
-                return self._generate_with_weasyprint(processed_data, str(output_file))
-            else:
-                self.logger.error("No PDF generation library available")
-                return False
+            return self._generate_with_reportlab(processed_data, str(output_file))
 
         except Exception as e:
             self.logger.error(f"Error generating PDF report: {e}")
@@ -433,33 +417,6 @@ class VastReportBuilder:
             import traceback
 
             self.logger.debug(traceback.format_exc())
-            return False
-
-    def _generate_with_weasyprint(
-        self, processed_data: Dict[str, Any], output_path: str
-    ) -> bool:
-        """Generate PDF using WeasyPrint."""
-        try:
-            # Generate HTML content
-            html_content = self._generate_html_content(processed_data)
-
-            # Generate CSS
-            css_content = self._generate_css_content()
-
-            # Create HTML document
-            html_doc = HTML(string=html_content)
-            css_doc = CSS(string=css_content)
-
-            # Generate PDF
-            html_doc.write_pdf(output_path, stylesheets=[css_doc])
-
-            self.logger.info(
-                f"PDF report generated successfully with WeasyPrint: {output_path}"
-            )
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error generating PDF with WeasyPrint: {e}")
             return False
 
     def _create_title_page(self, data: Dict[str, Any]) -> List[Any]:
@@ -4833,39 +4790,6 @@ class VastReportBuilder:
 
         return content
 
-    def _generate_html_content(self, data: Dict[str, Any]) -> str:
-        """Generate HTML content for WeasyPrint."""
-        # This is a simplified HTML generator
-        # In a full implementation, this would generate comprehensive HTML
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>VAST As-Built Report</title>
-        </head>
-        <body>
-            <h1>VAST As-Built Report</h1>
-            <p>This is a placeholder for HTML content generation.</p>
-            <p>Cluster: {data.get('cluster_summary', {}).get('name', 'Unknown')}</p>
-        </body>
-        </html>
-        """
-        return html
-
-    def _generate_css_content(self) -> str:
-        """Generate CSS content for WeasyPrint."""
-        # This is a simplified CSS generator
-        css = """
-        body {
-            font-family: Arial, sans-serif;
-            margin: 40px;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        """
-        return css
 
 
 # Convenience function for easy usage

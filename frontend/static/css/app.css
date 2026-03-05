@@ -161,6 +161,9 @@ body {
 .btn-secondary:hover { background: #252d3d; }
 .btn-danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 .btn-danger:hover { background: #dc2626; }
+.btn-cancel { background: #b91c1c; color: #fff; border-color: #b91c1c; border-radius: 20px; padding: 0.55rem 1.75rem; }
+.btn-cancel:hover { background: #991b1b; border-color: #991b1b; }
+.btn-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-sm { padding: 0.3rem 0.75rem; font-size: 0.8rem; }
 .btn-block { width: 100%; text-align: center; padding: 0.75rem; font-size: 1rem; }
 .btn-action {
@@ -799,6 +802,22 @@ legend:first-of-type { margin-top: 0; }
 .lib-badge-user {
     background: rgba(26, 111, 181, 0.18);
     color: var(--accent);
+}
+.lib-badge-pending {
+    background: rgba(255, 165, 0, 0.18);
+    color: #b8860b;
+    font-size: 0.7rem;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+.lib-section-header th {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-weight: 700;
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--accent);
+    letter-spacing: 0.02em;
 }
 .unrecognized-alert {
     border-left: 3px solid var(--warning);
