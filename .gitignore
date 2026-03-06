@@ -153,6 +153,9 @@ secrets.yaml
 .env.production
 config/cluster_profiles.json
 
+# Confluence design docs (internal reference only, not published to GitHub)
+docs/confluence/
+
 # Local archive directory (not tracked in git)
 .archive/
 

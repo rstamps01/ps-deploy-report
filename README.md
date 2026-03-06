@@ -333,7 +333,7 @@ vast-asbuilt-reporter/
 │   ├── cluster_profiles.json        # Saved cluster profiles (auto-managed)
 │   └── device_library.json          # User-defined hardware devices (auto-managed)
 ├── docs/
-│   ├── confluence/                  # 26 design/requirements docs synced from Confluence
+│   ├── confluence/                  # Internal only (not published to GitHub)
 │   └── deployment/                  # Installation, update, uninstall, permissions guides
 ├── frontend/
 │   ├── templates/                   # Jinja2 HTML templates
@@ -419,7 +419,7 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 ### Design Reference
 
-Project design documents are maintained in `docs/confluence/` (synced from Confluence page 6664028496). Cursor workspace rules in `.cursor/rules/` enforce architecture, coding standards, and change control conventions.
+Project design documents are synced from Confluence into `docs/confluence/` on developer machines (not published to GitHub). Cursor workspace rules in `.cursor/rules/` enforce architecture, coding standards, and change control conventions.
 
 ## Troubleshooting
 
