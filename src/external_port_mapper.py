@@ -18,13 +18,38 @@ SUPPORTED SWITCH OPERATING SYSTEMS:
 """
 
 import logging
+import os
 import re
+import shutil
 import subprocess
 from typing import Any, Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def _subprocess_env() -> dict:
+    """Return a subprocess environment with PATH augmented for bundled apps.
+
+    PyInstaller bundles strip the parent shell PATH. Homebrew tools like
+    ``sshpass`` live in /opt/homebrew/bin (Apple Silicon) or /usr/local/bin
+    (Intel) and must be reachable.
+    """
+    env = os.environ.copy()
+    extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+    existing = env.get("PATH", "")
+    for p in extra:
+        if p not in existing:
+            existing = f"{p}:{existing}"
+    env["PATH"] = existing
+    return env
+
+
+def _has_sshpass() -> bool:
+    """Check whether sshpass is available on PATH (with augmented env)."""
+    env = _subprocess_env()
+    return shutil.which("sshpass", path=env.get("PATH")) is not None
 
 
 class VerboseLogger:
@@ -316,7 +341,7 @@ class ExternalPortMapper:
                 ]
 
                 self.vlog.log_command(cmd, f"OS Detection test for {expected_os}")
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=_subprocess_env())
                 self.vlog.log_result(result, f"{expected_os} test result")
 
                 # Check both stdout and stderr for OS identification
@@ -726,10 +751,7 @@ class ExternalPortMapper:
             self.vlog.log_operation("Collecting hostname to IP mapping via clush")
             self.vlog.log_command(cmd, "CLUSH HOSTNAME COMMAND")
 
-            # Try with explicit environment to ensure PATH and other vars are available
-            import os
-
-            env = os.environ.copy()
+            env = _subprocess_env()
             self.vlog.log(
                 f"subprocess.run() parameters: capture_output=True, text=True, timeout=30, env={len(env)} vars",
                 self.vlog.BLUE,
@@ -815,7 +837,7 @@ class ExternalPortMapper:
             ]
 
             self.vlog.log_command(cmd, "CLUSH NODE MAC COMMAND")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=_subprocess_env())
             self.vlog.log_result(result, "CLUSH NODE MAC RESULT")
 
             if result.returncode != 0:
@@ -987,7 +1009,7 @@ class ExternalPortMapper:
 
                     self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=30
+                        cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
                     )
                     self.vlog.log_result(result, "General MAC table result")
                     result_returncode = result.returncode
@@ -1051,7 +1073,7 @@ class ExternalPortMapper:
                         vlan69_cmd, f"VLAN 69 MAC table query ({os_type})"
                     )
                     vlan69_result = subprocess.run(
-                        vlan69_cmd, capture_output=True, text=True, timeout=30
+                        vlan69_cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
                     )
                     self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
                     vlan69_returncode = vlan69_result.returncode
@@ -1271,7 +1293,7 @@ class ExternalPortMapper:
 
                     self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
                     result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=30
+                        cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
                     )
                     self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
                     returncode = result.returncode

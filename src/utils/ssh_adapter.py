@@ -58,6 +58,20 @@ def run_interactive_ssh(
 # macOS / Linux implementations
 # ---------------------------------------------------------------------------
 
+def _augmented_env() -> dict:
+    """Return env with PATH augmented for Homebrew tool locations."""
+    import os
+
+    env = os.environ.copy()
+    extra = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]
+    existing = env.get("PATH", "")
+    for p in extra:
+        if p not in existing:
+            existing = f"{p}:{existing}"
+    env["PATH"] = existing
+    return env
+
+
 def _subprocess_ssh(
     host: str,
     username: str,
@@ -66,13 +80,12 @@ def _subprocess_ssh(
     timeout: int,
     known_hosts_file: str,
 ) -> Tuple[int, str, str]:
-    """Non-interactive SSH via the system ssh binary (uses sshpass if available)."""
-    import os
+    """Non-interactive SSH via sshpass + ssh.  Falls back to paramiko if sshpass is missing."""
     import shutil
 
-    env = os.environ.copy()
+    env = _augmented_env()
 
-    if shutil.which("sshpass"):
+    if shutil.which("sshpass", path=env.get("PATH")):
         cmd = [
             "sshpass", "-p", password,
             "ssh",
@@ -81,22 +94,16 @@ def _subprocess_ssh(
             f"{username}@{host}",
             command,
         ]
-    else:
-        cmd = [
-            "ssh",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", f"UserKnownHostsFile={known_hosts_file}",
-            f"{username}@{host}",
-            command,
-        ]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+            return result.returncode, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return 1, "", f"SSH command timed out after {timeout}s"
+        except Exception as exc:
+            return 1, "", str(exc)
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
-        return result.returncode, result.stdout, result.stderr
-    except subprocess.TimeoutExpired:
-        return 1, "", f"SSH command timed out after {timeout}s"
-    except Exception as exc:
-        return 1, "", str(exc)
+    logger.debug("sshpass not found, falling back to paramiko for %s", host)
+    return _paramiko_exec(host, username, password, command, timeout)
 
 
 def _pexpect_interactive(
