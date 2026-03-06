@@ -314,7 +314,7 @@ class VastReportBuilder:
         if port_mapping.get("available") and port_mapping.get("status") == "complete":
             # Extract port mapping data and switches for the method
             hardware = processed_data.get("hardware_inventory", {})
-            switches = hardware.get("switches", [])
+            switches = hardware.get("switches") or []
             story.extend(
                 self._create_port_mapping_section(
                     port_mapping,
@@ -449,7 +449,7 @@ class VastReportBuilder:
             self.logger.error(f"Error generating PDF with ReportLab: {e}")
             import traceback
 
-            self.logger.debug(traceback.format_exc())
+            self.logger.error(traceback.format_exc())
             return False
 
     def _create_title_page(self, data: Dict[str, Any]) -> List[Any]:
@@ -461,8 +461,8 @@ class VastReportBuilder:
 
         # Get hardware information from hardware inventory
         hardware_inventory = data.get("hardware_inventory", {})
-        cnodes = hardware_inventory.get("cnodes", [])
-        dnodes = hardware_inventory.get("dnodes", [])
+        cnodes = hardware_inventory.get("cnodes") or []
+        dnodes = hardware_inventory.get("dnodes") or []
 
         # Create VAST brand-compliant header
         title = "VAST As-Built Report"
@@ -520,7 +520,7 @@ class VastReportBuilder:
                 hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
 
             # Switch Hardware (from switch inventory)
-            switches = hardware_inventory.get("switches", [])
+            switches = hardware_inventory.get("switches") or []
             if switches:
                 switch_models = set()
                 switch_count = len(switches)
@@ -1313,11 +1313,11 @@ class VastReportBuilder:
         # Hardware overview table
         hardware = data.get("hardware_inventory", {})
         total_nodes = hardware.get("total_nodes", 0)
-        cnodes = len(hardware.get("cnodes", []))
-        dnodes = len(hardware.get("dnodes", []))
-        cboxes = len(hardware.get("cboxes", []))
-        dboxes = len(hardware.get("dboxes", []))
-        switches_list = hardware.get("switches", [])
+        cnodes = len(hardware.get("cnodes") or [])
+        dnodes = len(hardware.get("dnodes") or [])
+        cboxes = len(hardware.get("cboxes") or {})
+        dboxes = len(hardware.get("dboxes") or {})
+        switches_list = hardware.get("switches") or []
         total_switches = len(switches_list)
 
         # Calculate leaf and spine switches
@@ -1832,11 +1832,11 @@ class VastReportBuilder:
         hardware = data.get("hardware_inventory", {})
 
         # Extract hardware collections early (used by inventory table and switch placement)
-        cboxes = hardware.get("cboxes", {})
-        cnodes = hardware.get("cnodes", [])
-        dboxes = hardware.get("dboxes", {})
-        dnodes = hardware.get("dnodes", [])
-        switches = hardware.get("switches", [])
+        cboxes = hardware.get("cboxes") or {}
+        cnodes = hardware.get("cnodes") or []
+        dboxes = hardware.get("dboxes") or {}
+        dnodes = hardware.get("dnodes") or []
+        switches = hardware.get("switches") or []
 
         # Add storage capacity section
         cluster_info = data.get("cluster_summary", {})
@@ -1980,8 +1980,8 @@ class VastReportBuilder:
                 )
             elif switches and len(switches) == 2:
                 # --- Auto placement: cascade through racks ---
-                hw_cnodes = hardware.get("cnodes", [])
-                hw_dboxes_raw = hardware.get("dboxes", {})
+                hw_cnodes = hardware.get("cnodes") or []
+                hw_dboxes_raw = hardware.get("dboxes") or {}
 
                 per_rack_cboxes: Dict[str, list] = {}
                 for cnode in hw_cnodes:
@@ -2076,7 +2076,7 @@ class VastReportBuilder:
                 racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], switches: []}
 
                 # Get CBox information and group by rack
-                hw_cnodes = hardware.get("cnodes", [])
+                hw_cnodes = hardware.get("cnodes") or []
                 for cnode in hw_cnodes:
                     cbox_id = cnode.get("cbox_id")
                     # Find corresponding cbox to get rack_name
@@ -2127,7 +2127,7 @@ class VastReportBuilder:
                         racks_data[rack_name]["dboxes"].append(dbox_data)
 
                 # Assign switches to racks for diagram generation.
-                switches = hardware.get("switches", [])
+                switches = hardware.get("switches") or []
                 manual_rack_map = getattr(self, "manual_rack_placements", {})
 
                 if manual_rack_map:
@@ -3324,9 +3324,9 @@ class VastReportBuilder:
             hardware_inventory = data.get("hardware_inventory", {})
 
             # Convert cboxes/dboxes from dict to list if needed
-            cboxes_data = hardware_inventory.get("cboxes", [])
-            dboxes_data = hardware_inventory.get("dboxes", [])
-            switches_data = hardware_inventory.get("switches", [])
+            cboxes_data = hardware_inventory.get("cboxes") or {}
+            dboxes_data = hardware_inventory.get("dboxes") or {}
+            switches_data = hardware_inventory.get("switches") or []
 
             # If cboxes/dboxes are dicts (keyed by name), convert to list of values
             cboxes_list = (
@@ -3947,7 +3947,7 @@ class VastReportBuilder:
 
         # Get switch data
         hardware = data.get("hardware_inventory", {})
-        switches = hardware.get("switches", [])
+        switches = hardware.get("switches") or []
 
         if not switches:
             content.append(Paragraph("No switch data available", styles["Normal"]))

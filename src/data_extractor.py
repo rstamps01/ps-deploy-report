@@ -170,6 +170,7 @@ class VastDataExtractor:
         return HardwareInventory(
             cnodes=[], dnodes=[], cboxes={}, dboxes={},
             total_nodes=0, rack_positions_available=False,
+            physical_layout={}, switches=[],
         )
 
     def extract_cluster_summary(self, raw_data: Dict[str, Any]) -> ClusterSummary:

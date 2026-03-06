@@ -51,8 +51,8 @@ if command -v create-dmg &> /dev/null; then
         --window-pos 200 120 \
         --window-size 540 380 \
         --icon-size 100 \
-        --icon "VAST Reporter.app" 150 170 \
-        --app-drop-link 390 170 \
+        --icon "VAST Reporter.app" 150 100 \
+        --app-drop-link 390 100 \
         "$DIST_DIR/$DMG_NAME" \
         "$APP_PATH"
     echo "DMG created: $DIST_DIR/$DMG_NAME"
