@@ -165,6 +165,13 @@ class VastDataExtractor:
             "Data extractor initialized with enhanced processing capabilities"
         )
 
+    def _empty_hardware_inventory(self) -> HardwareInventory:
+        """Return a minimal HardwareInventory when the section is disabled."""
+        return HardwareInventory(
+            cnodes=[], dnodes=[], cboxes={}, dboxes={},
+            total_nodes=0, rack_positions_available=False,
+        )
+
     def extract_cluster_summary(self, raw_data: Dict[str, Any]) -> ClusterSummary:
         """
         Extract and process cluster summary information.
@@ -2000,18 +2007,45 @@ class VastDataExtractor:
         try:
             self.logger.info("Starting comprehensive data extraction")
 
-            # Extract all sections
+            def _section_enabled(key: str) -> bool:
+                return self.sections_config.get(key, True)
+
+            # Extract all sections (respecting config toggles)
             cluster_summary = self.extract_cluster_summary(raw_data)
-            hardware_inventory = self.extract_hardware_inventory(raw_data)
+            hardware_inventory = (
+                self.extract_hardware_inventory(raw_data)
+                if _section_enabled("hardware_inventory")
+                else self._empty_hardware_inventory()
+            )
             network_config = self.extract_network_configuration(raw_data)
             cluster_network_config = self.extract_cluster_network_configuration(
                 raw_data
+            ) if _section_enabled("network_configuration") else self.extract_cluster_network_configuration({})
+            cnodes_network_config = (
+                self.extract_cnodes_network_configuration(raw_data)
+                if _section_enabled("network_configuration")
+                else self.extract_cnodes_network_configuration({})
             )
-            cnodes_network_config = self.extract_cnodes_network_configuration(raw_data)
-            dnodes_network_config = self.extract_dnodes_network_configuration(raw_data)
-            logical_config = self.extract_logical_configuration(raw_data)
-            security_config = self.extract_security_configuration(raw_data)
-            protection_config = self.extract_data_protection_configuration(raw_data)
+            dnodes_network_config = (
+                self.extract_dnodes_network_configuration(raw_data)
+                if _section_enabled("network_configuration")
+                else self.extract_dnodes_network_configuration({})
+            )
+            logical_config = (
+                self.extract_logical_configuration(raw_data)
+                if _section_enabled("logical_configuration")
+                else self.extract_logical_configuration({})
+            )
+            security_config = (
+                self.extract_security_configuration(raw_data)
+                if _section_enabled("security_authentication")
+                else self.extract_security_configuration({})
+            )
+            protection_config = (
+                self.extract_data_protection_configuration(raw_data)
+                if _section_enabled("data_protection")
+                else self.extract_data_protection_configuration({})
+            )
 
             # Extract enhanced sections
             performance_metrics = self.extract_performance_metrics(raw_data)

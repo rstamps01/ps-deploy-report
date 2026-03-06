@@ -81,6 +81,39 @@ class ReportConfig:
     include_timestamp: bool = True
     include_enhanced_features: bool = True
 
+    @classmethod
+    def from_yaml(cls, config: Dict[str, Any]) -> "ReportConfig":
+        """Build a ReportConfig from a parsed config.yaml dictionary.
+
+        Supports both flat (``report.margin_top``) and nested
+        (``report.template.margin_top``, ``report.pdf.font_size``) layouts.
+        """
+        report = config.get("report", {})
+        template = report.get("template", {})
+        pdf = report.get("pdf", {})
+        kwargs: Dict[str, Any] = {}
+
+        def _set(field: str, value: Any, conv: type) -> None:
+            if value is not None:
+                try:
+                    kwargs[field] = conv(value)
+                except (ValueError, TypeError):
+                    pass
+
+        _set("page_size", template.get("page_size", report.get("page_size")), str)
+        for m in ("margin_top", "margin_bottom", "margin_left", "margin_right"):
+            _set(m, template.get(m, report.get(m)), float)
+        _set("font_name", pdf.get("font_family", pdf.get("font_name", report.get("font_name"))), str)
+        _set("font_size", pdf.get("font_size", report.get("font_size")), int)
+        _set("title_font_size", pdf.get("title_font_size", report.get("title_font_size")), int)
+        _set("heading_font_size", pdf.get("heading_font_size", report.get("heading_font_size")), int)
+        _set("line_spacing", report.get("line_spacing"), float)
+        _set("include_toc", pdf.get("include_toc", report.get("include_toc")), bool)
+        _set("include_timestamp", report.get("include_timestamp"), bool)
+        _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
+
+        return cls(**kwargs)
+
 
 @dataclass
 class ReportSection:
@@ -359,10 +392,10 @@ class VastReportBuilder:
                 temp_doc = BaseDocTemplate(
                     temp_file.name,
                     pagesize=page_size,
-                    rightMargin=0.5 * inch,
-                    leftMargin=0.5 * inch,
-                    topMargin=0.5 * inch,
-                    bottomMargin=0.75 * inch,
+                    rightMargin=self.config.margin_right * inch,
+                    leftMargin=self.config.margin_left * inch,
+                    topMargin=self.config.margin_top * inch,
+                    bottomMargin=self.config.margin_bottom * inch,
                 )
                 temp_doc.addPageTemplates([page_template])
 
@@ -391,10 +424,10 @@ class VastReportBuilder:
             doc = BaseDocTemplate(
                 output_path,
                 pagesize=page_size,
-                rightMargin=0.5 * inch,
-                leftMargin=0.5 * inch,
-                topMargin=0.5 * inch,
-                bottomMargin=0.75 * inch,
+                rightMargin=self.config.margin_right * inch,
+                leftMargin=self.config.margin_left * inch,
+                topMargin=self.config.margin_top * inch,
+                bottomMargin=self.config.margin_bottom * inch,
             )
             doc.addPageTemplates([page_template])
 

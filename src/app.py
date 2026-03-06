@@ -535,7 +535,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
     """Execute the report pipeline in a background thread."""
     from api_handler import create_vast_api_handler
     from data_extractor import create_data_extractor
-    from report_builder import create_report_builder
+    from report_builder import create_report_builder, ReportConfig
     from utils.logger import setup_logging
 
     with app.config["JOB_LOCK"]:
@@ -578,7 +578,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             config=config,
         )
         data_extractor = create_data_extractor(config)
+        report_config = ReportConfig.from_yaml(config)
         report_builder = create_report_builder(
+            config=report_config,
             library_path=app.config.get("LIBRARY_PATH"),
             user_images_dir=app.config.get("USER_IMAGES_DIR"),
         )
