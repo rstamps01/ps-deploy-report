@@ -245,7 +245,9 @@ class ExternalPortMapper:
         print(f"\n✅ Verbose logging enabled: {self.vlog.log_file}\n")
 
         # Setup SSH known_hosts file in workspace (writable location)
-        self.ssh_dir = Path(".ssh_workspace")
+        from utils import get_data_dir
+
+        self.ssh_dir = get_data_dir() / ".ssh_workspace"
         self.ssh_dir.mkdir(exist_ok=True)
         self.known_hosts_file = self.ssh_dir / "known_hosts"
         self.known_hosts_file.touch(exist_ok=True)
