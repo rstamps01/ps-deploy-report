@@ -5,6 +5,47 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-03-05
+
+### Added
+- **Hardware Device Library**: New Library page (`/library`) with categorized tables (CBox, DBox, Switch, EBox with Support Pending), user-defined device upload, image preview, and persistent JSON storage
+- **Hardware Image Refresh**: 20 bezel images extracted, cropped edge-to-edge, and added for CBoxes (Dell Turin, SMC Turin, HPE/Dell IceLake, HPE Genoa), DBoxes (Ceres V2, Maverick), and Switches (Arista 7050 series, SN5600, MSN2700, MSN4600)
+- **Partial Key Matching**: Device lookup in rack/network diagrams now sorts keys longest-first to prevent `msn4600` from incorrectly matching before `msn4600c`
+- **Job Cancellation**: Cancel button on the Generate page with `/generate/cancel` endpoint; 8 cancellation checkpoints in the report pipeline using `threading.Event` for graceful abort
+- **Exit Button**: Navbar Exit button with confirmation prompt; graceful server shutdown via stored `werkzeug` server reference
+- **Favicon & App Icon**: White VAST logo as browser favicon; blue VAST logo as `.icns`/`.ico` for macOS `.app` bundle and DMG installer
+- **macOS Launcher**: `Start Reporter.command` double-click launcher in project root
+- **Port Mapping Logging**: Specific error messages when SSH port mapping fails (missing switch IPs, CNode IPs, SSH errors) instead of silent failure
+
+### Changed
+- **Threaded Server**: `make_server` now runs with `threaded=True` to allow concurrent SSE log stream and status polling, fixing UI hang after report completion
+- **Status Polling**: Added `Cache-Control: no-store` headers and `?_t=<timestamp>` cache-buster to `/generate/status` to prevent stale browser caching
+- **Library Table Sections**: Device definitions organized into CBox, DBox, Switch, and EBox categories with section headers and pending-support badges
+- **Footer Copyright**: Updated to `© 2026 VAST Data`
+- **Height Field**: Removed spinner arrows from Manual Switch Placement U-position input
+- **Build Script**: Fixed `build-mac.sh` grep for macOS compatibility; `.spec` updated to bundle `device_library.json`, `cluster_profiles.json`, and exclude large source composite image
+- **Launcher Test**: Fixed `test_run_gui_starts_flask` to mock `make_server` instead of deprecated `flask_app.run()`
+
+### Fixed
+- **Rack Diagram Images**: Reverted from custom `_StretchedImage` widget to native `GraphicsImage` shape, fixing invisible hardware images in rack diagrams
+- **Image Padding**: Auto-cropped transparent/white borders from 6 hardware images to achieve edge-to-edge rack slot rendering
+- **Report Hang**: Enabled multi-threaded werkzeug server to prevent SSE stream from blocking status polling
+- **Shutdown Crash**: Replaced `os._exit(0)` with graceful `server.shutdown()` via background thread to prevent abrupt process termination
+- **WeasyPrint Cleanup**: Removed dead WeasyPrint/Cairo imports from `report_builder.py` and `requirements-dev.txt`
+
+### Technical Details
+- `src/app.py`: Added `/library`, `/generate/cancel`, `/shutdown` routes; `JOB_CANCEL` threading.Event; `_SERVER` config key for graceful shutdown; port mapping error logging
+- `src/rack_diagram.py`: Updated `image_map`, `one_u_models`, `two_u_models`; longest-first partial key matching in `_get_hardware_image_path()` and `_get_device_height_units()`
+- `src/network_diagram.py`: Longest-first partial key matching in `load_hardware_image()`
+- `src/main.py`: `threading` and `webbrowser` moved to module-level imports; `flask_app.config["_SERVER"] = server`
+- `frontend/templates/base.html`: Favicon link, apple-touch-icon, Exit button in navbar
+- `frontend/templates/library.html`: 4-section device table with Jinja2 `selectattr` filtering
+- `frontend/static/css/app.css`: `.btn-exit`, `.btn-cancel`, `.lib-section-header`, `.lib-badge-pending`, spinner removal for `#uPositionInput`
+- `frontend/static/js/app.js`: Exit button handler with confirmation; Cancel button handler; cache-busting on status fetch
+- `packaging/icons/icon.icns`, `icon.ico`: Generated from VAST-Data-Icon-Blue.png
+- `packaging/vast-reporter.spec`: Bundled device_library.json, cluster_profiles.json; per-file hardware image inclusion; NSAppTransportSecurity plist entry
+- Tests: 214 passed (fixed hanging `test_run_gui_starts_flask`)
+
 ## [1.4.0] - 2026-03-04
 
 ### Added

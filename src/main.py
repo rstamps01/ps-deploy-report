@@ -22,6 +22,8 @@ import argparse
 import getpass
 import os
 import sys
+import threading
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -807,9 +809,6 @@ def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
 
 def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     """Launch the Flask web UI and open the default browser."""
-    import threading
-    import webbrowser
-
     from werkzeug.serving import make_server
 
     from app import create_flask_app
@@ -822,6 +821,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     flask_app = create_flask_app(config)
 
     server = make_server(host, port, flask_app, threaded=True)
+    flask_app.config["_SERVER"] = server
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 

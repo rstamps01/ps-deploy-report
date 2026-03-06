@@ -7,6 +7,24 @@
 (function () {
     "use strict";
 
+    // -- Exit button (available on every page) ----------------------------
+
+    const btnExit = document.getElementById("btnExit");
+    if (btnExit) {
+        btnExit.addEventListener("click", function () {
+            if (!confirm("Exit the application?")) return;
+            btnExit.disabled = true;
+            btnExit.textContent = "Exiting…";
+            fetch("/shutdown", { method: "POST" }).catch(function () {});
+            setTimeout(function () {
+                document.body.innerHTML =
+                    '<div style="display:flex;align-items:center;justify-content:center;' +
+                    'height:100vh;background:#0f1724;color:#94a3b8;font-family:sans-serif;' +
+                    'font-size:1.1rem;">Application stopped. You may close this window.</div>';
+            }, 500);
+        });
+    }
+
     // -- Generate form submission + SSE -----------------------------------
 
     const form = document.getElementById("generateForm");

@@ -177,6 +177,21 @@ def _register_routes(app: Flask) -> None:
             }
         return jsonify({"status": "cancelled"})
 
+    # -- Application shutdown ------------------------------------------------
+
+    @app.route("/shutdown", methods=["POST"])
+    def shutdown():
+        server = app.config.get("_SERVER")
+        if server is not None:
+            threading.Thread(
+                target=server.shutdown, daemon=True
+            ).start()
+        else:
+            threading.Thread(
+                target=lambda: os._exit(0), daemon=True
+            ).start()
+        return jsonify({"status": "shutting_down"})
+
     # -- SSE log stream -----------------------------------------------------
 
     @app.route("/stream/logs")
@@ -585,10 +600,18 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         # Optional port mapping
         _check_cancel(app)
         if params.get("enable_port_mapping"):
-            job_logger.info("Collecting port mapping data...")
-            port_data = _collect_port_mapping_web(params, raw_data, api_handler)
+            job_logger.info("Collecting port mapping data via SSH...")
+            port_data = _collect_port_mapping_web(
+                params, raw_data, api_handler
+            )
             if port_data:
                 raw_data["port_mapping_external"] = port_data
+                job_logger.info("Port mapping data collected successfully")
+            else:
+                job_logger.warning(
+                    "Port mapping collection failed — check SSH "
+                    "credentials and network connectivity"
+                )
 
         # Process data
         _check_cancel(app)
@@ -660,6 +683,7 @@ def _collect_port_mapping_web(
         switches = switch_inventory.get("switches", [])
         switch_ips = [sw.get("mgmt_ip") for sw in switches if sw.get("mgmt_ip")]
         if not switch_ips:
+            logger.warning("No switch management IPs found — cannot collect port mapping")
             return None
 
         cnodes_network = raw_data.get("cnodes_network", [])
@@ -669,6 +693,7 @@ def _collect_port_mapping_web(
             if cnode_ip and cnode_ip != "Unknown":
                 break
         if not cnode_ip:
+            logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
 
         mapper = ExternalPortMapper(
@@ -683,8 +708,16 @@ def _collect_port_mapping_web(
             switch_password=params.get("switch_password", ""),
         )
         result = mapper.collect_port_mapping()
-        return result if result.get("available") else None
-    except Exception:
+        if result.get("available"):
+            logger.info("Port mapping collection succeeded")
+            return result
+        logger.warning(
+            "Port mapping collection returned unavailable: %s",
+            result.get("error", "unknown reason"),
+        )
+        return None
+    except Exception as exc:
+        logger.error("Port mapping collection failed: %s", exc)
         return None
 
 
