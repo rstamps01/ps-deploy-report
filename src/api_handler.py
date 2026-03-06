@@ -711,7 +711,8 @@ class VastApiHandler:
                     )
                     return True
             return False
-        except Exception:
+        except (requests.RequestException, ValueError, KeyError) as exc:
+            self.logger.debug("JWT auth attempt failed: %s", exc)
             return False
 
     def _detect_cluster_capabilities(self) -> None:

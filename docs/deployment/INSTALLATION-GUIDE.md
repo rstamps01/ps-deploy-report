@@ -2,420 +2,305 @@
 
 **For VAST Professional Services Engineers**
 
-This guide provides step-by-step installation instructions for Mac and Windows laptops used by PS engineers.
-
 ## Table of Contents
 
-1. [Quick Start](#quick-start)
+1. [Quick Start — Desktop Application](#quick-start--desktop-application)
 2. [macOS Installation](#macos-installation)
 3. [Windows Installation](#windows-installation)
 4. [Post-Installation Setup](#post-installation-setup)
-5. [Troubleshooting](#troubleshooting)
-6. [Uninstallation](#uninstallation)
+5. [Updating](#updating)
+6. [Developer Installation](#developer-installation)
+7. [Troubleshooting](#troubleshooting)
+8. [Uninstallation](#uninstallation)
 
-## Quick Start
+---
 
-### For Mac Users
-```bash
-# Download and run the installation script
-curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-mac.sh
-chmod +x install-mac.sh
-./install-mac.sh
-```
+## Quick Start — Desktop Application
 
-### For Windows Users
-```powershell
-# Download and run the installation script
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-.\install-windows.ps1
-```
+The fastest way to get started. No Python, package managers, or terminal commands required.
+
+**macOS:**
+1. Download **[VAST-Reporter-v1.4.1-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.1-mac.dmg)**
+2. Open the `.dmg` and drag **VAST Reporter** to **Applications**
+3. Launch from Applications
+
+**Windows:**
+1. Download **VAST-Reporter-v1.4.1-win.zip** from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest)
+2. Extract the `.zip` to a folder (e.g. `C:\Program Files\VAST Reporter`)
+3. Run `vast-reporter.exe`
+
+The application opens a browser window at `http://127.0.0.1:5173` with the full web UI. No additional setup is needed.
+
+---
 
 ## macOS Installation
 
 ### Prerequisites
 
-- **macOS Version**: 10.15 (Catalina) or later
-- **Architecture**: Intel or Apple Silicon (M1/M2)
-- **Internet Connection**: Required for downloading dependencies
-- **Administrator Access**: Required for installing system packages
+- **macOS**: 11 (Big Sur) or later
+- **Architecture**: Intel or Apple Silicon (M1/M2/M3)
+- **Disk Space**: ~100 MB
 
-### Automated Installation (Recommended)
+### Step-by-Step
 
-1. **Download the installation script:**
+1. **Download the DMG installer:**
+
+   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.1-mac.dmg`.
+
+   Or from the terminal:
    ```bash
-   curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-mac.sh
+   curl -LO https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.1-mac.dmg
    ```
 
-2. **Make the script executable:**
-   ```bash
-   chmod +x install-mac.sh
-   ```
+2. **Install the application:**
 
-3. **Run the installation script:**
-   ```bash
-   ./install-mac.sh
-   ```
+   - Double-click the downloaded `.dmg` file to mount it
+   - Drag **VAST Reporter** into the **Applications** folder shortcut
+   - Eject the DMG after copying completes
 
-4. **Follow the prompts** and wait for installation to complete.
+3. **First launch — bypass Gatekeeper:**
 
-### Manual Installation
+   Since the app is not signed with an Apple Developer ID, macOS will block it on first launch:
+   - Open **Applications** in Finder
+   - **Right-click** (or Control-click) **VAST Reporter** > **Open**
+   - Click **Open** in the confirmation dialog
+   - This only needs to be done once; subsequent launches work normally
 
-If you prefer to install manually or the automated script fails:
+4. **Verify:**
 
-#### Step 1: Install Homebrew
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-#### Step 2: Install Python
-```bash
-brew install python@3.12
-```
-
-#### Step 3: Install System Dependencies
-```bash
-brew install pango harfbuzz libffi libxml2 libxslt cairo gobject-introspection
-```
-
-#### Step 4: Clone Repository
-```bash
-git clone https://github.com/rstamps01/ps-deploy-report.git ~/vast-asbuilt-reporter
-cd ~/vast-asbuilt-reporter
-```
-
-#### Step 5: Create Virtual Environment
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-```
-
-#### Step 6: Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-#### Step 7: Setup Configuration
-```bash
-cp config/config.yaml.template config/config.yaml
-mkdir -p output logs
-```
+   The app will:
+   - Start a local web server on port 5173
+   - Open your default browser to `http://127.0.0.1:5173`
+   - Display the VAST As-Built Reporter dashboard
 
 ### What Gets Installed
 
-- **Python 3.12**: Latest stable Python version
-- **Homebrew**: Package manager for macOS
-- **System Dependencies**: Libraries required for PDF generation
-- **Python Dependencies**: All required Python packages
-- **Project Files**: Complete VAST As-Built Report Generator
-- **Desktop Shortcut**: Easy access from desktop
-- **Launch Script**: `run-vast-asbuilt-reporter.sh` for easy execution
+| Component | Location |
+|-----------|----------|
+| Application | `/Applications/VAST Reporter.app` |
+| Reports | Saved to the directory you choose in the UI (default: `~/reports`) |
+| Logs | Inside the app bundle (temporary) |
 
-### Installation Location
+The application is fully self-contained — it bundles Python, all libraries, and assets inside the `.app` bundle. Nothing else is installed on your system.
 
-- **Project Directory**: `~/vast-asbuilt-reporter/`
-- **Virtual Environment**: `~/vast-asbuilt-reporter/venv/`
-- **Configuration**: `~/vast-asbuilt-reporter/config/config.yaml`
-- **Logs**: `~/vast-asbuilt-reporter/logs/`
-- **Output**: `~/vast-asbuilt-reporter/output/`
+---
 
 ## Windows Installation
 
 ### Prerequisites
 
-- **Windows Version**: Windows 10 or later
-- **Architecture**: x64 or ARM64
-- **Internet Connection**: Required for downloading dependencies
-- **Administrator Access**: Required for installing system packages
-- **PowerShell**: Version 5.1 or later
+- **Windows**: 10 or later
+- **Architecture**: x64
+- **Disk Space**: ~100 MB
 
-### Automated Installation (Recommended)
+### Step-by-Step
 
-1. **Open PowerShell as Administrator:**
-   - Right-click Start button → "Windows PowerShell (Admin)"
-   - Or search "PowerShell" → Right-click → "Run as administrator"
+1. **Download the ZIP package:**
 
-2. **Set Execution Policy:**
-   ```powershell
-   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-   ```
+   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.1-win.zip`.
 
-3. **Download and run the installation script:**
-   ```powershell
-   Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/v1.3.0/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
-   .\install-windows.ps1
-   ```
+2. **Extract and install:**
 
-4. **Follow the prompts** and wait for installation to complete.
+   - Right-click the `.zip` file > **Extract All...**
+   - Choose a location (e.g. `C:\Program Files\VAST Reporter` or `%USERPROFILE%\VAST Reporter`)
+   - Open the extracted folder
 
-### Manual Installation
+3. **Launch:**
 
-If you prefer to install manually or the automated script fails:
-
-#### Step 1: Install Chocolatey
-```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-```
-
-#### Step 2: Install Python and Git
-```powershell
-choco install python312 git -y
-```
-
-#### Step 3: Install System Dependencies
-```powershell
-choco install vcredist-all 7zip -y
-```
-
-#### Step 4: Clone Repository
-```powershell
-git clone https://github.com/rstamps01/ps-deploy-report.git $env:USERPROFILE\vast-asbuilt-reporter
-cd $env:USERPROFILE\vast-asbuilt-reporter
-```
-
-#### Step 5: Create Virtual Environment
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-```
-
-#### Step 6: Install Dependencies
-```powershell
-pip install -r requirements.txt
-```
-
-#### Step 7: Setup Configuration
-```powershell
-Copy-Item "config\config.yaml.template" "config\config.yaml"
-New-Item -ItemType Directory -Path "output" -Force
-New-Item -ItemType Directory -Path "logs" -Force
-```
+   - Double-click `vast-reporter.exe`
+   - If Windows Defender SmartScreen blocks it, click **More info** > **Run anyway**
+   - The browser opens to `http://127.0.0.1:5173`
 
 ### What Gets Installed
 
-- **Python 3.12**: Latest stable Python version
-- **Chocolatey**: Package manager for Windows
-- **Git**: Version control system
-- **Visual C++ Redistributable**: Required for some Python packages
-- **Python Dependencies**: All required Python packages
-- **Project Files**: Complete VAST As-Built Report Generator
-- **Desktop Shortcut**: Easy access from desktop
-- **Start Menu Shortcut**: Available in Start Menu
-- **Launch Scripts**: Both `.bat` and `.ps1` versions
-
-### Installation Location
-
-- **Project Directory**: `%USERPROFILE%\vast-asbuilt-reporter\`
-- **Virtual Environment**: `%USERPROFILE%\vast-asbuilt-reporter\venv\`
-- **Configuration**: `%USERPROFILE%\vast-asbuilt-reporter\config\config.yaml`
-- **Logs**: `%USERPROFILE%\vast-asbuilt-reporter\logs\`
-- **Output**: `%USERPROFILE%\vast-asbuilt-reporter\output\`
-
-## Post-Installation Setup
-
-### First Run
-
-1. **Test the installation:**
-   ```bash
-   # macOS
-   cd ~/vast-asbuilt-reporter
-   ./run-vast-asbuilt-reporter.sh --version
-
-   # Windows
-   cd %USERPROFILE%\vast-asbuilt-reporter
-   run-vast-asbuilt-reporter.bat --version
-   ```
-
-2. **Generate your first report:**
-   ```bash
-   # macOS
-   ./run-vast-asbuilt-reporter.sh --cluster 192.168.1.100 --output ./output
-
-   # Windows
-   run-vast-asbuilt-reporter.bat --cluster 192.168.1.100 --output .\output
-   ```
-
-### Configuration
-
-Edit the configuration file to customize settings:
-
-**macOS:**
-```bash
-nano ~/vast-asbuilt-reporter/config/config.yaml
-```
-
-**Windows:**
-```powershell
-notepad $env:USERPROFILE\vast-asbuilt-reporter\config\config.yaml
-```
-
-### Environment Variables
-
-Set up environment variables for easier credential management:
-
-**macOS:**
-```bash
-# Add to ~/.zshrc or ~/.bash_profile
-export VAST_USERNAME=admin
-export VAST_PASSWORD=your_password
-```
-
-**Windows:**
-```powershell
-# Set user environment variables
-[Environment]::SetEnvironmentVariable("VAST_USERNAME", "admin", "User")
-[Environment]::SetEnvironmentVariable("VAST_PASSWORD", "your_password", "User")
-```
-
-### Desktop Shortcuts
-
-After installation, you'll find shortcuts on your desktop:
-
-- **macOS**: `VAST As-Built Reporter.command`
-- **Windows**: `VAST As-Built Reporter.lnk`
-
-Double-click these shortcuts to run the application with a graphical interface.
-
-## Troubleshooting
-
-### Common Issues
-
-#### macOS Issues
-
-**Problem**: `python3: command not found`
-```bash
-# Solution: Add Python to PATH
-echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-**Problem**: WeasyPrint installation fails
-```bash
-# Solution: Install system dependencies
-brew install pango harfbuzz libffi libxml2 libxslt cairo gobject-introspection
-```
-
-**Problem**: Permission denied errors
-```bash
-# Solution: Fix permissions
-chmod +x ~/vast-asbuilt-reporter/run-vast-asbuilt-reporter.sh
-chmod +x ~/vast-asbuilt-reporter/venv/bin/python3
-```
-
-#### Windows Issues
-
-**Problem**: PowerShell execution policy error
-```powershell
-# Solution: Set execution policy
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-```
-
-**Problem**: Python not found in PATH
-```powershell
-# Solution: Refresh environment variables
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-```
-
-**Problem**: Virtual environment activation fails
-```powershell
-# Solution: Enable script execution
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-```
-
-### Getting Help
-
-1. **Check the logs:**
-   ```bash
-   # macOS
-   tail -f ~/vast-asbuilt-reporter/logs/vast_report_generator.log
-
-   # Windows
-   Get-Content $env:USERPROFILE\vast-asbuilt-reporter\logs\vast_report_generator.log -Tail 20
-   ```
-
-2. **Run diagnostics:**
-   ```bash
-   # macOS
-   cd ~/vast-asbuilt-reporter
-   ./run-vast-asbuilt-reporter.sh --help
-
-   # Windows
-   cd %USERPROFILE%\vast-asbuilt-reporter
-   run-vast-asbuilt-reporter.bat --help
-   ```
-
-3. **Check system requirements:**
-   ```bash
-   # macOS
-   python3 --version
-   brew --version
-
-   # Windows
-   python --version
-   choco --version
-   ```
-
-## Uninstallation
-
-### macOS Uninstallation
-
-1. **Remove the project directory:**
-   ```bash
-   rm -rf ~/vast-asbuilt-reporter
-   ```
-
-2. **Remove desktop shortcut:**
-   ```bash
-   rm ~/Desktop/VAST\ As-Built\ Reporter.command
-   ```
-
-3. **Remove Homebrew packages (optional):**
-   ```bash
-   brew uninstall python@3.12 pango harfbuzz libffi libxml2 libxslt cairo gobject-introspection
-   ```
-
-### Windows Uninstallation
-
-1. **Remove the project directory:**
-   ```powershell
-   Remove-Item -Recurse -Force $env:USERPROFILE\vast-asbuilt-reporter
-   ```
-
-2. **Remove shortcuts:**
-   ```powershell
-   Remove-Item $env:USERPROFILE\Desktop\VAST\ As-Built\ Reporter.lnk
-   Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\VAST As-Built Reporter.lnk"
-   ```
-
-3. **Remove Chocolatey packages (optional):**
-   ```powershell
-   choco uninstall python312 git vcredist-all 7zip
-   ```
-
-## Support
-
-### Getting Help
-
-- **GitHub Issues**: [https://github.com/rstamps01/ps-deploy-report/issues](https://github.com/rstamps01/ps-deploy-report/issues)
-- **Documentation**: [README.md](README.md)
-- **Troubleshooting Guide**: [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-
-### Reporting Issues
-
-When reporting issues, please include:
-
-1. **Operating System**: macOS version or Windows version
-2. **Installation Method**: Automated script or manual installation
-3. **Error Messages**: Complete error output
-4. **Log Files**: Relevant log entries
-5. **Steps to Reproduce**: What you were doing when the error occurred
+The `.zip` contains a single folder with the self-contained application. No registry entries, services, or system-level changes are made.
 
 ---
 
-**Version**: 1.0.0-dev
-**Last Updated**: September 27, 2025
-**Compatibility**: macOS 10.15+, Windows 10+, Python 3.8+
+## Post-Installation Setup
+
+### First Report
+
+1. Open the application (if not already running)
+2. Navigate to the **Generate** page
+3. Enter your cluster details:
+   - **Cluster IP**: The VAST Management Service IP address
+   - **Username**: `support` (recommended for full API access)
+   - **Password**: Your cluster password
+4. Click **Generate**
+5. Monitor progress in the live log window
+6. Download the PDF and JSON files when complete
+
+### Cluster Profiles
+
+Save frequently-used cluster connections as profiles to avoid re-entering credentials:
+
+1. Fill in the cluster IP, username, and password on the Generate page
+2. Enter a profile name and click **Save**
+3. Next time, select the profile from the dropdown to auto-fill all fields
+
+### Configuration
+
+Most settings can be managed directly in the web UI via the **Configuration** page. Advanced users can also edit `config.yaml` directly if running from source.
+
+### Environment Variables (Optional)
+
+For automated or scripted usage, credentials can be passed via environment variables:
+
+| Variable | Purpose |
+|----------|---------|
+| `VAST_USERNAME` / `VAST_PASSWORD` | Cluster credentials |
+| `VAST_API_TOKEN` | API token (alternative to user/pass) |
+| `VAST_NODE_USER` / `VAST_NODE_PASSWORD` | SSH credentials for port mapping (nodes) |
+| `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` | SSH credentials for port mapping (switches) |
+
+---
+
+## Updating
+
+To update to the latest version:
+
+1. Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest)
+2. Download the latest `.dmg` (macOS) or `.zip` (Windows)
+3. Install as described above — the new version replaces the old one
+
+Your saved cluster profiles and configuration are stored outside the application bundle and will persist across updates.
+
+---
+
+## Developer Installation
+
+For contributors or users who want to run from source.
+
+### Prerequisites
+
+- **Python**: 3.10 or higher (tested with 3.12)
+- **Git**: For cloning the repository
+- **OS**: macOS, Linux, or Windows
+
+### Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/rstamps01/ps-deploy-report.git
+   cd ps-deploy-report
+   ```
+
+2. **Create and activate a virtual environment:**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate        # macOS/Linux
+   # venv\Scripts\activate         # Windows
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
+
+4. **Verify:**
+   ```bash
+   python3 src/main.py --version
+   ```
+
+5. **Launch the web UI:**
+   ```bash
+   python3 src/main.py
+   ```
+
+6. **(Optional) Install dev/test dependencies:**
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+
+### Running from Source
+
+```bash
+# Web UI (default)
+python3 src/main.py
+
+# CLI mode
+python3 src/main.py --cli --cluster 10.143.11.204 --output ./reports
+
+# macOS double-click launcher (from project root)
+./Start\ Reporter.command
+```
+
+---
+
+## Troubleshooting
+
+### macOS Issues
+
+**Gatekeeper blocks the app ("cannot be opened because the developer cannot be verified")**
+- Right-click the app > Open > click Open in the dialog (first launch only)
+
+**App closes immediately after opening**
+- Open a terminal and run: `/Applications/VAST\ Reporter.app/Contents/MacOS/vast-reporter`
+- Check the output for error messages
+
+**Port 5173 already in use**
+- Another instance may be running; check Activity Monitor for `vast-reporter`
+- Or kill it: `lsof -ti:5173 | xargs kill`
+
+### Windows Issues
+
+**SmartScreen blocks the application**
+- Click **More info** > **Run anyway**
+
+**"VCRUNTIME140.dll was not found"**
+- Install the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+
+### General Issues
+
+**403 Forbidden / incomplete data in report**
+- Use the `support` username (or equivalent with full read permissions)
+- Standard accounts may lack API access to some endpoints
+
+**Connection timeout**
+- Verify network connectivity to the VAST Management Service
+- Check that port 443 (HTTPS) is accessible
+
+**Port mapping not working**
+- Verify SSH access to switches and nodes
+- Check that SSH credentials are correct
+- See [Port Mapping Guide](PORT-MAPPING-GUIDE.md) for detailed setup
+
+### Getting Help
+
+1. Check the application logs (visible in the Progress window during generation)
+2. Review the [main README](../../README.md) for additional troubleshooting
+3. Open an issue at [github.com/rstamps01/ps-deploy-report/issues](https://github.com/rstamps01/ps-deploy-report/issues)
+
+When reporting issues, include:
+- Operating system and version
+- Application version (shown in the footer)
+- Error messages or screenshots
+- Steps to reproduce
+
+---
+
+## Uninstallation
+
+### macOS
+
+1. Drag **VAST Reporter** from Applications to Trash
+2. Empty the Trash
+
+### Windows
+
+1. Delete the extracted `VAST Reporter` folder
+2. No registry entries or services to clean up
+
+### Developer Installation
+
+```bash
+rm -rf ps-deploy-report/
+```
+
+---
+
+**Version**: 1.4.1
+**Last Updated**: March 6, 2026
+**Compatibility**: macOS 11+, Windows 10+

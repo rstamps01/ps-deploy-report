@@ -720,7 +720,7 @@ Examples:
     )
 
     parser.add_argument(
-        "--version", action="version", version="VAST As-Built Report Generator 1.4.0"
+        "--version", action="version", version="VAST As-Built Report Generator 1.4.1"
     )
 
     return parser

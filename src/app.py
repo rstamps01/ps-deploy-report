@@ -31,7 +31,7 @@ from utils.logger import enable_sse_logging, get_logger, get_sse_queue
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.4.1"
 
 # ---------------------------------------------------------------------------
 # Flask application factory
@@ -775,9 +775,10 @@ def _write_config(path: str, text: str) -> None:
 def _load_yaml(path: str) -> Dict[str, Any]:
     import yaml
     try:
-        with open(path, "r") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
-    except Exception:
+    except (OSError, yaml.YAMLError) as exc:
+        logger.debug("Failed to load YAML %s: %s", path, exc)
         return {}
 
 
