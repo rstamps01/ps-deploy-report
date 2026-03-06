@@ -285,7 +285,12 @@ def _setup_file_handler(log_config: Dict[str, Any]) -> Optional[logging.Handler]
     """
     try:
         # Get file path and ensure directory exists
-        file_path = log_config.get('file_path', 'logs/vast_report_generator.log')
+        from utils import get_data_dir
+
+        default_log = str(get_data_dir() / "logs" / "vast_report_generator.log")
+        file_path = log_config.get('file_path', default_log)
+        if not Path(file_path).is_absolute():
+            file_path = str(get_data_dir() / file_path)
         log_dir = Path(file_path).parent
         log_dir.mkdir(parents=True, exist_ok=True)
         

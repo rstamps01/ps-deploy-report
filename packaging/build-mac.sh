@@ -49,9 +49,10 @@ if command -v create-dmg &> /dev/null; then
     create-dmg \
         --volname "VAST Reporter" \
         --window-pos 200 120 \
-        --window-size 600 400 \
+        --window-size 540 380 \
         --icon-size 100 \
-        --app-drop-link 450 185 \
+        --icon "VAST Reporter.app" 150 170 \
+        --app-drop-link 390 170 \
         "$DIST_DIR/$DMG_NAME" \
         "$APP_PATH"
     echo "DMG created: $DIST_DIR/$DMG_NAME"

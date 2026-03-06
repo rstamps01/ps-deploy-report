@@ -42,8 +42,11 @@ class VerboseLogger:
 
     def __init__(self, log_file: str = None):
         if log_file is None:
+            from utils import get_data_dir
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_file = f"logs/external_port_mapper_verbose_{timestamp}.log"
+            log_dir = get_data_dir() / "logs"
+            log_file = str(log_dir / f"external_port_mapper_verbose_{timestamp}.log")
 
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
