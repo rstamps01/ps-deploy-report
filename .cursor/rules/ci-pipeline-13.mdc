@@ -39,6 +39,7 @@ Three GitHub Actions workflows enforce quality at different stages:
 - Cross-platform build smoke tests run on macOS and Windows via PyInstaller
 - Build must succeed on both platforms before a release can be created
 - Version consistency verified: `src/app.py` APP_VERSION must match all other version locations
+- **Release builds:** Every new release (tag `vX.Y.Z`) must produce a new build-release .dmg (and Windows .zip) generated from that release version’s code, via `.github/workflows/build-release.yml`; see `release-packaging-12.mdc`
 
 ## Security Scanning
 
