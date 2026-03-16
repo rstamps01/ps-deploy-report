@@ -335,7 +335,15 @@ class ExternalPortMapper:
                 ]
 
                 self.vlog.log_command(cmd, f"OS Detection test for {expected_os}")
-                result = subprocess.run(cmd, capture_output=True, text=True, timeout=15, env=_subprocess_env())
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    env=_subprocess_env(),
+                    encoding="utf-8",
+                    errors="replace",
+                )
                 self.vlog.log_result(result, f"{expected_os} test result")
 
                 # Check both stdout and stderr for OS identification
@@ -770,7 +778,15 @@ class ExternalPortMapper:
             )
 
             self.vlog.log("\nExecuting command...", self.vlog.BLUE)
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=env,
+                encoding="utf-8",
+                errors="replace",
+            )
 
             # Log result
             self.vlog.log_result(result, "CLUSH HOSTNAME RESULT")
@@ -848,7 +864,15 @@ class ExternalPortMapper:
             ]
 
             self.vlog.log_command(cmd, "CLUSH NODE MAC COMMAND")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=_subprocess_env())
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=_subprocess_env(),
+                encoding="utf-8",
+                errors="replace",
+            )
             self.vlog.log_result(result, "CLUSH NODE MAC RESULT")
 
             # Parse clush output (even when returncode != 0, to allow partial port map)
@@ -1011,7 +1035,15 @@ class ExternalPortMapper:
                     ]
 
                     self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env())
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=_subprocess_env(),
+                        encoding="utf-8",
+                        errors="replace",
+                    )
                     self.vlog.log_result(result, "General MAC table result")
                     result_returncode = result.returncode
                     result_stdout = result.stdout
@@ -1058,7 +1090,13 @@ class ExternalPortMapper:
 
                     self.vlog.log_command(vlan69_cmd, f"VLAN 69 MAC table query ({os_type})")
                     vlan69_result = subprocess.run(
-                        vlan69_cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
+                        vlan69_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=_subprocess_env(),
+                        encoding="utf-8",
+                        errors="replace",
                     )
                     self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
                     vlan69_returncode = vlan69_result.returncode
@@ -1266,7 +1304,15 @@ class ExternalPortMapper:
                     ]
 
                     self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env())
+                    result = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        env=_subprocess_env(),
+                        encoding="utf-8",
+                        errors="replace",
+                    )
                     self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
                     returncode = result.returncode
                     stdout = result.stdout

@@ -499,7 +499,25 @@ class NetworkDiagramGenerator:
                     "Report will use placeholder image. "
                     "For dynamic diagram embedding, install: pip install reportlab[renderPM]"
                 )
-                # Return None to signal that PNG is not available
+                # On macOS, fallback: convert PDF to PNG via qlmanage (avoids T1 font requirement in .app bundles)
+                try:
+                    import platform
+                    import subprocess
+                    if platform.system() == "Darwin":
+                        out_dir = str(png_path.parent)
+                        subprocess.run(
+                            ["qlmanage", "-t", "-s", "1000", "-o", out_dir, str(output_path)],
+                            check=True,
+                            capture_output=True,
+                            timeout=15,
+                        )
+                        ql_png = output_path.parent / f"{output_path.name}.png"
+                        if ql_png.exists():
+                            ql_png.rename(png_path)
+                            self.logger.info(f"Network diagram PNG created via qlmanage: {png_path}")
+                            return str(png_path)
+                except Exception as fallback_e:
+                    self.logger.debug(f"PDF-to-PNG fallback failed: {fallback_e}")
                 return None
 
         except Exception as e:

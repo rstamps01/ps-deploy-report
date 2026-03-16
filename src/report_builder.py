@@ -413,16 +413,19 @@ class VastReportBuilder:
 
             # Create document with page template
             from reportlab.platypus import BaseDocTemplate
+            import os
             import tempfile
 
             # PASS 1: Capture page numbers
             self.logger.info("First pass: Capturing page numbers for dynamic TOC...")
             page_tracker: Dict[str, int] = {}
 
-            # Create temporary document for first pass
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as temp_file:
+            # Use mkstemp for first-pass temp PDF (Windows: NamedTemporaryFile can cause PermissionError on save)
+            fd, temp_path = tempfile.mkstemp(suffix=".pdf")
+            try:
+                os.close(fd)
                 temp_doc = BaseDocTemplate(
-                    temp_file.name,
+                    temp_path,
                     pagesize=page_size,
                     rightMargin=self.config.margin_right * inch,
                     leftMargin=self.config.margin_left * inch,
@@ -441,6 +444,11 @@ class VastReportBuilder:
 
                 # Build temp PDF to capture page numbers
                 temp_doc.build(story_pass1)
+            finally:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
 
             self.logger.info(f"First pass complete: Captured {len(page_tracker)} page numbers")
             # Log captured page numbers for verification
@@ -1991,21 +1999,33 @@ class VastReportBuilder:
                 vms_rack_names_auto = {str(r.get("name")).strip() for r in racks_info_auto if r.get("name")}
 
                 per_rack_cboxes: Dict[str, list] = {}
-                for cnode in hw_cnodes:
-                    cbox_id = cnode.get("cbox_id")
-                    rack_name = "Unknown"
-                    for _cn, cb in cboxes.items():
-                        if cb.get("id") == cbox_id:
-                            rack_name = cb.get("rack_name") or "Unknown"
-                            break
+                for _cbox_name, cbox_data in cboxes.items():
+                    rack_name = cbox_data.get("rack_name") or "Unknown"
+                    if rack_name == "Unknown" and vms_rack_names_auto and len(vms_rack_names_auto) == 1:
+                        rack_name = next(iter(vms_rack_names_auto))
+                    rack_unit = cbox_data.get("rack_unit") or ""
+                    if not rack_unit and hw_cnodes:
+                        for cnode in hw_cnodes:
+                            if cnode.get("cbox_id") == cbox_data.get("id"):
+                                rp = cnode.get("rack_position")
+                                if rp is not None:
+                                    rack_unit = f"U{rp}"
+                                    break
+                    if not rack_unit:
+                        continue
+                    model = cbox_data.get("model") or "Unknown"
+                    if model == "Unknown" and hw_cnodes:
+                        for cnode in hw_cnodes:
+                            if cnode.get("cbox_id") == cbox_data.get("id"):
+                                model = cnode.get("model", cnode.get("box_vendor", "")) or "Unknown"
+                                break
                     cbox_entry = {
-                        "id": cnode.get("id"),
-                        "model": cnode.get("model", cnode.get("box_vendor", "")),
-                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
-                        "state": cnode.get("state", cnode.get("status", "ACTIVE")),
+                        "id": cbox_data.get("id"),
+                        "model": model,
+                        "rack_unit": rack_unit,
+                        "state": cbox_data.get("state", "ACTIVE"),
                     }
-                    if cbox_entry["rack_unit"]:
-                        per_rack_cboxes.setdefault(rack_name, []).append(cbox_entry)
+                    per_rack_cboxes.setdefault(rack_name, []).append(cbox_entry)
 
                 per_rack_dboxes: Dict[str, list] = {}
                 for dbox_name, dbox_info in hw_dboxes_raw.items():
@@ -2096,17 +2116,22 @@ class VastReportBuilder:
                 # Group hardware by rack_name
                 racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], eboxes: [], switches: []}
 
-                # Get CBox information and group by rack
+                # Get CBox information and group by rack (one entry per CBox, not per CNode)
                 hw_cnodes = hardware.get("cnodes") or []
-                for cnode in hw_cnodes:
-                    cbox_id = cnode.get("cbox_id")
-                    # Find corresponding cbox to get rack_name
-                    rack_name = "Unknown"
-                    for cbox_name, cbox_data in cboxes.items():
-                        if cbox_data.get("id") == cbox_id:
-                            rack_name = cbox_data.get("rack_name") or "Unknown"
-                            break
-
+                for cbox_name, cbox_data in cboxes.items():
+                    rack_name = cbox_data.get("rack_name") or "Unknown"
+                    if rack_name == "Unknown" and vms_rack_names and len(vms_rack_names) == 1:
+                        rack_name = next(iter(vms_rack_names))
+                    rack_unit = cbox_data.get("rack_unit") or ""
+                    if not rack_unit and hw_cnodes:
+                        for cnode in hw_cnodes:
+                            if cnode.get("cbox_id") == cbox_data.get("id"):
+                                rp = cnode.get("rack_position")
+                                if rp is not None:
+                                    rack_unit = f"U{rp}"
+                                    break
+                    if not rack_unit:
+                        continue
                     if rack_name not in racks_data:
                         racks_data[rack_name] = {
                             "cboxes": [],
@@ -2114,15 +2139,19 @@ class VastReportBuilder:
                             "eboxes": [],
                             "switches": [],
                         }
-
-                    cbox_data = {
-                        "id": cbox_id,
-                        "model": cnode.get("model", cnode.get("box_vendor", "")),
-                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
-                        "state": cnode.get("state", cnode.get("status", "ACTIVE")),
+                    model = cbox_data.get("model") or "Unknown"
+                    if model == "Unknown" and hw_cnodes:
+                        for cnode in hw_cnodes:
+                            if cnode.get("cbox_id") == cbox_data.get("id"):
+                                model = cnode.get("model", cnode.get("box_vendor", "")) or "Unknown"
+                                break
+                    cbox_entry = {
+                        "id": cbox_data.get("id"),
+                        "model": model,
+                        "rack_unit": rack_unit,
+                        "state": cbox_data.get("state", "ACTIVE"),
                     }
-                    if cbox_data["rack_unit"]:  # Only add if has position
-                        racks_data[rack_name]["cboxes"].append(cbox_data)
+                    racks_data[rack_name]["cboxes"].append(cbox_entry)
 
                 # Get DBox information and group by rack
                 hw_dboxes = hardware.get("dboxes", {})

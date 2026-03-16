@@ -33,7 +33,7 @@ from utils.logger import enable_sse_logging, get_logger, get_sse_queue
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.4.3"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},

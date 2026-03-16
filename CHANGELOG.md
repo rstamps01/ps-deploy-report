@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.3] - 2026-03-16
+
+### Fixed
+- **CBoxes missing from Physical Rack Layout**: Rack diagram now builds one entry per CBox (not per CNode) and uses CBox `rack_unit` / `rack_name` with fallback to CNode `rack_position` (`U{n}`); single-VMS rack fallback so CBoxes are not dropped when rack name is "Unknown"
+- **Network diagram placeholder on macOS**: When reportlab renderPM fails (T1 font), use `qlmanage` to convert the generated PDF to PNG so the report embeds the real topology diagram instead of the placeholder
+- **Windows PDF "Permission denied"**: First-pass temp PDF now uses `tempfile.mkstemp()` and explicit unlink instead of `NamedTemporaryFile(delete=True)` to avoid Windows temp file locking
+- **Windows port mapping charmap error**: All SSH/subprocess output in port mapping now decoded with `encoding="utf-8", errors="replace"` so UTF-8 from switches/nodes does not trigger `'charmap' codec can't encode` on Windows
+
+### Changed
+- **README**: Table of contents, quick start, and troubleshooting (Windows PDF, port mapping charmap); project structure and docs links updated
+- **Report builder**: Per-CBox rack grouping and rack_unit from CBox or CNode; Unknown rack mapped to single VMS rack when applicable
+
 ## [1.4.2] - 2026-03-11
 
 ### Added
