@@ -28,8 +28,8 @@ from flask import (
 # Ensure src/ is on the path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils import get_bundle_dir, get_data_dir
-from utils.logger import enable_sse_logging, get_logger, get_sse_queue
+from utils import get_bundle_dir, get_data_dir  # noqa: E402
+from utils.logger import enable_sse_logging, get_logger, get_sse_queue  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -791,7 +791,7 @@ def _collect_port_mapping_web(
 ) -> Optional[Dict[str, Any]]:
     """Thin wrapper around ExternalPortMapper for the web UI context."""
     try:
-        from external_port_mapper import ExternalPortMapper
+        from external_port_mapper import ExternalPortMapper, _safe_str
 
         switch_inventory = raw_data.get("switch_inventory", {})
         switches = switch_inventory.get("switches", [])
@@ -840,7 +840,7 @@ def _collect_port_mapping_web(
                 if result.get("port_map"):
                     last_partial = result
             except Exception as e:
-                last_error = str(e)
+                last_error = _safe_str(e)
                 logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
 
         if last_partial and last_partial.get("port_map"):
@@ -849,15 +849,17 @@ def _collect_port_mapping_web(
         logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown reason")
         return None
     except Exception as exc:
-        logger.error("Port mapping collection failed: %s", exc)
+        try:
+            safe_msg = _safe_str(exc)
+        except NameError:
+            safe_msg = str(exc).encode("ascii", errors="replace").decode("ascii")
+        logger.error("Port mapping collection failed: %s", safe_msg)
         return None
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-import fnmatch
 
 _REPORT_PATTERNS = ("vast_asbuilt_report_*.pdf", "vast_data_*.json")
 

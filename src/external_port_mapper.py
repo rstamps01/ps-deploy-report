@@ -29,6 +29,15 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+def _safe_str(s) -> str:
+    """Return string safe for logging on Windows (avoids charmap encode errors)."""
+    try:
+        t = str(s)
+        return t.encode("ascii", errors="replace").decode("ascii")
+    except Exception:
+        return "<encoding error>"
+
+
 def _subprocess_env() -> dict:
     """Return a subprocess environment with PATH augmented for bundled apps.
 
@@ -76,8 +85,8 @@ class VerboseLogger:
         self.log_file = Path(log_file)
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Clear existing log
-        with open(self.log_file, "w") as f:
+        # Clear existing log (UTF-8 so Windows doesn't raise charmap on Unicode output)
+        with open(self.log_file, "w", encoding="utf-8") as f:
             f.write(f"{self.BOLD}{'='*80}{self.RESET}\n")
             f.write(f"{self.BOLD}{self.CYAN}EXTERNAL PORT MAPPER VERBOSE LOG{self.RESET}\n")
             f.write(f"{self.BOLD}Started: {datetime.now().isoformat()}{self.RESET}\n")
@@ -94,7 +103,7 @@ class VerboseLogger:
     def log(self, message: str, color: str = ""):
         """Write message to log file with timestamp and optional color."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-        with open(self.log_file, "a") as f:
+        with open(self.log_file, "a", encoding="utf-8") as f:
             if color:
                 f.write(f"[{timestamp}] {color}{message}{self.RESET}\n")
             else:
@@ -151,34 +160,45 @@ class VerboseLogger:
                 self.log(f"  {line}", self.MAGENTA)
         self.log(f"{'='*80}\n", color)
 
+    def _safe_log_str(self, s: str) -> str:
+        """Return string safe for logging on Windows (cp1252 console/file)."""
+        if not s:
+            return s
+        try:
+            return s.encode("utf-8", errors="replace").decode("utf-8")
+        except Exception:
+            return s.encode("ascii", errors="replace").decode("ascii")
+
     def log_result(self, result, label: str = "RESULT"):
         """Log subprocess result details with color coding."""
         success = result.returncode == 0
         color = self.GREEN if success else self.RED
+        stdout_safe = (result.stdout or "").encode("ascii", errors="replace").decode("ascii")
+        stderr_safe = (result.stderr or "").encode("ascii", errors="replace").decode("ascii")
 
         self.log(f"\n{color}{'-'*80}{self.RESET}")
         self.log(f"📊 {label}", color + self.BOLD)
         self.log(f"  Return code: {result.returncode} {'✓' if success else '✗'}", color)
-        self.log(f"  STDOUT length: {len(result.stdout)} bytes", color)
-        self.log(f"  STDERR length: {len(result.stderr)} bytes", color)
+        self.log(f"  STDOUT length: {len(result.stdout or '')} bytes", color)
+        self.log(f"  STDERR length: {len(result.stderr or '')} bytes", color)
 
-        if result.stdout:
+        if stdout_safe:
             self.log(f"\n  STDOUT OUTPUT:", self.GREEN + self.BOLD)
             self.log(f"  {'-'*76}", self.GREEN)
-            for line in result.stdout.split("\n")[:100]:  # First 100 lines
+            for line in stdout_safe.split("\n")[:100]:  # First 100 lines
                 if line.strip():
                     self.log(f"  {line}", self.MAGENTA)
-            if len(result.stdout.split("\n")) > 100:
+            if len(stdout_safe.split("\n")) > 100:
                 self.log(
-                    f"  ... ({len(result.stdout.split('\n')) - 100} more lines)",
+                    f"  ... ({len(stdout_safe.split(chr(10))) - 100} more lines)",
                     self.GREEN,
                 )
             self.log(f"  {'-'*76}", self.GREEN)
 
-        if result.stderr:
+        if stderr_safe:
             self.log(f"\n  STDERR OUTPUT:", self.RED + self.BOLD)
             self.log(f"  {'-'*76}", self.RED)
-            for line in result.stderr.split("\n"):
+            for line in stderr_safe.split("\n"):
                 if line.strip():
                     self.log(f"  {line}", self.RED)
             self.log(f"  {'-'*76}", self.RED)
@@ -657,10 +677,10 @@ class ExternalPortMapper:
             return result
 
         except Exception as e:
-            self.logger.error(f"Error collecting port mapping: {e}", exc_info=True)
+            self.logger.error("Error collecting port mapping: %s", _safe_str(e), exc_info=True)
             return {
                 "available": False,
-                "error": str(e),
+                "error": _safe_str(e),
                 "port_map": [],
                 "cross_connections": [],
             }

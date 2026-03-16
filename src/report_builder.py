@@ -3362,8 +3362,7 @@ class VastReportBuilder:
 
             else:
                 self.logger.warning(
-                    "Network diagram PNG not available. Using placeholder. "
-                    "For dynamic diagrams, install: pip install reportlab[renderPM]"
+                    "Network diagram PNG not available (renderPM and PDF fallback failed). Using bundled placeholder."
                 )
 
         except Exception as e:
@@ -3920,7 +3919,7 @@ class VastReportBuilder:
                             port_list,
                             key=lambda x: (int("".join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0),
                         )
-                    except:
+                    except Exception:
                         sorted_ports = sorted(port_list)
 
                     # Join ports with comma separation

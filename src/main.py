@@ -343,7 +343,7 @@ class VastReportGenerator:
             Optional[Dict[str, Any]]: Port mapping data or None if failed
         """
         try:
-            from external_port_mapper import ExternalPortMapper
+            from external_port_mapper import ExternalPortMapper, _safe_str
 
             # Get switch credentials
             node_password, switch_password = self._get_switch_credentials(args)
@@ -408,8 +408,8 @@ class VastReportGenerator:
                     if port_mapping_data.get("port_map"):
                         last_partial = port_mapping_data
                 except Exception as e:
-                    last_error = str(e)
-                    self.logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, e)
+                    last_error = _safe_str(e)
+                    self.logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
 
             if last_partial and last_partial.get("port_map"):
                 self.logger.info("Using partial port mapping from last CNode attempt")
@@ -418,10 +418,12 @@ class VastReportGenerator:
             return None
 
         except ImportError as e:
-            self.logger.error(f"Failed to import external_port_mapper: {e}")
+            _msg = str(e).encode("ascii", errors="replace").decode("ascii")
+            self.logger.error("Failed to import external_port_mapper: %s", _msg)
             return None
         except Exception as e:
-            self.logger.error(f"Failed to collect port mapping: {e}")
+            _msg = str(e).encode("ascii", errors="replace").decode("ascii")
+            self.logger.error("Failed to collect port mapping: %s", _msg)
             return None
 
     def _process_data(self, raw_data: Dict[str, Any], args: argparse.Namespace = None) -> Optional[Dict[str, Any]]:

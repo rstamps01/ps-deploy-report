@@ -321,6 +321,15 @@ pytest tests/ -v
 pytest tests/ --cov=src --cov-report=html
 ```
 
+**Validating Windows and diagram behavior (before pushing)**  
+Run the functional validation suite so port-mapping charmap and diagram placeholder regressions are caught before commit. CI runs it with unit tests; locally:
+
+```bash
+pytest tests/test_functional_validation.py -v
+```
+
+This checks: ASCII-safe port mapping error logging (no `charmap` encode errors on Windows), and that the network diagram uses the PDF→PNG fallback (PyMuPDF) when renderPM fails, so the report does not use the placeholder image.
+
 **Lint / format**
 
 ```bash

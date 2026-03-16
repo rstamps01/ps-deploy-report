@@ -495,27 +495,40 @@ class NetworkDiagramGenerator:
                 return str(png_path)
             except Exception as e:
                 self.logger.warning(
-                    f"Could not save PNG ({e}). "
-                    "Report will use placeholder image. "
-                    "For dynamic diagram embedding, install: pip install reportlab[renderPM]"
+                    f"Could not save PNG via renderPM ({e}). Trying PDF-to-PNG fallback."
                 )
-                # On macOS, fallback: convert PDF to PNG via qlmanage (avoids T1 font requirement in .app bundles)
+                # Fallback: convert the PDF we just wrote to PNG (avoids T1 font on Windows / renderPM issues)
                 try:
-                    import platform
-                    import subprocess
-                    if platform.system() == "Darwin":
-                        out_dir = str(png_path.parent)
-                        subprocess.run(
-                            ["qlmanage", "-t", "-s", "1000", "-o", out_dir, str(output_path)],
-                            check=True,
-                            capture_output=True,
-                            timeout=15,
-                        )
-                        ql_png = output_path.parent / f"{output_path.name}.png"
-                        if ql_png.exists():
-                            ql_png.rename(png_path)
-                            self.logger.info(f"Network diagram PNG created via qlmanage: {png_path}")
-                            return str(png_path)
+                    import fitz
+                    doc = fitz.open(str(output_path))
+                    if len(doc) > 0:
+                        page = doc[0]
+                        pix = page.get_pixmap(dpi=150)
+                        pix.save(str(png_path))
+                        doc.close()
+                        self.logger.info(f"Network diagram PNG created via PyMuPDF: {png_path}")
+                        return str(png_path)
+                    doc.close()
+                except ImportError:
+                    # macOS-only fallback when PyMuPDF not available
+                    try:
+                        import platform
+                        import subprocess
+                        if platform.system() == "Darwin":
+                            out_dir = str(png_path.parent)
+                            subprocess.run(
+                                ["qlmanage", "-t", "-s", "1000", "-o", out_dir, str(output_path)],
+                                check=True,
+                                capture_output=True,
+                                timeout=15,
+                            )
+                            ql_png = output_path.parent / f"{output_path.name}.png"
+                            if ql_png.exists():
+                                ql_png.rename(png_path)
+                                self.logger.info(f"Network diagram PNG created via qlmanage: {png_path}")
+                                return str(png_path)
+                    except Exception as ql_e:
+                        self.logger.debug(f"qlmanage fallback failed: {ql_e}")
                 except Exception as fallback_e:
                     self.logger.debug(f"PDF-to-PNG fallback failed: {fallback_e}")
                 return None
