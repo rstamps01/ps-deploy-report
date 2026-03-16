@@ -572,9 +572,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_network_configuration(
-        self, network_config: NetworkConfiguration
-    ) -> List[Any]:
+    def create_network_configuration(self, network_config: NetworkConfiguration) -> List[Any]:
         """Create network configuration section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -597,9 +595,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Network_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Network_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -640,9 +636,7 @@ class ComprehensiveReportTemplate:
             ["Management", "mgmt-pool", "192.168.1.10-192.168.1.17", "69"],
         ]
 
-        ip_table = Table(
-            ip_data, colWidths=[1.2 * inch, 1.2 * inch, 2 * inch, 0.8 * inch]
-        )
+        ip_table = Table(ip_data, colWidths=[1.2 * inch, 1.2 * inch, 2 * inch, 0.8 * inch])
         ip_table.setStyle(
             TableStyle(
                 [
@@ -662,9 +656,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_deployment_configuration(
-        self, deployment_config: DeploymentConfiguration
-    ) -> List[Any]:
+    def create_deployment_configuration(self, deployment_config: DeploymentConfiguration) -> List[Any]:
         """Create deployment configuration section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -687,9 +679,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Deployment_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Deployment_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -754,9 +744,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Validation_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Validation_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -821,9 +809,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Support_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Support_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -887,9 +873,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Appendix_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Appendix_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -940,9 +924,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def generate_comprehensive_report(
-        self, processed_data: Dict[str, Any], output_path: str
-    ) -> bool:
+    def generate_comprehensive_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
         Generate comprehensive As-Built report.
 
@@ -987,9 +969,7 @@ class ComprehensiveReportTemplate:
                 enhanced_features_enabled=processed_data.get("metadata", {})
                 .get("enhanced_features", {})
                 .get("rack_height_supported", False),
-                data_completeness=processed_data.get("metadata", {}).get(
-                    "overall_completeness", 0.0
-                ),
+                data_completeness=processed_data.get("metadata", {}).get("overall_completeness", 0.0),
             )
 
             # Create cluster overview
@@ -1075,12 +1055,8 @@ class ComprehensiveReportTemplate:
             sections = processed_data.get("sections", {})
             network_section = sections.get("network_configuration", {}).get("data", {})
             network_config = NetworkConfiguration(
-                dns_servers=network_section.get("dns", {}).get(
-                    "servers", ["8.8.8.8", "8.8.4.4"]
-                ),
-                ntp_servers=network_section.get("ntp", {}).get(
-                    "servers", ["pool.ntp.org"]
-                ),
+                dns_servers=network_section.get("dns", {}).get("servers", ["8.8.8.8", "8.8.4.4"]),
+                ntp_servers=network_section.get("ntp", {}).get("servers", ["pool.ntp.org"]),
                 vip_pools=network_section.get("vippools", {}),
                 switch_fabric={},
                 customer_integration={},
@@ -1126,9 +1102,7 @@ class ComprehensiveReportTemplate:
             story.extend(self.create_architecture_overview())
             story.append(PageBreak())
 
-            story.extend(
-                self.create_physical_hardware_inventory(cnodes, dnodes, cboxes, dboxes)
-            )
+            story.extend(self.create_physical_hardware_inventory(cnodes, dnodes, cboxes, dboxes))
             story.append(PageBreak())
 
             story.extend(self.create_network_configuration(network_config))
@@ -1170,18 +1144,14 @@ class ComprehensiveReportTemplate:
             # Build PDF
             doc.build(story)
 
-            self.logger.info(
-                f"Comprehensive As-Built report generated successfully: {output_path}"
-            )
+            self.logger.info(f"Comprehensive As-Built report generated successfully: {output_path}")
             return True
 
         except Exception as e:
             self.logger.error(f"Error generating comprehensive report: {e}")
             return False
 
-    def create_performance_metrics_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_performance_metrics_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create performance metrics and capacity analysis section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1204,16 +1174,12 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Performance_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Performance_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
         # Section heading
-        content.append(
-            Paragraph("Performance Metrics & Capacity Analysis", heading_style)
-        )
+        content.append(Paragraph("Performance Metrics & Capacity Analysis", heading_style))
         content.append(Spacer(1, 10))
 
         # Capacity overview
@@ -1254,9 +1220,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_licensing_compliance_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_licensing_compliance_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create licensing and compliance information section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1279,9 +1243,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Licensing_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Licensing_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -1328,9 +1290,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_backup_disaster_recovery_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_backup_disaster_recovery_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create backup and disaster recovery configuration section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1353,16 +1313,12 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Backup_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Backup_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
         # Section heading
-        content.append(
-            Paragraph("Backup & Disaster Recovery Configuration", heading_style)
-        )
+        content.append(Paragraph("Backup & Disaster Recovery Configuration", heading_style))
         content.append(Spacer(1, 10))
 
         # Backup policies
@@ -1403,9 +1359,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_monitoring_alerting_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_monitoring_alerting_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create monitoring and alerting configuration section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1428,9 +1382,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Monitoring_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Monitoring_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -1475,9 +1427,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_customer_integration_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_customer_integration_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create customer environment integration section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1500,9 +1450,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Integration_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Integration_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -1548,9 +1496,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_deployment_timeline_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_deployment_timeline_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create deployment timeline and milestones section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1573,9 +1519,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Timeline_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Timeline_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -1623,9 +1567,7 @@ class ComprehensiveReportTemplate:
 
         return content
 
-    def create_future_recommendations_section(
-        self, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def create_future_recommendations_section(self, processed_data: Dict[str, Any]) -> List[Any]:
         """Create future recommendations and roadmap section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -1648,9 +1590,7 @@ class ComprehensiveReportTemplate:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Recommendations_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Recommendations_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -1659,9 +1599,7 @@ class ComprehensiveReportTemplate:
         content.append(Spacer(1, 10))
 
         # Short-term recommendations
-        content.append(
-            Paragraph("Short-term Recommendations (0-6 months)", subheading_style)
-        )
+        content.append(Paragraph("Short-term Recommendations (0-6 months)", subheading_style))
         short_term_text = """
         • <b>Capacity Planning:</b> Monitor utilization and plan for growth<br/>
         • <b>Performance Tuning:</b> Optimize workload placement and QoS policies<br/>
@@ -1673,9 +1611,7 @@ class ComprehensiveReportTemplate:
         content.append(Spacer(1, 15))
 
         # Medium-term recommendations
-        content.append(
-            Paragraph("Medium-term Recommendations (6-18 months)", subheading_style)
-        )
+        content.append(Paragraph("Medium-term Recommendations (6-18 months)", subheading_style))
         medium_term_text = """
         • <b>Capacity Expansion:</b> Add DBoxes for increased storage capacity<br/>
         • <b>Performance Scaling:</b> Add CNodes for increased IOPS and throughput<br/>

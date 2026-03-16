@@ -26,6 +26,7 @@ IS_WINDOWS = platform.system() == "Windows"
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def run_ssh_command(
     host: str,
     username: str,
@@ -58,6 +59,7 @@ def run_interactive_ssh(
 # macOS / Linux implementations
 # ---------------------------------------------------------------------------
 
+
 def _augmented_env() -> dict:
     """Return env with PATH augmented for Homebrew tool locations."""
     import os
@@ -87,10 +89,14 @@ def _subprocess_ssh(
 
     if shutil.which("sshpass", path=env.get("PATH")):
         cmd = [
-            "sshpass", "-p", password,
+            "sshpass",
+            "-p",
+            password,
             "ssh",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", f"UserKnownHostsFile={known_hosts_file}",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            f"UserKnownHostsFile={known_hosts_file}",
             f"{username}@{host}",
             command,
         ]
@@ -122,11 +128,7 @@ def _pexpect_interactive(
         return _paramiko_exec(host, username, password, command, timeout)
 
     try:
-        ssh_cmd = (
-            f"ssh -o StrictHostKeyChecking=no "
-            f"-o UserKnownHostsFile={known_hosts_file} "
-            f"{username}@{host}"
-        )
+        ssh_cmd = f"ssh -o StrictHostKeyChecking=no " f"-o UserKnownHostsFile={known_hosts_file} " f"{username}@{host}"
         child = pexpect.spawn(ssh_cmd, timeout=timeout, encoding="utf-8")
 
         i = child.expect([r"[Pp]assword:", pexpect.TIMEOUT, pexpect.EOF])
@@ -156,6 +158,7 @@ def _pexpect_interactive(
 # ---------------------------------------------------------------------------
 # Windows / fallback implementation (paramiko)
 # ---------------------------------------------------------------------------
+
 
 def _paramiko_exec(
     host: str,

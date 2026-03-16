@@ -8,11 +8,13 @@ browsing output, editing configuration, and streaming live progress.
 import json
 import os
 import queue
+import re
 import sys
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
+from urllib.parse import unquote, urlparse
 
 from flask import (
     Flask,
@@ -31,11 +33,97 @@ from utils.logger import enable_sse_logging, get_logger, get_sse_queue
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.4.1"
+APP_VERSION = "1.4.2"
+
+_DOC_REGISTRY = [
+    {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
+    {
+        "id": "installation",
+        "title": "Installation Guide",
+        "category": "Getting Started",
+        "path": "docs/deployment/INSTALLATION-GUIDE.md",
+    },
+    {
+        "id": "permissions",
+        "title": "Permissions & Access",
+        "category": "Getting Started",
+        "path": "docs/deployment/PERMISSIONS-GUIDE.md",
+    },
+    {
+        "id": "port-mapping",
+        "title": "Port Mapping Guide",
+        "category": "Using the Tool",
+        "path": "docs/deployment/PORT-MAPPING-GUIDE.md",
+    },
+    {"id": "update", "title": "Update & Upgrade", "category": "Maintenance", "path": "docs/deployment/UPDATE-GUIDE.md"},
+    {
+        "id": "deployment",
+        "title": "Production Deployment",
+        "category": "Maintenance",
+        "path": "docs/deployment/DEPLOYMENT.md",
+    },
+    {
+        "id": "uninstall",
+        "title": "Uninstall Guide",
+        "category": "Maintenance",
+        "path": "docs/deployment/UNINSTALL-GUIDE.md",
+    },
+    {"id": "api-reference", "title": "API Reference", "category": "Reference", "path": "docs/API-REFERENCE.md"},
+    {
+        "id": "ebox-api-discovery",
+        "title": "EBox API (v7) Discovery",
+        "category": "Reference",
+        "path": "docs/api/EBOX_API_V7_DISCOVERY.md",
+    },
+    {"id": "changelog", "title": "Changelog", "category": "Reference", "path": "CHANGELOG.md"},
+]
+
+
+def _build_doc_link_map() -> Dict[str, str]:
+    """Build map of doc path variants (for link rewriting) to doc_id."""
+    link_map = {}
+    for doc in _DOC_REGISTRY:
+        doc_id = doc["id"]
+        path = doc["path"]
+        link_map[path] = doc_id
+        path_norm = path.replace("\\", "/")
+        link_map[path_norm] = doc_id
+        parts = path_norm.split("/")
+        if parts:
+            link_map[parts[-1]] = doc_id
+        if len(parts) > 1:
+            link_map["/".join(parts[1:])] = doc_id
+    return link_map
+
+
+_DOC_LINK_MAP = _build_doc_link_map()
+
+
+def _rewrite_doc_links_in_html(html: str) -> str:
+    """Rewrite internal doc .md links to /docs#<doc_id> so they open the correct in-app doc."""
+
+    def replace_href(match: re.Match) -> str:
+        href = match.group(1)
+        if not href or href.startswith("#") or "docs#" in href:
+            return match.group(0)
+        parsed = urlparse(unquote(href))
+        path = (parsed.path or "").strip().lstrip("/")
+        if path.startswith("./"):
+            path = path[2:]
+        if not path.endswith(".md"):
+            return match.group(0)
+        doc_id = _DOC_LINK_MAP.get(path) or _DOC_LINK_MAP.get(path.split("/")[-1])
+        if doc_id:
+            return f'<a href="/docs#{doc_id}"'
+        return match.group(0)
+
+    return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
+
 
 # ---------------------------------------------------------------------------
 # Flask application factory
 # ---------------------------------------------------------------------------
+
 
 def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     """Build and configure the Flask application."""
@@ -88,6 +176,7 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
 # ---------------------------------------------------------------------------
 # Route registration
 # ---------------------------------------------------------------------------
+
 
 def _register_routes(app: Flask) -> None:
 
@@ -148,18 +237,18 @@ def _register_routes(app: Flask) -> None:
                 return jsonify({"error": "Invalid manual_placements JSON"}), 400
 
         app.config["JOB_CANCEL"].clear()
-        thread = threading.Thread(
-            target=_run_report_job, args=(app, params), daemon=True
-        )
+        thread = threading.Thread(target=_run_report_job, args=(app, params), daemon=True)
         thread.start()
         return jsonify({"status": "started"})
 
     @app.route("/generate/status")
     def generate_status():
-        resp = jsonify({
-            "running": app.config["JOB_RUNNING"],
-            "result": app.config["JOB_RESULT"],
-        })
+        resp = jsonify(
+            {
+                "running": app.config["JOB_RUNNING"],
+                "result": app.config["JOB_RESULT"],
+            }
+        )
         resp.headers["Cache-Control"] = "no-store"
         resp.headers["Pragma"] = "no-cache"
         return resp
@@ -183,13 +272,9 @@ def _register_routes(app: Flask) -> None:
     def shutdown():
         server = app.config.get("_SERVER")
         if server is not None:
-            threading.Thread(
-                target=server.shutdown, daemon=True
-            ).start()
+            threading.Thread(target=server.shutdown, daemon=True).start()
         else:
-            threading.Thread(
-                target=lambda: os._exit(0), daemon=True
-            ).start()
+            threading.Thread(target=lambda: os._exit(0), daemon=True).start()
         return jsonify({"status": "shutting_down"})
 
     # -- SSE log stream -----------------------------------------------------
@@ -224,6 +309,7 @@ def _register_routes(app: Flask) -> None:
         new_config = request.form.get("config_text", "")
         try:
             import yaml
+
             yaml.safe_load(new_config)
         except Exception as exc:
             return jsonify({"error": f"Invalid YAML: {exc}"}), 400
@@ -325,12 +411,14 @@ def _register_routes(app: Flask) -> None:
             switches = []
             for sw in switch_inv.get("switches", []):
                 model = sw.get("model", "Unknown")
-                switches.append({
-                    "name": sw.get("name", "Unknown"),
-                    "model": model,
-                    "serial": sw.get("serial", ""),
-                    "height_u": rd._get_device_height_units(model),
-                })
+                switches.append(
+                    {
+                        "name": sw.get("name", "Unknown"),
+                        "model": model,
+                        "serial": sw.get("serial", ""),
+                        "height_u": rd._get_device_height_units(model),
+                    }
+                )
 
             return jsonify({"racks": racks, "switches": switches})
         except Exception as exc:
@@ -360,11 +448,13 @@ def _register_routes(app: Flask) -> None:
         except PermissionError:
             pass
 
-        return jsonify({
-            "current": str(target),
-            "parent": str(target.parent) if target != target.parent else None,
-            "dirs": subdirs,
-        })
+        return jsonify(
+            {
+                "current": str(target),
+                "parent": str(target.parent) if target != target.parent else None,
+                "dirs": subdirs,
+            }
+        )
 
     # -- Hardware Device Library ---------------------------------------------
 
@@ -378,6 +468,7 @@ def _register_routes(app: Flask) -> None:
         for key, info in user_lib.items():
             devices.append({**info, "key": key, "source": "user"})
         from rack_diagram import get_unrecognized_models
+
         unrecognized = get_unrecognized_models()
         return render_template(
             "library.html",
@@ -403,8 +494,8 @@ def _register_routes(app: Flask) -> None:
         if not key:
             return jsonify({"error": "Identifier key is required"}), 400
         device_type = request.form.get("type", "cbox").lower()
-        if device_type not in ("cbox", "dbox", "switch"):
-            return jsonify({"error": "Type must be cbox, dbox, or switch"}), 400
+        if device_type not in ("cbox", "dbox", "ebox", "switch"):
+            return jsonify({"error": "Type must be cbox, dbox, ebox, or switch"}), 400
         try:
             height_u = int(request.form.get("height_u", 1))
         except (ValueError, TypeError):
@@ -452,6 +543,7 @@ def _register_routes(app: Flask) -> None:
     @app.route("/api/library/unrecognized", methods=["GET"])
     def api_library_unrecognized():
         from rack_diagram import get_unrecognized_models
+
         return jsonify(sorted(get_unrecognized_models()))
 
     @app.route("/library/images/<path:filename>")
@@ -462,6 +554,30 @@ def _register_routes(app: Flask) -> None:
     def library_builtin_image(filename):
         hw_dir = str(Path(app.config["BUNDLE_DIR"]) / "assets" / "hardware_images")
         return send_from_directory(hw_dir, filename)
+
+    # -- Documentation ------------------------------------------------------
+
+    @app.route("/docs")
+    def docs_page():
+        categories = _build_doc_categories()
+        first_doc = _DOC_REGISTRY[0]
+        initial_html = _render_doc_markdown(app.config["BUNDLE_DIR"], first_doc["path"])
+        cluster_ip = _get_saved_cluster_ip(app.config["PROFILES_PATH"])
+        return render_template(
+            "docs.html",
+            version=APP_VERSION,
+            categories=categories,
+            initial_html=initial_html,
+            initial_doc_id=first_doc["id"],
+            cluster_ip=cluster_ip,
+        )
+
+    @app.route("/docs/content/<doc_id>")
+    def docs_content(doc_id):
+        doc = next((d for d in _DOC_REGISTRY if d["id"] == doc_id), None)
+        if not doc:
+            return "<p>Document not found.</p>", 404
+        return _render_doc_markdown(app.config["BUNDLE_DIR"], doc["path"])
 
     # -- Reports browser ----------------------------------------------------
 
@@ -520,6 +636,7 @@ def _register_routes(app: Flask) -> None:
 # ---------------------------------------------------------------------------
 # Background report generation
 # ---------------------------------------------------------------------------
+
 
 class _JobCancelled(Exception):
     """Raised when the user cancels a running report job."""
@@ -603,17 +720,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         _check_cancel(app)
         if params.get("enable_port_mapping"):
             job_logger.info("Collecting port mapping data via SSH...")
-            port_data = _collect_port_mapping_web(
-                params, raw_data, api_handler
-            )
+            port_data = _collect_port_mapping_web(params, raw_data, api_handler)
             if port_data:
                 raw_data["port_mapping_external"] = port_data
                 job_logger.info("Port mapping data collected successfully")
             else:
-                job_logger.warning(
-                    "Port mapping collection failed — check SSH "
-                    "credentials and network connectivity"
-                )
+                job_logger.warning("Port mapping collection failed — check SSH " "credentials and network connectivity")
 
         # Process data
         _check_cancel(app)
@@ -689,34 +801,52 @@ def _collect_port_mapping_web(
             return None
 
         cnodes_network = raw_data.get("cnodes_network", [])
-        cnode_ip = None
+        cnode_ips = []
         for cn in cnodes_network:
-            cnode_ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
-            if cnode_ip and cnode_ip != "Unknown":
-                break
-        if not cnode_ip:
+            ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
+            if ip and ip != "Unknown" and ip not in cnode_ips:
+                cnode_ips.append(ip)
+        if not cnode_ips:
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
 
-        mapper = ExternalPortMapper(
-            cluster_ip=params["cluster_ip"],
-            api_user=api_handler.username or "support",
-            api_password=api_handler.password or "",
-            cnode_ip=cnode_ip,
-            node_user=params.get("node_user", "vastdata"),
-            node_password=params.get("node_password", ""),
-            switch_ips=switch_ips,
-            switch_user=params.get("switch_user", "cumulus"),
-            switch_password=params.get("switch_password", ""),
-        )
-        result = mapper.collect_port_mapping()
-        if result.get("available"):
-            logger.info("Port mapping collection succeeded")
-            return result
-        logger.warning(
-            "Port mapping collection returned unavailable: %s",
-            result.get("error", "unknown reason"),
-        )
+        last_error = None
+        last_partial = None
+        for cnode_ip in cnode_ips:
+            try:
+                mapper = ExternalPortMapper(
+                    cluster_ip=params["cluster_ip"],
+                    api_user=api_handler.username or "support",
+                    api_password=api_handler.password or "",
+                    cnode_ip=cnode_ip,
+                    node_user=params.get("node_user", "vastdata"),
+                    node_password=params.get("node_password", ""),
+                    switch_ips=switch_ips,
+                    switch_user=params.get("switch_user", "cumulus"),
+                    switch_password=params.get("switch_password", ""),
+                )
+                result = mapper.collect_port_mapping()
+                if result.get("available"):
+                    if result.get("partial"):
+                        logger.info(
+                            "Port mapping collected (partial) from CNode %s: %d mappings",
+                            cnode_ip,
+                            len(result.get("port_map", [])),
+                        )
+                    else:
+                        logger.info("Port mapping collection succeeded via CNode %s", cnode_ip)
+                    return result
+                last_error = result.get("error", "unknown reason")
+                if result.get("port_map"):
+                    last_partial = result
+            except Exception as e:
+                last_error = str(e)
+                logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
+
+        if last_partial and last_partial.get("port_map"):
+            logger.info("Using partial port mapping from last attempt")
+            return last_partial
+        logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown reason")
         return None
     except Exception as exc:
         logger.error("Port mapping collection failed: %s", exc)
@@ -750,13 +880,15 @@ def _list_reports(output_dirs) -> list:
                         continue
                     seen.add(abs_path)
                     st = f.stat()
-                    files.append({
-                        "name": f.name,
-                        "dir": str(out),
-                        "size": st.st_size,
-                        "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
-                        "type": f.suffix[1:].upper(),
-                    })
+                    files.append(
+                        {
+                            "name": f.name,
+                            "dir": str(out),
+                            "size": st.st_size,
+                            "modified": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M"),
+                            "type": f.suffix[1:].upper(),
+                        }
+                    )
                 except (PermissionError, OSError):
                     continue
     files.sort(key=lambda x: x["modified"], reverse=True)
@@ -776,6 +908,7 @@ def _write_config(path: str, text: str) -> None:
 
 def _load_yaml(path: str) -> Dict[str, Any]:
     import yaml
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
@@ -830,6 +963,7 @@ def _validate_image(file_storage) -> Optional[str]:
         return f"File too large ({size / 1024:.0f} KB). Max: 1 MB"
     try:
         from PIL import Image as PILImage
+
         img = PILImage.open(file_storage)
         w, h = img.size
         if w < 60 or w > 2000:
@@ -844,30 +978,227 @@ def _get_builtin_devices() -> Dict[str, Any]:
     """Return the built-in device map (read-only, from rack_diagram.py)."""
     builtin = {
         # CBoxes
-        "supermicro_gen5_cbox": {"type": "cbox", "height_u": 1, "image_filename": "supermicro_gen5_cbox_1u.png", "description": "Supermicro Gen5 CBox", "source": "built-in"},
-        "hpe_genoa_cbox": {"type": "cbox", "height_u": 1, "image_filename": "hpe_genoa_cbox.png", "description": "HPE Genoa CBox", "source": "built-in"},
-        "hpe_icelake": {"type": "cbox", "height_u": 2, "image_filename": "hpe_il_cbox_2u.png", "description": "HPE IceLake 2U CBox", "source": "built-in"},
-        "dell_icelake": {"type": "cbox", "height_u": 2, "image_filename": "dell_il_cbox_2u.png", "description": "Dell IceLake 2U CBox", "source": "built-in"},
-        "dell_turin_cbox": {"type": "cbox", "height_u": 1, "image_filename": "dell_turin_r6715_cbox_1u.png", "description": "Dell Gen6 Turin CBox (R6715)", "source": "built-in"},
-        "smc_turin_cbox": {"type": "cbox", "height_u": 1, "image_filename": "smc_turin_cbox_1u.png", "description": "SMC Gen6 Turin CBox", "source": "built-in"},
-        "broadwell": {"type": "cbox", "height_u": 2, "image_filename": "broadwell_cbox_2u.png", "description": "Broadwell 2U CBox", "source": "built-in"},
-        "cascadelake": {"type": "cbox", "height_u": 2, "image_filename": "cascadelake_cbox_2u.png", "description": "CascadeLake 2U CBox", "source": "built-in"},
+        "supermicro_gen5_cbox": {
+            "type": "cbox",
+            "height_u": 1,
+            "image_filename": "supermicro_gen5_cbox_1u.png",
+            "description": "Supermicro Gen5 CBox",
+            "source": "built-in",
+        },
+        "hpe_genoa_cbox": {
+            "type": "cbox",
+            "height_u": 1,
+            "image_filename": "hpe_genoa_cbox.png",
+            "description": "HPE Genoa CBox",
+            "source": "built-in",
+        },
+        "hpe_icelake": {
+            "type": "cbox",
+            "height_u": 2,
+            "image_filename": "hpe_il_cbox_2u.png",
+            "description": "HPE IceLake 2U CBox",
+            "source": "built-in",
+        },
+        "dell_icelake": {
+            "type": "cbox",
+            "height_u": 2,
+            "image_filename": "dell_il_cbox_2u.png",
+            "description": "Dell IceLake 2U CBox",
+            "source": "built-in",
+        },
+        "dell_turin_cbox": {
+            "type": "cbox",
+            "height_u": 1,
+            "image_filename": "dell_turin_r6715_cbox_1u.png",
+            "description": "Dell Gen6 Turin CBox (R6715)",
+            "source": "built-in",
+        },
+        "smc_turin_cbox": {
+            "type": "cbox",
+            "height_u": 1,
+            "image_filename": "smc_turin_cbox_1u.png",
+            "description": "SMC Gen6 Turin CBox",
+            "source": "built-in",
+        },
+        "broadwell": {
+            "type": "cbox",
+            "height_u": 2,
+            "image_filename": "broadwell_cbox_2u.png",
+            "description": "Broadwell 2U CBox",
+            "source": "built-in",
+        },
+        "cascadelake": {
+            "type": "cbox",
+            "height_u": 2,
+            "image_filename": "cascadelake_cbox_2u.png",
+            "description": "CascadeLake 2U CBox",
+            "source": "built-in",
+        },
         # DBoxes
-        "ceres_v2": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
-        "dbox-515": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
-        "dbox-516": {"type": "dbox", "height_u": 1, "image_filename": "ceres_v2_1u.png", "description": "Ceres V2 1U DBox", "source": "built-in"},
-        "sanmina": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick 2U DBox", "source": "built-in"},
-        "maverick_1.5": {"type": "dbox", "height_u": 2, "image_filename": "maverick_2u.png", "description": "Maverick/MLK 2U DBox", "source": "built-in"},
+        "ceres_v2": {
+            "type": "dbox",
+            "height_u": 1,
+            "image_filename": "ceres_v2_1u.png",
+            "description": "Ceres V2 1U DBox",
+            "source": "built-in",
+        },
+        "dbox-515": {
+            "type": "dbox",
+            "height_u": 1,
+            "image_filename": "ceres_v2_1u.png",
+            "description": "Ceres V2 1U DBox",
+            "source": "built-in",
+        },
+        "dbox-516": {
+            "type": "dbox",
+            "height_u": 1,
+            "image_filename": "ceres_v2_1u.png",
+            "description": "Ceres V2 1U DBox",
+            "source": "built-in",
+        },
+        "sanmina": {
+            "type": "dbox",
+            "height_u": 2,
+            "image_filename": "maverick_2u.png",
+            "description": "Maverick 2U DBox",
+            "source": "built-in",
+        },
+        "maverick_1.5": {
+            "type": "dbox",
+            "height_u": 2,
+            "image_filename": "maverick_2u.png",
+            "description": "Maverick/MLK 2U DBox",
+            "source": "built-in",
+        },
         # Switches
-        "msn2100-cb2f": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png", "description": "Mellanox SN2100 100Gb 16pt Switch", "source": "built-in"},
-        "msn2700": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn2700_1x32p_100g_switch_1u.png", "description": "Mellanox SN2700 100Gb 32pt Switch", "source": "built-in"},
-        "msn3700-vs2fc": {"type": "switch", "height_u": 1, "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png", "description": "Mellanox SN3700 200Gb 32pt Switch", "source": "built-in"},
-        "msn4600c": {"type": "switch", "height_u": 2, "image_filename": "mellanox_msn4600C_1x64p_100g_switch_2u.png", "description": "Mellanox SN4600C 100Gb 64pt Switch", "source": "built-in"},
-        "msn4600": {"type": "switch", "height_u": 2, "image_filename": "mellanox_msn4600_1x64p_200g_switch_2u.png", "description": "Mellanox SN4600 200Gb 64pt Switch", "source": "built-in"},
-        "sn5600": {"type": "switch", "height_u": 2, "image_filename": "mellanox_sn5600_1x64p_800g_switch_2u.png", "description": "Mellanox SN5600 800Gb 64pt Switch", "source": "built-in"},
-        "arista_7060dx5": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista 7060DX5 800Gb Switch", "source": "built-in"},
-        "arista_7050cx4": {"type": "switch", "height_u": 1, "image_filename": "arista_7050cx4_24d_400g_switch_1u.png", "description": "Arista 7050CX4 400Gb Switch", "source": "built-in"},
-        "arista_7050dx4": {"type": "switch", "height_u": 1, "image_filename": "arista_7050dx4_32s_400g_switch_1u.png", "description": "Arista 7050DX4 400Gb Switch", "source": "built-in"},
-        "arista": {"type": "switch", "height_u": 2, "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg", "description": "Arista Switch (generic)", "source": "built-in"},
+        "msn2100-cb2f": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png",
+            "description": "Mellanox SN2100 100Gb 16pt Switch",
+            "source": "built-in",
+        },
+        "msn2700": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "mellanox_msn2700_1x32p_100g_switch_1u.png",
+            "description": "Mellanox SN2700 100Gb 32pt Switch",
+            "source": "built-in",
+        },
+        "msn3700-vs2fc": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png",
+            "description": "Mellanox SN3700 200Gb 32pt Switch",
+            "source": "built-in",
+        },
+        "msn4600c": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "mellanox_msn4600C_1x64p_100g_switch_2u.png",
+            "description": "Mellanox SN4600C 100Gb 64pt Switch",
+            "source": "built-in",
+        },
+        "msn4600": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "mellanox_msn4600_1x64p_200g_switch_2u.png",
+            "description": "Mellanox SN4600 200Gb 64pt Switch",
+            "source": "built-in",
+        },
+        "sn5600": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "mellanox_sn5600_1x64p_800g_switch_2u.png",
+            "description": "Mellanox SN5600 800Gb 64pt Switch",
+            "source": "built-in",
+        },
+        "arista_7060dx5": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "description": "Arista 7060DX5 800Gb Switch",
+            "source": "built-in",
+        },
+        "arista_7050cx4": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "arista_7050cx4_24d_400g_switch_1u.png",
+            "description": "Arista 7050CX4 400Gb Switch",
+            "source": "built-in",
+        },
+        "arista_7050dx4": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "arista_7050dx4_32s_400g_switch_1u.png",
+            "description": "Arista 7050DX4 400Gb Switch",
+            "source": "built-in",
+        },
+        "arista": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "description": "Arista Switch (generic)",
+            "source": "built-in",
+        },
     }
     return builtin
+
+
+def _build_doc_categories():
+    """Group the doc registry by category, preserving insertion order."""
+    categories = []
+    cat_map: Dict[str, list] = {}
+    for doc in _DOC_REGISTRY:
+        cat = doc["category"]
+        if cat not in cat_map:
+            doc_list: list = []
+            cat_map[cat] = doc_list
+            categories.append((cat, doc_list))
+        cat_map[cat].append({"id": doc["id"], "title": doc["title"]})
+    return categories
+
+
+def _render_doc_markdown(bundle_dir: str, rel_path: str) -> str:
+    """Read a markdown file relative to bundle_dir and return rendered HTML."""
+    file_path = _find_doc_file(bundle_dir, rel_path)
+    if file_path is None:
+        return f'<p class="text-muted">Document not found: {rel_path}</p>'
+
+    md_text = file_path.read_text(encoding="utf-8")
+
+    try:
+        import markdown as md_lib
+
+        html = md_lib.markdown(
+            md_text,
+            extensions=["tables", "fenced_code", "toc", "sane_lists"],
+            extension_configs={"toc": {"permalink": False}},
+        )
+        return _rewrite_doc_links_in_html(html)
+    except ImportError:
+        from markupsafe import escape
+
+        return f"<pre>{escape(md_text)}</pre>"
+
+
+def _find_doc_file(bundle_dir: str, rel_path: str) -> Optional[Path]:
+    """Locate a doc file in the bundle dir or project root."""
+    bundle_path = Path(bundle_dir) / rel_path
+    if bundle_path.exists():
+        return bundle_path
+    project_root = Path(__file__).resolve().parent.parent
+    root_path = project_root / rel_path
+    if root_path.exists():
+        return root_path
+    return None
+
+
+def _get_saved_cluster_ip(profiles_path: str) -> str:
+    """Return the first cluster IP found in saved profiles, or empty string."""
+    profiles = _load_profiles(profiles_path)
+    for profile in profiles.values():
+        ip = profile.get("cluster_ip", "").strip()
+        if ip:
+            return ip
+    return ""

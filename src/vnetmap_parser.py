@@ -111,9 +111,7 @@ class VNetMapParser:
             switch_ip = match.group(1)
 
             # Extract the network details for this switch
-            network_pattern = (
-                rf"Switch {re.escape(switch_ip)} has {{(.*?)}}, network {{(.*?)}}"
-            )
+            network_pattern = rf"Switch {re.escape(switch_ip)} has {{(.*?)}}, network {{(.*?)}}"
             network_match = re.search(network_pattern, content)
 
             if network_match:
@@ -145,9 +143,7 @@ class VNetMapParser:
 
         # Sort connections by port number within each switch
         for switch_ip in connections_by_switch:
-            connections_by_switch[switch_ip].sort(
-                key=lambda x: self._extract_port_number(x["port"])
-            )
+            connections_by_switch[switch_ip].sort(key=lambda x: self._extract_port_number(x["port"]))
 
         return connections_by_switch
 
@@ -228,8 +224,6 @@ class VNetMapParser:
         for issue in self.cross_connections:
             switch_ip = issue["switch_ip"]
             networks = ", ".join(issue["networks"])
-            summary_parts.append(
-                f"Switch {switch_ip} has multiple internal networks ({networks})"
-            )
+            summary_parts.append(f"Switch {switch_ip} has multiple internal networks ({networks})")
 
         return "; ".join(summary_parts)

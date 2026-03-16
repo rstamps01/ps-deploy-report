@@ -76,11 +76,10 @@ class VastClusterInfo:
     is_wb_raid_enabled: Optional[bool] = None
     wb_raid_layout: Optional[str] = None
     dbox_ha_support: Optional[bool] = None
+    ebox: Optional[bool] = None  # Cluster has EBox enclosures
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
-    capacity_base_10: Optional[bool] = (
-        None  # Capacity display format (True=TB, False=TiB)
-    )
+    capacity_base_10: Optional[bool] = None  # Capacity display format (True=TB, False=TiB)
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -141,6 +140,7 @@ class VastHardwareInfo:
     cores: Optional[int] = None
     box_id: Optional[int] = None
     cbox_id: Optional[int] = None
+    ebox_id: Optional[int] = None
     box_vendor: Optional[str] = None
     bios_version: Optional[str] = None
     cpld_version: Optional[str] = None
@@ -312,9 +312,7 @@ class VastApiHandler:
                     self.logger.info(f"Successfully detected API version: {version}")
                     return version
                 else:
-                    self.logger.debug(
-                        f"API version {version} not supported: {response.status_code}"
-                    )
+                    self.logger.debug(f"API version {version} not supported: {response.status_code}")
 
             except Exception as e:
                 self.logger.debug(f"API version {version} test failed: {e}")
@@ -364,9 +362,7 @@ class VastApiHandler:
                 self.logger.info("Using provided API token...")
                 if self._try_provided_token():
                     self.authenticated = True
-                    self.logger.info(
-                        f"Successfully authenticated using provided API token (API {self.api_version})"
-                    )
+                    self.logger.info(f"Successfully authenticated using provided API token (API {self.api_version})")
                     self._detect_cluster_capabilities()
                     return True
                 else:
@@ -377,16 +373,12 @@ class VastApiHandler:
             self.logger.info("Checking for existing API tokens...")
             if self._try_existing_tokens():
                 self.authenticated = True
-                self.logger.info(
-                    f"Successfully authenticated using existing API token (API {self.api_version})"
-                )
+                self.logger.info(f"Successfully authenticated using existing API token (API {self.api_version})")
                 self._detect_cluster_capabilities()
                 return True
 
             # Step 3: Try basic authentication if no valid tokens found
-            self.logger.info(
-                "No valid existing tokens found, trying basic authentication..."
-            )
+            self.logger.info("No valid existing tokens found, trying basic authentication...")
             if self._try_basic_auth():
                 self.authenticated = True
                 self.logger.info(
@@ -396,9 +388,7 @@ class VastApiHandler:
                 return True
 
             # Step 4: Only create new token if basic auth fails and we have token slots available
-            self.logger.info(
-                "Basic authentication failed, checking token availability..."
-            )
+            self.logger.info("Basic authentication failed, checking token availability...")
             if self._check_token_availability():
                 self.logger.info("Token slots available, creating new API token...")
                 if self._create_api_token():
@@ -411,12 +401,8 @@ class VastApiHandler:
                 else:
                     self.logger.error("Failed to create new API token")
             else:
-                self.logger.warning(
-                    "Token limit reached (5 tokens max per user). Cannot create new token."
-                )
-                self.logger.info(
-                    "Recommendation: Revoke unused tokens or use basic authentication"
-                )
+                self.logger.warning("Token limit reached (5 tokens max per user). Cannot create new token.")
+                self.logger.info("Recommendation: Revoke unused tokens or use basic authentication")
 
             self.logger.error("All authentication methods failed")
             return False
@@ -449,14 +435,10 @@ class VastApiHandler:
             if response.status_code == 200:
                 self.logger.debug("Provided API token is valid")
                 # Set the token in session headers for future requests
-                self.session.headers.update(
-                    {"Authorization": f"Api-Token {self.api_token}"}
-                )
+                self.session.headers.update({"Authorization": f"Api-Token {self.api_token}"})
                 return True
             else:
-                self.logger.debug(
-                    f"Provided API token failed with status {response.status_code}"
-                )
+                self.logger.debug(f"Provided API token failed with status {response.status_code}")
                 return False
 
         except Exception as e:
@@ -477,9 +459,7 @@ class VastApiHandler:
             )
 
             if response.status_code != 200:
-                self.logger.debug(
-                    f"Failed to get existing tokens: {response.status_code}"
-                )
+                self.logger.debug(f"Failed to get existing tokens: {response.status_code}")
                 return False
 
             tokens = response.json()
@@ -488,9 +468,7 @@ class VastApiHandler:
                 return False
 
             # Try to use the most recent non-revoked token
-            for token in sorted(
-                tokens, key=lambda x: x.get("created", ""), reverse=True
-            ):
+            for token in sorted(tokens, key=lambda x: x.get("created", ""), reverse=True):
                 if not token.get("revoked", False):
                     token_id = token.get("id")
                     if token_id:
@@ -504,17 +482,11 @@ class VastApiHandler:
 
                         if test_response.status_code == 200:
                             self.api_token = token_id
-                            self.session.headers.update(
-                                {"Authorization": f"Api-Token {token_id}"}
-                            )
-                            self.logger.debug(
-                                f"Successfully using existing token: {token_id}"
-                            )
+                            self.session.headers.update({"Authorization": f"Api-Token {token_id}"})
+                            self.logger.debug(f"Successfully using existing token: {token_id}")
                             return True
                         else:
-                            self.logger.debug(
-                                f"Token {token_id} failed test: {test_response.status_code}"
-                            )
+                            self.logger.debug(f"Token {token_id} failed test: {test_response.status_code}")
 
             self.logger.debug("No valid existing tokens found")
             return False
@@ -547,23 +519,15 @@ class VastApiHandler:
                 return True
 
             tokens = response.json()
-            active_tokens = [
-                token for token in tokens if not token.get("revoked", False)
-            ]
+            active_tokens = [token for token in tokens if not token.get("revoked", False)]
 
-            self.logger.debug(
-                f"Found {len(active_tokens)} active tokens out of {len(tokens)} total tokens"
-            )
+            self.logger.debug(f"Found {len(active_tokens)} active tokens out of {len(tokens)} total tokens")
 
             if len(active_tokens) >= 5:
-                self.logger.warning(
-                    f"Token limit reached: {len(active_tokens)}/5 active tokens"
-                )
+                self.logger.warning(f"Token limit reached: {len(active_tokens)}/5 active tokens")
                 return False
 
-            self.logger.debug(
-                f"Token slots available: {5 - len(active_tokens)} remaining"
-            )
+            self.logger.debug(f"Token slots available: {5 - len(active_tokens)} remaining")
             return True
 
         except Exception as e:
@@ -592,45 +556,30 @@ class VastApiHandler:
                 verify=self.verify_ssl,
             )
 
-            if (
-                response.status_code == 201
-            ):  # 201 Created is the correct status for token creation
+            if response.status_code == 201:  # 201 Created is the correct status for token creation
                 token_info = response.json()
                 if "token" in token_info:
                     self.api_token = token_info["token"]
                     # Set the API token in the session headers for future requests
-                    self.session.headers.update(
-                        {"Authorization": f"Api-Token {self.api_token}"}
-                    )
+                    self.session.headers.update({"Authorization": f"Api-Token {self.api_token}"})
                     self.logger.debug("API token created and set in session headers")
                     return True
                 else:
-                    self.logger.error(
-                        f"API token creation response missing token: {token_info}"
-                    )
+                    self.logger.error(f"API token creation response missing token: {token_info}")
                     return False
             elif response.status_code == 503:
                 # Handle token limit reached
                 try:
                     error_info = response.json()
-                    if (
-                        "detail" in error_info
-                        and "maximum number of API Tokens" in error_info["detail"]
-                    ):
-                        self.logger.warning(
-                            "User has reached maximum API token limit. Cannot create new token."
-                        )
+                    if "detail" in error_info and "maximum number of API Tokens" in error_info["detail"]:
+                        self.logger.warning("User has reached maximum API token limit. Cannot create new token.")
                         return False
                 except:
                     pass
-                self.logger.error(
-                    f"API token creation failed: {response.status_code} - {response.text}"
-                )
+                self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
                 return False
             else:
-                self.logger.error(
-                    f"API token creation failed: {response.status_code} - {response.text}"
-                )
+                self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
                 return False
 
         except Exception as e:
@@ -681,9 +630,7 @@ class VastApiHandler:
                     self.session.cookies.update(response.cookies)
                 return True
             else:
-                self.logger.debug(
-                    f"Session auth failed: {response.status_code} - {response.text}"
-                )
+                self.logger.debug(f"Session auth failed: {response.status_code} - {response.text}")
                 return False
         except Exception as e:
             self.logger.debug(f"Session auth exception: {e}")
@@ -706,9 +653,7 @@ class VastApiHandler:
                 token_data = response.json()
                 if "access" in token_data:
                     # Set the JWT token in the session headers
-                    self.session.headers.update(
-                        {"Authorization": f"Bearer {token_data['access']}"}
-                    )
+                    self.session.headers.update({"Authorization": f"Bearer {token_data['access']}"})
                     return True
             return False
         except (requests.RequestException, ValueError, KeyError) as exc:
@@ -733,20 +678,14 @@ class VastApiHandler:
                 version = cluster_data.get("sw_version", cluster_data.get("version"))
                 if version:
                     self.cluster_version = version
-                    self.logger.info(
-                        f"Detected cluster version: {self.cluster_version}"
-                    )
+                    self.logger.info(f"Detected cluster version: {self.cluster_version}")
                 else:
-                    self.logger.warning(
-                        "Could not extract cluster version from response"
-                    )
+                    self.logger.warning("Could not extract cluster version from response")
 
                 # Determine supported features based on version
                 self._determine_supported_features()
             else:
-                self.logger.warning(
-                    "Could not detect cluster version, using conservative feature set"
-                )
+                self.logger.warning("Could not detect cluster version, using conservative feature set")
                 self._determine_supported_features()
 
         except Exception as e:
@@ -762,9 +701,7 @@ class VastApiHandler:
             "v6",
             "v5",
         ]
-        cluster_supports_enhanced = (
-            self.cluster_version and self.cluster_version >= "5.3"
-        )
+        cluster_supports_enhanced = self.cluster_version and self.cluster_version >= "5.3"
 
         if api_supports_enhanced and cluster_supports_enhanced:
             self.rack_height_supported = True
@@ -777,14 +714,38 @@ class VastApiHandler:
             self.psnt_supported = False
             reason = []
             if not api_supports_enhanced:
-                reason.append(
-                    f"API version {self.api_version} does not support enhanced features"
-                )
+                reason.append(f"API version {self.api_version} does not support enhanced features")
             if not cluster_supports_enhanced:
-                reason.append(
-                    f"Cluster version {self.cluster_version} does not support enhanced features"
-                )
+                reason.append(f"Cluster version {self.cluster_version} does not support enhanced features")
             self.logger.info(f"Enhanced features disabled: {'; '.join(reason)}")
+
+    @staticmethod
+    def _normalize_list_response(data: Any) -> List[Any]:
+        """
+        Normalize API response to a list. Handles:
+        - direct array
+        - paginated {results: [...]}
+        - dict of items (e.g. {id: {...}} or {name: {...}}) -> list of values
+        - single resource dict (has 'id' or 'name') -> [data]
+        """
+        if data is None:
+            return []
+        if isinstance(data, list):
+            return data
+        if not isinstance(data, dict):
+            return []
+        if "results" in data:
+            r = data["results"]
+            return r if isinstance(r, list) else []
+        # Dict keyed by id/name: use values as list
+        if data:
+            first = next(iter(data.values()), None)
+            if isinstance(first, dict) and ("id" in first or "name" in first or "guid" in first):
+                return list(data.values())
+            # Single resource: dict has id/name at top level
+            if "id" in data or "name" in data:
+                return [data]
+        return []
 
     def _make_api_request(
         self,
@@ -843,9 +804,7 @@ class VastApiHandler:
                     verify=self.verify_ssl,
                 )
             elif method.upper() == "DELETE":
-                response = self.session.delete(
-                    url, headers=headers, timeout=self.timeout, verify=self.verify_ssl
-                )
+                response = self.session.delete(url, headers=headers, timeout=self.timeout, verify=self.verify_ssl)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -864,9 +823,7 @@ class VastApiHandler:
                 self.logger.warning(f"Endpoint not found: {endpoint}")
                 return None
             else:
-                self.logger.error(
-                    f"API request failed: {response.status_code} - {response.text}"
-                )
+                self.logger.error(f"API request failed: {response.status_code} - {response.text}")
                 return None
 
         except requests.exceptions.RequestException as e:
@@ -889,32 +846,24 @@ class VastApiHandler:
             # Try clusters/ endpoint first (more comprehensive data)
             cluster_data = self._make_api_request("clusters/")
             if not cluster_data:
-                self.logger.warning(
-                    "clusters/ endpoint not available, falling back to vms/"
-                )
+                self.logger.warning("clusters/ endpoint not available, falling back to vms/")
                 cluster_data = self._make_api_request("vms/")
                 if not cluster_data:
-                    self.logger.error(
-                        "Failed to retrieve cluster information from both endpoints"
-                    )
+                    self.logger.error("Failed to retrieve cluster information from both endpoints")
                     return None
 
             # Handle both single object and array responses
             if isinstance(cluster_data, list) and len(cluster_data) > 0:
                 cluster_data = cluster_data[0]  # Use first cluster if array
             elif not isinstance(cluster_data, dict):
-                self.logger.error(
-                    f"Unexpected cluster data format: {type(cluster_data)}"
-                )
+                self.logger.error(f"Unexpected cluster data format: {type(cluster_data)}")
                 return None
 
             # Extract comprehensive cluster information
             cluster_info = VastClusterInfo(
                 name=cluster_data.get("name", "Unknown"),
                 guid=cluster_data.get("guid", "Unknown"),
-                version=cluster_data.get(
-                    "sw_version", cluster_data.get("version", "Unknown")
-                ),
+                version=cluster_data.get("sw_version", cluster_data.get("version", "Unknown")),
                 state=cluster_data.get("state", "Unknown"),
                 license=cluster_data.get("license", "Unknown"),
             )
@@ -935,21 +884,13 @@ class VastApiHandler:
             if cluster_info.uptime != "Unknown":
                 self.logger.info(f"Retrieved cluster uptime: {cluster_info.uptime}")
 
-            cluster_info.online_start_time = cluster_data.get(
-                "online_start_time", "Unknown"
-            )
+            cluster_info.online_start_time = cluster_data.get("online_start_time", "Unknown")
             if cluster_info.online_start_time != "Unknown":
-                self.logger.info(
-                    f"Retrieved online start time: {cluster_info.online_start_time}"
-                )
+                self.logger.info(f"Retrieved online start time: {cluster_info.online_start_time}")
 
-            cluster_info.deployment_time = cluster_data.get(
-                "deployment_time", "Unknown"
-            )
+            cluster_info.deployment_time = cluster_data.get("deployment_time", "Unknown")
             if cluster_info.deployment_time != "Unknown":
-                self.logger.info(
-                    f"Retrieved deployment time: {cluster_info.deployment_time}"
-                )
+                self.logger.info(f"Retrieved deployment time: {cluster_info.deployment_time}")
 
             cluster_info.url = cluster_data.get("url", "Unknown")
             if cluster_info.url != "Unknown":
@@ -964,32 +905,23 @@ class VastApiHandler:
 
             # Extract cluster operational states and management details
             cluster_info.ssd_raid_state = cluster_data.get("ssd_raid_state", "Unknown")
-            cluster_info.nvram_raid_state = cluster_data.get(
-                "nvram_raid_state", "Unknown"
-            )
-            cluster_info.memory_raid_state = cluster_data.get(
-                "memory_raid_state", "Unknown"
-            )
+            cluster_info.nvram_raid_state = cluster_data.get("nvram_raid_state", "Unknown")
+            cluster_info.memory_raid_state = cluster_data.get("memory_raid_state", "Unknown")
             cluster_info.leader_state = cluster_data.get("leader_state", "Unknown")
             cluster_info.leader_cnode = cluster_data.get("leader_cnode", "Unknown")
             cluster_info.mgmt_cnode = cluster_data.get("mgmt_cnode", "Unknown")
             cluster_info.mgmt_inner_vip = cluster_data.get("mgmt_inner_vip", "Unknown")
-            cluster_info.mgmt_inner_vip_cnode = cluster_data.get(
-                "mgmt_inner_vip_cnode", "Unknown"
-            )
+            cluster_info.mgmt_inner_vip_cnode = cluster_data.get("mgmt_inner_vip_cnode", "Unknown")
 
             # Extract cluster feature flags and configuration
             cluster_info.enabled = cluster_data.get("enabled", None)
             cluster_info.enable_similarity = cluster_data.get("enable_similarity", None)
             cluster_info.dedup_active = cluster_data.get("dedup_active", None)
-            cluster_info.is_wb_raid_enabled = cluster_data.get(
-                "is_wb_raid_enabled", None
-            )
+            cluster_info.is_wb_raid_enabled = cluster_data.get("is_wb_raid_enabled", None)
             cluster_info.wb_raid_layout = cluster_data.get("wb_raid_layout", "Unknown")
             cluster_info.dbox_ha_support = cluster_data.get("dbox_ha_support", None)
-            cluster_info.enable_rack_level_resiliency = cluster_data.get(
-                "enable_rack_level_resiliency", None
-            )
+            cluster_info.ebox = cluster_data.get("ebox", None)
+            cluster_info.enable_rack_level_resiliency = cluster_data.get("enable_rack_level_resiliency", None)
             cluster_info.disable_metrics = cluster_data.get("disable_metrics", None)
             cluster_info.capacity_base_10 = cluster_data.get("capacity_base_10", None)
             if cluster_info.capacity_base_10 is not None:
@@ -998,54 +930,28 @@ class VastApiHandler:
                 )
 
             # Extract storage capacity and usage metrics
-            cluster_info.usable_capacity_tb = cluster_data.get(
-                "usable_capacity_tb", None
-            )
-            cluster_info.free_usable_capacity_tb = cluster_data.get(
-                "free_usable_capacity_tb", None
-            )
+            cluster_info.usable_capacity_tb = cluster_data.get("usable_capacity_tb", None)
+            cluster_info.free_usable_capacity_tb = cluster_data.get("free_usable_capacity_tb", None)
             cluster_info.drr_text = cluster_data.get("drr_text", "Unknown")
             cluster_info.physical_space_tb = cluster_data.get("physical_space_tb", None)
-            cluster_info.physical_space_in_use_tb = cluster_data.get(
-                "physical_space_in_use_tb", None
-            )
-            cluster_info.free_physical_space_tb = cluster_data.get(
-                "free_physical_space_tb", None
-            )
-            cluster_info.physical_space_in_use_percent = cluster_data.get(
-                "physical_space_in_use_percent", None
-            )
+            cluster_info.physical_space_in_use_tb = cluster_data.get("physical_space_in_use_tb", None)
+            cluster_info.free_physical_space_tb = cluster_data.get("free_physical_space_tb", None)
+            cluster_info.physical_space_in_use_percent = cluster_data.get("physical_space_in_use_percent", None)
             cluster_info.logical_space_tb = cluster_data.get("logical_space_tb", None)
-            cluster_info.logical_space_in_use_tb = cluster_data.get(
-                "logical_space_in_use_tb", None
-            )
-            cluster_info.free_logical_space_tb = cluster_data.get(
-                "free_logical_space_tb", None
-            )
-            cluster_info.logical_space_in_use_percent = cluster_data.get(
-                "logical_space_in_use_percent", None
-            )
+            cluster_info.logical_space_in_use_tb = cluster_data.get("logical_space_in_use_tb", None)
+            cluster_info.free_logical_space_tb = cluster_data.get("free_logical_space_tb", None)
+            cluster_info.logical_space_in_use_percent = cluster_data.get("logical_space_in_use_percent", None)
 
             # Extract encryption configuration
             cluster_info.enable_encryption = cluster_data.get("enable_encryption", None)
-            cluster_info.s3_enable_only_aes_ciphers = cluster_data.get(
-                "S3_ENABLE_ONLY_AES_CIPHERS", None
-            )
-            cluster_info.encryption_type = cluster_data.get(
-                "encryption_type", "Unknown"
-            )
+            cluster_info.s3_enable_only_aes_ciphers = cluster_data.get("S3_ENABLE_ONLY_AES_CIPHERS", None)
+            cluster_info.encryption_type = cluster_data.get("encryption_type", "Unknown")
             cluster_info.ekm_servers = cluster_data.get("ekm_servers", "Unknown")
             cluster_info.ekm_address = cluster_data.get("ekm_address", "Unknown")
             cluster_info.ekm_port = cluster_data.get("ekm_port", None)
-            cluster_info.ekm_auth_domain = cluster_data.get(
-                "ekm_auth_domain", "Unknown"
-            )
-            cluster_info.secondary_ekm_address = cluster_data.get(
-                "secondary_ekm_address", None
-            )
-            cluster_info.secondary_ekm_port = cluster_data.get(
-                "secondary_ekm_port", None
-            )
+            cluster_info.ekm_auth_domain = cluster_data.get("ekm_auth_domain", "Unknown")
+            cluster_info.secondary_ekm_address = cluster_data.get("secondary_ekm_address", None)
+            cluster_info.secondary_ekm_port = cluster_data.get("secondary_ekm_port", None)
 
             # Debug logging for encryption fields
             self.logger.info(
@@ -1053,27 +959,17 @@ class VastApiHandler:
             )
 
             # Extract network configuration - Set defaults for fields not available in clusters endpoint
-            cluster_info.management_vips = cluster_data.get(
-                "management_vips", "Not Configured"
-            )
-            cluster_info.external_gateways = cluster_data.get(
-                "external_gateways", "Not Configured"
-            )
+            cluster_info.management_vips = cluster_data.get("management_vips", "Not Configured")
+            cluster_info.external_gateways = cluster_data.get("external_gateways", "Not Configured")
             cluster_info.dns = cluster_data.get("dns", "Not Configured")
             cluster_info.ntp = cluster_data.get("ntp", "Not Configured")
             cluster_info.ext_netmask = cluster_data.get("ext_netmask", "Not Configured")
-            cluster_info.auto_ports_ext_iface = cluster_data.get(
-                "auto_ports_ext_iface", "Not Configured"
-            )
+            cluster_info.auto_ports_ext_iface = cluster_data.get("auto_ports_ext_iface", "Not Configured")
             cluster_info.b2b_ipmi = cluster_data.get("b2b_ipmi", "Not Configured")
             cluster_info.eth_mtu = cluster_data.get("eth_mtu", "Not Configured")
             cluster_info.ib_mtu = cluster_data.get("ib_mtu", "Not Configured")
-            cluster_info.ipmi_gateway = cluster_data.get(
-                "ipmi_gateway", "Not Configured"
-            )
-            cluster_info.ipmi_netmask = cluster_data.get(
-                "ipmi_netmask", "Not Configured"
-            )
+            cluster_info.ipmi_gateway = cluster_data.get("ipmi_gateway", "Not Configured")
+            cluster_info.ipmi_netmask = cluster_data.get("ipmi_netmask", "Not Configured")
 
             # Store cluster_info as instance variable for later updates
             self._cluster_info = cluster_info
@@ -1085,17 +981,13 @@ class VastApiHandler:
                     if vms_data:
                         if isinstance(vms_data, list) and len(vms_data) > 0:
                             vms_data = vms_data[0]
-                        cluster_info.capacity_base_10 = vms_data.get(
-                            "capacity_base_10", None
-                        )
+                        cluster_info.capacity_base_10 = vms_data.get("capacity_base_10", None)
                         if cluster_info.capacity_base_10 is not None:
                             self.logger.info(
                                 f"Capacity display format: {'TB (base 10)' if cluster_info.capacity_base_10 else 'TiB (base 2)'}"
                             )
                 except Exception as e:
-                    self.logger.warning(
-                        f"Could not retrieve capacity_base_10 from vms/ endpoint: {e}"
-                    )
+                    self.logger.warning(f"Could not retrieve capacity_base_10 from vms/ endpoint: {e}")
 
             # Log additional valuable information
             if "build" in cluster_data:
@@ -1121,7 +1013,8 @@ class VastApiHandler:
             self.logger.info("Collecting CNode details")
 
             cnodes_data = self._make_api_request("cnodes/")
-            if not cnodes_data:
+            cnodes_list = self._normalize_list_response(cnodes_data)
+            if not cnodes_list:
                 self.logger.error("Failed to retrieve CNode information")
                 return []
 
@@ -1129,7 +1022,7 @@ class VastApiHandler:
             cboxes = self.get_cbox_details()
 
             cnodes = []
-            for cnode in cnodes_data:
+            for cnode in cnodes_list:
                 # Get associated CBox information for rack positioning
                 cbox_name = cnode.get("cbox")
                 cbox_info = cboxes.get(cbox_name, {}) if cbox_name else {}
@@ -1140,9 +1033,7 @@ class VastApiHandler:
                     node_type="cnode",
                     name=cnode.get("name", "Unknown"),
                     hostname=cnode.get("hostname"),  # Extract hostname from API
-                    serial_number=cnode.get(
-                        "sn", cnode.get("serial_number", "Unknown")
-                    ),
+                    serial_number=cnode.get("sn", cnode.get("serial_number", "Unknown")),
                     model=cnode.get("box_vendor", "Unknown"),
                     status=cnode.get("state", "unknown"),
                     # Network information
@@ -1155,6 +1046,7 @@ class VastApiHandler:
                     cores=cnode.get("cores"),
                     box_id=cnode.get("box_id"),
                     cbox_id=cnode.get("cbox_id"),
+                    ebox_id=cnode.get("ebox_id"),
                     box_vendor=cnode.get("box_vendor"),
                     bios_version=cnode.get("bios_version"),
                     cpld_version=cnode.get("cpld"),
@@ -1183,22 +1075,14 @@ class VastApiHandler:
                                 f"CNode {hardware_info.name} rack position: {hardware_info.rack_position} ({rack_unit})"
                             )
                         except ValueError:
-                            self.logger.debug(
-                                f"CNode {hardware_info.name} invalid rack unit format: {rack_unit}"
-                            )
+                            self.logger.debug(f"CNode {hardware_info.name} invalid rack unit format: {rack_unit}")
                     else:
-                        self.logger.debug(
-                            f"CNode {hardware_info.name} rack unit format not recognized: {rack_unit}"
-                        )
+                        self.logger.debug(f"CNode {hardware_info.name} rack unit format not recognized: {rack_unit}")
                 elif self.rack_height_supported and "index_in_rack" in cnode:
                     hardware_info.rack_position = cnode["index_in_rack"]
-                    self.logger.debug(
-                        f"CNode {hardware_info.name} rack position: {hardware_info.rack_position}"
-                    )
+                    self.logger.debug(f"CNode {hardware_info.name} rack position: {hardware_info.rack_position}")
                 else:
-                    self.logger.debug(
-                        f"CNode {hardware_info.name} rack position not available"
-                    )
+                    self.logger.debug(f"CNode {hardware_info.name} rack position not available")
 
                 # Log key information
                 self.logger.debug(
@@ -1211,9 +1095,7 @@ class VastApiHandler:
 
                 cnodes.append(hardware_info)
 
-            self.logger.info(
-                f"Retrieved {len(cnodes)} CNode details with comprehensive information"
-            )
+            self.logger.info(f"Retrieved {len(cnodes)} CNode details with comprehensive information")
             return cnodes
 
         except Exception as e:
@@ -1231,7 +1113,8 @@ class VastApiHandler:
             self.logger.info("Collecting DNode details")
 
             dnodes_data = self._make_api_request("dnodes/")
-            if not dnodes_data:
+            dnodes_list = self._normalize_list_response(dnodes_data)
+            if not dnodes_list:
                 self.logger.error("Failed to retrieve DNode information")
                 return []
 
@@ -1240,7 +1123,7 @@ class VastApiHandler:
             dboxes = self.get_dbox_details()
 
             dnodes = []
-            for dnode in dnodes_data:
+            for dnode in dnodes_list:
                 # Get associated DTray and DBox information
                 dtray_name = dnode.get("dtray")
                 dtray_info = dtrays.get(dtray_name, {}) if dtray_name else {}
@@ -1257,9 +1140,7 @@ class VastApiHandler:
                     node_type="dnode",
                     name=dnode.get("name", "Unknown"),
                     hostname=dnode.get("hostname"),  # Extract hostname from API (for reference)
-                    serial_number=dnode.get(
-                        "sn", dnode.get("serial_number", "Unknown")
-                    ),
+                    serial_number=dnode.get("sn", dnode.get("serial_number", "Unknown")),
                     model=dnode.get("box", "Unknown"),
                     status=dnode.get("state", "unknown"),
                     # Network information
@@ -1270,6 +1151,7 @@ class VastApiHandler:
                     ipmi_ip=dnode.get("ipmi_ip"),
                     # Hardware details
                     box_id=dbox_id,  # Store dbox_id in box_id field for DNodes
+                    ebox_id=dnode.get("ebox_id"),
                     box_vendor=dnode.get("box", "Unknown"),
                     bios_version=dnode.get("bios_version"),
                     cpld_version=dnode.get("cpld"),
@@ -1288,9 +1170,7 @@ class VastApiHandler:
                     # DTray information
                     dtray_name=dtray_name,
                     dtray_position=dtray_info.get("position"),
-                    hardware_type=dbox_info.get(
-                        "hardware_type", dtray_info.get("hardware_type")
-                    ),
+                    hardware_type=dbox_info.get("hardware_type", dtray_info.get("hardware_type")),
                     mcu_state=dtray_info.get("mcu_state"),
                     mcu_version=dtray_info.get("mcu_version"),
                     pcie_switch_version=dtray_info.get("pcie_switch_firmware_version"),
@@ -1308,49 +1188,29 @@ class VastApiHandler:
                                 f"DNode {hardware_info.name} rack position: {hardware_info.rack_position} ({rack_unit})"
                             )
                         except ValueError:
-                            self.logger.debug(
-                                f"DNode {hardware_info.name} invalid rack unit format: {rack_unit}"
-                            )
+                            self.logger.debug(f"DNode {hardware_info.name} invalid rack unit format: {rack_unit}")
                     else:
-                        self.logger.debug(
-                            f"DNode {hardware_info.name} rack unit format not recognized: {rack_unit}"
-                        )
+                        self.logger.debug(f"DNode {hardware_info.name} rack unit format not recognized: {rack_unit}")
                 elif self.rack_height_supported and "index_in_rack" in dnode:
                     hardware_info.rack_position = dnode["index_in_rack"]
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} rack position: {hardware_info.rack_position}"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} rack position: {hardware_info.rack_position}")
                 else:
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} rack position not available"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} rack position not available")
 
                 # Log key information
-                self.logger.debug(
-                    f"DNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.status}"
-                )
+                self.logger.debug(f"DNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.status}")
                 if "position" in dnode:
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} position: {dnode['position']}"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} position: {dnode['position']}")
                 if hardware_info.hardware_type:
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} hardware type: {hardware_info.hardware_type}"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} hardware type: {hardware_info.hardware_type}")
                 if hardware_info.dtray_position:
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} DTray position: {hardware_info.dtray_position}"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} DTray position: {hardware_info.dtray_position}")
                 if dbox_info.get("rack_unit"):
-                    self.logger.debug(
-                        f"DNode {hardware_info.name} DBox rack unit: {dbox_info.get('rack_unit')}"
-                    )
+                    self.logger.debug(f"DNode {hardware_info.name} DBox rack unit: {dbox_info.get('rack_unit')}")
 
                 dnodes.append(hardware_info)
 
-            self.logger.info(
-                f"Retrieved {len(dnodes)} DNode details with comprehensive information"
-            )
+            self.logger.info(f"Retrieved {len(dnodes)} DNode details with comprehensive information")
             return dnodes
 
         except Exception as e:
@@ -1393,9 +1253,7 @@ class VastApiHandler:
                     "bmc_fw_version": dtray.get("bmc_fw_version"),
                     "bmc_ip": dtray.get("bmc_ip"),
                     "pcie_switch_mfg_version": dtray.get("pcie_switch_mfg_version"),
-                    "pcie_switch_firmware_version": dtray.get(
-                        "pcie_switch_firmware_version"
-                    ),
+                    "pcie_switch_firmware_version": dtray.get("pcie_switch_firmware_version"),
                     "led_status": dtray.get("led_status"),
                     "dnodes": dtray.get("dnodes", []),
                 }
@@ -1422,12 +1280,13 @@ class VastApiHandler:
             self.logger.info("Collecting CBox details")
 
             cboxes_data = self._make_api_request("cboxes/")
-            if not cboxes_data:
+            cboxes_list = self._normalize_list_response(cboxes_data)
+            if not cboxes_list:
                 self.logger.warning("Failed to retrieve CBox information")
                 return {}
 
             cboxes = {}
-            for cbox in cboxes_data:
+            for cbox in cboxes_list:
                 cbox_name = cbox.get("name", "Unknown")
                 cboxes[cbox_name] = {
                     "id": cbox.get("id"),
@@ -1445,9 +1304,7 @@ class VastApiHandler:
                     "rack_name": cbox.get("rack_name"),
                 }
 
-                self.logger.debug(
-                    f"CBox {cbox_name}: {cbox.get('rack_unit')} in {cbox.get('rack_name')}"
-                )
+                self.logger.debug(f"CBox {cbox_name}: {cbox.get('rack_unit')} in {cbox.get('rack_name')}")
 
             self.logger.info(f"Retrieved {len(cboxes)} CBox details")
             return cboxes
@@ -1467,12 +1324,13 @@ class VastApiHandler:
             self.logger.info("Collecting DBox details")
 
             dboxes_data = self._make_api_request("dboxes/")
-            if not dboxes_data:
+            dboxes_list = self._normalize_list_response(dboxes_data)
+            if not dboxes_list:
                 self.logger.warning("Failed to retrieve DBox information")
                 return {}
 
             dboxes = {}
-            for dbox in dboxes_data:
+            for dbox in dboxes_list:
                 dbox_name = dbox.get("name", "Unknown")
                 dboxes[dbox_name] = {
                     "id": dbox.get("id"),
@@ -1512,6 +1370,47 @@ class VastApiHandler:
             self.logger.error(f"Error collecting DBox details: {e}")
             return {}
 
+    def get_ebox_details(self) -> Dict[str, Any]:
+        """
+        Get EBox (enclosure) details when the cluster has EBoxes.
+
+        Returns:
+            Dict[str, Any]: EBox information keyed by ebox name, or empty dict if
+            endpoint returns 404 or cluster has no EBoxes.
+        """
+        try:
+            self.logger.info("Collecting EBox details")
+            eboxes_data = self._make_api_request("eboxes/")
+            eboxes_list = self._normalize_list_response(eboxes_data)
+            if not eboxes_list:
+                self.logger.debug("No EBox data (endpoint may return 404 when no EBoxes)")
+                return {}
+
+            eboxes = {}
+            for ebox in eboxes_list:
+                ebox_name = ebox.get("name", "Unknown")
+                eboxes[ebox_name] = {
+                    "id": ebox.get("id"),
+                    "guid": ebox.get("guid"),
+                    "name": ebox_name,
+                    "uid": ebox.get("uid"),
+                    "state": ebox.get("state"),
+                    "cluster": ebox.get("cluster"),
+                    "cluster_id": ebox.get("cluster_id"),
+                    "description": ebox.get("description"),
+                    "subsystem": ebox.get("subsystem"),
+                    "index_in_rack": ebox.get("index_in_rack"),
+                    "rack_id": ebox.get("rack_id"),
+                    "rack_unit": ebox.get("rack_unit"),
+                    "rack_name": ebox.get("rack_name"),
+                }
+                self.logger.debug(f"EBox {ebox_name}: {ebox.get('rack_unit')} in {ebox.get('rack_name')}")
+            self.logger.info(f"Retrieved {len(eboxes)} EBox details")
+            return eboxes
+        except Exception as e:
+            self.logger.debug(f"EBox details not available: {e}")
+            return {}
+
     def get_network_configuration(self) -> Dict[str, Any]:
         """
         Get network configuration including DNS, NTP, and VIP pools.
@@ -1536,16 +1435,10 @@ class VastApiHandler:
                     # Update cluster info with actual DNS data
                     if hasattr(self, "_cluster_info") and self._cluster_info:
                         self._cluster_info.dns = dns_info.get("vip", "Not Configured")
-                        self._cluster_info.management_vips = dns_info.get(
-                            "vip", "Not Configured"
-                        )
-                        self._cluster_info.external_gateways = dns_info.get(
-                            "vip_gateway", "Not Configured"
-                        )
+                        self._cluster_info.management_vips = dns_info.get("vip", "Not Configured")
+                        self._cluster_info.external_gateways = dns_info.get("vip_gateway", "Not Configured")
                         self._cluster_info.ext_netmask = (
-                            f"255.255.0.0"
-                            if dns_info.get("vip_subnet_cidr") == 16
-                            else "Not Configured"
+                            f"255.255.0.0" if dns_info.get("vip_subnet_cidr") == 16 else "Not Configured"
                         )
                         self.logger.info(
                             f"Updated cluster network info from DNS: VIP={dns_info.get('vip')}, Gateway={dns_info.get('vip_gateway')}"
@@ -1585,15 +1478,9 @@ class VastApiHandler:
                         ipv6_support = vms_info.get("ipv6_support")
 
                         # Update network fields if not already set
-                        if (
-                            ip1
-                            and self._cluster_info.management_vips == "Not Configured"
-                        ):
+                        if ip1 and self._cluster_info.management_vips == "Not Configured":
                             self._cluster_info.management_vips = ip1
-                        if (
-                            ip2
-                            and self._cluster_info.external_gateways == "Not Configured"
-                        ):
+                        if ip2 and self._cluster_info.external_gateways == "Not Configured":
                             self._cluster_info.external_gateways = ip2
 
                         self.logger.info(
@@ -1617,9 +1504,7 @@ class VastApiHandler:
             # Get network configuration from vms/1/network_settings/ endpoint
             network_data = self._make_api_request("vms/1/network_settings/")
             if not network_data:
-                self.logger.warning(
-                    "No network data available from vms/1/network_settings/ endpoint"
-                )
+                self.logger.warning("No network data available from vms/1/network_settings/ endpoint")
                 return {}
 
             # Extract network configuration from the data field
@@ -1640,16 +1525,12 @@ class VastApiHandler:
                             vast_install_info = host.get("vast_install_info", {})
                             if vast_install_info.get("net_type"):
                                 net_type = vast_install_info.get("net_type")
-                                self.logger.info(
-                                    f"Extracted net_type from network_settings: {net_type}"
-                                )
+                                self.logger.info(f"Extracted net_type from network_settings: {net_type}")
                                 break
                     if net_type != "Unknown":
                         break
             else:
-                self.logger.warning(
-                    "No boxes found in network_settings data for net_type extraction"
-                )
+                self.logger.warning("No boxes found in network_settings data for net_type extraction")
 
             # Extract cluster network configuration
             network_config = {
@@ -1701,9 +1582,7 @@ class VastApiHandler:
                             "hostname": host.get("hostname", "Unknown"),
                             "mgmt_ip": host.get("mgmt_ip", "Unknown"),
                             "ipmi_ip": host.get("ipmi_ip", "Unknown"),
-                            "box_vendor": vast_install_info.get(
-                                "box_vendor", "Unknown"
-                            ),
+                            "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
                             "vast_os": vast_install_info.get("vast_os", "Unknown"),
                             "node_type": vast_install_info.get("node_type", "Unknown"),
                             "box_name": vast_install_info.get("box_name", "Unknown"),
@@ -1751,9 +1630,7 @@ class VastApiHandler:
                             "hostname": host.get("hostname", "Unknown"),
                             "mgmt_ip": host.get("mgmt_ip", "Unknown"),
                             "ipmi_ip": host.get("ipmi_ip", "Unknown"),
-                            "box_vendor": vast_install_info.get(
-                                "box_vendor", "Unknown"
-                            ),
+                            "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
                             "vast_os": vast_install_info.get("vast_os", "Unknown"),
                             "node_type": vast_install_info.get("node_type", "Unknown"),
                             "position": vast_install_info.get("position", "Unknown"),
@@ -1925,12 +1802,8 @@ class VastApiHandler:
                     {
                         "total_capacity": cluster_dict.get("total_capacity", "Unknown"),
                         "used_capacity": cluster_dict.get("used_capacity", "Unknown"),
-                        "available_capacity": cluster_dict.get(
-                            "available_capacity", "Unknown"
-                        ),
-                        "utilization_percentage": cluster_dict.get(
-                            "utilization_percentage", 0.0
-                        ),
+                        "available_capacity": cluster_dict.get("available_capacity", "Unknown"),
+                        "utilization_percentage": cluster_dict.get("utilization_percentage", 0.0),
                     }
                 )
 
@@ -1945,13 +1818,9 @@ class VastApiHandler:
                 performance_data.update(
                     {
                         "iops_rating": cluster_dict.get("iops_rating", "Unknown"),
-                        "throughput_rating": cluster_dict.get(
-                            "throughput_rating", "Unknown"
-                        ),
+                        "throughput_rating": cluster_dict.get("throughput_rating", "Unknown"),
                         "latency_metrics": cluster_dict.get("latency_metrics", {}),
-                        "performance_tier": cluster_dict.get(
-                            "performance_tier", "Unknown"
-                        ),
+                        "performance_tier": cluster_dict.get("performance_tier", "Unknown"),
                     }
                 )
 
@@ -1987,17 +1856,11 @@ class VastApiHandler:
                     {
                         "license_type": cluster_dict.get("license_type", "Unknown"),
                         "license_key": cluster_dict.get("license_key", "Unknown"),
-                        "expiration_date": cluster_dict.get(
-                            "expiration_date", "Unknown"
-                        ),
+                        "expiration_date": cluster_dict.get("expiration_date", "Unknown"),
                         "licensed_features": cluster_dict.get("licensed_features", []),
-                        "compliance_status": cluster_dict.get(
-                            "compliance_status", "Unknown"
-                        ),
+                        "compliance_status": cluster_dict.get("compliance_status", "Unknown"),
                         "support_level": cluster_dict.get("support_level", "Unknown"),
-                        "maintenance_expiry": cluster_dict.get(
-                            "maintenance_expiry", "Unknown"
-                        ),
+                        "maintenance_expiry": cluster_dict.get("maintenance_expiry", "Unknown"),
                     }
                 )
 
@@ -2298,9 +2161,7 @@ class VastApiHandler:
             return recommendations_data
 
         except Exception as e:
-            self.logger.error(
-                f"Error collecting future recommendations information: {e}"
-            )
+            self.logger.error(f"Error collecting future recommendations information: {e}")
             return {}
 
     def get_switches_detail(self) -> List[Dict[str, Any]]:
@@ -2318,9 +2179,7 @@ class VastApiHandler:
             base_url = f"https://{self.cluster_ip}/api/v1"
             switches_url = f"{base_url}/switches/"
 
-            response = self.session.get(
-                switches_url, verify=False, timeout=self.timeout
-            )
+            response = self.session.get(switches_url, verify=False, timeout=self.timeout)
 
             if response.status_code == 200:
                 switches_data = response.json()
@@ -2331,9 +2190,7 @@ class VastApiHandler:
                     self.logger.warning("No switch detail data available")
                     return []
             else:
-                self.logger.warning(
-                    f"Failed to retrieve switches: HTTP {response.status_code}"
-                )
+                self.logger.warning(f"Failed to retrieve switches: HTTP {response.status_code}")
                 return []
 
         except Exception as e:
@@ -2366,9 +2223,7 @@ class VastApiHandler:
                     self.logger.warning("No switch port data available")
                     return []
             else:
-                self.logger.warning(
-                    f"Failed to retrieve ports data: HTTP {response.status_code}"
-                )
+                self.logger.warning(f"Failed to retrieve ports data: HTTP {response.status_code}")
                 return []
 
         except Exception as e:
@@ -2559,6 +2414,7 @@ class VastApiHandler:
                     "is_wb_raid_enabled": cluster_info.is_wb_raid_enabled,
                     "wb_raid_layout": cluster_info.wb_raid_layout,
                     "dbox_ha_support": cluster_info.dbox_ha_support,
+                    "ebox": cluster_info.ebox,
                     "enable_rack_level_resiliency": cluster_info.enable_rack_level_resiliency,
                     "disable_metrics": cluster_info.disable_metrics,
                     "capacity_base_10": cluster_info.capacity_base_10,
@@ -2608,6 +2464,7 @@ class VastApiHandler:
             dnodes = self.get_dnode_details()
             cboxes = self.get_cbox_details()
             dboxes = self.get_dbox_details()
+            eboxes = self.get_ebox_details()
             all_data["hardware"] = {
                 "cnodes": [
                     {
@@ -2621,6 +2478,7 @@ class VastApiHandler:
                         "status": cnode.status,
                         "box_vendor": cnode.box_vendor,
                         "cbox_id": cnode.cbox_id,
+                        "ebox_id": cnode.ebox_id,
                     }
                     for cnode in cnodes
                 ],
@@ -2635,11 +2493,13 @@ class VastApiHandler:
                         "rack_position": dnode.rack_position,
                         "status": dnode.status,
                         "dbox_id": dnode.box_id,  # DBox ID (stored in box_id field for DNodes)
+                        "ebox_id": dnode.ebox_id,
                     }
                     for dnode in dnodes
                 ],
                 "cboxes": cboxes,
                 "dboxes": dboxes,
+                "eboxes": eboxes,
             }
 
             # Configuration sections

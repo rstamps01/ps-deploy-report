@@ -15,7 +15,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from app import create_flask_app, _list_reports, _read_config, _write_config
+from app import create_flask_app, _list_reports, _read_config, _write_config, APP_VERSION
 
 
 class TestFlaskAppFactory(unittest.TestCase):
@@ -53,7 +53,7 @@ class TestDashboardRoute(unittest.TestCase):
 
     def test_dashboard_contains_version(self):
         resp = self.client.get("/")
-        self.assertIn(b"1.4.0", resp.data)
+        self.assertIn(APP_VERSION.encode(), resp.data)
 
     def test_dashboard_contains_nav_links(self):
         resp = self.client.get("/")
@@ -83,12 +83,15 @@ class TestGenerateRoutes(unittest.TestCase):
         self.assertIn("error", body)
 
     def test_generate_post_with_ip_starts_job(self):
-        resp = self.client.post("/generate", data={
-            "cluster_ip": "10.0.0.1",
-            "auth_method": "password",
-            "username": "support",
-            "password": "test",
-        })
+        resp = self.client.post(
+            "/generate",
+            data={
+                "cluster_ip": "10.0.0.1",
+                "auth_method": "password",
+                "username": "support",
+                "password": "test",
+            },
+        )
         self.assertEqual(resp.status_code, 200)
         body = json.loads(resp.data)
         self.assertEqual(body["status"], "started")
@@ -193,6 +196,36 @@ class TestReportsRoutes(unittest.TestCase):
     def test_reports_delete_missing_returns_404(self):
         resp = self.client.post("/reports/delete/nonexistent.pdf")
         self.assertEqual(resp.status_code, 404)
+
+
+class TestDocsRoutes(unittest.TestCase):
+    """Docs page and doc content; internal .md links are rewritten to /docs#<doc_id>."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_docs_page_returns_200(self):
+        resp = self.client.get("/docs")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Documentation", resp.data)
+
+    def test_docs_content_returns_200_for_valid_id(self):
+        resp = self.client.get("/docs/content/installation")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_docs_content_returns_404_for_invalid_id(self):
+        resp = self.client.get("/docs/content/nonexistent-doc-id")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_docs_content_rewrites_internal_md_links(self):
+        # UPDATE-GUIDE.md contains [Installation Guide](INSTALLATION-GUIDE.md) -> should become /docs#installation
+        resp = self.client.get("/docs/content/update")
+        self.assertEqual(resp.status_code, 200)
+        # Rewritten link should point to in-app doc, not raw .md path
+        self.assertIn(b'href="/docs#installation"', resp.data)
+        # Should not contain raw .md path as href
+        self.assertNotIn(b'href="INSTALLATION-GUIDE.md"', resp.data)
 
 
 class TestSSEStream(unittest.TestCase):

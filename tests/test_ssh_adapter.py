@@ -23,10 +23,16 @@ from utils.ssh_adapter import (
 
 
 class TestSubprocessSSH(unittest.TestCase):
-    """Tests for the macOS/Linux subprocess SSH path."""
+    """Tests for the macOS/Linux subprocess SSH path.
 
-    @patch("subprocess.run")
-    @patch("shutil.which", return_value=None)
+    Must patch subprocess.run and shutil.which at the use site (utils.ssh_adapter).
+    When which('sshpass') returns a path, the code uses subprocess.run; when None,
+    it falls back to _paramiko_exec. So subprocess-path tests need which to return
+    a path so the subprocess branch is exercised.
+    """
+
+    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
     def test_successful_command(self, _which, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="ok\n", stderr="")
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 10, "/dev/null")
@@ -34,7 +40,7 @@ class TestSubprocessSSH(unittest.TestCase):
         self.assertEqual(out, "ok\n")
         mock_run.assert_called_once()
 
-    @patch("subprocess.run")
+    @patch("utils.ssh_adapter.subprocess.run")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
     def test_uses_sshpass_when_available(self, _which, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
@@ -42,15 +48,15 @@ class TestSubprocessSSH(unittest.TestCase):
         cmd = mock_run.call_args[0][0]
         self.assertEqual(cmd[0], "sshpass")
 
-    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ssh", timeout=5))
-    @patch("shutil.which", return_value=None)
+    @patch("utils.ssh_adapter.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ssh", timeout=5))
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
     def test_timeout_returns_error(self, _which, _run):
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 5, "/dev/null")
         self.assertEqual(rc, 1)
         self.assertIn("timed out", err)
 
-    @patch("subprocess.run", side_effect=OSError("no such file"))
-    @patch("shutil.which", return_value=None)
+    @patch("utils.ssh_adapter.subprocess.run", side_effect=OSError("no such file"))
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
     def test_os_error_returns_error(self, _which, _run):
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 5, "/dev/null")
         self.assertEqual(rc, 1)
@@ -82,6 +88,7 @@ class TestParamikoExec(unittest.TestCase):
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             rc, out, err = mod._paramiko_exec("host", "user", "pass", "ls", 10)
 
@@ -100,6 +107,7 @@ class TestParamikoExec(unittest.TestCase):
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             rc, out, err = mod._paramiko_exec("host", "user", "pass", "ls", 10)
 
@@ -116,6 +124,7 @@ class TestParamikoExec(unittest.TestCase):
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             rc, out, err = mod._paramiko_exec("host", "user", "pass", "ls", 10)
 
@@ -132,6 +141,7 @@ class TestParamikoExec(unittest.TestCase):
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             mod._paramiko_exec("host", "user", "pass", "ls", 10)
 
@@ -153,6 +163,7 @@ class TestPexpectInteractive(unittest.TestCase):
         with patch.dict("sys.modules", {"pexpect": mock_pexpect}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             rc, out, err = mod._pexpect_interactive("host", "user", "pass", "show ver", 10, "/dev/null")
 
@@ -173,6 +184,7 @@ class TestPexpectInteractive(unittest.TestCase):
         with patch.dict("sys.modules", {"pexpect": mock_pexpect}):
             from importlib import reload
             import utils.ssh_adapter as mod
+
             reload(mod)
             rc, out, err = mod._pexpect_interactive("host", "user", "pass", "cmd", 10, "/dev/null")
 
@@ -198,6 +210,7 @@ class TestPexpectFallback(unittest.TestCase):
         mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
 
         import builtins
+
         real_import = builtins.__import__
 
         def selective_import(name, *args, **kwargs):
@@ -209,6 +222,7 @@ class TestPexpectFallback(unittest.TestCase):
             with patch("builtins.__import__", side_effect=selective_import):
                 from importlib import reload
                 import utils.ssh_adapter as mod
+
                 reload(mod)
                 rc, out, err = mod._pexpect_interactive("host", "user", "pass", "cmd", 10, "/dev/null")
 

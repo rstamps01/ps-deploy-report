@@ -16,14 +16,9 @@ from unittest.mock import patch, MagicMock
 import sys
 
 # Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from report_builder import (
-    VastReportBuilder,
-    ReportConfig,
-    ReportGenerationError,
-    create_report_builder
-)
+from report_builder import VastReportBuilder, ReportConfig, ReportGenerationError, create_report_builder
 
 
 class TestReportConfig(unittest.TestCase):
@@ -49,12 +44,7 @@ class TestReportConfig(unittest.TestCase):
 
     def test_report_config_custom_values(self):
         """Test ReportConfig creation with custom values."""
-        config = ReportConfig(
-            page_size="Letter",
-            margin_top=0.5,
-            font_size=12,
-            include_toc=False
-        )
+        config = ReportConfig(page_size="Letter", margin_top=0.5, font_size=12, include_toc=False)
 
         self.assertEqual(config.page_size, "Letter")
         self.assertEqual(config.margin_top, 0.5)
@@ -72,121 +62,99 @@ class TestVastReportBuilder(unittest.TestCase):
 
         # Sample processed data for testing
         self.sample_data = {
-            'metadata': {
-                'extraction_timestamp': '2025-09-26T23:00:00',
-                'overall_completeness': 0.95,
-                'enhanced_features': {
-                    'rack_height_supported': True,
-                    'psnt_supported': True
-                },
-                'api_version': 'v7',
-                'cluster_version': '5.3.0'
+            "metadata": {
+                "extraction_timestamp": "2025-09-26T23:00:00",
+                "overall_completeness": 0.95,
+                "enhanced_features": {"rack_height_supported": True, "psnt_supported": True},
+                "api_version": "v7",
+                "cluster_version": "5.3.0",
             },
-            'cluster_summary': {
-                'name': 'Test Cluster',
-                'guid': 'test-guid-123',
-                'version': '5.3.0',
-                'state': 'active',
-                'license': 'Enterprise',
-                'psnt': 'PSNT123456789'
+            "cluster_summary": {
+                "name": "Test Cluster",
+                "guid": "test-guid-123",
+                "version": "5.3.0",
+                "state": "active",
+                "license": "Enterprise",
+                "psnt": "PSNT123456789",
             },
-            'hardware_inventory': {
-                'total_nodes': 4,
-                'cnodes': [
+            "hardware_inventory": {
+                "total_nodes": 4,
+                "cnodes": [
                     {
-                        'id': 'cnode-1',
-                        'model': 'CBox-100',
-                        'serial_number': 'SN123456',
-                        'status': 'active',
-                        'rack_position': 5
+                        "id": "cnode-1",
+                        "model": "CBox-100",
+                        "serial_number": "SN123456",
+                        "status": "active",
+                        "rack_position": 5,
                     },
                     {
-                        'id': 'cnode-2',
-                        'model': 'CBox-100',
-                        'serial_number': 'SN123457',
-                        'status': 'active',
-                        'rack_position': 6
-                    }
+                        "id": "cnode-2",
+                        "model": "CBox-100",
+                        "serial_number": "SN123457",
+                        "status": "active",
+                        "rack_position": 6,
+                    },
                 ],
-                'dnodes': [
+                "dnodes": [
                     {
-                        'id': 'dnode-1',
-                        'model': 'DBox-100',
-                        'serial_number': 'SN789012',
-                        'status': 'active',
-                        'rack_position': 10
+                        "id": "dnode-1",
+                        "model": "DBox-100",
+                        "serial_number": "SN789012",
+                        "status": "active",
+                        "rack_position": 10,
                     },
                     {
-                        'id': 'dnode-2',
-                        'model': 'DBox-100',
-                        'serial_number': 'SN789013',
-                        'status': 'active',
-                        'rack_position': 11
-                    }
+                        "id": "dnode-2",
+                        "model": "DBox-100",
+                        "serial_number": "SN789013",
+                        "status": "active",
+                        "rack_position": 11,
+                    },
                 ],
-                'rack_positions_available': True,
-                'physical_layout': {
-                    'statistics': {
-                        'occupied_positions': 4,
-                        'min_position': 5,
-                        'max_position': 11,
-                        'total_cnodes': 2,
-                        'total_dnodes': 2
+                "rack_positions_available": True,
+                "physical_layout": {
+                    "statistics": {
+                        "occupied_positions": 4,
+                        "min_position": 5,
+                        "max_position": 11,
+                        "total_cnodes": 2,
+                        "total_dnodes": 2,
                     }
-                }
+                },
             },
-            'sections': {
-                'network_configuration': {
-                    'data': {
-                        'dns': {
-                            'enabled': True,
-                            'servers': ['8.8.8.8', '8.8.4.4'],
-                            'search_domains': ['example.com']
-                        },
-                        'ntp': {
-                            'enabled': True,
-                            'servers': ['pool.ntp.org']
-                        },
-                        'vippools': {
-                            'pools': [{'name': 'default', 'vips': ['192.168.1.10']}]
-                        }
+            "sections": {
+                "network_configuration": {
+                    "data": {
+                        "dns": {"enabled": True, "servers": ["8.8.8.8", "8.8.4.4"], "search_domains": ["example.com"]},
+                        "ntp": {"enabled": True, "servers": ["pool.ntp.org"]},
+                        "vippools": {"pools": [{"name": "default", "vips": ["192.168.1.10"]}]},
                     }
                 },
-                'logical_configuration': {
-                    'data': {
-                        'tenants': {
-                            'tenants': [{'name': 'tenant1', 'id': 't1', 'state': 'active'}]
-                        },
-                        'views': {
-                            'views': [{'name': 'view1', 'path': '/view1', 'state': 'active'}]
-                        },
-                        'view_policies': {
-                            'policies': [{'name': 'policy1', 'type': 'read-only', 'state': 'active'}]
-                        }
+                "logical_configuration": {
+                    "data": {
+                        "tenants": {"tenants": [{"name": "tenant1", "id": "t1", "state": "active"}]},
+                        "views": {"views": [{"name": "view1", "path": "/view1", "state": "active"}]},
+                        "view_policies": {"policies": [{"name": "policy1", "type": "read-only", "state": "active"}]},
                     }
                 },
-                'security_configuration': {
-                    'data': {
-                        'active_directory': {
-                            'enabled': True,
-                            'domain': 'example.com',
-                            'servers': ['dc1.example.com']
-                        },
-                        'ldap': {'enabled': False},
-                        'nis': {'enabled': False}
+                "security_configuration": {
+                    "data": {
+                        "active_directory": {"enabled": True, "domain": "example.com", "servers": ["dc1.example.com"]},
+                        "ldap": {"enabled": False},
+                        "nis": {"enabled": False},
                     }
                 },
-                'data_protection_configuration': {
-                    'data': {
-                        'snapshot_programs': {
-                            'programs': [{'name': 'daily', 'schedule': '0 2 * * *', 'enabled': True}]
+                "data_protection_configuration": {
+                    "data": {
+                        "snapshot_programs": {
+                            "programs": [{"name": "daily", "schedule": "0 2 * * *", "enabled": True}]
                         },
-                        'protection_policies': {
-                            'policies': [{'name': 'backup', 'type': 'replication', 'retention': '30d', 'enabled': True}]
-                        }
+                        "protection_policies": {
+                            "policies": [{"name": "backup", "type": "replication", "retention": "30d", "enabled": True}]
+                        },
                     }
-                }
-            }
+                },
+            },
         }
 
     def tearDown(self):
@@ -208,17 +176,17 @@ class TestVastReportBuilder(unittest.TestCase):
         self.assertEqual(builder.config.page_size, "Letter")
         self.assertEqual(builder.config.font_size, 12)
 
-    @patch('report_builder.REPORTLAB_AVAILABLE', False)
+    @patch("report_builder.REPORTLAB_AVAILABLE", False)
     def test_initialization_no_libraries(self):
         """Test initialization when ReportLab is not available."""
         with self.assertRaises(ReportGenerationError):
             VastReportBuilder()
 
-    @patch('report_builder.REPORTLAB_AVAILABLE', True)
+    @patch("report_builder.REPORTLAB_AVAILABLE", True)
     def test_generate_pdf_report_reportlab(self):
         """Test PDF generation with ReportLab."""
         builder = VastReportBuilder()
-        output_path = str(Path(self.temp_dir) / 'test_report.pdf')
+        output_path = str(Path(self.temp_dir) / "test_report.pdf")
 
         result = builder.generate_pdf_report(self.sample_data, output_path)
 
@@ -228,7 +196,7 @@ class TestVastReportBuilder(unittest.TestCase):
     def test_generate_pdf_report_invalid_data(self):
         """Test PDF generation with invalid data."""
         builder = VastReportBuilder()
-        output_path = str(Path(self.temp_dir) / 'test_report.pdf')
+        output_path = str(Path(self.temp_dir) / "test_report.pdf")
 
         result = builder.generate_pdf_report({}, output_path)
 
@@ -238,7 +206,7 @@ class TestVastReportBuilder(unittest.TestCase):
     def test_generate_pdf_report_invalid_path(self):
         """Test PDF generation with invalid output path."""
         builder = VastReportBuilder()
-        invalid_path = '/invalid/path/that/does/not/exist/test.pdf'
+        invalid_path = "/invalid/path/that/does/not/exist/test.pdf"
 
         result = builder.generate_pdf_report(self.sample_data, invalid_path)
 
@@ -368,5 +336,5 @@ class TestReportGenerationError(unittest.TestCase):
         self.assertIsInstance(error, Exception)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

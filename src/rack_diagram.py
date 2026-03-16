@@ -57,8 +57,8 @@ class RackDiagram:
     # Standard 42U rack: 42 * 1.75 = 73.5 inches
     # Standard 48U rack: 48 * 1.75 = 84.0 inches
     RACK_HEIGHTS = {
-        42: 73.5,   # 42U rack internal height
-        48: 84.0,   # 48U rack internal height
+        42: 73.5,  # 42U rack internal height
+        48: 84.0,  # 48U rack internal height
     }
 
     DEFAULT_RACK_HEIGHT = 42  # Default to 42U for backward compatibility
@@ -123,9 +123,7 @@ class RackDiagram:
         # Use internal dimensions for the main rack area
         width_scale = self.available_width / (self.RACK_INTERNAL_WIDTH * inch)
         height_scale = self.available_height / (self.rack_internal_height * inch)
-        self.scale = (
-            min(width_scale, height_scale) * 0.95
-        )  # 95% to maximize rack size while ensuring it fits
+        self.scale = min(width_scale, height_scale) * 0.95  # 95% to maximize rack size while ensuring it fits
 
         # Scaled dimensions
         self.rack_width = self.RACK_INTERNAL_WIDTH * inch * self.scale
@@ -257,7 +255,6 @@ class RackDiagram:
             "arista_7050cx4",
             "arista_7050dx4",
         ]
-
         two_u_models = [
             "supermicro_2u_cbox",
             "hpe_icelake",
@@ -275,6 +272,10 @@ class RackDiagram:
         ]
 
         model_lower = model.lower() if model else ""
+
+        # EBox (enclosure) U height for Physical Rack Layout (default 1U)
+        if model_lower and ("ebox" in model_lower or "enclosure" in model_lower):
+            return 1
 
         for pattern in sorted(two_u_models, key=len, reverse=True):
             if pattern in model_lower:
@@ -314,9 +315,7 @@ class RackDiagram:
             if 1 <= u_number <= self.rack_height_u:
                 return u_number
             else:
-                logger.warning(
-                    f"Invalid rack position {position}, must be between U1-U{self.rack_height_u}"
-                )
+                logger.warning(f"Invalid rack position {position}, must be between U1-U{self.rack_height_u}")
                 return 0
         except ValueError:
             logger.warning(f"Could not parse rack position: {position}")
@@ -480,6 +479,9 @@ class RackDiagram:
         elif device_type.lower() == "dbox":
             fill_color = self.DBOX_COLOR
             label_prefix = "DBox"
+        elif device_type.lower() == "ebox":
+            fill_color = self.DBOX_COLOR  # EBox (enclosure) same as DBox for now
+            label_prefix = "EBox"
         elif device_type.lower() == "switch":
             fill_color = self.SWITCH_COLOR
             label_prefix = "Switch"
@@ -501,23 +503,15 @@ class RackDiagram:
                     str(image_path),
                 )
                 drawing.add(hw_image)
-                logger.debug(
-                    f"Using hardware image for {device_type}-{device_id}: {image_path}"
-                )
+                logger.debug(f"Using hardware image for {device_type}-{device_id}: {image_path}")
 
             except Exception as e:
-                logger.warning(
-                    f"Failed to load hardware image {image_path}: {e}, using fallback"
-                )
+                logger.warning(f"Failed to load hardware image {image_path}: {e}, using fallback")
                 # Fall back to rectangle if image fails
-                self._draw_fallback_device(
-                    drawing, start_x, device_y, device_height, fill_color
-                )
+                self._draw_fallback_device(drawing, start_x, device_y, device_height, fill_color)
         else:
             # Use fallback colored rectangle
-            self._draw_fallback_device(
-                drawing, start_x, device_y, device_height, fill_color
-            )
+            self._draw_fallback_device(drawing, start_x, device_y, device_height, fill_color)
 
         # Add status indicator (green dot for active)
         if status.upper() == "ACTIVE" or status.upper() == "ONLINE":
@@ -614,15 +608,16 @@ class RackDiagram:
         self,
         cboxes: List[Dict[str, Any]],
         dboxes: List[Dict[str, Any]],
+        eboxes: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Optional[int]]]:
         """
-        Parse CBox/DBox positions and return boundary U values needed for placement.
+        Parse CBox/DBox/EBox positions and return boundary U values needed for placement.
 
         Returns dict with keys: lowest_cbox_bottom, highest_cbox_top,
-        highest_dbox_top, lowest_dbox_bottom.  Values are None when the
-        corresponding device list has no valid positions.  Returns None only
-        when *both* CBox and DBox data are missing.
+        highest_dbox_top, lowest_dbox_bottom, highest_ebox_top, lowest_ebox_bottom.
+        Returns None only when CBox, DBox, and EBox data are all missing.
         """
+        eboxes = eboxes or []
         cbox_tops = []
         cbox_bottoms = []
         for cbox in cboxes:
@@ -643,10 +638,18 @@ class RackDiagram:
                 dbox_tops.append(u_pos)
                 dbox_bottoms.append(u_pos - u_height + 1)
 
-        if not cbox_tops and not dbox_tops:
-            logger.warning(
-                "Cannot calculate switch positions: no CBox or DBox position data"
-            )
+        ebox_tops = []
+        ebox_bottoms = []
+        for ebox in eboxes:
+            u_pos = self._parse_rack_position(ebox.get("rack_unit", ""))
+            if u_pos > 0:
+                model = ebox.get("model", ebox.get("hardware_type", "ebox"))
+                u_height = self._get_device_height_units(model)
+                ebox_tops.append(u_pos)
+                ebox_bottoms.append(u_pos - u_height + 1)
+
+        if not cbox_tops and not dbox_tops and not ebox_tops:
+            logger.warning("Cannot calculate switch positions: no CBox, DBox, or EBox position data")
             return None
 
         return {
@@ -654,6 +657,8 @@ class RackDiagram:
             "lowest_cbox_bottom": min(cbox_bottoms) if cbox_bottoms else None,
             "highest_dbox_top": max(dbox_tops) if dbox_tops else None,
             "lowest_dbox_bottom": min(dbox_bottoms) if dbox_bottoms else None,
+            "highest_ebox_top": max(ebox_tops) if ebox_tops else None,
+            "lowest_ebox_bottom": min(ebox_bottoms) if ebox_bottoms else None,
         }
 
     def _try_center_placement(
@@ -671,50 +676,36 @@ class RackDiagram:
         gap_bottom = highest_dbox_top + 1
 
         if gap_top < gap_bottom:
-            logger.info(
-                "Strategy A (center): No gap between CBoxes and DBoxes"
-            )
+            logger.info("Strategy A (center): No gap between CBoxes and DBoxes")
             return []
 
         gap_size = gap_top - gap_bottom + 1
-        logger.info(
-            f"Strategy A (center): gap={gap_size}U (U{gap_bottom}–U{gap_top})"
-        )
+        logger.info(f"Strategy A (center): gap={gap_size}U (U{gap_bottom}–U{gap_top})")
 
         if switch_height == 2:
             if gap_size < 9:
-                logger.info(
-                    f"Strategy A (center): gap {gap_size}U too small for 2x 2U switches (need 9U)"
-                )
+                logger.info(f"Strategy A (center): gap {gap_size}U too small for 2x 2U switches (need 9U)")
                 return []
             sw1_top = gap_bottom + 3
             sw2_top = gap_top - 2
-            logger.info(
-                f"Strategy A (center): 2U switches — SW-1 top U{sw1_top}, SW-2 top U{sw2_top}"
-            )
+            logger.info(f"Strategy A (center): 2U switches — SW-1 top U{sw1_top}, SW-2 top U{sw2_top}")
             return [sw1_top, sw2_top]
 
         # 1U switches
         if gap_size < 2:
-            logger.info(
-                f"Strategy A (center): gap {gap_size}U too small for 2x 1U switches (need 2U)"
-            )
+            logger.info(f"Strategy A (center): gap {gap_size}U too small for 2x 1U switches (need 2U)")
             return []
 
         if gap_size % 2 == 0:
             center_top = gap_bottom + (gap_size // 2)
             center_bottom = center_top - 1
-            logger.info(
-                f"Strategy A (center): even gap — SW-1 at U{center_bottom}, SW-2 at U{center_top}"
-            )
+            logger.info(f"Strategy A (center): even gap — SW-1 at U{center_bottom}, SW-2 at U{center_top}")
             return [center_bottom, center_top]
 
         center_u = gap_bottom + (gap_size // 2)
         sw_bottom = center_u - 1
         sw_top = center_u + 1
-        logger.info(
-            f"Strategy A (center): odd gap — SW-1 at U{sw_bottom}, SW-2 at U{sw_top} (U{center_u} empty)"
-        )
+        logger.info(f"Strategy A (center): odd gap — SW-1 at U{sw_bottom}, SW-2 at U{sw_top} (U{center_u} empty)")
         return [sw_bottom, sw_top]
 
     def _try_above_placement(
@@ -730,18 +721,14 @@ class RackDiagram:
         Returns list of [SW1_top, SW2_top] positions or empty list if exceeds rack.
         """
         sw1_top = highest_cbox_top + 1 + switch_height  # 1U gap + switch
-        sw2_top = sw1_top + 1 + switch_height            # 1U gap + switch
+        sw2_top = sw1_top + 1 + switch_height  # 1U gap + switch
 
         if sw2_top > rack_height:
-            logger.info(
-                f"Strategy B (above CBox): SW-2 would be at U{sw2_top}, "
-                f"exceeds rack height {rack_height}U"
-            )
+            logger.info(f"Strategy B (above CBox): SW-2 would be at U{sw2_top}, " f"exceeds rack height {rack_height}U")
             return []
 
         logger.info(
-            f"Strategy B (above CBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top} "
-            f"(rack height {rack_height}U)"
+            f"Strategy B (above CBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top} " f"(rack height {rack_height}U)"
         )
         return [sw1_top, sw2_top]
 
@@ -761,15 +748,10 @@ class RackDiagram:
         sw1_bottom = sw1_top - switch_height + 1
 
         if sw1_bottom < 1:
-            logger.info(
-                f"Strategy C (below DBox): SW-1 bottom would be at U{sw1_bottom}, "
-                f"below rack floor"
-            )
+            logger.info(f"Strategy C (below DBox): SW-1 bottom would be at U{sw1_bottom}, " f"below rack floor")
             return []
 
-        logger.info(
-            f"Strategy C (below DBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top}"
-        )
+        logger.info(f"Strategy C (below DBox): SW-1 top U{sw1_top}, SW-2 top U{sw2_top}")
         return [sw1_top, sw2_top]
 
     def _calculate_switch_positions(
@@ -779,14 +761,13 @@ class RackDiagram:
         num_switches: int,
         switches: Optional[List[Dict[str, Any]]] = None,
         rack_height: Optional[int] = None,
+        eboxes: Optional[List[Dict[str, Any]]] = None,
     ) -> List[int]:
         """
         Calculate optimal switch positions using cascading placement strategies.
 
-        Tries three strategies in order:
-          A) Center gap between CBoxes and DBoxes (original logic)
-          B) Above the topmost CBox with 1U spacing
-          C) Below the bottommost DBox with 1U spacing
+        For ebox clusters: tries above ebox hardware then below ebox hardware first.
+        Then: A) Center gap between CBoxes and DBoxes, B) Above top CBox, C) Below bottom DBox.
 
         Args:
             cboxes: List of CBox device dictionaries
@@ -794,30 +775,49 @@ class RackDiagram:
             num_switches: Number of switches to place (currently only supports 2)
             switches: Optional list of switch dictionaries to determine switch height
             rack_height: Rack height in U (defaults to self.rack_height_u)
+            eboxes: Optional list of EBox device dictionaries (for ebox clusters)
 
         Returns:
             List of U positions (top U) for switches, or empty list if all strategies fail
         """
         if num_switches != 2:
-            logger.warning(
-                f"Switch placement logic currently only supports 2 switches, got {num_switches}"
-            )
+            logger.warning(f"Switch placement logic currently only supports 2 switches, got {num_switches}")
             return []
 
+        eboxes = eboxes or []
         switch_height = 1
         if switches and len(switches) > 0:
             first_switch_model = switches[0].get("model", "")
             switch_height = self._get_device_height_units(first_switch_model)
             logger.info(f"Switch height determined: {switch_height}U (model: {first_switch_model})")
 
-        bounds = self._gather_device_boundaries(cboxes, dboxes)
+        bounds = self._gather_device_boundaries(cboxes, dboxes, eboxes)
         if bounds is None:
             return []
 
         effective_rack_height = rack_height or self.rack_height_u
 
+        has_ebox = bounds.get("highest_ebox_top") is not None
         has_cbox = bounds["lowest_cbox_bottom"] is not None
         has_dbox = bounds["highest_dbox_top"] is not None
+
+        # EBox cluster: try above ebox then below ebox first
+        if has_ebox:
+            positions = self._try_above_placement(
+                bounds["highest_ebox_top"],
+                switch_height,
+                effective_rack_height,
+            )
+            if positions:
+                logger.info("Using switch placement: above EBox hardware")
+                return positions
+            positions = self._try_below_placement(
+                bounds["lowest_ebox_bottom"],
+                switch_height,
+            )
+            if positions:
+                logger.info("Using switch placement: below EBox hardware")
+                return positions
 
         # Strategy A: center gap (requires both CBox and DBox)
         if has_cbox and has_dbox:
@@ -860,21 +860,27 @@ class RackDiagram:
         dboxes: List[Dict[str, Any]],
         switches: Optional[List[Dict[str, Any]]] = None,
         rack_name: Optional[str] = None,
+        eboxes: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[Drawing, Dict[int, int]]:
         """
         Generate a complete rack diagram with all devices.
+
+        For ebox clusters, pass eboxes (with ebox U height); dboxes may be empty
+        so that Physical Rack Layout uses ebox positions only.
 
         Args:
             cboxes: List of CBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
             dboxes: List of DBox device dictionaries with 'id', 'model', 'rack_unit', 'state'
             switches: Optional list of switch dictionaries with 'id', 'model', 'state'
             rack_name: Optional rack name to display on the diagram
+            eboxes: Optional list of EBox device dictionaries (use ebox U height in diagram)
 
         Returns:
             Tuple of:
                 - ReportLab Drawing object containing the complete rack diagram
                 - Dictionary mapping switch numbers to calculated U positions
         """
+        eboxes = eboxes or []
         # Create drawing
         drawing = Drawing(self.page_width, self.page_height)
 
@@ -898,11 +904,11 @@ class RackDiagram:
             )
             drawing.add(rack_label)
 
-        # Calculate switch positions if switches are provided
+        # Calculate switch positions if switches are provided (uses ebox boundaries when eboxes present)
         switch_positions_map = {}
         if switches and len(switches) > 0:
             calculated_positions = self._calculate_switch_positions(
-                cboxes, dboxes, len(switches), switches
+                cboxes, dboxes, len(switches), switches, eboxes=eboxes
             )
             if calculated_positions:
                 # Map switch number to U position
@@ -926,9 +932,7 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
-            self._create_device_representation(
-                drawing, "cbox", device_id, u_position, u_height, model, status
-            )
+            self._create_device_representation(drawing, "cbox", device_id, u_position, u_height, model, status)
 
         # Place DBoxes
         for dbox in dboxes:
@@ -947,9 +951,26 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
-            self._create_device_representation(
-                drawing, "dbox", device_id, u_position, u_height, model, status
-            )
+            self._create_device_representation(drawing, "dbox", device_id, u_position, u_height, model, status)
+
+        # Place EBoxes (enclosures; use ebox U height in Physical Rack Layout)
+        for ebox in eboxes:
+            device_id = ebox.get("id", 0)
+            model = ebox.get("model", ebox.get("hardware_type", "ebox"))
+            rack_position = ebox.get("rack_unit", "")
+            status = ebox.get("state", "ACTIVE")
+
+            if not rack_position:
+                logger.warning(f"EBox-{device_id} has no rack position, skipping")
+                continue
+
+            u_position = self._parse_rack_position(rack_position)
+            if u_position == 0:
+                continue
+
+            u_height = self._get_device_height_units(model)
+
+            self._create_device_representation(drawing, "ebox", device_id, u_position, u_height, model, status)
 
         # Place Switches at calculated or explicit positions
         if switches:
@@ -991,6 +1012,8 @@ class RackDiagram:
                     )
 
         device_count_msg = f"{len(cboxes)} CBoxes, {len(dboxes)} DBoxes"
+        if eboxes:
+            device_count_msg += f", {len(eboxes)} EBoxes"
         if switches:
             device_count_msg += f", {len(switches)} Switches"
         logger.info(f"Generated rack diagram with {device_count_msg}")

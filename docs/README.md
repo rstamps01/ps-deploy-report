@@ -72,5 +72,8 @@ docs/
 
 ---
 
-**Last Updated**: March 6, 2026
+**Last Updated**: March 10, 2026  
 **Maintained By**: VAST Professional Services
+
+### API Reference
+- [API Reference](API-REFERENCE.md) — VAST REST API endpoints used by the app (v7 and v1), including cluster, hardware (CBox, DBox, EBox, CNodes, DNodes, switches), network, and data collection sequence.

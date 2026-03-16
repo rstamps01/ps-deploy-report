@@ -16,5 +16,17 @@ pytest-playwright>=0.4.0
 flake8>=6.0.0
 black>=23.0.0
 
+# Static type checking
+mypy>=1.8.0
+types-requests>=2.31.0
+types-PyYAML>=6.0.12
+
+# Security scanning
+bandit>=1.7.0
+pip-audit>=2.6.0
+
+# Pre-commit hooks
+pre-commit>=3.6.0
+
 # Packaging
 pyinstaller>=6.0.0

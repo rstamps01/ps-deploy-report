@@ -182,18 +182,14 @@ class VastReportBuilder:
         self.switch_positions = {}
 
         if not REPORTLAB_AVAILABLE:
-            raise ReportGenerationError(
-                "ReportLab is not available. Please install it: pip install reportlab"
-            )
+            raise ReportGenerationError("ReportLab is not available. Please install it: pip install reportlab")
 
         # Initialize VAST brand compliance
         self.brand_compliance = create_vast_brand_compliance()
 
         self.logger.info("Report builder initialized with VAST brand compliance")
 
-    def generate_pdf_report(
-        self, processed_data: Dict[str, Any], output_path: str
-    ) -> bool:
+    def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
         Generate a professional PDF report from processed data.
 
@@ -248,26 +244,18 @@ class VastReportBuilder:
                 story.extend(self._create_table_of_contents(processed_data))
             else:
                 # Second pass: use dynamic TOC with captured page numbers
-                story.extend(
-                    self._create_table_of_contents_dynamic(
-                        processed_data, page_tracker or {}
-                    )
-                )
+                story.extend(self._create_table_of_contents_dynamic(processed_data, page_tracker or {}))
             story.append(PageBreak())
 
         # Add executive summary
         story.extend(
-            self._create_executive_summary(
-                processed_data, page_tracker, "exec_summary" if is_first_pass else None
-            )
+            self._create_executive_summary(processed_data, page_tracker, "exec_summary" if is_first_pass else None)
         )
         story.append(PageBreak())
 
         # Add cluster information
         story.extend(
-            self._create_cluster_information(
-                processed_data, page_tracker, "cluster_info" if is_first_pass else None
-            )
+            self._create_cluster_information(processed_data, page_tracker, "cluster_info" if is_first_pass else None)
         )
         story.append(PageBreak())
 
@@ -276,18 +264,11 @@ class VastReportBuilder:
         hardware_section_key = "hardware_summary" if is_first_pass else None
         rack_layout_key = (
             "rack_layout"
-            if (
-                is_first_pass
-                and processed_data.get("hardware_inventory", {}).get(
-                    "rack_positions_available", False
-                )
-            )
+            if (is_first_pass and processed_data.get("hardware_inventory", {}).get("rack_positions_available", False))
             else None
         )
         story.extend(
-            self._create_hardware_inventory(
-                processed_data, page_tracker, hardware_section_key, rack_layout_key
-            )
+            self._create_hardware_inventory(processed_data, page_tracker, hardware_section_key, rack_layout_key)
         )
         story.append(PageBreak())
 
@@ -303,9 +284,7 @@ class VastReportBuilder:
 
         # Add switch configuration section
         story.extend(
-            self._create_switch_configuration(
-                processed_data, page_tracker, "switch_config" if is_first_pass else None
-            )
+            self._create_switch_configuration(processed_data, page_tracker, "switch_config" if is_first_pass else None)
         )
         story.append(PageBreak())
 
@@ -357,27 +336,80 @@ class VastReportBuilder:
 
         return story
 
-    def _generate_with_reportlab(
-        self, processed_data: Dict[str, Any], output_path: str
-    ) -> bool:
+    @staticmethod
+    def _normalize_boxes_to_dict(boxes: Any) -> Dict[str, Any]:
+        """Normalize box data to a dict keyed by name. Accepts list or dict."""
+        if isinstance(boxes, dict):
+            return boxes
+        if isinstance(boxes, list):
+            return {b.get("name") or str(b.get("id", i)): b for i, b in enumerate(boxes)}
+        return {}
+
+    def _ensure_hardware_inventory(self, data: Dict[str, Any]) -> None:
+        """If hardware_inventory is missing or empty but raw 'hardware' exists, build it."""
+        hi = data.get("hardware_inventory") or {}
+        if not isinstance(hi, dict):
+            return
+        has_any = (
+            (hi.get("cnodes") or [])
+            or (hi.get("dnodes") or [])
+            or (hi.get("cboxes") or {})
+            or (hi.get("dboxes") or {})
+            or (hi.get("switches") or [])
+        )
+        if has_any:
+            return
+        raw = data.get("hardware") or data.get("raw_hardware") or {}
+        if not raw:
+            return
+
+        # Normalize to list when raw has dict-shaped cnodes/dnodes (e.g. id -> item)
+        def _to_list(x: Any) -> List[Any]:
+            if x is None:
+                return []
+            if isinstance(x, list):
+                return x
+            if isinstance(x, dict):
+                return list(x.values())
+            return []
+
+        cnodes = _to_list(raw.get("cnodes"))
+        dnodes = _to_list(raw.get("dnodes"))
+        cboxes = self._normalize_boxes_to_dict(raw.get("cboxes") or {})
+        dboxes = self._normalize_boxes_to_dict(raw.get("dboxes") or {})
+        eboxes = self._normalize_boxes_to_dict(raw.get("eboxes") or {})
+        switch_inv = data.get("switch_inventory") or data.get("raw_switch_inventory") or {}
+        switches = (
+            switch_inv.get("switches", [])
+            if isinstance(switch_inv, dict)
+            else (switch_inv if isinstance(switch_inv, list) else [])
+        )
+        data["hardware_inventory"] = {
+            "cnodes": cnodes,
+            "dnodes": dnodes,
+            "cboxes": cboxes,
+            "dboxes": dboxes,
+            "eboxes": eboxes,
+            "switches": switches,
+            "total_nodes": len(cnodes) + len(dnodes),
+            "rack_positions_available": bool(cnodes or dnodes or cboxes or dboxes),
+            "physical_layout": None,
+        }
+
+    def _generate_with_reportlab(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """Generate PDF using ReportLab with two-pass generation for dynamic TOC."""
         try:
+            self._ensure_hardware_inventory(processed_data)
             # Set up document with page template
             page_size = A4 if self.config.page_size == "A4" else letter
 
             # Create page template with footer
             generation_info = {
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "completeness": processed_data.get("metadata", {}).get(
-                    "overall_completeness", 0.0
-                ),
-                "mgmt_vip": processed_data.get("cluster_summary", {}).get(
-                    "mgmt_vip", "Unknown"
-                ),
+                "completeness": processed_data.get("metadata", {}).get("overall_completeness", 0.0),
+                "mgmt_vip": processed_data.get("cluster_summary", {}).get("mgmt_vip", "Unknown"),
             }
-            page_template = self.brand_compliance.create_vast_page_template(
-                generation_info, page_size=page_size
-            )
+            page_template = self.brand_compliance.create_vast_page_template(generation_info, page_size=page_size)
 
             # Create document with page template
             from reportlab.platypus import BaseDocTemplate
@@ -410,9 +442,7 @@ class VastReportBuilder:
                 # Build temp PDF to capture page numbers
                 temp_doc.build(story_pass1)
 
-            self.logger.info(
-                f"First pass complete: Captured {len(page_tracker)} page numbers"
-            )
+            self.logger.info(f"First pass complete: Captured {len(page_tracker)} page numbers")
             # Log captured page numbers for verification
             for section_key, page_num in sorted(page_tracker.items()):
                 self.logger.info(f"  {section_key}: page {page_num}")
@@ -463,6 +493,9 @@ class VastReportBuilder:
         hardware_inventory = data.get("hardware_inventory", {})
         cnodes = hardware_inventory.get("cnodes") or []
         dnodes = hardware_inventory.get("dnodes") or []
+        cboxes = hardware_inventory.get("cboxes") or {}
+        dboxes = hardware_inventory.get("dboxes") or {}
+        switches = hardware_inventory.get("switches") or []
 
         # Create VAST brand-compliant header
         title = "VAST As-Built Report"
@@ -473,34 +506,37 @@ class VastReportBuilder:
         )
         content.extend(header_elements)
 
-        # Add hardware information
-        if cnodes or dnodes:
+        # Add hardware information when any hardware is present (nodes, boxes, or switches)
+        if cnodes or dnodes or cboxes or dboxes or switches:
             hardware_text = ""
 
-            # CBox Hardware (from CNode data using box_vendor)
-            if cnodes:
+            # CBox Hardware: from CNode box_vendor when available, else from CBox data
+            if cboxes:
                 cbox_vendors = set()
                 cbox_ids = set()
-
-                for cnode in cnodes:
-                    # Get box_vendor from the cnode data
-                    box_vendor = cnode.get("box_vendor", "Unknown")
-                    if box_vendor and box_vendor != "Unknown":
-                        cbox_vendors.add(box_vendor)
-
-                    cbox_id = cnode.get("id")
-                    if cbox_id:
-                        cbox_ids.add(str(cbox_id))
-
+                if cnodes:
+                    for cnode in cnodes:
+                        box_vendor = cnode.get("box_vendor", "Unknown")
+                        if box_vendor and box_vendor != "Unknown":
+                            cbox_vendors.add(box_vendor)
+                        cbox_id = cnode.get("id")
+                        if cbox_id:
+                            cbox_ids.add(str(cbox_id))
+                if not cbox_vendors:
+                    for _name, cbox_data in cboxes.items():
+                        model = cbox_data.get("model") or cbox_data.get("hardware_type")
+                        if model and model != "Unknown":
+                            cbox_vendors.add(str(model))
+                        cbox_id = cbox_data.get("id")
+                        if cbox_id is not None:
+                            cbox_ids.add(str(cbox_id))
                 if cbox_vendors:
-                    hardware_text += (
-                        f"<b>CBox Hardware:</b> {', '.join(sorted(cbox_vendors))}<br/>"
-                    )
-
-                hardware_text += f"<b>CBox Quantity:</b> {len(cbox_ids)}<br/>"
+                    hardware_text += f"<b>CBox Hardware:</b> {', '.join(sorted(cbox_vendors))}<br/>"
+                # CBox quantity is number of CBoxes; use len(cboxes) when available
+                cbox_qty = len(cboxes) if cboxes else len(cbox_ids)
+                hardware_text += f"<b>CBox Quantity:</b> {cbox_qty}<br/>"
 
             # DBox Hardware (from DBox data using hardware_type)
-            dboxes = hardware_inventory.get("dboxes", {})
             if dboxes:
                 dbox_hardware_types = set()
                 dbox_ids = set()
@@ -518,6 +554,11 @@ class VastReportBuilder:
                     hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
 
                 hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
+
+            # EBox Hardware (enclosures; optional)
+            eboxes = hardware_inventory.get("eboxes") or {}
+            if eboxes:
+                hardware_text += f"<b>EBox Quantity:</b> {len(eboxes)}<br/>"
 
             # Switch Hardware (from switch inventory)
             switches = hardware_inventory.get("switches") or []
@@ -582,9 +623,7 @@ class VastReportBuilder:
             ws = wb["Report-TOC"]
         except Exception as e:
             self.logger.error(f"Error loading Excel file: {e}")
-            content.append(
-                Paragraph(f"Error loading Excel file: {e}", styles["Normal"])
-            )
+            content.append(Paragraph(f"Error loading Excel file: {e}", styles["Normal"]))
             return content
 
         # Read TOC data from Excel (A1:C60)
@@ -660,30 +699,16 @@ class VastReportBuilder:
             # Set font properties (use Excel formatting if available)
             if is_bold:
                 text_font = "Helvetica-Bold"
-                text_color = (
-                    text_color_excel
-                    if text_color_excel
-                    else self.brand_compliance.colors.BACKGROUND_DARK
-                )
-                text_size = (
-                    text_size_excel if text_size_excel else (self.config.font_size - 1)
-                )
+                text_color = text_color_excel if text_color_excel else self.brand_compliance.colors.BACKGROUND_DARK
+                text_size = text_size_excel if text_size_excel else (self.config.font_size - 1)
                 page_font = "Helvetica-Bold"
-                page_color = (
-                    text_color
-                    if text_color
-                    else self.brand_compliance.colors.BACKGROUND_DARK
-                )
+                page_color = text_color if text_color else self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = text_size
                 extra_space = 3
             else:
                 text_font = "Helvetica-Oblique" if is_italic_excel else "Helvetica"
-                text_color = (
-                    text_color_excel if text_color_excel else colors.HexColor("#000000")
-                )
-                text_size = (
-                    text_size_excel if text_size_excel else (self.config.font_size - 2)
-                )
+                text_color = text_color_excel if text_color_excel else colors.HexColor("#000000")
+                text_size = text_size_excel if text_size_excel else (self.config.font_size - 2)
                 page_font = text_font
                 page_color = text_color
                 page_size = text_size
@@ -708,9 +733,7 @@ class VastReportBuilder:
                 page_width = stringWidth(page_num, page_font, page_size)
 
                 spacing_buffer = 0.1 * inch
-                available_for_dots = (
-                    available_width - text_width - page_width - spacing_buffer
-                )
+                available_for_dots = available_width - text_width - page_width - spacing_buffer
 
                 dot_width = stringWidth(".", "Helvetica", text_size - 1)
                 if dot_width > 0:
@@ -796,9 +819,7 @@ class VastReportBuilder:
         content.append(toc_table)
         return content
 
-    def _create_table_of_contents_dynamic(
-        self, data: Dict[str, Any], page_tracker: Dict[str, int]
-    ) -> List[Any]:
+    def _create_table_of_contents_dynamic(self, data: Dict[str, Any], page_tracker: Dict[str, int]) -> List[Any]:
         """
         Create table of contents with dynamically captured page numbers.
 
@@ -896,9 +917,7 @@ class VastReportBuilder:
             "Protection Policies",
         ]
 
-        for idx, (text, indent_level, section_key, is_bold) in enumerate(
-            filtered_structure
-        ):
+        for idx, (text, indent_level, section_key, is_bold) in enumerate(filtered_structure):
             # Calculate indentation
             indent_space = "  " * indent_level if indent_level > 0 else ""
             full_text = f"{indent_space}{text}"
@@ -1118,9 +1137,7 @@ class VastReportBuilder:
             if is_bold:
                 text_font = "Helvetica-Bold"
                 text_color = self.brand_compliance.colors.BACKGROUND_DARK
-                text_size = (
-                    self.config.font_size - 1
-                )  # Slightly smaller for compact view
+                text_size = self.config.font_size - 1  # Slightly smaller for compact view
                 page_font = "Helvetica-Bold"
                 page_color = self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = self.config.font_size - 1
@@ -1247,9 +1264,7 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Executive Summary", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Executive Summary", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -1304,9 +1319,7 @@ class VastReportBuilder:
         ]
 
         # Create cluster overview table with same style as Cluster Information
-        cluster_table_elements = self._create_cluster_info_table(
-            cluster_overview_data, "Cluster Overview"
-        )
+        cluster_table_elements = self._create_cluster_info_table(cluster_overview_data, "Cluster Overview")
         content.extend(cluster_table_elements)
         content.append(Spacer(1, 12))
 
@@ -1317,6 +1330,7 @@ class VastReportBuilder:
         dnodes = len(hardware.get("dnodes") or [])
         cboxes = len(hardware.get("cboxes") or {})
         dboxes = len(hardware.get("dboxes") or {})
+        eboxes = len(hardware.get("eboxes") or {})
         switches_list = hardware.get("switches") or []
         total_switches = len(switches_list)
 
@@ -1342,30 +1356,26 @@ class VastReportBuilder:
             ["DBoxes", str(dboxes)],
             ["DNodes", str(dnodes)],
             ["", ""],  # Empty line
+            ["EBoxes", str(eboxes)],
+            ["", ""],  # Empty line
             ["Switches", str(total_switches)],
             ["Leaf", str(leaf_switches)],
             ["Spine", str(spine_switches)],
         ]
 
         # Create hardware overview table with same style as Cluster Information
-        hardware_table_elements = self._create_cluster_info_table(
-            hardware_overview_data, "Hardware Overview"
-        )
+        hardware_table_elements = self._create_cluster_info_table(hardware_overview_data, "Hardware Overview")
         content.extend(hardware_table_elements)
         content.append(Spacer(1, 12))
 
         return content
 
-    def _create_cluster_info_table(
-        self, table_data: List[List[str]], title: str
-    ) -> List[Any]:
+    def _create_cluster_info_table(self, table_data: List[List[str]], title: str) -> List[Any]:
         """Create a cluster information style table with VAST branding."""
         content = []
 
         # Create table with VAST styling
-        table_elements = self.brand_compliance.create_vast_table(
-            table_data, title, ["Description", "Value"]
-        )
+        table_elements = self.brand_compliance.create_vast_table(table_data, title, ["Description", "Value"])
         content.extend(table_elements)
 
         return content
@@ -1377,21 +1387,24 @@ class VastReportBuilder:
         dboxes: Dict[str, Any],
         dnodes: List[Dict[str, Any]],
         switches: List[Dict[str, Any]],
+        eboxes: Optional[Dict[str, Any]] = None,
     ) -> List[Any]:
         """
-        Create consolidated hardware inventory table with CBoxes, DBoxes, and Switches.
+        Create consolidated hardware inventory table with CBoxes, DBoxes, EBoxes, and Switches.
         Hardware is grouped by rack name. Creates one row per CNode/DNode.
 
         Args:
-            cboxes: CBox data from /api/v1/cboxes/
+            cboxes: CBox data from /api/v7/cboxes/
             cnodes: CNode data from /api/v7/cnodes/
             dboxes: DBox data from /api/v7/dboxes/
             dnodes: DNode data from /api/v7/dnodes/
             switches: Switch data from switch inventory
+            eboxes: EBox data from /api/v7/eboxes/ (optional)
 
         Returns:
             List[Any]: Table elements
         """
+        eboxes = eboxes or {}
         # Prepare table data - will be grouped by rack
         all_rows = []
         headers = ["Rack", "Node", "Model", "Name/Serial Number", "Status", "Height"]
@@ -1419,6 +1432,8 @@ class VastReportBuilder:
             cbox_status_map = {}
             # Create a mapping of cbox_id to list of cnode names
             cbox_to_cnode_names = {}
+            # CNode name -> serial (Dell Asset Tag) for dell_turin_cbox Model column
+            cnode_name_to_serial = {}
             for cnode in cnodes:
                 cbox_id = cnode.get("cbox_id")
                 box_vendor = cnode.get("box_vendor", "Unknown")
@@ -1426,6 +1441,9 @@ class VastReportBuilder:
                 # Use name field (programmatically generated) not hostname (customer-assigned)
                 # Name is based on deployment index (e.g., cnode-3-10, cnode-3-11, cnode-3-12)
                 cnode_name = cnode.get("name") or f"cnode-{cnode.get('id', 'Unknown')}"
+                serial = cnode.get("serial_number") or cnode.get("serial") or ""
+                if serial:
+                    cnode_name_to_serial[cnode_name] = serial
                 if cbox_id:
                     cbox_vendor_map[cbox_id] = box_vendor
                     cbox_status_map[cbox_id] = status
@@ -1441,8 +1459,10 @@ class VastReportBuilder:
                 rack_unit = cbox_data.get("rack_unit", "Unknown")
                 rack_name = cbox_data.get("rack_name") or "Unknown"
 
-                # Get model and status from cnodes data using cbox_id
+                # Get model and status from cnodes data using cbox_id (strip NIC description after comma)
                 model = cbox_vendor_map.get(cbox_id, "Unknown")
+                if isinstance(model, str) and "," in model:
+                    model = model.split(",")[0].strip()
                 status = cbox_status_map.get(cbox_id, "Unknown")
 
                 # Get CNode names for this CBox - create one row per CNode
@@ -1450,7 +1470,12 @@ class VastReportBuilder:
                 if cnode_names:
                     # Create one row for each CNode
                     for cnode_name in cnode_names:
-                        row = [rack_name, cnode_name, model, name, status, rack_unit]
+                        display_model = model
+                        if display_model == "dell_turin_cbox":
+                            serial = cnode_name_to_serial.get(cnode_name, "").strip()
+                            if serial:
+                                display_model = f"{display_model} / {serial}"
+                        row = [rack_name, cnode_name, display_model, name, status, rack_unit]
                         cbox_rows.append((rack_name, cbox_id, cnode_name, row))
                 else:
                     # No CNodes found, create one row with N/A
@@ -1458,9 +1483,7 @@ class VastReportBuilder:
                     cbox_rows.append((rack_name, cbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by CNode name
-            cbox_rows.sort(
-                key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2])
-            )
+            cbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2]))
             all_rows.extend([row for _, _, _, row in cbox_rows])
 
         # Add DBoxes with DNode names
@@ -1482,6 +1505,8 @@ class VastReportBuilder:
             for dbox_name, dbox_data in dboxes.items():
                 dbox_id = dbox_data.get("id", "Unknown")
                 hardware_type = dbox_data.get("hardware_type", "Unknown")
+                if isinstance(hardware_type, str) and "," in hardware_type:
+                    hardware_type = hardware_type.split(",")[0].strip()
                 name = dbox_data.get("name", "Unknown")
                 state = dbox_data.get("state", "Unknown")
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
@@ -1507,9 +1532,7 @@ class VastReportBuilder:
                     dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by DNode name
-            dbox_rows.sort(
-                key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2])
-            )
+            dbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0, x[2]))
             all_rows.extend([row for _, _, _, row in dbox_rows])
         elif dboxes:
             # Fallback if no dnodes data available
@@ -1517,6 +1540,8 @@ class VastReportBuilder:
             for dbox_name, dbox_data in dboxes.items():
                 dbox_id = dbox_data.get("id", "Unknown")
                 hardware_type = dbox_data.get("hardware_type", "Unknown")
+                if isinstance(hardware_type, str) and "," in hardware_type:
+                    hardware_type = hardware_type.split(",")[0].strip()
                 name = dbox_data.get("name", "Unknown")
                 state = dbox_data.get("state", "Unknown")
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
@@ -1527,10 +1552,21 @@ class VastReportBuilder:
                 dbox_rows.append((rack_name, dbox_id, row))
 
             # Sort by rack name, then by numeric ID
-            dbox_rows.sort(
-                key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0)
-            )
+            dbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0))
             all_rows.extend([row for _, _, row in dbox_rows])
+
+        # Add EBoxes (enclosures; one row per EBox)
+        if eboxes:
+            ebox_rows = []
+            for ebox_name, ebox_data in eboxes.items():
+                rack_name = ebox_data.get("rack_name") or "Unknown"
+                name = ebox_data.get("name", "Unknown")
+                state = ebox_data.get("state", "Unknown")
+                rack_unit = ebox_data.get("rack_unit", "N/A")
+                row = [rack_name, "EBox", "Enclosure", name, state, rack_unit]
+                ebox_rows.append((rack_name, ebox_data.get("id"), row))
+            ebox_rows.sort(key=lambda x: (x[0], int(x[1]) if x[1] is not None and str(x[1]).isdigit() else 0))
+            all_rows.extend([row for _, _, row in ebox_rows])
 
         # Add Switches
         if switches:
@@ -1550,10 +1586,7 @@ class VastReportBuilder:
                     default_rack = self.switch_rack_name
                 else:
                     known_rack_names = sorted(
-                        set(
-                            list(cbox_id_to_rack_name.values())
-                            + list(dbox_id_to_rack_name.values())
-                        )
+                        set(list(cbox_id_to_rack_name.values()) + list(dbox_id_to_rack_name.values()))
                     )
                     default_rack = known_rack_names[0] if known_rack_names else "Unknown"
             else:
@@ -1564,16 +1597,15 @@ class VastReportBuilder:
                 sw_name = switch.get("name", switch.get("hostname", "Unknown"))
                 hostname = switch.get("hostname", sw_name)
                 model = switch.get("model", "Unknown")
+                if isinstance(model, str) and "," in model:
+                    model = model.split(",")[0].strip()
                 serial = switch.get("serial", "Unknown")
                 state = switch.get("state", "Unknown")
 
                 rack_name = manual_sw_rack.get(sw_name, default_rack)
 
                 position = ""
-                if (
-                    hasattr(self, "switch_positions")
-                    and switch_num in self.switch_positions
-                ):
+                if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
@@ -1600,7 +1632,10 @@ class VastReportBuilder:
             name_col = row[3]  # Name/Serial Number column
 
             # Determine hardware type based on CNode/DNode column content
-            if node_col != "N/A":
+            if node_col == "EBox":
+                hw_type = "C"  # EBox
+                sort_value = name_col
+            elif node_col != "N/A":
                 # Check if it's a CNode or DNode by the prefix
                 if node_col.startswith("cnode-"):
                     hw_type = "A"  # CBox
@@ -1613,7 +1648,7 @@ class VastReportBuilder:
                 hw_type = "B"  # DBox (no nodes found)
                 sort_value = name_col
             else:
-                hw_type = "C"  # Switch
+                hw_type = "D"  # Switch
                 sort_value = name_col
 
             return (rack_name, hw_type, sort_value)
@@ -1621,9 +1656,7 @@ class VastReportBuilder:
         all_rows.sort(key=sort_key)
 
         # Create table with VAST styling
-        return self.brand_compliance.create_vast_hardware_table_with_pagination(
-            all_rows, "Hardware Inventory", headers
-        )
+        return self.brand_compliance.create_vast_hardware_table_with_pagination(all_rows, "Hardware Inventory", headers)
 
     def _create_cluster_information(
         self,
@@ -1635,9 +1668,7 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Cluster Information", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Cluster Information", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -1697,9 +1728,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("enabled")
-                    else (
-                        "No" if cluster_info.get("enabled") is not None else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("enabled") is not None else "Unknown")
                 ),
             ],
             [
@@ -1707,11 +1736,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("enable_similarity")
-                    else (
-                        "No"
-                        if cluster_info.get("enable_similarity") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("enable_similarity") is not None else "Unknown")
                 ),
             ],
             [
@@ -1719,11 +1744,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("dedup_active")
-                    else (
-                        "No"
-                        if cluster_info.get("dedup_active") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("dedup_active") is not None else "Unknown")
                 ),
             ],
             [
@@ -1731,11 +1752,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("is_wb_raid_enabled")
-                    else (
-                        "No"
-                        if cluster_info.get("is_wb_raid_enabled") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("is_wb_raid_enabled") is not None else "Unknown")
                 ),
             ],
             [
@@ -1747,11 +1764,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("dbox_ha_support")
-                    else (
-                        "No"
-                        if cluster_info.get("dbox_ha_support") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("dbox_ha_support") is not None else "Unknown")
                 ),
             ],
             [
@@ -1759,11 +1772,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("enable_rack_level_resiliency")
-                    else (
-                        "No"
-                        if cluster_info.get("enable_rack_level_resiliency") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("enable_rack_level_resiliency") is not None else "Unknown")
                 ),
             ],
             [
@@ -1771,11 +1780,7 @@ class VastReportBuilder:
                 (
                     "Yes"
                     if cluster_info.get("disable_metrics")
-                    else (
-                        "No"
-                        if cluster_info.get("disable_metrics") is not None
-                        else "Unknown"
-                    )
+                    else ("No" if cluster_info.get("disable_metrics") is not None else "Unknown")
                 ),
             ],
             ["Capacity-Base 10", capacity_format],
@@ -1799,9 +1804,7 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Hardware Summary", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Hardware Summary", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -1830,12 +1833,22 @@ class VastReportBuilder:
         content.append(Spacer(1, 8))
 
         hardware = data.get("hardware_inventory", {})
+        eboxes_for_note = hardware.get("eboxes") or {}
+        if eboxes_for_note:
+            content.append(
+                Paragraph(
+                    "For clusters with EBox enclosures, DBox U height is documented in the inventory table below; the Physical Rack Layout diagram uses EBox U height and does not show DBox positions.",
+                    overview_style,
+                )
+            )
+            content.append(Spacer(1, 8))
 
         # Extract hardware collections early (used by inventory table and switch placement)
         cboxes = hardware.get("cboxes") or {}
         cnodes = hardware.get("cnodes") or []
         dboxes = hardware.get("dboxes") or {}
         dnodes = hardware.get("dnodes") or []
+        eboxes = hardware.get("eboxes") or {}
         switches = hardware.get("switches") or []
 
         # Add storage capacity section
@@ -1860,9 +1873,7 @@ class VastReportBuilder:
             storage_data = []
 
             # Determine capacity unit based on capacity_base_10 setting
-            capacity_unit = (
-                "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
-            )
+            capacity_unit = "TB" if cluster_info.get("capacity_base_10", True) else "TiB"
 
             # Usable capacity section
             if cluster_info.get("usable_capacity_tb") is not None:
@@ -1879,10 +1890,7 @@ class VastReportBuilder:
                         f"{round(cluster_info.get('free_usable_capacity_tb', 0))} {capacity_unit}",
                     ]
                 )
-            if (
-                cluster_info.get("drr_text")
-                and cluster_info.get("drr_text") != "Unknown"
-            ):
+            if cluster_info.get("drr_text") and cluster_info.get("drr_text") != "Unknown":
                 storage_data.append(
                     [
                         "Data Reduction Ratio (DRR)",
@@ -1964,9 +1972,7 @@ class VastReportBuilder:
             manual_placements = data.get("manual_switch_placements")
             if manual_placements and switches:
                 # --- Manual placement: user-specified rack + U position ---
-                sw_by_name = {
-                    sw.get("name", sw.get("hostname", "")): sw for sw in switches
-                }
+                sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches}
                 for idx, mp in enumerate(manual_placements, start=1):
                     rn = mp.get("rack_name", "Unknown")
                     u_pos = int(mp.get("u_position", 0))
@@ -1975,13 +1981,14 @@ class VastReportBuilder:
                         {**sw_by_name.get(mp.get("switch_name"), {}), "u_position": u_pos}
                     )
                 self.switch_rack_name = sorted(self.manual_rack_placements.keys())[0]
-                self.logger.info(
-                    "Manual switch placement: %s", self.switch_positions
-                )
+                self.logger.info("Manual switch placement: %s", self.switch_positions)
             elif switches and len(switches) == 2:
-                # --- Auto placement: cascade through racks ---
+                # --- Auto placement: cascade through racks (same logic for ebox: above ebox then below ebox) ---
                 hw_cnodes = hardware.get("cnodes") or []
                 hw_dboxes_raw = hardware.get("dboxes") or {}
+                hw_eboxes_raw = hardware.get("eboxes") or {}
+                racks_info_auto = data.get("racks", [])
+                vms_rack_names_auto = {str(r.get("name")).strip() for r in racks_info_auto if r.get("name")}
 
                 per_rack_cboxes: Dict[str, list] = {}
                 for cnode in hw_cnodes:
@@ -1994,9 +2001,7 @@ class VastReportBuilder:
                     cbox_entry = {
                         "id": cnode.get("id"),
                         "model": cnode.get("model", cnode.get("box_vendor", "")),
-                        "rack_unit": cnode.get(
-                            "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
-                        ),
+                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
                         "state": cnode.get("state", cnode.get("status", "ACTIVE")),
                     }
                     if cbox_entry["rack_unit"]:
@@ -2015,49 +2020,61 @@ class VastReportBuilder:
                         }
                         per_rack_dboxes.setdefault(rack_name, []).append(dbox_entry)
 
+                per_rack_eboxes: Dict[str, list] = {}
+                for ebox_name, ebox_info in hw_eboxes_raw.items():
+                    rack_unit = ebox_info.get("rack_unit", "")
+                    rack_name = ebox_info.get("rack_name") or "Unknown"
+                    if rack_unit:
+                        ebox_entry = {
+                            "id": ebox_info.get("id"),
+                            "model": "ebox",
+                            "hardware_type": "ebox",
+                            "rack_unit": rack_unit,
+                            "state": ebox_info.get("state", "ACTIVE"),
+                        }
+                        per_rack_eboxes.setdefault(rack_name, []).append(ebox_entry)
+
                 all_rack_names = sorted(
-                    set(list(per_rack_cboxes.keys()) + list(per_rack_dboxes.keys()))
+                    set(list(per_rack_cboxes.keys()) + list(per_rack_dboxes.keys()) + list(per_rack_eboxes.keys()))
                 )
+                if vms_rack_names_auto:
+                    all_rack_names = [r for r in all_rack_names if r in vms_rack_names_auto]
 
                 for try_rack in all_rack_names:
                     rack_cb = per_rack_cboxes.get(try_rack, [])
                     rack_db = per_rack_dboxes.get(try_rack, [])
-                    if not rack_cb and not rack_db:
+                    rack_ebox = per_rack_eboxes.get(try_rack, [])
+                    if not rack_cb and not rack_db and not rack_ebox:
                         continue
                     temp_rack_gen = RackDiagram(
                         library_path=self.library_path,
                         user_images_dir=self.user_images_dir,
                     )
                     calculated_positions = temp_rack_gen._calculate_switch_positions(
-                        rack_cb, rack_db, len(switches), switches=switches
+                        rack_cb, rack_db, len(switches), switches=switches, eboxes=rack_ebox
                     )
                     if calculated_positions:
-                        self.switch_positions = {
-                            idx: u_pos
-                            for idx, u_pos in enumerate(calculated_positions, start=1)
-                        }
+                        self.switch_positions = {idx: u_pos for idx, u_pos in enumerate(calculated_positions, start=1)}
                         self.switch_rack_name = try_rack
                         self.logger.info(
-                            f"Switches assigned to rack '{try_rack}': "
-                            f"positions {self.switch_positions}"
+                            f"Switches assigned to rack '{try_rack}': " f"positions {self.switch_positions}"
                         )
                         break
 
                 if self.switch_rack_name is None:
                     self.logger.warning(
-                        "Auto switch placement failed for all racks — "
-                        "switches will not appear in rack diagrams"
+                        "Auto switch placement failed for all racks — " "switches will not appear in rack diagrams"
                     )
 
         # Consolidated Hardware Inventory table with VAST styling
-        if cboxes or dboxes or switches:
+        if cboxes or dboxes or eboxes or switches:
             inventory_elements = self._create_consolidated_inventory_table(
-                cboxes, cnodes, dboxes, dnodes, switches
+                cboxes, cnodes, dboxes, dnodes, switches, eboxes
             )
             content.extend(inventory_elements)
 
             # Add page break if we have many devices to prevent layout issues
-            total_devices = len(cboxes) + len(dboxes) + len(switches)
+            total_devices = len(cboxes) + len(dboxes) + len(eboxes) + len(switches)
             if total_devices > 15:  # Threshold for large inventories
                 content.append(PageBreak())
 
@@ -2072,8 +2089,12 @@ class VastReportBuilder:
 
             # Generate rack diagrams - one per rack
             try:
+                # Only include racks that exist in VMS (avoids "Unknown" or phantom racks)
+                racks_info = data.get("racks", [])
+                vms_rack_names = {str(r.get("name")).strip() for r in racks_info if r.get("name")}
+
                 # Group hardware by rack_name
-                racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], switches: []}
+                racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], eboxes: [], switches: []}
 
                 # Get CBox information and group by rack
                 hw_cnodes = hardware.get("cnodes") or []
@@ -2090,15 +2111,14 @@ class VastReportBuilder:
                         racks_data[rack_name] = {
                             "cboxes": [],
                             "dboxes": [],
+                            "eboxes": [],
                             "switches": [],
                         }
 
                     cbox_data = {
                         "id": cbox_id,
                         "model": cnode.get("model", cnode.get("box_vendor", "")),
-                        "rack_unit": cnode.get(
-                            "rack_u", cnode.get("rack_unit", cnode.get("position", ""))
-                        ),
+                        "rack_unit": cnode.get("rack_u", cnode.get("rack_unit", cnode.get("position", ""))),
                         "state": cnode.get("state", cnode.get("status", "ACTIVE")),
                     }
                     if cbox_data["rack_unit"]:  # Only add if has position
@@ -2115,6 +2135,7 @@ class VastReportBuilder:
                             racks_data[rack_name] = {
                                 "cboxes": [],
                                 "dboxes": [],
+                                "eboxes": [],
                                 "switches": [],
                             }
 
@@ -2125,6 +2146,29 @@ class VastReportBuilder:
                             "state": dbox_info.get("state", "ACTIVE"),
                         }
                         racks_data[rack_name]["dboxes"].append(dbox_data)
+
+                # Get EBox information and group by rack (for ebox clusters)
+                hw_eboxes = hardware.get("eboxes") or {}
+                is_ebox_cluster = bool(hw_eboxes)
+                for ebox_name, ebox_info in hw_eboxes.items():
+                    rack_unit = ebox_info.get("rack_unit", "")
+                    rack_name = ebox_info.get("rack_name") or "Unknown"
+                    if rack_unit:
+                        if rack_name not in racks_data:
+                            racks_data[rack_name] = {
+                                "cboxes": [],
+                                "dboxes": [],
+                                "eboxes": [],
+                                "switches": [],
+                            }
+                        ebox_data = {
+                            "id": ebox_info.get("id"),
+                            "model": "ebox",
+                            "hardware_type": "ebox",
+                            "rack_unit": rack_unit,
+                            "state": ebox_info.get("state", "ACTIVE"),
+                        }
+                        racks_data[rack_name]["eboxes"].append(ebox_data)
 
                 # Assign switches to racks for diagram generation.
                 switches = hardware.get("switches") or []
@@ -2138,35 +2182,33 @@ class VastReportBuilder:
                             continue
                         sw_list = []
                         for p in placements:
-                            sw_list.append({
-                                "id": p.get("name", "Unknown"),
-                                "model": p.get("model", "switch"),
-                                "state": p.get("state", "ACTIVE"),
-                                "rack_unit": f"U{p['u_position']}",
-                            })
+                            sw_list.append(
+                                {
+                                    "id": p.get("name", "Unknown"),
+                                    "model": p.get("model", "switch"),
+                                    "state": p.get("state", "ACTIVE"),
+                                    "rack_unit": f"U{p['u_position']}",
+                                }
+                            )
                         racks_data[rn]["switches"] = sw_list
-                        self.logger.info(
-                            f"Manual: assigned {len(sw_list)} switches to rack '{rn}'"
-                        )
+                        self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{rn}'")
                 elif switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
                     # Auto placement: all switches go to the single winning rack.
                     switches_data = []
                     for switch in switches:
-                        switches_data.append({
-                            "id": switch.get("name", "Unknown"),
-                            "model": switch.get("model", "switch"),
-                            "state": switch.get("state", "ACTIVE"),
-                        })
+                        switches_data.append(
+                            {
+                                "id": switch.get("name", "Unknown"),
+                                "model": switch.get("model", "switch"),
+                                "state": switch.get("state", "ACTIVE"),
+                            }
+                        )
                     target_rack = self.switch_rack_name
                     if target_rack in racks_data:
                         racks_data[target_rack]["switches"] = switches_data
-                        self.logger.info(
-                            f"Auto: assigned {len(switches_data)} switches to rack '{target_rack}'"
-                        )
+                        self.logger.info(f"Auto: assigned {len(switches_data)} switches to rack '{target_rack}'")
                     else:
-                        self.logger.warning(
-                            f"Switch target rack '{target_rack}' not found in racks_data"
-                        )
+                        self.logger.warning(f"Switch target rack '{target_rack}' not found in racks_data")
 
                 # Generate one diagram per rack
                 if racks_data:
@@ -2204,29 +2246,32 @@ class VastReportBuilder:
                             if rack_id is not None and rack_id in rack_id_to_height:
                                 rack_height_map[rack_name] = rack_id_to_height[rack_id]
 
-                    # Sort racks by name for consistent ordering
+                    # Sort racks by name; include only racks that exist in VMS (never include "Unknown")
                     sorted_racks = sorted(racks_data.keys())
+                    if vms_rack_names:
+                        sorted_racks = [r for r in sorted_racks if r in vms_rack_names]
+                        self.logger.info(
+                            "Physical Rack Layout: only including racks present in VMS (%s)",
+                            sorted_racks,
+                        )
+                    else:
+                        sorted_racks = [r for r in sorted_racks if r and str(r).strip() != "Unknown"]
+                        if "Unknown" in racks_data:
+                            self.logger.info("Physical Rack Layout: excluding 'Unknown' rack (not in VMS)")
 
                     for idx, rack_name in enumerate(sorted_racks):
                         rack_hw = racks_data[rack_name]
                         rack_cboxes = rack_hw["cboxes"]
                         rack_dboxes = rack_hw["dboxes"]
-                        rack_switches = (
-                            rack_hw["switches"] if rack_hw["switches"] else None
-                        )
+                        rack_eboxes = rack_hw.get("eboxes") or []
+                        rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
 
                         # Add placeholder Arista switches only when the cluster
                         # has NO discovered switches at all (e.g., pre-deployment).
                         # When real switches exist they are assigned to a single rack;
                         # other racks intentionally have no switches.
-                        has_real_switches = bool(
-                            hardware.get("switches")
-                        )
-                        if (
-                            not rack_switches
-                            and not has_real_switches
-                            and (rack_cboxes or rack_dboxes)
-                        ):
+                        has_real_switches = bool(hardware.get("switches"))
+                        if not rack_switches and not has_real_switches and (rack_cboxes or rack_dboxes):
                             rack_switches = [
                                 {
                                     "id": "SWA",
@@ -2241,12 +2286,10 @@ class VastReportBuilder:
                                     "state": "ACTIVE",
                                 },
                             ]
-                            self.logger.info(
-                                f"Added 2 placeholder Arista switches to rack {rack_name}"
-                            )
+                            self.logger.info(f"Added 2 placeholder Arista switches to rack {rack_name}")
 
-                        # Only generate diagram if rack has hardware
-                        if rack_cboxes or rack_dboxes:
+                        # Only generate diagram if rack has hardware (cboxes, dboxes, or eboxes)
+                        if rack_cboxes or rack_dboxes or rack_eboxes:
                             # Get rack height for this rack (default to 42U if not found)
                             rack_height_u = rack_height_map.get(rack_name, 42)
 
@@ -2257,14 +2300,17 @@ class VastReportBuilder:
                                 user_images_dir=self.user_images_dir,
                             )
 
+                            # EBox clusters: use ebox U height in diagram; disregard dbox in diagram
+                            diagram_dboxes = [] if is_ebox_cluster else rack_dboxes
+                            diagram_eboxes = rack_eboxes if is_ebox_cluster else []
+
                             # Generate rack diagram with rack name
-                            rack_drawing, switch_positions_map = (
-                                rack_gen.generate_rack_diagram(
-                                    rack_cboxes,
-                                    rack_dboxes,
-                                    rack_switches,
-                                    rack_name=rack_name,  # Pass rack name to diagram
-                                )
+                            rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
+                                rack_cboxes,
+                                diagram_dboxes,
+                                rack_switches,
+                                rack_name=rack_name,
+                                eboxes=diagram_eboxes,
                             )
 
                             # Add rack name heading before diagram
@@ -2274,25 +2320,16 @@ class VastReportBuilder:
                                 parent=styles["Heading2"],
                                 fontSize=14,
                                 spaceAfter=8,
-                                spaceBefore=(
-                                    12 if idx > 0 else 0
-                                ),  # No space before first heading
+                                spaceBefore=(12 if idx > 0 else 0),  # No space before first heading
                                 textColor=self.brand_compliance.colors.BACKGROUND_DARK,
                             )
 
                             if idx == 0:
                                 # First rack: Combined heading with section title
-                                heading_text = (
-                                    f"Physical Rack Layout - Rack: {rack_name}"
-                                )
+                                heading_text = f"Physical Rack Layout - Rack: {rack_name}"
                                 # Place page marker for Physical Rack Layout section immediately after first heading
-                                if (
-                                    page_tracker is not None
-                                    and rack_layout_key == "rack_layout"
-                                ):
-                                    content.append(
-                                        PageMarker("rack_layout", page_tracker)
-                                    )
+                                if page_tracker is not None and rack_layout_key == "rack_layout":
+                                    content.append(PageMarker("rack_layout", page_tracker))
                             else:
                                 # Subsequent racks: Simple heading
                                 heading_text = f"Rack: {rack_name}"
@@ -2307,9 +2344,7 @@ class VastReportBuilder:
                             page_width = 8.5 * inch
                             rack_table = RLTable(
                                 [[rack_drawing]],
-                                colWidths=[
-                                    page_width - (2 * 0.5 * inch)
-                                ],  # Page width minus margins
+                                colWidths=[page_width - (2 * 0.5 * inch)],  # Page width minus margins
                             )
                             rack_table.setStyle(
                                 TableStyle(
@@ -2325,21 +2360,15 @@ class VastReportBuilder:
                             if rack_name != sorted_racks[-1]:
                                 content.append(PageBreak())
 
-                            switch_msg = (
-                                f", {len(rack_switches)} Switches"
-                                if rack_switches
-                                else ""
-                            )
+                            switch_msg = f", {len(rack_switches)} Switches" if rack_switches else ""
                             self.logger.info(
                                 f"Added rack diagram for {rack_name}: {len(rack_cboxes)} CBoxes, {len(rack_dboxes)} DBoxes{switch_msg}"
                             )
                 else:
                     # Fallback to placeholder if no position data
-                    layout_elements = (
-                        self.brand_compliance.create_vast_2d_diagram_placeholder(
-                            "Physical Rack Layout",
-                            "Rack position data not available for this cluster.",
-                        )
+                    layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
+                        "Physical Rack Layout",
+                        "Rack position data not available for this cluster.",
                     )
                     content.extend(layout_elements)
                     self.logger.warning("No rack position data available for diagram")
@@ -2385,39 +2414,23 @@ class VastReportBuilder:
         dns_config = network_config.get("dns")
         if dns_config:
             content.append(Paragraph("<b>DNS Configuration:</b>", normal_style))
-            content.append(
-                Paragraph(
-                    f"• Enabled: {dns_config.get('enabled', False)}", normal_style
-                )
-            )
+            content.append(Paragraph(f"• Enabled: {dns_config.get('enabled', False)}", normal_style))
             servers = dns_config.get("servers", [])
             if servers:
-                content.append(
-                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
-                )
+                content.append(Paragraph(f"• Servers: {', '.join(servers)}", normal_style))
             search_domains = dns_config.get("search_domains", [])
             if search_domains:
-                content.append(
-                    Paragraph(
-                        f"• Search Domains: {', '.join(search_domains)}", normal_style
-                    )
-                )
+                content.append(Paragraph(f"• Search Domains: {', '.join(search_domains)}", normal_style))
             content.append(Spacer(1, 8))
 
         # NTP Configuration
         ntp_config = network_config.get("ntp")
         if ntp_config:
             content.append(Paragraph("<b>NTP Configuration:</b>", normal_style))
-            content.append(
-                Paragraph(
-                    f"• Enabled: {ntp_config.get('enabled', False)}", normal_style
-                )
-            )
+            content.append(Paragraph(f"• Enabled: {ntp_config.get('enabled', False)}", normal_style))
             servers = ntp_config.get("servers", [])
             if servers:
-                content.append(
-                    Paragraph(f"• Servers: {', '.join(servers)}", normal_style)
-                )
+                content.append(Paragraph(f"• Servers: {', '.join(servers)}", normal_style))
             content.append(Spacer(1, 8))
 
         # VIP Pools
@@ -2425,42 +2438,26 @@ class VastReportBuilder:
         if vippool_config:
             pools = vippool_config.get("pools", [])
             pool_count = len(pools) if isinstance(pools, list) else 0
-            content.append(
-                Paragraph(
-                    f"<b>VIP Pools:</b> {pool_count} pools configured", normal_style
-                )
-            )
+            content.append(Paragraph(f"<b>VIP Pools:</b> {pool_count} pools configured", normal_style))
             content.append(Spacer(1, 8))
 
         # Cluster Network Configuration
         cluster_summary = data.get("cluster_summary", {})
         if cluster_summary:
-            content.append(
-                Paragraph("<b>Cluster Network Configuration:</b>", normal_style)
-            )
+            content.append(Paragraph("<b>Cluster Network Configuration:</b>", normal_style))
 
             # Management and Gateway Configuration - Always show placeholders
             management_vips = cluster_summary.get("management_vips")
             management_vips_display = (
-                management_vips
-                if management_vips and management_vips != "Unknown"
-                else "Not Configured"
+                management_vips if management_vips and management_vips != "Unknown" else "Not Configured"
             )
-            content.append(
-                Paragraph(f"• Management VIPs: {management_vips_display}", normal_style)
-            )
+            content.append(Paragraph(f"• Management VIPs: {management_vips_display}", normal_style))
 
             external_gateways = cluster_summary.get("external_gateways")
             external_gateways_display = (
-                external_gateways
-                if external_gateways and external_gateways != "Unknown"
-                else "Not Configured"
+                external_gateways if external_gateways and external_gateways != "Unknown" else "Not Configured"
             )
-            content.append(
-                Paragraph(
-                    f"• External Gateways: {external_gateways_display}", normal_style
-                )
-            )
+            content.append(Paragraph(f"• External Gateways: {external_gateways_display}", normal_style))
 
             # DNS and NTP Configuration - Always show placeholders
             dns = cluster_summary.get("dns")
@@ -2473,20 +2470,12 @@ class VastReportBuilder:
 
             # Network Interface Configuration - Always show placeholders
             ext_netmask = cluster_summary.get("ext_netmask")
-            ext_netmask_display = (
-                ext_netmask
-                if ext_netmask and ext_netmask != "Unknown"
-                else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style)
-            )
+            ext_netmask_display = ext_netmask if ext_netmask and ext_netmask != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style))
 
             auto_ports_ext_iface = cluster_summary.get("auto_ports_ext_iface")
             auto_ports_ext_iface_display = (
-                auto_ports_ext_iface
-                if auto_ports_ext_iface and auto_ports_ext_iface != "Unknown"
-                else "Not Configured"
+                auto_ports_ext_iface if auto_ports_ext_iface and auto_ports_ext_iface != "Unknown" else "Not Configured"
             )
             content.append(
                 Paragraph(
@@ -2501,37 +2490,21 @@ class VastReportBuilder:
             content.append(Paragraph(f"• B2B IPMI: {b2b_ipmi_display}", normal_style))
 
             ipmi_gateway = cluster_summary.get("ipmi_gateway")
-            ipmi_gateway_display = (
-                ipmi_gateway
-                if ipmi_gateway and ipmi_gateway != "Unknown"
-                else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style)
-            )
+            ipmi_gateway_display = ipmi_gateway if ipmi_gateway and ipmi_gateway != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style))
 
             ipmi_netmask = cluster_summary.get("ipmi_netmask")
-            ipmi_netmask_display = (
-                ipmi_netmask
-                if ipmi_netmask and ipmi_netmask != "Unknown"
-                else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style)
-            )
+            ipmi_netmask_display = ipmi_netmask if ipmi_netmask and ipmi_netmask != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style))
 
             # MTU Configuration - Always show placeholders
             eth_mtu = cluster_summary.get("eth_mtu")
             eth_mtu_display = eth_mtu if eth_mtu is not None else "Not Configured"
-            content.append(
-                Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style)
-            )
+            content.append(Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style))
 
             ib_mtu = cluster_summary.get("ib_mtu")
             ib_mtu_display = ib_mtu if ib_mtu is not None else "Not Configured"
-            content.append(
-                Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style)
-            )
+            content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
 
         return content
 
@@ -2559,23 +2532,15 @@ class VastReportBuilder:
         content.append(Spacer(1, 12))
 
         sections = data.get("sections", {})
-        cluster_network_config = sections.get("cluster_network_configuration", {}).get(
-            "data", {}
-        )
+        cluster_network_config = sections.get("cluster_network_configuration", {}).get("data", {})
 
         if cluster_network_config:
             # Management VIPs
-            management_vips = cluster_network_config.get(
-                "management_vips", "Not Configured"
-            )
+            management_vips = cluster_network_config.get("management_vips", "Not Configured")
             if management_vips != "Not Configured":
-                content.append(
-                    Paragraph(f"• Management VIPs: {management_vips}", normal_style)
-                )
+                content.append(Paragraph(f"• Management VIPs: {management_vips}", normal_style))
             else:
-                content.append(
-                    Paragraph("• Management VIPs: Not Configured", normal_style)
-                )
+                content.append(Paragraph("• Management VIPs: Not Configured", normal_style))
 
             # Management VIP (single)
             mgmt_vip = cluster_network_config.get("mgmt_vip", "Not Configured")
@@ -2583,18 +2548,12 @@ class VastReportBuilder:
                 content.append(Paragraph(f"• Management VIP: {mgmt_vip}", normal_style))
 
             # Management Inner VIP
-            mgmt_inner_vip = cluster_network_config.get(
-                "mgmt_inner_vip", "Not Configured"
-            )
+            mgmt_inner_vip = cluster_network_config.get("mgmt_inner_vip", "Not Configured")
             if mgmt_inner_vip != "Not Configured":
-                content.append(
-                    Paragraph(f"• Management Inner VIP: {mgmt_inner_vip}", normal_style)
-                )
+                content.append(Paragraph(f"• Management Inner VIP: {mgmt_inner_vip}", normal_style))
 
             # Management Inner VIP CNode
-            mgmt_inner_vip_cnode = cluster_network_config.get(
-                "mgmt_inner_vip_cnode", "Not Configured"
-            )
+            mgmt_inner_vip_cnode = cluster_network_config.get("mgmt_inner_vip_cnode", "Not Configured")
             if mgmt_inner_vip_cnode != "Not Configured":
                 content.append(
                     Paragraph(
@@ -2604,17 +2563,11 @@ class VastReportBuilder:
                 )
 
             # External Gateways
-            external_gateways = cluster_network_config.get(
-                "external_gateways", "Not Configured"
-            )
+            external_gateways = cluster_network_config.get("external_gateways", "Not Configured")
             if external_gateways != "Not Configured":
-                content.append(
-                    Paragraph(f"• External Gateways: {external_gateways}", normal_style)
-                )
+                content.append(Paragraph(f"• External Gateways: {external_gateways}", normal_style))
             else:
-                content.append(
-                    Paragraph("• External Gateways: Not Configured", normal_style)
-                )
+                content.append(Paragraph("• External Gateways: Not Configured", normal_style))
 
             # DNS Servers
             dns = cluster_network_config.get("dns", "Not Configured")
@@ -2632,20 +2585,12 @@ class VastReportBuilder:
 
             # Network Interface Configuration
             ext_netmask = cluster_network_config.get("ext_netmask", "Unknown")
-            ext_netmask_display = (
-                ext_netmask if ext_netmask != "Unknown" else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style)
-            )
+            ext_netmask_display = ext_netmask if ext_netmask != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• External Netmask: {ext_netmask_display}", normal_style))
 
-            auto_ports_ext_iface = cluster_network_config.get(
-                "auto_ports_ext_iface", "Unknown"
-            )
+            auto_ports_ext_iface = cluster_network_config.get("auto_ports_ext_iface", "Unknown")
             auto_ports_ext_iface_display = (
-                auto_ports_ext_iface
-                if auto_ports_ext_iface != "Unknown"
-                else "Not Configured"
+                auto_ports_ext_iface if auto_ports_ext_iface != "Unknown" else "Not Configured"
             )
             content.append(
                 Paragraph(
@@ -2661,32 +2606,20 @@ class VastReportBuilder:
             # MTU Configuration
             eth_mtu = cluster_network_config.get("eth_mtu", "Unknown")
             eth_mtu_display = eth_mtu if eth_mtu != "Unknown" else "Not Configured"
-            content.append(
-                Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style)
-            )
+            content.append(Paragraph(f"• Ethernet MTU: {eth_mtu_display}", normal_style))
 
             ib_mtu = cluster_network_config.get("ib_mtu", "Unknown")
             ib_mtu_display = ib_mtu if ib_mtu != "Unknown" else "Not Configured"
-            content.append(
-                Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style)
-            )
+            content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
 
             # IPMI Gateway and Netmask
             ipmi_gateway = cluster_network_config.get("ipmi_gateway", "Unknown")
-            ipmi_gateway_display = (
-                ipmi_gateway if ipmi_gateway != "Unknown" else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style)
-            )
+            ipmi_gateway_display = ipmi_gateway if ipmi_gateway != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• IPMI Gateway: {ipmi_gateway_display}", normal_style))
 
             ipmi_netmask = cluster_network_config.get("ipmi_netmask", "Unknown")
-            ipmi_netmask_display = (
-                ipmi_netmask if ipmi_netmask != "Unknown" else "Not Configured"
-            )
-            content.append(
-                Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style)
-            )
+            ipmi_netmask_display = ipmi_netmask if ipmi_netmask != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• IPMI Netmask: {ipmi_netmask_display}", normal_style))
 
         return content
 
@@ -2714,17 +2647,13 @@ class VastReportBuilder:
         content.append(Spacer(1, 12))
 
         sections = data.get("sections", {})
-        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get(
-            "data", {}
-        )
+        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get("data", {})
 
         cnodes = cnodes_network_config.get("cnodes", [])
         total_cnodes = cnodes_network_config.get("total_cnodes", 0)
 
         if cnodes:
-            content.append(
-                Paragraph(f"<b>Total CNodes:</b> {total_cnodes}", normal_style)
-            )
+            content.append(Paragraph(f"<b>Total CNodes:</b> {total_cnodes}", normal_style))
             content.append(Spacer(1, 12))
 
             # Create table for CNodes with scale-out support
@@ -2757,11 +2686,7 @@ class VastReportBuilder:
                         ),
                         cnode.get("vast_os", "Unknown"),
                         "Yes" if cnode.get("is_vms_host", False) else "No",
-                        (
-                            "Yes"
-                            if cnode.get("tpm_boot_dev_encryption_supported", False)
-                            else "No"
-                        ),
+                        ("Yes" if cnode.get("tpm_boot_dev_encryption_supported", False) else "No"),
                         "Yes" if cnode.get("single_nic", False) else "No",
                         cnode.get("net_type", "Unknown"),
                     ]
@@ -2804,11 +2729,7 @@ class VastReportBuilder:
 
             content.append(table)
         else:
-            content.append(
-                Paragraph(
-                    "No CNodes network configuration data available", normal_style
-                )
-            )
+            content.append(Paragraph("No CNodes network configuration data available", normal_style))
 
         return content
 
@@ -2836,17 +2757,13 @@ class VastReportBuilder:
         content.append(Spacer(1, 12))
 
         sections = data.get("sections", {})
-        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get(
-            "data", {}
-        )
+        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get("data", {})
 
         dnodes = dnodes_network_config.get("dnodes", [])
         total_dnodes = dnodes_network_config.get("total_dnodes", 0)
 
         if dnodes:
-            content.append(
-                Paragraph(f"<b>Total DNodes:</b> {total_dnodes}", normal_style)
-            )
+            content.append(Paragraph(f"<b>Total DNodes:</b> {total_dnodes}", normal_style))
             content.append(Spacer(1, 12))
 
             # Create table for DNodes with scale-out support
@@ -2922,11 +2839,7 @@ class VastReportBuilder:
 
             content.append(table)
         else:
-            content.append(
-                Paragraph(
-                    "No DNodes network configuration data available", normal_style
-                )
-            )
+            content.append(Paragraph("No DNodes network configuration data available", normal_style))
 
         return content
 
@@ -2988,9 +2901,7 @@ class VastReportBuilder:
         # Note: PageBreak is handled by main build function, no need to add here
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Network Configuration", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Network Configuration", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -3020,9 +2931,7 @@ class VastReportBuilder:
         sections = data.get("sections", {})
 
         # Add Network Configuration summary table (similar to Storage Capacity)
-        cluster_network_config = sections.get("cluster_network_configuration", {}).get(
-            "data", {}
-        )
+        cluster_network_config = sections.get("cluster_network_configuration", {}).get("data", {})
         if cluster_network_config:
             network_summary_data = []
 
@@ -3044,27 +2953,15 @@ class VastReportBuilder:
                 network_summary_data.append(
                     [
                         "External Gateways",
-                        cluster_network_config.get(
-                            "external_gateways", "Not Configured"
-                        ),
+                        cluster_network_config.get("external_gateways", "Not Configured"),
                     ]
                 )
 
             # DNS and NTP settings
-            if (
-                cluster_network_config.get("dns")
-                and cluster_network_config.get("dns") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    ["DNS Servers", cluster_network_config.get("dns", "Not Configured")]
-                )
-            if (
-                cluster_network_config.get("ntp")
-                and cluster_network_config.get("ntp") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    ["NTP Servers", cluster_network_config.get("ntp", "Not Configured")]
-                )
+            if cluster_network_config.get("dns") and cluster_network_config.get("dns") != "Not Configured":
+                network_summary_data.append(["DNS Servers", cluster_network_config.get("dns", "Not Configured")])
+            if cluster_network_config.get("ntp") and cluster_network_config.get("ntp") != "Not Configured":
+                network_summary_data.append(["NTP Servers", cluster_network_config.get("ntp", "Not Configured")])
 
             # Network interface settings
             if (
@@ -3079,33 +2976,24 @@ class VastReportBuilder:
                 )
             if (
                 cluster_network_config.get("auto_ports_ext_iface")
-                and cluster_network_config.get("auto_ports_ext_iface")
-                != "Not Configured"
+                and cluster_network_config.get("auto_ports_ext_iface") != "Not Configured"
             ):
                 network_summary_data.append(
                     [
                         "Auto Ports Ext Interface",
-                        cluster_network_config.get(
-                            "auto_ports_ext_iface", "Not Configured"
-                        ),
+                        cluster_network_config.get("auto_ports_ext_iface", "Not Configured"),
                     ]
                 )
 
             # MTU settings
-            if (
-                cluster_network_config.get("eth_mtu")
-                and cluster_network_config.get("eth_mtu") != "Not Configured"
-            ):
+            if cluster_network_config.get("eth_mtu") and cluster_network_config.get("eth_mtu") != "Not Configured":
                 network_summary_data.append(
                     [
                         "Ethernet MTU",
                         str(cluster_network_config.get("eth_mtu", "Not Configured")),
                     ]
                 )
-            if (
-                cluster_network_config.get("ib_mtu")
-                and cluster_network_config.get("ib_mtu") != "Not Configured"
-            ):
+            if cluster_network_config.get("ib_mtu") and cluster_network_config.get("ib_mtu") != "Not Configured":
                 network_summary_data.append(
                     [
                         "InfiniBand MTU",
@@ -3137,15 +3025,10 @@ class VastReportBuilder:
 
             # B2B IPMI setting
             if cluster_network_config.get("b2b_ipmi") is not None:
-                network_summary_data.append(
-                    ["B2B IPMI", str(cluster_network_config.get("b2b_ipmi", False))]
-                )
+                network_summary_data.append(["B2B IPMI", str(cluster_network_config.get("b2b_ipmi", False))])
 
             # Net Type setting
-            if (
-                cluster_network_config.get("net_type")
-                and cluster_network_config.get("net_type") != "Not Configured"
-            ):
+            if cluster_network_config.get("net_type") and cluster_network_config.get("net_type") != "Not Configured":
                 network_summary_data.append(
                     [
                         "Net Type",
@@ -3161,9 +3044,7 @@ class VastReportBuilder:
                 content.append(Spacer(1, 16))
 
         # 1. CNodes Network Configuration
-        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get(
-            "data", {}
-        )
+        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get("data", {})
         cnodes = cnodes_network_config.get("cnodes", [])
         total_cnodes = cnodes_network_config.get("total_cnodes", 0)
 
@@ -3195,18 +3076,14 @@ class VastReportBuilder:
                 )
 
             # Create table with pagination support
-            table_elements = (
-                self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    table_data, "CNode Network Configuration", headers
-                )
+            table_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
+                table_data, "CNode Network Configuration", headers
             )
             content.extend(table_elements)
             content.append(Spacer(1, 16))
 
         # 2. DNodes Network Configuration
-        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get(
-            "data", {}
-        )
+        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get("data", {})
         dnodes = dnodes_network_config.get("dnodes", [])
 
         if dnodes:
@@ -3237,10 +3114,8 @@ class VastReportBuilder:
                 )
 
             # Create table with pagination support
-            table_elements = (
-                self.brand_compliance.create_vast_hardware_table_with_pagination(
-                    table_data, "DNode Network Configuration", headers
-                )
+            table_elements = self.brand_compliance.create_vast_hardware_table_with_pagination(
+                table_data, "DNode Network Configuration", headers
             )
             content.extend(table_elements)
             content.append(Spacer(1, 16))
@@ -3267,9 +3142,7 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Logical Network Diagram", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Logical Network Diagram", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -3314,11 +3187,7 @@ class VastReportBuilder:
 
             # Get required data
             port_mapping_section = data.get("sections", {}).get("port_mapping", {})
-            port_mapping_data = (
-                port_mapping_section.get("data", {})
-                if isinstance(port_mapping_section, dict)
-                else {}
-            )
+            port_mapping_data = port_mapping_section.get("data", {}) if isinstance(port_mapping_section, dict) else {}
 
             # Prepare hardware data from hardware_inventory
             hardware_inventory = data.get("hardware_inventory", {})
@@ -3329,16 +3198,8 @@ class VastReportBuilder:
             switches_data = hardware_inventory.get("switches") or []
 
             # If cboxes/dboxes are dicts (keyed by name), convert to list of values
-            cboxes_list = (
-                list(cboxes_data.values())
-                if isinstance(cboxes_data, dict)
-                else cboxes_data
-            )
-            dboxes_list = (
-                list(dboxes_data.values())
-                if isinstance(dboxes_data, dict)
-                else dboxes_data
-            )
+            cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
+            dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
             switches_list = switches_data if isinstance(switches_data, list) else []
 
             hardware_data = {
@@ -3409,9 +3270,7 @@ class VastReportBuilder:
 
                     # Account for margins and header/footer
                     available_width = page_width - (2 * 0.5 * inch)
-                    available_height = page_height - (
-                        2 * 0.75 * inch
-                    )  # Top and bottom margins
+                    available_height = page_height - (2 * 0.75 * inch)  # Top and bottom margins
 
                     # Reserve space for heading and spacing (approximately 1 inch)
                     max_diagram_height = available_height - 1.5 * inch
@@ -3469,9 +3328,7 @@ class VastReportBuilder:
                     return content
 
                 except Exception as e:
-                    self.logger.error(
-                        f"Error embedding generated diagram: {e}", exc_info=True
-                    )
+                    self.logger.error(f"Error embedding generated diagram: {e}", exc_info=True)
                     # Fall through to try static placeholder
 
             else:
@@ -3538,31 +3395,24 @@ class VastReportBuilder:
                 # Add placeholder text if image fails to load
                 content.append(
                     Paragraph(
-                        "<i>[Network topology diagram placeholder - "
-                        "Image failed to load]</i>",
+                        "<i>[Network topology diagram placeholder - " "Image failed to load]</i>",
                         styles["Normal"],
                     )
                 )
         else:
             # Add placeholder if image doesn't exist
-            placeholder_elements = (
-                self.brand_compliance.create_vast_2d_diagram_placeholder(
-                    "Network Topology Diagram",
-                    "Visual representation of cluster network connectivity "
-                    "showing CBoxes, DBoxes, switches, and customer network "
-                    "connections.",
-                )
+            placeholder_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
+                "Network Topology Diagram",
+                "Visual representation of cluster network connectivity "
+                "showing CBoxes, DBoxes, switches, and customer network "
+                "connections.",
             )
             content.extend(placeholder_elements)
-            self.logger.info(
-                "Network diagram placeholder shown - static image not found"
-            )
+            self.logger.info("Network diagram placeholder shown - static image not found")
 
         return content
 
-    def _classify_port_purpose(
-        self, port_name: str, speed: str, total_switches: int
-    ) -> str:
+    def _classify_port_purpose(self, port_name: str, speed: str, total_switches: int) -> str:
         """
         Classify port purpose based on speed, port number, and cluster topology.
 
@@ -3632,9 +3482,7 @@ class VastReportBuilder:
         styles = getSampleStyleSheet()
 
         # Add section heading
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Port Mapping", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Port Mapping", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -3659,6 +3507,18 @@ class VastReportBuilder:
                 overview_style,
             )
         )
+        if port_mapping_data.get("partial") and port_mapping_data.get("partial_reason"):
+            content.append(
+                Paragraph(
+                    f"<b>Note:</b> {port_mapping_data['partial_reason']}",
+                    ParagraphStyle(
+                        "PartialNote",
+                        parent=overview_style,
+                        backColor=self.brand_compliance.colors.VAST_BLUE_LIGHTEST,
+                        borderPadding=6,
+                    ),
+                )
+            )
         content.append(Spacer(1, 12))
 
         # Get port map organized by switch
@@ -3666,9 +3526,7 @@ class VastReportBuilder:
         has_cross_connections = port_mapping_data.get("has_cross_connections", False)
 
         if not port_map:
-            content.append(
-                Paragraph("No port mapping data available", styles["Normal"])
-            )
+            content.append(Paragraph("No port mapping data available", styles["Normal"]))
             return content
 
         # Group ports by switch
@@ -3683,9 +3541,7 @@ class VastReportBuilder:
         for switch_ip in ports_by_switch:
             ports_by_switch[switch_ip].sort(
                 key=lambda x: (
-                    int("".join(filter(str.isdigit, x["port"])))
-                    if any(c.isdigit() for c in x["port"])
-                    else 0
+                    int("".join(filter(str.isdigit, x["port"]))) if any(c.isdigit() for c in x["port"]) else 0
                 )
             )
 
@@ -3729,12 +3585,7 @@ class VastReportBuilder:
                 # make assumptions about which interface goes to which network.
 
                 is_primary = False
-                if (
-                    "f0" in interface
-                    or "f1" in interface
-                    or "f2" in interface
-                    or "f3" in interface
-                ):
+                if "f0" in interface or "f1" in interface or "f2" in interface or "f3" in interface:
                     # This is a primary physical interface
                     is_primary = True
 
@@ -3761,9 +3612,7 @@ class VastReportBuilder:
                 # Simple notes - all primary connections are correct
                 notes_str = "Primary"
 
-                table_data.append(
-                    [port_display, node_display, network, speed, notes_str]
-                )
+                table_data.append([port_display, node_display, network, speed, notes_str])
 
             # Add IPL/MLAG connections to this switch's table
             # Use the new deduplicated ipl_connections format
@@ -3810,9 +3659,7 @@ class VastReportBuilder:
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
-            table_elements = self.brand_compliance.create_vast_table(
-                table_data, table_title, headers
-            )
+            table_elements = self.brand_compliance.create_vast_table(table_data, table_title, headers)
             content.extend(table_elements)
             content.append(Spacer(1, 12))
 
@@ -3915,9 +3762,7 @@ class VastReportBuilder:
         content = []
 
         # Add section heading with VAST styling
-        heading_elements = self.brand_compliance.create_vast_section_heading(
-            "Switch Configuration", level=1
-        )
+        heading_elements = self.brand_compliance.create_vast_section_heading("Switch Configuration", level=1)
         content.extend(heading_elements)
 
         # Place page marker immediately after heading to capture section start page
@@ -4006,9 +3851,7 @@ class VastReportBuilder:
             switch_details_heading = self.brand_compliance.create_vast_section_heading(
                 f"Switch {switch_num} Details: {switch_name}", level=2
             )
-            switch_info_elements = self._create_cluster_info_table(
-                switch_info_data, None
-            )
+            switch_info_elements = self._create_cluster_info_table(switch_info_data, None)
 
             # Keep heading with first table (switch info)
             switch_section_elements = []
@@ -4039,20 +3882,14 @@ class VastReportBuilder:
 
                 # Sort by speed (200G, 100G, Unconfigured, then others)
                 speed_order = {"200G": 0, "100G": 1, "Unconfigured": 2}
-                sorted_summary = sorted(
-                    port_summary.items(), key=lambda x: speed_order.get(x[0], 3)
-                )
+                sorted_summary = sorted(port_summary.items(), key=lambda x: speed_order.get(x[0], 3))
 
                 for speed, port_list in sorted_summary:
                     # Sort port names naturally (swp1, swp2, ..., swp10, swp11, ...)
                     try:
                         sorted_ports = sorted(
                             port_list,
-                            key=lambda x: (
-                                int("".join(filter(str.isdigit, x)))
-                                if any(c.isdigit() for c in x)
-                                else 0
-                            ),
+                            key=lambda x: (int("".join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else 0),
                         )
                     except:
                         sorted_ports = sorted(port_list)
@@ -4190,9 +4027,7 @@ class VastReportBuilder:
         if port_mapping_data.get("available"):
             # Add spacer instead of page break to keep within switch configuration section
             content.append(Spacer(1, 0.3 * inch))
-            port_mapping_content = self._create_port_mapping_section(
-                port_mapping_data, switches, None, None
-            )
+            port_mapping_content = self._create_port_mapping_section(port_mapping_data, switches, None, None)
             content.extend(port_mapping_content)
 
         return content
@@ -4251,9 +4086,7 @@ class VastReportBuilder:
         # Tenants
         tenants = logical_config.get("tenants")
         if tenants:
-            tenant_list = (
-                tenants.get("tenants", []) if isinstance(tenants, dict) else tenants
-            )
+            tenant_list = tenants.get("tenants", []) if isinstance(tenants, dict) else tenants
             tenant_count = len(tenant_list) if isinstance(tenant_list, list) else 0
             table_data.append(["Tenants", f"{tenant_count} tenants configured"])
 
@@ -4267,9 +4100,7 @@ class VastReportBuilder:
         # View Policies
         policies = logical_config.get("view_policies")
         if policies:
-            policy_list = (
-                policies.get("policies", []) if isinstance(policies, dict) else policies
-            )
+            policy_list = policies.get("policies", []) if isinstance(policies, dict) else policies
             policy_count = len(policy_list) if isinstance(policy_list, list) else 0
             table_data.append(["View Policies", f"{policy_count} policies configured"])
 
@@ -4281,11 +4112,7 @@ class VastReportBuilder:
                 if isinstance(protection_policies, dict)
                 else protection_policies
             )
-            protection_policy_count = (
-                len(protection_policy_list)
-                if isinstance(protection_policy_list, list)
-                else 0
-            )
+            protection_policy_count = len(protection_policy_list) if isinstance(protection_policy_list, list) else 0
             table_data.append(
                 [
                     "Protection Policies",
@@ -4299,25 +4126,15 @@ class VastReportBuilder:
             # VIP Pools
             vippools = network_config.get("vippools")
             if vippools:
-                vippool_list = (
-                    vippools.get("pools", [])
-                    if isinstance(vippools, dict)
-                    else vippools
-                )
-                vippool_count = (
-                    len(vippool_list) if isinstance(vippool_list, list) else 0
-                )
+                vippool_list = vippools.get("pools", []) if isinstance(vippools, dict) else vippools
+                vippool_count = len(vippool_list) if isinstance(vippool_list, list) else 0
                 table_data.append(["VIP Pools", f"{vippool_count} pools configured"])
             # DNS Configuration
             dns = network_config.get("dns")
             if dns:
                 dns_list = dns.get("dns_servers", []) if isinstance(dns, dict) else dns
                 if dns_list:
-                    dns_servers = (
-                        ", ".join(dns_list)
-                        if isinstance(dns_list, list)
-                        else str(dns_list)
-                    )
+                    dns_servers = ", ".join(dns_list) if isinstance(dns_list, list) else str(dns_list)
                     table_data.append(["DNS Servers", dns_servers])
 
             # NTP Configuration
@@ -4325,32 +4142,18 @@ class VastReportBuilder:
             if ntp:
                 ntp_list = ntp.get("ntp_servers", []) if isinstance(ntp, dict) else ntp
                 if ntp_list:
-                    ntp_servers = (
-                        ", ".join(ntp_list)
-                        if isinstance(ntp_list, list)
-                        else str(ntp_list)
-                    )
+                    ntp_servers = ", ".join(ntp_list) if isinstance(ntp_list, list) else str(ntp_list)
                     table_data.append(["NTP Servers", ntp_servers])
 
         # Data Protection information
-        protection_config = sections.get("data_protection_configuration", {}).get(
-            "data", {}
-        )
+        protection_config = sections.get("data_protection_configuration", {}).get("data", {})
 
         # Snapshot Programs
         snapshots = protection_config.get("snapshot_programs")
         if snapshots:
-            snapshot_list = (
-                snapshots.get("programs", [])
-                if isinstance(snapshots, dict)
-                else snapshots
-            )
-            snapshot_count = (
-                len(snapshot_list) if isinstance(snapshot_list, list) else 0
-            )
-            table_data.append(
-                ["Snapshot Programs", f"{snapshot_count} programs configured"]
-            )
+            snapshot_list = snapshots.get("programs", []) if isinstance(snapshots, dict) else snapshots
+            snapshot_count = len(snapshot_list) if isinstance(snapshot_list, list) else 0
+            table_data.append(["Snapshot Programs", f"{snapshot_count} programs configured"])
 
         # Data Protection Protection Policies (from data protection configuration)
         data_protection_policies = protection_config.get("protection_policies")
@@ -4361,9 +4164,7 @@ class VastReportBuilder:
                 else data_protection_policies
             )
             data_protection_policy_count = (
-                len(data_protection_policy_list)
-                if isinstance(data_protection_policy_list, list)
-                else 0
+                len(data_protection_policy_list) if isinstance(data_protection_policy_list, list) else 0
             )
             table_data.append(
                 [
@@ -4374,9 +4175,7 @@ class VastReportBuilder:
 
         # Create table if we have data
         if table_data:
-            table_elements = self.brand_compliance.create_vast_table(
-                table_data, None, ["Resource", "Value"]
-            )
+            table_elements = self.brand_compliance.create_vast_table(table_data, None, ["Resource", "Value"])
             content.extend(table_elements)
         else:
             # Fallback if no data
@@ -4504,27 +4303,17 @@ class VastReportBuilder:
         if cluster_summary:
             # Basic encryption settings
             enable_encryption = cluster_summary.get("enable_encryption")
-            enable_encryption_display = (
-                enable_encryption if enable_encryption is not None else "Not Configured"
-            )
-            table_data.append(
-                ["Security", "Encryption", "Enabled", str(enable_encryption_display)]
-            )
+            enable_encryption_display = enable_encryption if enable_encryption is not None else "Not Configured"
+            table_data.append(["Security", "Encryption", "Enabled", str(enable_encryption_display)])
 
             encryption_type = cluster_summary.get("encryption_type")
             encryption_type_display = (
-                encryption_type
-                if encryption_type and encryption_type != "Unknown"
-                else "Not Configured"
+                encryption_type if encryption_type and encryption_type != "Unknown" else "Not Configured"
             )
-            table_data.append(
-                ["Security", "Encryption", "Type", encryption_type_display]
-            )
+            table_data.append(["Security", "Encryption", "Type", encryption_type_display])
 
             s3_aes_ciphers = cluster_summary.get("s3_enable_only_aes_ciphers")
-            s3_aes_ciphers_display = (
-                s3_aes_ciphers if s3_aes_ciphers is not None else "Not Configured"
-            )
+            s3_aes_ciphers_display = s3_aes_ciphers if s3_aes_ciphers is not None else "Not Configured"
             table_data.append(
                 [
                     "Security",
@@ -4537,17 +4326,13 @@ class VastReportBuilder:
             # External Key Management (EKM) settings
             ekm_servers = cluster_summary.get("ekm_servers")
             ekm_servers_display = (
-                ekm_servers
-                if ekm_servers and ekm_servers != "Unknown" and ekm_servers != ""
-                else "Not Configured"
+                ekm_servers if ekm_servers and ekm_servers != "Unknown" and ekm_servers != "" else "Not Configured"
             )
             table_data.append(["Security", "EKM", "Servers", ekm_servers_display])
 
             ekm_address = cluster_summary.get("ekm_address")
             ekm_address_display = (
-                ekm_address
-                if ekm_address and ekm_address != "Unknown" and ekm_address != ""
-                else "Not Configured"
+                ekm_address if ekm_address and ekm_address != "Unknown" and ekm_address != "" else "Not Configured"
             )
             table_data.append(["Security", "EKM", "Address", ekm_address_display])
 
@@ -4558,35 +4343,21 @@ class VastReportBuilder:
             ekm_auth_domain = cluster_summary.get("ekm_auth_domain")
             ekm_auth_domain_display = (
                 ekm_auth_domain
-                if ekm_auth_domain
-                and ekm_auth_domain != "Unknown"
-                and ekm_auth_domain != ""
+                if ekm_auth_domain and ekm_auth_domain != "Unknown" and ekm_auth_domain != ""
                 else "Not Configured"
             )
-            table_data.append(
-                ["Security", "EKM", "Auth Domain", ekm_auth_domain_display]
-            )
+            table_data.append(["Security", "EKM", "Auth Domain", ekm_auth_domain_display])
 
             # Secondary EKM settings
             secondary_ekm_address = cluster_summary.get("secondary_ekm_address")
             secondary_ekm_address_display = (
-                secondary_ekm_address
-                if secondary_ekm_address and secondary_ekm_address != "null"
-                else "Not Configured"
+                secondary_ekm_address if secondary_ekm_address and secondary_ekm_address != "null" else "Not Configured"
             )
-            table_data.append(
-                ["Security", "Secondary EKM", "Address", secondary_ekm_address_display]
-            )
+            table_data.append(["Security", "Secondary EKM", "Address", secondary_ekm_address_display])
 
             secondary_ekm_port = cluster_summary.get("secondary_ekm_port")
-            secondary_ekm_port_display = (
-                secondary_ekm_port
-                if secondary_ekm_port is not None
-                else "Not Configured"
-            )
-            table_data.append(
-                ["Security", "Secondary EKM", "Port", str(secondary_ekm_port_display)]
-            )
+            secondary_ekm_port_display = secondary_ekm_port if secondary_ekm_port is not None else "Not Configured"
+            table_data.append(["Security", "Secondary EKM", "Port", str(secondary_ekm_port_display)])
 
         # Create table if we have data
         if table_data:
@@ -4635,9 +4406,7 @@ class VastReportBuilder:
         content.append(Spacer(1, 12))
 
         sections = data.get("sections", {})
-        protection_config = sections.get("data_protection_configuration", {}).get(
-            "data", {}
-        )
+        protection_config = sections.get("data_protection_configuration", {}).get("data", {})
 
         # Snapshot Programs
         snapshots = protection_config.get("snapshot_programs")
@@ -4655,9 +4424,7 @@ class VastReportBuilder:
         # Protection Policies
         policies = protection_config.get("protection_policies")
         if policies:
-            policy_list = (
-                policies.get("policies", []) if isinstance(policies, dict) else policies
-            )
+            policy_list = policies.get("policies", []) if isinstance(policies, dict) else policies
             policy_count = len(policy_list) if isinstance(policy_list, list) else 0
             content.append(
                 Paragraph(
@@ -4696,9 +4463,7 @@ class VastReportBuilder:
         # Rack Height Support
         rack_support = enhanced_features.get("rack_height_supported", False)
         content.append(Paragraph("<b>Rack Positioning:</b>", normal_style))
-        content.append(
-            Paragraph(f"• Supported: {'Yes' if rack_support else 'No'}", normal_style)
-        )
+        content.append(Paragraph(f"• Supported: {'Yes' if rack_support else 'No'}", normal_style))
         if rack_support:
             content.append(
                 Paragraph(
@@ -4706,23 +4471,15 @@ class VastReportBuilder:
                     normal_style,
                 )
             )
-            content.append(
-                Paragraph(
-                    "• Physical rack layout visualization available", normal_style
-                )
-            )
+            content.append(Paragraph("• Physical rack layout visualization available", normal_style))
         else:
-            content.append(
-                Paragraph("• Manual entry required for rack positions", normal_style)
-            )
+            content.append(Paragraph("• Manual entry required for rack positions", normal_style))
         content.append(Spacer(1, 8))
 
         # PSNT Support
         psnt_support = enhanced_features.get("psnt_supported", False)
         content.append(Paragraph("<b>PSNT Tracking:</b>", normal_style))
-        content.append(
-            Paragraph(f"• Supported: {'Yes' if psnt_support else 'No'}", normal_style)
-        )
+        content.append(Paragraph(f"• Supported: {'Yes' if psnt_support else 'No'}", normal_style))
         if psnt_support:
             content.append(
                 Paragraph(
@@ -4735,9 +4492,7 @@ class VastReportBuilder:
             if psnt:
                 content.append(Paragraph(f"• PSNT: {psnt}", normal_style))
         else:
-            content.append(
-                Paragraph("• PSNT not available for this cluster version", normal_style)
-            )
+            content.append(Paragraph("• PSNT not available for this cluster version", normal_style))
 
         return content
 
@@ -4779,11 +4534,7 @@ class VastReportBuilder:
                 normal_style,
             )
         )
-        content.append(
-            Paragraph(
-                f"• API version: {metadata.get('api_version', 'Unknown')}", normal_style
-            )
-        )
+        content.append(Paragraph(f"• API version: {metadata.get('api_version', 'Unknown')}", normal_style))
         content.append(
             Paragraph(
                 f"• Cluster version: {metadata.get('cluster_version', 'Unknown')}",
@@ -4810,19 +4561,10 @@ class VastReportBuilder:
                     normal_style,
                 )
             )
-            content.append(
-                Paragraph(
-                    f"• Total CNodes: {stats.get('total_cnodes', 0)}", normal_style
-                )
-            )
-            content.append(
-                Paragraph(
-                    f"• Total DNodes: {stats.get('total_dnodes', 0)}", normal_style
-                )
-            )
+            content.append(Paragraph(f"• Total CNodes: {stats.get('total_cnodes', 0)}", normal_style))
+            content.append(Paragraph(f"• Total DNodes: {stats.get('total_dnodes', 0)}", normal_style))
 
         return content
-
 
 
 # Convenience function for easy usage

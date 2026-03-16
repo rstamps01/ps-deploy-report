@@ -131,9 +131,7 @@ class NetworkDiagramGenerator:
 
         generic = self.hardware_images_path / "generic_1u.png"
         if generic.exists():
-            self.logger.warning(
-                f"No image for hardware type '{hardware_type}' — using generic placeholder"
-            )
+            self.logger.warning(f"No image for hardware type '{hardware_type}' — using generic placeholder")
             return str(generic)
 
         self.logger.warning(f"No image found for hardware type: {hardware_type}")
@@ -177,27 +175,17 @@ class NetworkDiagramGenerator:
             switches = hardware_data.get("switches", [])
             port_map = port_mapping_data.get("port_map", [])
             ipl_connections = port_mapping_data.get("ipl_connections", [])
-            ipl_ports = port_mapping_data.get(
-                "ipl_ports", []
-            )  # Legacy format for backward compatibility
+            ipl_ports = port_mapping_data.get("ipl_ports", [])  # Legacy format for backward compatibility
 
-            self.logger.info(
-                f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches"
-            )
+            self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches")
             # Log IPL connections accurately
             ipl_count_msg = (
-                f"{len(ipl_connections)} IPL connections"
-                if ipl_connections
-                else f"{len(ipl_ports)} IPL ports (legacy)"
+                f"{len(ipl_connections)} IPL connections" if ipl_connections else f"{len(ipl_ports)} IPL ports (legacy)"
             )
-            self.logger.info(
-                f"Connections: {len(port_map)} port mappings, {ipl_count_msg}"
-            )
+            self.logger.info(f"Connections: {len(port_map)} port mappings, {ipl_count_msg}")
 
             # Layout parameters with dynamic sizing based on device count
-            layer_height = (
-                height / 4
-            )  # Divide into 4 layers (top margin, cbox, switch, dbox)
+            layer_height = height / 4  # Divide into 4 layers (top margin, cbox, switch, dbox)
 
             # Calculate max devices per row to determine sizing
             max_devices = max(len(cboxes), len(dboxes), 2)  # At least 2 for switches
@@ -220,9 +208,7 @@ class NetworkDiagramGenerator:
             else:
                 # For 8+ devices, calculate to fit all within width
                 available_width = width * 0.9  # Use 90% of width
-                device_width = min(
-                    40, available_width / (max_devices * 1.3)
-                )  # Reduced from 80
+                device_width = min(40, available_width / (max_devices * 1.3))  # Reduced from 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
@@ -246,9 +232,7 @@ class NetworkDiagramGenerator:
             dbox_y = layer_height
 
             # Calculate positions for CBoxes (wider spacing)
-            cbox_positions = self._calculate_positions(
-                len(cboxes), width, cbox_y, device_width, cbox_spacing
-            )
+            cbox_positions = self._calculate_positions(len(cboxes), width, cbox_y, device_width, cbox_spacing)
 
             # Calculate switch positions - centered with no border overlap
             # Switches are placed symmetrically around the center
@@ -267,9 +251,7 @@ class NetworkDiagramGenerator:
                     switch_y,
                 ),
                 2: (
-                    center_x
-                    - switch_gap / 2
-                    - device_width,  # Switch B on left (ends before gap)
+                    center_x - switch_gap / 2 - device_width,  # Switch B on left (ends before gap)
                     switch_y,
                 ),
             }
@@ -297,9 +279,7 @@ class NetworkDiagramGenerator:
                 dbox_positions = [(switch_midpoint_x - device_width / 2, dbox_y)]
             else:
                 # Multiple DBoxes - spread them centered on switch midpoint
-                dbox_positions = self._calculate_positions(
-                    len(dboxes), width, dbox_y, device_width, dbox_spacing
-                )
+                dbox_positions = self._calculate_positions(len(dboxes), width, dbox_y, device_width, dbox_spacing)
 
             # Draw connections first (so they appear behind devices)
             connection_group = Group()
@@ -328,20 +308,14 @@ class NetworkDiagramGenerator:
                 switch_ip = conn.get("switch_ip", "")
                 if switch_ip == switches[0].get("mgmt_ip") if switches else None:
                     switch_num = 1
-                elif (
-                    switch_ip == switches[1].get("mgmt_ip")
-                    if len(switches) > 1
-                    else None
-                ):
+                elif switch_ip == switches[1].get("mgmt_ip") if len(switches) > 1 else None:
                     switch_num = 2
                 else:
                     continue
 
                 # Get switch position
                 # For MSN2100 switches (side-by-side), both switches use position 1
-                msn2100_switches = [
-                    s for s in switches if "msn2100" in s.get("model", "").lower()
-                ]
+                msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
                 if len(msn2100_switches) >= 2:
                     # Both switches connect to the single MSN2100 image at position 1
                     if 1 not in switch_positions:
@@ -378,9 +352,7 @@ class NetworkDiagramGenerator:
                     continue
 
                 # Draw line (doubled stroke width)
-                line_color = (
-                    self.switch_a_color if switch_num == 1 else self.switch_b_color
-                )
+                line_color = self.switch_a_color if switch_num == 1 else self.switch_b_color
                 line = Line(
                     node_x + device_width / 2,
                     node_y,
@@ -399,15 +371,11 @@ class NetworkDiagramGenerator:
 
                 num_ipl_lines = len(ipl_connections)
 
-                self.logger.info(
-                    f"Drawing {num_ipl_lines} deduplicated IPL connections between switches"
-                )
+                self.logger.info(f"Drawing {num_ipl_lines} deduplicated IPL connections between switches")
 
                 # Draw IPL lines without labels (as specified)
                 for i in range(num_ipl_lines):
-                    offset = (
-                        i - (num_ipl_lines - 1) / 2
-                    ) * 10  # Center lines vertically
+                    offset = (i - (num_ipl_lines - 1) / 2) * 10  # Center lines vertically
                     line = Line(
                         sw1_x,
                         sw1_y + device_height / 2 + offset,
@@ -420,9 +388,7 @@ class NetworkDiagramGenerator:
             elif len(switches) >= 2:
                 # No IPL connections found - don't draw any
                 # IPL discovery either found 0 connections or failed
-                self.logger.info(
-                    f"No IPL connections detected - skipping IPL links in diagram"
-                )
+                self.logger.info(f"No IPL connections detected - skipping IPL links in diagram")
 
             drawing.add(connection_group)
 
@@ -434,9 +400,7 @@ class NetworkDiagramGenerator:
                 if idx < len(cbox_positions):
                     x, y = cbox_positions[idx]
                     # Get actual CBox model from hardware data
-                    cbox_model = cbox.get(
-                        "model", cbox.get("hardware_type", "supermicro_gen5_cbox")
-                    )
+                    cbox_model = cbox.get("model", cbox.get("hardware_type", "supermicro_gen5_cbox"))
                     self._draw_device(
                         device_group,
                         x,
@@ -452,9 +416,7 @@ class NetworkDiagramGenerator:
 
             # Draw Switches
             # Check if we have MSN2100 switches (side-by-side representation)
-            msn2100_switches = [
-                s for s in switches if "msn2100" in s.get("model", "").lower()
-            ]
+            msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
 
             if len(msn2100_switches) >= 2:
                 # Special case: MSN2100-CB2F represents BOTH switches in single image
@@ -480,9 +442,7 @@ class NetworkDiagramGenerator:
                         switch = switches[switch_num - 1]
                         switch_name = f"SW{'A' if switch_num == 1 else 'B'}"
                         # Get actual switch model from hardware data
-                        switch_model = switch.get(
-                            "model", switch.get("hardware_type", "msn3700-vs2fc")
-                        )
+                        switch_model = switch.get("model", switch.get("hardware_type", "msn3700-vs2fc"))
                         self._draw_device(
                             device_group,
                             x,
@@ -501,9 +461,7 @@ class NetworkDiagramGenerator:
                 if idx < len(dbox_positions):
                     x, y = dbox_positions[idx]
                     # Get actual DBox model from hardware data
-                    dbox_model = dbox.get(
-                        "model", dbox.get("hardware_type", "ceres_v2")
-                    )
+                    dbox_model = dbox.get("model", dbox.get("hardware_type", "ceres_v2"))
                     self._draw_device(
                         device_group,
                         x,
@@ -596,14 +554,11 @@ class NetworkDiagramGenerator:
             x = start_x + i * spacing
             # Verify position is within bounds
             if x < min_margin:
-                self.logger.warning(
-                    f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}"
-                )
+                self.logger.warning(f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}")
                 x = min_margin
             elif x + device_width > total_width - min_margin:
                 self.logger.warning(
-                    f"Device {i} adjusted: x={x:.1f}+width={device_width} > "
-                    f"max={total_width - min_margin}"
+                    f"Device {i} adjusted: x={x:.1f}+width={device_width} > " f"max={total_width - min_margin}"
                 )
                 x = total_width - min_margin - device_width
             positions.append((x, y))

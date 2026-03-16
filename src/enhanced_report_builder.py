@@ -91,13 +91,9 @@ class EnhancedReportBuilder:
         self.include_rack_layout = self.report_config.get("include_rack_layout", True)
         self.include_switch_map = self.report_config.get("include_switch_map", True)
 
-        self.logger.info(
-            "Enhanced report builder initialized with comprehensive template"
-        )
+        self.logger.info("Enhanced report builder initialized with comprehensive template")
 
-    def generate_enhanced_report(
-        self, processed_data: Dict[str, Any], output_path: str
-    ) -> bool:
+    def generate_enhanced_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
         Generate enhanced As-Built report using comprehensive template.
 
@@ -143,11 +139,7 @@ class EnhancedReportBuilder:
             story.extend(self._create_title_page(metadata))
             story.append(PageBreak())
 
-            story.extend(
-                self._create_executive_summary(
-                    metadata, cluster_overview, hardware_components
-                )
-            )
+            story.extend(self._create_executive_summary(metadata, cluster_overview, hardware_components))
             story.append(PageBreak())
 
             story.extend(self._create_architecture_overview())
@@ -179,9 +171,7 @@ class EnhancedReportBuilder:
             # Build PDF
             doc.build(story)
 
-            self.logger.info(
-                f"Enhanced As-Built report generated successfully: {output_path}"
-            )
+            self.logger.info(f"Enhanced As-Built report generated successfully: {output_path}")
             return True
 
         except Exception as e:
@@ -199,15 +189,13 @@ class EnhancedReportBuilder:
             cluster_version=cluster_summary.get("version", "Unknown"),
             generation_timestamp=datetime.now(),
             api_version=metadata_info.get("api_version", "v7"),
-            enhanced_features_enabled=(
-                metadata_info.get("enhanced_features") or {}
-            ).get("rack_height_supported", False),
+            enhanced_features_enabled=(metadata_info.get("enhanced_features") or {}).get(
+                "rack_height_supported", False
+            ),
             data_completeness=metadata_info.get("overall_completeness", 0.0),
         )
 
-    def _extract_cluster_overview(
-        self, processed_data: Dict[str, Any]
-    ) -> ClusterOverview:
+    def _extract_cluster_overview(self, processed_data: Dict[str, Any]) -> ClusterOverview:
         """Extract cluster overview information."""
         cluster_summary = processed_data.get("cluster_summary") or {}
 
@@ -233,9 +221,7 @@ class EnhancedReportBuilder:
             url=cluster_summary.get("url", "Unknown"),
         )
 
-    def _extract_hardware_components(
-        self, processed_data: Dict[str, Any]
-    ) -> Dict[str, List[HardwareComponent]]:
+    def _extract_hardware_components(self, processed_data: Dict[str, Any]) -> Dict[str, List[HardwareComponent]]:
         """Extract hardware components from processed data."""
         hardware_inventory = processed_data.get("hardware_inventory") or {}
 
@@ -326,19 +312,13 @@ class EnhancedReportBuilder:
 
         return {"cnodes": cnodes, "dnodes": dnodes, "cboxes": cboxes, "dboxes": dboxes}
 
-    def _extract_network_configuration(
-        self, processed_data: Dict[str, Any]
-    ) -> NetworkConfiguration:
+    def _extract_network_configuration(self, processed_data: Dict[str, Any]) -> NetworkConfiguration:
         """Extract network configuration from processed data."""
         sections = processed_data.get("sections") or {}
-        network_section = (sections.get("network_configuration") or {}).get(
-            "data"
-        ) or {}
+        network_section = (sections.get("network_configuration") or {}).get("data") or {}
 
         return NetworkConfiguration(
-            dns_servers=network_section.get("dns", {}).get(
-                "servers", ["8.8.8.8", "8.8.4.4"]
-            ),
+            dns_servers=network_section.get("dns", {}).get("servers", ["8.8.8.8", "8.8.4.4"]),
             ntp_servers=network_section.get("ntp", {}).get("servers", ["pool.ntp.org"]),
             vip_pools=network_section.get("vippools", {}),
             switch_fabric={
@@ -361,38 +341,24 @@ class EnhancedReportBuilder:
             },
         )
 
-    def _extract_deployment_configuration(
-        self, processed_data: Dict[str, Any]
-    ) -> DeploymentConfiguration:
+    def _extract_deployment_configuration(self, processed_data: Dict[str, Any]) -> DeploymentConfiguration:
         """Extract deployment configuration from processed data."""
         sections = processed_data.get("sections") or {}
 
         # Extract security configuration
-        security_section = (sections.get("security_configuration") or {}).get(
-            "data"
-        ) or {}
+        security_section = (sections.get("security_configuration") or {}).get("data") or {}
         ad_config = security_section.get("active_directory") or {}
         ldap_config = security_section.get("ldap") or {}
 
         # Extract data protection configuration
-        protection_section = (sections.get("data_protection_configuration") or {}).get(
-            "data"
-        ) or {}
+        protection_section = (sections.get("data_protection_configuration") or {}).get("data") or {}
 
         return DeploymentConfiguration(
             cluster_services={
                 "dns_servers": ["8.8.8.8", "8.8.4.4"],
                 "ntp_servers": ["pool.ntp.org"],
-                "active_directory": (
-                    ad_config.get("domain", "Not configured")
-                    if ad_config
-                    else "Not configured"
-                ),
-                "ldap_server": (
-                    ldap_config.get("servers", ["Not configured"])[0]
-                    if ldap_config
-                    else "Not configured"
-                ),
+                "active_directory": (ad_config.get("domain", "Not configured") if ad_config else "Not configured"),
+                "ldap_server": (ldap_config.get("servers", ["Not configured"])[0] if ldap_config else "Not configured"),
             },
             data_protection={
                 "snapshot_retention": "30 days (hourly), 90 days (daily)",
@@ -425,8 +391,7 @@ class EnhancedReportBuilder:
     ) -> List[Any]:
         """Create comprehensive executive summary."""
         hardware_summary = {
-            "total_nodes": len(hardware_components["cnodes"])
-            + len(hardware_components["dnodes"]),
+            "total_nodes": len(hardware_components["cnodes"]) + len(hardware_components["dnodes"]),
             "total_cnodes": len(hardware_components["cnodes"]),
             "total_dnodes": len(hardware_components["dnodes"]),
             "rack_positions_available": metadata.enhanced_features_enabled,
@@ -437,17 +402,13 @@ class EnhancedReportBuilder:
             "psnt_supported": True,
         }
 
-        return self.template.create_executive_summary(
-            cluster_overview, hardware_summary, enhanced_features
-        )
+        return self.template.create_executive_summary(cluster_overview, hardware_summary, enhanced_features)
 
     def _create_architecture_overview(self) -> List[Any]:
         """Create architecture overview section."""
         return self.template.create_architecture_overview()
 
-    def _create_physical_hardware_inventory(
-        self, hardware_components: Dict[str, List[HardwareComponent]]
-    ) -> List[Any]:
+    def _create_physical_hardware_inventory(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
         """Create comprehensive physical hardware inventory."""
         return self.template.create_physical_hardware_inventory(
             hardware_components["cnodes"],
@@ -456,9 +417,7 @@ class EnhancedReportBuilder:
             hardware_components["dboxes"],
         )
 
-    def _create_physical_layout_diagram(
-        self, hardware_components: Dict[str, List[HardwareComponent]]
-    ) -> List[Any]:
+    def _create_physical_layout_diagram(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
         """Create physical layout diagram section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -473,9 +432,7 @@ class EnhancedReportBuilder:
             textColor=colors.HexColor("#1a365d"),
         )
 
-        body_style = ParagraphStyle(
-            "Layout_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Layout_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -487,10 +444,7 @@ class EnhancedReportBuilder:
         rack_positions = set()
         for component_list in hardware_components.values():
             for component in component_list:
-                if (
-                    component.rack_position
-                    and component.rack_position != "Manual Entry Required"
-                ):
+                if component.rack_position and component.rack_position != "Manual Entry Required":
                     try:
                         pos = int(component.rack_position.replace("U", ""))
                         rack_positions.add(pos)
@@ -573,15 +527,11 @@ class EnhancedReportBuilder:
 
         return content
 
-    def _create_network_configuration(
-        self, network_config: NetworkConfiguration
-    ) -> List[Any]:
+    def _create_network_configuration(self, network_config: NetworkConfiguration) -> List[Any]:
         """Create network configuration section."""
         return self.template.create_network_configuration(network_config)
 
-    def _create_switch_port_map(
-        self, hardware_components: Dict[str, List[HardwareComponent]]
-    ) -> List[Any]:
+    def _create_switch_port_map(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
         """Create switch port map section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -604,9 +554,7 @@ class EnhancedReportBuilder:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Switch_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Switch_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 
@@ -650,9 +598,7 @@ class EnhancedReportBuilder:
 
         return content
 
-    def _create_deployment_configuration(
-        self, deployment_config: DeploymentConfiguration
-    ) -> List[Any]:
+    def _create_deployment_configuration(self, deployment_config: DeploymentConfiguration) -> List[Any]:
         """Create deployment configuration section."""
         return self.template.create_deployment_configuration(deployment_config)
 
@@ -664,9 +610,7 @@ class EnhancedReportBuilder:
         """Create support information section."""
         return self.template.create_support_information(metadata.cluster_psnt)
 
-    def _create_appendix(
-        self, metadata: ReportMetadata, processed_data: Dict[str, Any]
-    ) -> List[Any]:
+    def _create_appendix(self, metadata: ReportMetadata, processed_data: Dict[str, Any]) -> List[Any]:
         """Create appendix section."""
         if not REPORTLAB_AVAILABLE:
             return []
@@ -689,9 +633,7 @@ class EnhancedReportBuilder:
             textColor=colors.HexColor("#2d3748"),
         )
 
-        body_style = ParagraphStyle(
-            "Appendix_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8
-        )
+        body_style = ParagraphStyle("Appendix_Body", parent=styles["Normal"], fontSize=10, spaceAfter=8)
 
         content = []
 

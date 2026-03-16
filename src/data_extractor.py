@@ -19,7 +19,7 @@ Date: September 26, 2025
 
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -76,9 +76,7 @@ class ClusterSummary:
     dbox_ha_support: Optional[bool] = None
     enable_rack_level_resiliency: Optional[bool] = None
     disable_metrics: Optional[bool] = None
-    capacity_base_10: Optional[bool] = (
-        None  # Capacity display format (True=TB, False=TiB)
-    )
+    capacity_base_10: Optional[bool] = None  # Capacity display format (True=TB, False=TiB)
     # Storage capacity and usage metrics
     usable_capacity_tb: Optional[float] = None
     free_usable_capacity_tb: Optional[float] = None
@@ -127,6 +125,7 @@ class HardwareInventory:
     rack_positions_available: bool
     physical_layout: Optional[Dict[str, Any]] = None
     switches: Optional[List[Dict[str, Any]]] = None
+    eboxes: Dict[str, Any] = field(default_factory=dict)
 
 
 class DataExtractionError(Exception):
@@ -161,16 +160,20 @@ class VastDataExtractor:
         # Report sections configuration
         self.sections_config = self.data_config.get("sections", {})
 
-        self.logger.info(
-            "Data extractor initialized with enhanced processing capabilities"
-        )
+        self.logger.info("Data extractor initialized with enhanced processing capabilities")
 
     def _empty_hardware_inventory(self) -> HardwareInventory:
         """Return a minimal HardwareInventory when the section is disabled."""
         return HardwareInventory(
-            cnodes=[], dnodes=[], cboxes={}, dboxes={},
-            total_nodes=0, rack_positions_available=False,
-            physical_layout={}, switches=[],
+            cnodes=[],
+            dnodes=[],
+            cboxes={},
+            dboxes={},
+            eboxes={},
+            total_nodes=0,
+            rack_positions_available=False,
+            physical_layout={},
+            switches=[],
         )
 
     def extract_cluster_summary(self, raw_data: Dict[str, Any]) -> ClusterSummary:
@@ -219,9 +222,7 @@ class VastDataExtractor:
                 leader_cnode=cluster_info.get("leader_cnode", "Unknown"),
                 mgmt_cnode=cluster_info.get("mgmt_cnode", "Unknown"),
                 mgmt_inner_vip=cluster_info.get("mgmt_inner_vip", "Unknown"),
-                mgmt_inner_vip_cnode=cluster_info.get(
-                    "mgmt_inner_vip_cnode", "Unknown"
-                ),
+                mgmt_inner_vip_cnode=cluster_info.get("mgmt_inner_vip_cnode", "Unknown"),
                 # Cluster feature flags and configuration
                 enabled=cluster_info.get("enabled"),
                 enable_similarity=cluster_info.get("enable_similarity"),
@@ -229,9 +230,7 @@ class VastDataExtractor:
                 is_wb_raid_enabled=cluster_info.get("is_wb_raid_enabled"),
                 wb_raid_layout=cluster_info.get("wb_raid_layout", "Unknown"),
                 dbox_ha_support=cluster_info.get("dbox_ha_support"),
-                enable_rack_level_resiliency=cluster_info.get(
-                    "enable_rack_level_resiliency"
-                ),
+                enable_rack_level_resiliency=cluster_info.get("enable_rack_level_resiliency"),
                 disable_metrics=cluster_info.get("disable_metrics"),
                 capacity_base_10=cluster_info.get("capacity_base_10"),
                 # Storage capacity and usage metrics
@@ -241,20 +240,14 @@ class VastDataExtractor:
                 physical_space_tb=cluster_info.get("physical_space_tb"),
                 physical_space_in_use_tb=cluster_info.get("physical_space_in_use_tb"),
                 free_physical_space_tb=cluster_info.get("free_physical_space_tb"),
-                physical_space_in_use_percent=cluster_info.get(
-                    "physical_space_in_use_percent"
-                ),
+                physical_space_in_use_percent=cluster_info.get("physical_space_in_use_percent"),
                 logical_space_tb=cluster_info.get("logical_space_tb"),
                 logical_space_in_use_tb=cluster_info.get("logical_space_in_use_tb"),
                 free_logical_space_tb=cluster_info.get("free_logical_space_tb"),
-                logical_space_in_use_percent=cluster_info.get(
-                    "logical_space_in_use_percent"
-                ),
+                logical_space_in_use_percent=cluster_info.get("logical_space_in_use_percent"),
                 # Encryption configuration
                 enable_encryption=cluster_info.get("enable_encryption"),
-                s3_enable_only_aes_ciphers=cluster_info.get(
-                    "s3_enable_only_aes_ciphers"
-                ),
+                s3_enable_only_aes_ciphers=cluster_info.get("s3_enable_only_aes_ciphers"),
                 encryption_type=cluster_info.get("encryption_type", "Unknown"),
                 ekm_servers=cluster_info.get("ekm_servers", "Unknown"),
                 ekm_address=cluster_info.get("ekm_address", "Unknown"),
@@ -268,9 +261,7 @@ class VastDataExtractor:
                 dns=cluster_info.get("dns", "Unknown"),
                 ntp=cluster_info.get("ntp", "Unknown"),
                 ext_netmask=cluster_info.get("ext_netmask", "Unknown"),
-                auto_ports_ext_iface=cluster_info.get(
-                    "auto_ports_ext_iface", "Unknown"
-                ),
+                auto_ports_ext_iface=cluster_info.get("auto_ports_ext_iface", "Unknown"),
                 b2b_ipmi=cluster_info.get("b2b_ipmi"),
                 eth_mtu=cluster_info.get("eth_mtu"),
                 ib_mtu=cluster_info.get("ib_mtu"),
@@ -307,9 +298,7 @@ class VastDataExtractor:
             if completeness < 0.8:
                 self.logger.warning(f"Cluster summary completeness: {completeness:.1%}")
 
-            self.logger.info(
-                f"Cluster summary extracted: {summary.name} (v{summary.version})"
-            )
+            self.logger.info(f"Cluster summary extracted: {summary.name} (v{summary.version})")
             return summary
 
         except Exception as e:
@@ -340,6 +329,26 @@ class VastDataExtractor:
                 wb_raid_layout="Error",
             )
 
+    @staticmethod
+    def _normalize_boxes_to_dict(boxes: Any) -> Dict[str, Any]:
+        """Normalize box data to a dict keyed by name. Accepts list or dict."""
+        if isinstance(boxes, dict):
+            return boxes
+        if isinstance(boxes, list):
+            return {b.get("name") or str(b.get("id", i)): b for i, b in enumerate(boxes)}
+        return {}
+
+    @staticmethod
+    def _normalize_to_list(items: Any) -> List[Any]:
+        """Normalize to a list. Accepts list or dict (uses values). Ensures safe iteration."""
+        if items is None:
+            return []
+        if isinstance(items, list):
+            return items
+        if isinstance(items, dict):
+            return list(items.values())
+        return []
+
     def extract_hardware_inventory(self, raw_data: Dict[str, Any]) -> HardwareInventory:
         """
         Extract and process hardware inventory with enhanced positioning.
@@ -353,23 +362,27 @@ class VastDataExtractor:
         try:
             self.logger.info("Extracting hardware inventory with enhanced positioning")
 
-            hardware_data = raw_data.get("hardware", {})
+            hardware_data = raw_data.get("hardware", {}) or {}
             enhanced_features = raw_data.get("enhanced_features", {})
 
-            # Process CNodes
+            # Process CNodes (accept list or dict of items)
+            cnodes_raw = self._normalize_to_list(hardware_data.get("cnodes"))
             cnodes = []
-            for cnode in hardware_data.get("cnodes", []):
-                processed_cnode = self._process_hardware_node(cnode, "cnode")
-                cnodes.append(processed_cnode)
+            for cnode in cnodes_raw:
+                if isinstance(cnode, dict):
+                    processed_cnode = self._process_hardware_node(cnode, "cnode")
+                    cnodes.append(processed_cnode)
 
-            # Process DNodes
+            # Process DNodes (accept list or dict of items)
+            dnodes_raw = self._normalize_to_list(hardware_data.get("dnodes"))
             dnodes = []
-            for dnode in hardware_data.get("dnodes", []):
-                processed_dnode = self._process_hardware_node(dnode, "dnode")
-                dnodes.append(processed_dnode)
+            for dnode in dnodes_raw:
+                if isinstance(dnode, dict):
+                    processed_dnode = self._process_hardware_node(dnode, "dnode")
+                    dnodes.append(processed_dnode)
 
-            # Process CBoxes - enrich with hardware type from CNodes
-            cboxes = hardware_data.get("cboxes", {})
+            # Process CBoxes - enrich with hardware type from CNodes (accept list or dict)
+            cboxes = self._normalize_boxes_to_dict(hardware_data.get("cboxes", {}))
 
             # Build cbox_id to cbox_name mapping
             cbox_id_to_name = {}
@@ -390,24 +403,16 @@ class VastDataExtractor:
 
                 if cbox_name and cbox_name in cboxes:
                     # Only set if not already set (use first CNode's model for the CBox)
-                    if "model" not in cboxes[cbox_name] or not cboxes[cbox_name].get(
-                        "model"
-                    ):
+                    if "model" not in cboxes[cbox_name] or not cboxes[cbox_name].get("model"):
                         # Extract model from box_vendor field (e.g., "Broadwell, single dual-port NIC" -> "Broadwell")
                         box_vendor = cnode.get("box_vendor", "")
-                        model = (
-                            box_vendor.split(",")[0].strip()
-                            if box_vendor
-                            else "Unknown"
-                        )
+                        model = box_vendor.split(",")[0].strip() if box_vendor else "Unknown"
                         cboxes[cbox_name]["model"] = model
                         cboxes[cbox_name]["hardware_type"] = model.lower()
-                        self.logger.debug(
-                            f"Enriched CBox {cbox_name} with model: {model}"
-                        )
+                        self.logger.debug(f"Enriched CBox {cbox_name} with model: {model}")
 
-            # Process DBoxes - enrich with hardware type from DNodes
-            dboxes = hardware_data.get("dboxes", {})
+            # Process DBoxes - enrich with hardware type from DNodes (accept list or dict)
+            dboxes = self._normalize_boxes_to_dict(hardware_data.get("dboxes", {}))
 
             # Build dbox_id to dbox_name mapping
             dbox_id_to_name = {}
@@ -428,25 +433,23 @@ class VastDataExtractor:
 
                 if dbox_name and dbox_name in dboxes:
                     # Only set if not already set (use first DNode's model for the DBox)
-                    if "model" not in dboxes[dbox_name] or not dboxes[dbox_name].get(
-                        "model"
-                    ):
+                    if "model" not in dboxes[dbox_name] or not dboxes[dbox_name].get("model"):
                         # DBoxes already have hardware_type from API, but ensure model is set
                         if not dboxes[dbox_name].get("hardware_type"):
                             box_vendor = dnode.get("box_vendor", "")
-                            model = (
-                                box_vendor.split(",")[0].strip()
-                                if box_vendor
-                                else "Unknown"
-                            )
+                            model = box_vendor.split(",")[0].strip() if box_vendor else "Unknown"
                             dboxes[dbox_name]["hardware_type"] = model.lower()
-                            self.logger.debug(
-                                f"Enriched DBox {dbox_name} with hardware_type: {model.lower()}"
-                            )
+                            self.logger.debug(f"Enriched DBox {dbox_name} with hardware_type: {model.lower()}")
 
-            # Process Switches
+            # Process EBoxes (enclosures; may be empty; accept list or dict)
+            eboxes = self._normalize_boxes_to_dict(hardware_data.get("eboxes", {}))
+
+            # Process Switches (switch_inventory may be dict or list in fixtures)
             switch_inventory = raw_data.get("switch_inventory", {})
-            switches = switch_inventory.get("switches", [])
+            if isinstance(switch_inventory, dict):
+                switches = switch_inventory.get("switches", [])
+            else:
+                switches = switch_inventory if isinstance(switch_inventory, list) else []
 
             # Calculate total nodes
             total_nodes = len(cnodes) + len(dnodes)
@@ -454,21 +457,16 @@ class VastDataExtractor:
             # Check if rack positions are available by examining actual data
             # A node has rack position if it has rack_u, rack_unit, or position field
             has_cnode_positions = any(
-                node.get("rack_u") or node.get("rack_unit") or node.get("position")
-                for node in cnodes
+                node.get("rack_u") or node.get("rack_unit") or node.get("position") for node in cnodes
             )
-            has_dbox_positions = any(
-                dbox_info.get("rack_unit") for dbox_info in cboxes.values()
-            )
+            has_dbox_positions = any(dbox_info.get("rack_unit") for dbox_info in cboxes.values())
 
             # Rack positions available if any node has position data
             rack_positions_available = has_cnode_positions or has_dbox_positions
 
             # Also consider the enhanced features flag as a fallback
             if not rack_positions_available:
-                rack_positions_available = enhanced_features.get(
-                    "rack_height_supported", False
-                )
+                rack_positions_available = enhanced_features.get("rack_height_supported", False)
 
             # Generate physical layout if rack positions available
             physical_layout = None
@@ -480,6 +478,7 @@ class VastDataExtractor:
                 dnodes=dnodes,
                 cboxes=cboxes,
                 dboxes=dboxes,
+                eboxes=eboxes,
                 total_nodes=total_nodes,
                 rack_positions_available=rack_positions_available,
                 physical_layout=physical_layout,
@@ -497,12 +496,18 @@ class VastDataExtractor:
             if not self.graceful_degradation:
                 raise DataExtractionError(f"Failed to extract hardware inventory: {e}")
             return HardwareInventory(
-                cnodes=[], dnodes=[], total_nodes=0, rack_positions_available=False
+                cnodes=[],
+                dnodes=[],
+                cboxes={},
+                dboxes={},
+                eboxes={},
+                total_nodes=0,
+                rack_positions_available=False,
+                physical_layout=None,
+                switches=[],
             )
 
-    def _process_hardware_node(
-        self, node_data: Dict[str, Any], node_type: str
-    ) -> Dict[str, Any]:
+    def _process_hardware_node(self, node_data: Dict[str, Any], node_type: str) -> Dict[str, Any]:
         """
         Process individual hardware node data.
 
@@ -518,12 +523,13 @@ class VastDataExtractor:
             "type": node_type,
             "name": node_data.get("name"),  # Programmatically generated name (e.g., cnode-3-10, dnode-3-112)
             "model": node_data.get("model", "Unknown"),
-            "serial_number": node_data.get("serial_number", "Unknown"),
+            "serial_number": node_data.get("serial_number", node_data.get("sn", "Unknown")),  # sn = Dell Asset Tag
             "status": node_data.get("status", "unknown"),
             "rack_position": node_data.get("rack_position"),
             "rack_position_available": node_data.get("rack_position") is not None,
             "box_vendor": node_data.get("box_vendor", "Unknown"),
             "cbox_id": node_data.get("cbox_id"),
+            "ebox_id": node_data.get("ebox_id"),
         }
 
         # For dnodes, also capture hardware_type and dbox_id for rack diagram
@@ -537,15 +543,11 @@ class VastDataExtractor:
             processed_node["positioning_note"] = "Automated via API"
         else:
             processed_node["rack_u"] = "Manual Entry Required"
-            processed_node["positioning_note"] = (
-                "Not available for this cluster version"
-            )
+            processed_node["positioning_note"] = "Not available for this cluster version"
 
         return processed_node
 
-    def _generate_physical_layout(
-        self, cnodes: List[Dict], dnodes: List[Dict]
-    ) -> Dict[str, Any]:
+    def _generate_physical_layout(self, cnodes: List[Dict], dnodes: List[Dict]) -> Dict[str, Any]:
         """
         Generate physical rack layout information.
 
@@ -593,9 +595,7 @@ class VastDataExtractor:
                 "generated_timestamp": datetime.now().isoformat(),
             }
 
-            self.logger.debug(
-                f"Physical layout generated: {occupied_positions} occupied positions"
-            )
+            self.logger.debug(f"Physical layout generated: {occupied_positions} occupied positions")
             return layout_info
 
         except Exception as e:
@@ -624,9 +624,7 @@ class VastDataExtractor:
             ntp_config = self._process_ntp_configuration(network_data.get("ntp"))
 
             # Process VIP pools
-            vippool_config = self._process_vippool_configuration(
-                network_data.get("vippools")
-            )
+            vippool_config = self._process_vippool_configuration(network_data.get("vippools"))
 
             # Combine all network data
             processed_data = {
@@ -655,17 +653,13 @@ class VastDataExtractor:
                 status=status,
             )
 
-            self.logger.info(
-                f"Network configuration extracted (completeness: {completeness:.1%})"
-            )
+            self.logger.info(f"Network configuration extracted (completeness: {completeness:.1%})")
             return section
 
         except Exception as e:
             self.logger.error(f"Error extracting network configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract network configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract network configuration: {e}")
             return ReportSection(
                 name="network_configuration",
                 title="Network Configuration",
@@ -674,9 +668,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_cluster_network_configuration(
-        self, raw_data: Dict[str, Any]
-    ) -> ReportSection:
+    def extract_cluster_network_configuration(self, raw_data: Dict[str, Any]) -> ReportSection:
         """
         Extract and process cluster-wide network configuration data.
 
@@ -712,12 +704,8 @@ class VastDataExtractor:
                     cluster_summary.get("ntp", "Not Configured"),
                 ),
                 "mgmt_vip": cluster_summary.get("mgmt_vip", "Not Configured"),
-                "mgmt_inner_vip": cluster_summary.get(
-                    "mgmt_inner_vip", "Not Configured"
-                ),
-                "mgmt_inner_vip_cnode": cluster_summary.get(
-                    "mgmt_inner_vip_cnode", "Not Configured"
-                ),
+                "mgmt_inner_vip": cluster_summary.get("mgmt_inner_vip", "Not Configured"),
+                "mgmt_inner_vip_cnode": cluster_summary.get("mgmt_inner_vip_cnode", "Not Configured"),
                 "ext_netmask": cluster_network_data.get(
                     "ext_netmask", cluster_summary.get("ext_netmask", "Not Configured")
                 ),
@@ -725,15 +713,9 @@ class VastDataExtractor:
                     "auto_ports_ext_iface",
                     cluster_summary.get("auto_ports_ext_iface", "Not Configured"),
                 ),
-                "b2b_ipmi": cluster_network_data.get(
-                    "b2b_ipmi", cluster_summary.get("b2b_ipmi", False)
-                ),
-                "eth_mtu": cluster_network_data.get(
-                    "eth_mtu", cluster_summary.get("eth_mtu", "Not Configured")
-                ),
-                "ib_mtu": cluster_network_data.get(
-                    "ib_mtu", cluster_summary.get("ib_mtu", "Not Configured")
-                ),
+                "b2b_ipmi": cluster_network_data.get("b2b_ipmi", cluster_summary.get("b2b_ipmi", False)),
+                "eth_mtu": cluster_network_data.get("eth_mtu", cluster_summary.get("eth_mtu", "Not Configured")),
+                "ib_mtu": cluster_network_data.get("ib_mtu", cluster_summary.get("ib_mtu", "Not Configured")),
                 "ipmi_gateway": cluster_network_data.get(
                     "ipmi_gateway",
                     cluster_summary.get("ipmi_gateway", "Not Configured"),
@@ -742,9 +724,7 @@ class VastDataExtractor:
                     "ipmi_netmask",
                     cluster_summary.get("ipmi_netmask", "Not Configured"),
                 ),
-                "net_type": cluster_network_data.get(
-                    "net_type", cluster_summary.get("net_type", "Not Configured")
-                ),
+                "net_type": cluster_network_data.get("net_type", cluster_summary.get("net_type", "Not Configured")),
                 "extraction_timestamp": datetime.now().isoformat(),
             }
 
@@ -772,17 +752,13 @@ class VastDataExtractor:
                 status=status,
             )
 
-            self.logger.info(
-                f"Cluster network configuration extracted (completeness: {completeness:.1%})"
-            )
+            self.logger.info(f"Cluster network configuration extracted (completeness: {completeness:.1%})")
             return section
 
         except Exception as e:
             self.logger.error(f"Error extracting cluster network configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract cluster network configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract cluster network configuration: {e}")
             return ReportSection(
                 name="cluster_network_configuration",
                 title="Cluster Network Configuration",
@@ -791,9 +767,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_cnodes_network_configuration(
-        self, raw_data: Dict[str, Any]
-    ) -> ReportSection:
+    def extract_cnodes_network_configuration(self, raw_data: Dict[str, Any]) -> ReportSection:
         """
         Extract and process CNodes network configuration data.
 
@@ -821,12 +795,8 @@ class VastDataExtractor:
                     "node_type": cnode.get("node_type", "Unknown"),
                     "box_name": cnode.get("box_name", "Unknown"),
                     "is_vms_host": cnode.get("is_vms_host", False),
-                    "tpm_boot_dev_encryption_supported": cnode.get(
-                        "tpm_boot_dev_encryption_supported", False
-                    ),
-                    "tpm_boot_dev_encryption_enabled": cnode.get(
-                        "tpm_boot_dev_encryption_enabled", False
-                    ),
+                    "tpm_boot_dev_encryption_supported": cnode.get("tpm_boot_dev_encryption_supported", False),
+                    "tpm_boot_dev_encryption_enabled": cnode.get("tpm_boot_dev_encryption_enabled", False),
                     "single_nic": cnode.get("single_nic", False),
                     "net_type": cnode.get("net_type", "Unknown"),
                 }
@@ -842,15 +812,9 @@ class VastDataExtractor:
             completeness = self._calculate_completeness(
                 [
                     len(processed_cnodes) > 0,
-                    all(
-                        cnode.get("hostname") != "Unknown" for cnode in processed_cnodes
-                    ),
-                    all(
-                        cnode.get("mgmt_ip") != "Unknown" for cnode in processed_cnodes
-                    ),
-                    all(
-                        cnode.get("vast_os") != "Unknown" for cnode in processed_cnodes
-                    ),
+                    all(cnode.get("hostname") != "Unknown" for cnode in processed_cnodes),
+                    all(cnode.get("mgmt_ip") != "Unknown" for cnode in processed_cnodes),
+                    all(cnode.get("vast_os") != "Unknown" for cnode in processed_cnodes),
                 ]
             )
 
@@ -872,9 +836,7 @@ class VastDataExtractor:
         except Exception as e:
             self.logger.error(f"Error extracting CNodes network configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract CNodes network configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract CNodes network configuration: {e}")
             return ReportSection(
                 name="cnodes_network_configuration",
                 title="CNodes Network Configuration",
@@ -883,9 +845,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_dnodes_network_configuration(
-        self, raw_data: Dict[str, Any]
-    ) -> ReportSection:
+    def extract_dnodes_network_configuration(self, raw_data: Dict[str, Any]) -> ReportSection:
         """
         Extract and process DNodes network configuration data.
 
@@ -929,15 +889,9 @@ class VastDataExtractor:
             completeness = self._calculate_completeness(
                 [
                     len(processed_dnodes) > 0,
-                    all(
-                        dnode.get("hostname") != "Unknown" for dnode in processed_dnodes
-                    ),
-                    all(
-                        dnode.get("mgmt_ip") != "Unknown" for dnode in processed_dnodes
-                    ),
-                    all(
-                        dnode.get("vast_os") != "Unknown" for dnode in processed_dnodes
-                    ),
+                    all(dnode.get("hostname") != "Unknown" for dnode in processed_dnodes),
+                    all(dnode.get("mgmt_ip") != "Unknown" for dnode in processed_dnodes),
+                    all(dnode.get("vast_os") != "Unknown" for dnode in processed_dnodes),
                 ]
             )
 
@@ -959,9 +913,7 @@ class VastDataExtractor:
         except Exception as e:
             self.logger.error(f"Error extracting DNodes network configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract DNodes network configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract DNodes network configuration: {e}")
             return ReportSection(
                 name="dnodes_network_configuration",
                 title="DNodes Network Configuration",
@@ -970,9 +922,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def _process_dns_configuration(
-        self, dns_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_dns_configuration(self, dns_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process DNS configuration data."""
         if not dns_data:
             return None
@@ -990,9 +940,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_ntp_configuration(
-        self, ntp_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_ntp_configuration(self, ntp_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process NTP configuration data."""
         if not ntp_data:
             return None
@@ -1009,9 +957,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_vippool_configuration(
-        self, vippool_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_vippool_configuration(self, vippool_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process VIP pool configuration data."""
         if not vippool_data:
             return None
@@ -1046,9 +992,7 @@ class VastDataExtractor:
             views = self._process_views(logical_data.get("views"))
 
             # Process view policies
-            view_policies = self._process_view_policies(
-                logical_data.get("viewpolicies")
-            )
+            view_policies = self._process_view_policies(logical_data.get("viewpolicies"))
 
             # Combine all logical data
             processed_data = {
@@ -1073,17 +1017,13 @@ class VastDataExtractor:
                 status=status,
             )
 
-            self.logger.info(
-                f"Logical configuration extracted (completeness: {completeness:.1%})"
-            )
+            self.logger.info(f"Logical configuration extracted (completeness: {completeness:.1%})")
             return section
 
         except Exception as e:
             self.logger.error(f"Error extracting logical configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract logical configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract logical configuration: {e}")
             return ReportSection(
                 name="logical_configuration",
                 title="Logical Configuration",
@@ -1092,9 +1032,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def _process_tenants(
-        self, tenants_data: Optional[List]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_tenants(self, tenants_data: Optional[List]) -> Optional[Dict[str, Any]]:
         """Process tenants data."""
         if not tenants_data:
             return None
@@ -1136,9 +1074,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_view_policies(
-        self, policies_data: Optional[List]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_view_policies(self, policies_data: Optional[List]) -> Optional[Dict[str, Any]]:
         """Process view policies data."""
         if not policies_data:
             return None
@@ -1175,9 +1111,7 @@ class VastDataExtractor:
             security_data = raw_data.get("security", {})
 
             # Process Active Directory
-            ad_config = self._process_ad_configuration(
-                security_data.get("activedirectory")
-            )
+            ad_config = self._process_ad_configuration(security_data.get("activedirectory"))
 
             # Process LDAP
             ldap_config = self._process_ldap_configuration(security_data.get("ldap"))
@@ -1208,17 +1142,13 @@ class VastDataExtractor:
                 status=status,
             )
 
-            self.logger.info(
-                f"Security configuration extracted (completeness: {completeness:.1%})"
-            )
+            self.logger.info(f"Security configuration extracted (completeness: {completeness:.1%})")
             return section
 
         except Exception as e:
             self.logger.error(f"Error extracting security configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract security configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract security configuration: {e}")
             return ReportSection(
                 name="security_configuration",
                 title="Security & Authentication",
@@ -1227,9 +1157,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def _process_ad_configuration(
-        self, ad_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_ad_configuration(self, ad_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process Active Directory configuration."""
         if not ad_data:
             return None
@@ -1247,9 +1175,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_ldap_configuration(
-        self, ldap_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_ldap_configuration(self, ldap_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process LDAP configuration."""
         if not ldap_data:
             return None
@@ -1267,9 +1193,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_nis_configuration(
-        self, nis_data: Optional[Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_nis_configuration(self, nis_data: Optional[Any]) -> Optional[Dict[str, Any]]:
         """Process NIS configuration."""
         if not nis_data:
             return None
@@ -1287,9 +1211,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def extract_data_protection_configuration(
-        self, raw_data: Dict[str, Any]
-    ) -> ReportSection:
+    def extract_data_protection_configuration(self, raw_data: Dict[str, Any]) -> ReportSection:
         """
         Extract and process data protection configuration data.
 
@@ -1305,14 +1227,10 @@ class VastDataExtractor:
             protection_data = raw_data.get("data_protection", {})
 
             # Process snapshot programs
-            snapshot_config = self._process_snapshot_configuration(
-                protection_data.get("snapprograms")
-            )
+            snapshot_config = self._process_snapshot_configuration(protection_data.get("snapprograms"))
 
             # Process protection policies
-            policy_config = self._process_protection_policy_configuration(
-                protection_data.get("protectionpolicies")
-            )
+            policy_config = self._process_protection_policy_configuration(protection_data.get("protectionpolicies"))
 
             # Combine all protection data
             processed_data = {
@@ -1322,9 +1240,7 @@ class VastDataExtractor:
             }
 
             # Calculate completeness
-            completeness = self._calculate_completeness(
-                [snapshot_config is not None, policy_config is not None]
-            )
+            completeness = self._calculate_completeness([snapshot_config is not None, policy_config is not None])
 
             status = self._determine_section_status(completeness)
 
@@ -1336,17 +1252,13 @@ class VastDataExtractor:
                 status=status,
             )
 
-            self.logger.info(
-                f"Data protection configuration extracted (completeness: {completeness:.1%})"
-            )
+            self.logger.info(f"Data protection configuration extracted (completeness: {completeness:.1%})")
             return section
 
         except Exception as e:
             self.logger.error(f"Error extracting data protection configuration: {e}")
             if not self.graceful_degradation:
-                raise DataExtractionError(
-                    f"Failed to extract data protection configuration: {e}"
-                )
+                raise DataExtractionError(f"Failed to extract data protection configuration: {e}")
             return ReportSection(
                 name="data_protection_configuration",
                 title="Data Protection",
@@ -1355,9 +1267,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def _process_snapshot_configuration(
-        self, snapshot_data: Optional[List]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_snapshot_configuration(self, snapshot_data: Optional[List]) -> Optional[Dict[str, Any]]:
         """Process snapshot programs configuration."""
         if not snapshot_data:
             return None
@@ -1378,9 +1288,7 @@ class VastDataExtractor:
             "source": "API",
         }
 
-    def _process_protection_policy_configuration(
-        self, policy_data: Optional[List]
-    ) -> Optional[Dict[str, Any]]:
+    def _process_protection_policy_configuration(self, policy_data: Optional[List]) -> Optional[Dict[str, Any]]:
         """Process protection policies configuration."""
         if not policy_data:
             return None
@@ -1420,33 +1328,21 @@ class VastDataExtractor:
             processed_data = {
                 "total_capacity": performance_data.get("total_capacity", "Unknown"),
                 "used_capacity": performance_data.get("used_capacity", "Unknown"),
-                "available_capacity": performance_data.get(
-                    "available_capacity", "Unknown"
-                ),
-                "utilization_percentage": performance_data.get(
-                    "utilization_percentage", 0.0
-                ),
+                "available_capacity": performance_data.get("available_capacity", "Unknown"),
+                "utilization_percentage": performance_data.get("utilization_percentage", 0.0),
                 "iops_rating": performance_data.get("iops_rating", "Unknown"),
-                "throughput_rating": performance_data.get(
-                    "throughput_rating", "Unknown"
-                ),
+                "throughput_rating": performance_data.get("throughput_rating", "Unknown"),
                 "latency_metrics": performance_data.get("latency_metrics", {}),
                 "performance_tier": performance_data.get("performance_tier", "Unknown"),
                 "source": "API",
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1 for v in processed_data.values() if v != "Unknown" and v != {}
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != "Unknown" and v != {})
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="performance_metrics",
@@ -1488,24 +1384,16 @@ class VastDataExtractor:
                 "licensed_features": licensing_data.get("licensed_features", []),
                 "compliance_status": licensing_data.get("compliance_status", "Unknown"),
                 "support_level": licensing_data.get("support_level", "Unknown"),
-                "maintenance_expiry": licensing_data.get(
-                    "maintenance_expiry", "Unknown"
-                ),
+                "maintenance_expiry": licensing_data.get("maintenance_expiry", "Unknown"),
                 "source": "API",
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1 for v in processed_data.values() if v != "Unknown" and v != []
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != "Unknown" and v != [])
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="licensing_info",
@@ -1525,9 +1413,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_monitoring_configuration(
-        self, raw_data: Dict[str, Any]
-    ) -> ReportSection:
+    def extract_monitoring_configuration(self, raw_data: Dict[str, Any]) -> ReportSection:
         """
         Extract monitoring and alerting configuration.
 
@@ -1550,17 +1436,11 @@ class VastDataExtractor:
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1 for v in processed_data.values() if v != {} and v != "Unknown"
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != {} and v != "Unknown")
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="monitoring_config",
@@ -1599,32 +1479,18 @@ class VastDataExtractor:
                 "network_topology": integration_data.get("network_topology", "Unknown"),
                 "vlan_configuration": integration_data.get("vlan_configuration", {}),
                 "firewall_rules": integration_data.get("firewall_rules", []),
-                "load_balancer_config": integration_data.get(
-                    "load_balancer_config", {}
-                ),
-                "customer_requirements": integration_data.get(
-                    "customer_requirements", []
-                ),
-                "integration_timeline": integration_data.get(
-                    "integration_timeline", "Unknown"
-                ),
+                "load_balancer_config": integration_data.get("load_balancer_config", {}),
+                "customer_requirements": integration_data.get("customer_requirements", []),
+                "integration_timeline": integration_data.get("integration_timeline", "Unknown"),
                 "source": "API",
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1
-                for v in processed_data.values()
-                if v != "Unknown" and v != {} and v != []
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != "Unknown" and v != {} and v != [])
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="customer_integration",
@@ -1667,17 +1533,11 @@ class VastDataExtractor:
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1 for v in processed_data.values() if v != [] and v != "Unknown"
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != [] and v != "Unknown")
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="deployment_timeline",
@@ -1720,17 +1580,11 @@ class VastDataExtractor:
             }
 
             # Calculate completeness
-            available_fields = sum(
-                1 for v in processed_data.values() if v != [] and v != "Unknown"
-            )
+            available_fields = sum(1 for v in processed_data.values() if v != [] and v != "Unknown")
             total_fields = len(processed_data) - 1  # Exclude 'source'
             completeness = (available_fields / total_fields) if total_fields > 0 else 0
 
-            status = (
-                "complete"
-                if completeness >= 80
-                else "partial" if completeness >= 50 else "missing"
-            )
+            status = "complete" if completeness >= 80 else "partial" if completeness >= 50 else "missing"
 
             return ReportSection(
                 name="future_recommendations",
@@ -1750,9 +1604,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_port_mapping(
-        self, raw_data: Dict[str, Any], use_external: bool = False
-    ) -> ReportSection:
+    def extract_port_mapping(self, raw_data: Dict[str, Any], use_external: bool = False) -> ReportSection:
         """
         Extract and process port mapping data with enhanced designations.
 
@@ -1801,9 +1653,7 @@ class VastDataExtractor:
                 )
 
                 # External mapper returns port_map directly, pass it to enhanced mapper
-                enhanced_data = enhanced_mapper.generate_enhanced_port_map(
-                    external_data["port_map"]
-                )
+                enhanced_data = enhanced_mapper.generate_enhanced_port_map(external_data["port_map"])
 
                 # No file-based parser for external data
                 parser = None
@@ -1812,9 +1662,7 @@ class VastDataExtractor:
                 # Check if vnetmap output file is available
                 vnetmap_file = Path("vnetmap_output.txt")
                 if not vnetmap_file.exists():
-                    self.logger.warning(
-                        "VNetMap output file not found - port mapping unavailable"
-                    )
+                    self.logger.warning("VNetMap output file not found - port mapping unavailable")
                     return ReportSection(
                         name="port_mapping",
                         title="Port Mapping",
@@ -1831,9 +1679,7 @@ class VastDataExtractor:
                 vnetmap_data = parser.parse()
 
                 if not vnetmap_data.get("available"):
-                    self.logger.warning(
-                        f"Failed to parse vnetmap output: {vnetmap_data.get('error')}"
-                    )
+                    self.logger.warning(f"Failed to parse vnetmap output: {vnetmap_data.get('error')}")
                     return ReportSection(
                         name="port_mapping",
                         title="Port Mapping",
@@ -1861,9 +1707,7 @@ class VastDataExtractor:
                 )
 
                 # Generate enhanced port map with standardized designations
-                enhanced_data = enhanced_mapper.generate_enhanced_port_map(
-                    vnetmap_data["topology"]
-                )
+                enhanced_data = enhanced_mapper.generate_enhanced_port_map(vnetmap_data["topology"])
 
             # Collect IPL/MLAG connections from external port mapper
             # Format IPL connections for port mapping table
@@ -1878,12 +1722,8 @@ class VastDataExtractor:
                     sw2_port = ipl["switch2_port"]
 
                     # Generate switch designations
-                    sw1_designation = enhanced_mapper.generate_switch_designation(
-                        sw1_ip, sw1_port
-                    )
-                    sw2_designation = enhanced_mapper.generate_switch_designation(
-                        sw2_ip, sw2_port
-                    )
+                    sw1_designation = enhanced_mapper.generate_switch_designation(sw1_ip, sw1_port)
+                    sw2_designation = enhanced_mapper.generate_switch_designation(sw2_ip, sw2_port)
 
                     # Format as node connection entry for inclusion in port map table
                     # Switch Port = SWA-P29, Node Connection = SWB-P29, Notes = IPL
@@ -1953,6 +1793,8 @@ class VastDataExtractor:
                 "total_ipl_connections": total_ipl_connections,  # Unique connections
                 "total_ipl_ports": total_ipl_ports,  # Total ports (connections * 2)
                 "data_source": "External SSH collection (clush + switch CLI)",
+                "partial": external_data.get("partial", False),
+                "partial_reason": external_data.get("partial_reason", ""),
                 "designation_format": {
                     "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
                     "switch_side": "SWA-P12 (Switch-1/Port-12)",
@@ -1992,9 +1834,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_all_data(
-        self, raw_data: Dict[str, Any], use_external_port_mapping: bool = False
-    ) -> Dict[str, Any]:
+    def extract_all_data(self, raw_data: Dict[str, Any], use_external_port_mapping: bool = False) -> Dict[str, Any]:
         """
         Extract and process all report data from raw API responses.
 
@@ -2019,9 +1859,11 @@ class VastDataExtractor:
                 else self._empty_hardware_inventory()
             )
             network_config = self.extract_network_configuration(raw_data)
-            cluster_network_config = self.extract_cluster_network_configuration(
-                raw_data
-            ) if _section_enabled("network_configuration") else self.extract_cluster_network_configuration({})
+            cluster_network_config = (
+                self.extract_cluster_network_configuration(raw_data)
+                if _section_enabled("network_configuration")
+                else self.extract_cluster_network_configuration({})
+            )
             cnodes_network_config = (
                 self.extract_cnodes_network_configuration(raw_data)
                 if _section_enabled("network_configuration")
@@ -2055,9 +1897,7 @@ class VastDataExtractor:
             customer_integration = self.extract_customer_integration(raw_data)
             deployment_timeline = self.extract_deployment_timeline(raw_data)
             future_recommendations = self.extract_future_recommendations(raw_data)
-            port_mapping = self.extract_port_mapping(
-                raw_data, use_external=use_external_port_mapping
-            )
+            port_mapping = self.extract_port_mapping(raw_data, use_external=use_external_port_mapping)
 
             # Calculate overall completeness
             section_completeness = [
@@ -2089,6 +1929,8 @@ class VastDataExtractor:
                 },
                 "cluster_summary": asdict(cluster_summary),
                 "hardware_inventory": asdict(hardware_inventory),
+                "raw_hardware": raw_data.get("hardware"),  # Fallback for report if extraction missed data
+                "raw_switch_inventory": raw_data.get("switch_inventory"),
                 "racks": raw_data.get("racks", []),  # Include racks data for rack height information
                 "sections": {
                     "network_configuration": asdict(network_config),
@@ -2108,9 +1950,7 @@ class VastDataExtractor:
                 },
             }
 
-            self.logger.info(
-                f"Data extraction completed (overall completeness: {overall_completeness:.1%})"
-            )
+            self.logger.info(f"Data extraction completed (overall completeness: {overall_completeness:.1%})")
             return report_data
 
         except Exception as e:

@@ -17,7 +17,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 - **Cluster Profiles**: Save, load, and delete cluster connection profiles (IP, credentials, settings)
 - **Report Browser**: View, download, and manage previously generated reports
 - **Configuration Editor**: Edit YAML configuration directly from the GUI
-- **Hardware Device Library**: Browse built-in device definitions, add custom devices with image upload
+- **Hardware Device Library**: Browse built-in device definitions, add custom devices (CBox, DBox, EBox, Switch) with image upload; unknown models fall back to generic 1U/2U shapes in rack diagrams
 - **CLI Preserved**: Full command-line interface available via `--cli` flag
 
 ### Enhanced Automation (80% Target Achieved)
@@ -72,7 +72,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 Download the latest installer from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest).
 
 **macOS:**
-1. Download **[VAST-Reporter-v1.4.1-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.1-mac.dmg)**
+1. Download **[VAST-Reporter-v1.4.2-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.2-mac.dmg)**
 2. Open the downloaded `.dmg` file
 3. Drag **VAST Reporter** into the **Applications** folder
 4. Launch from Applications (first launch: right-click > **Open** to bypass Gatekeeper)
@@ -381,6 +381,7 @@ vast-asbuilt-reporter/
     ├── test_logging.py              # Logging infrastructure tests
     ├── test_sse_logger.py           # SSE log handler tests
     ├── test_ssh_adapter.py          # SSH adapter tests
+    ├── test_rack_diagram.py          # Rack diagram generic 1U/2U fallback tests
     ├── test_ui.py                   # Playwright browser UI tests
     └── data/                        # Test fixtures and mock API responses
 ```
@@ -390,7 +391,7 @@ vast-asbuilt-reporter/
 ### Testing
 
 ```bash
-# Run all 214 tests
+# Run all tests (e.g. 260+)
 python3 -m pytest tests/ -v
 
 # Run with coverage
@@ -477,8 +478,8 @@ For issues, questions, or contributions, refer to the project's [GitHub reposito
 
 ---
 
-**Version**: 1.4.1
+**Version**: 1.4.2
 **Target VAST Version**: 5.3+
 **API Version**: v7 (with v1 fallback)
-**Test Suite**: 214 tests passing
-**Last Updated**: March 5, 2026
+**Test Suite**: 267 tests (run `pytest tests/ -v`)
+**Last Updated**: March 2026

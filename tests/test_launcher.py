@@ -75,8 +75,7 @@ class TestRunGuiFunction(unittest.TestCase):
     @patch("app.create_flask_app")
     @patch("main.setup_logging")
     @patch("main.load_configuration", return_value={})
-    def test_run_gui_starts_flask(self, _cfg, _log, mock_create, _sse,
-                                  mock_make_server, mock_wait, mock_wb):
+    def test_run_gui_starts_flask(self, _cfg, _log, mock_create, _sse, mock_make_server, mock_wait, mock_wb):
         mock_app = MagicMock()
         mock_app.config = {}
         mock_create.return_value = mock_app
@@ -85,15 +84,14 @@ class TestRunGuiFunction(unittest.TestCase):
         mock_make_server.return_value = mock_server
 
         from main import run_gui
+
         with patch("threading.Thread") as mock_thread_cls:
             mock_thread = MagicMock()
             mock_thread_cls.return_value = mock_thread
             mock_thread.join.side_effect = KeyboardInterrupt
             run_gui(port=9999)
 
-        mock_make_server.assert_called_once_with(
-            "127.0.0.1", 9999, mock_app, threaded=True
-        )
+        mock_make_server.assert_called_once_with("127.0.0.1", 9999, mock_app, threaded=True)
         mock_thread.start.assert_called_once()
         mock_server.shutdown.assert_called_once()
 
@@ -110,6 +108,7 @@ class TestRunCliFunction(unittest.TestCase):
         mock_gen_cls.return_value = mock_gen
 
         from main import run_cli
+
         with patch.object(sys, "argv", ["main.py", "--cluster", "1.2.3.4", "--output", "/tmp/out"]):
             result = run_cli()
 

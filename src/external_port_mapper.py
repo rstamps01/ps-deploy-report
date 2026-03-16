@@ -79,9 +79,7 @@ class VerboseLogger:
         # Clear existing log
         with open(self.log_file, "w") as f:
             f.write(f"{self.BOLD}{'='*80}{self.RESET}\n")
-            f.write(
-                f"{self.BOLD}{self.CYAN}EXTERNAL PORT MAPPER VERBOSE LOG{self.RESET}\n"
-            )
+            f.write(f"{self.BOLD}{self.CYAN}EXTERNAL PORT MAPPER VERBOSE LOG{self.RESET}\n")
             f.write(f"{self.BOLD}Started: {datetime.now().isoformat()}{self.RESET}\n")
             f.write(f"{self.BOLD}{'='*80}{self.RESET}\n\n")
             f.write(f"COLOR LEGEND:\n")
@@ -313,16 +311,12 @@ class ExternalPortMapper:
 
         for user, password, expected_os in credentials_to_try:
             try:
-                self.vlog.log(
-                    f"Trying {expected_os} credentials ({user}/***) on {switch_ip}"
-                )
+                self.vlog.log(f"Trying {expected_os} credentials ({user}/***) on {switch_ip}")
 
                 # Try to run a simple command to test authentication and identify OS
                 # Cumulus: "nv show system" will work
                 # Onyx: "show version" will work
-                test_cmd = (
-                    "nv show system" if expected_os == "cumulus" else "show version"
-                )
+                test_cmd = "nv show system" if expected_os == "cumulus" else "show version"
 
                 cmd = [
                     "sshpass",
@@ -349,9 +343,7 @@ class ExternalPortMapper:
 
                 if expected_os == "cumulus":
                     # Cumulus will have specific output format or "cumulus" in response
-                    if result.returncode == 0 and (
-                        "cumulus" in output_lower or "hostname" in output_lower
-                    ):
+                    if result.returncode == 0 and ("cumulus" in output_lower or "hostname" in output_lower):
                         self.vlog.log(
                             f"✓ Detected Cumulus Linux on {switch_ip}",
                             self.vlog.GREEN,
@@ -381,9 +373,7 @@ class ExternalPortMapper:
                 self.vlog.log_warning(f"Timeout testing {expected_os} on {switch_ip}")
                 continue
             except Exception as e:
-                self.vlog.log_warning(
-                    f"Error testing {expected_os} on {switch_ip}: {e}"
-                )
+                self.vlog.log_warning(f"Error testing {expected_os} on {switch_ip}: {e}")
                 continue
 
         # If we get here, neither credential set worked
@@ -428,12 +418,12 @@ class ExternalPortMapper:
         try:
             import pexpect
 
-            self.vlog.log_operation(
-                f"Running interactive Onyx command on {switch_ip}: {command}"
-            )
+            self.vlog.log_operation(f"Running interactive Onyx command on {switch_ip}: {command}")
 
             # Build SSH command
-            ssh_cmd = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile={self.known_hosts_file} {username}@{switch_ip}"
+            ssh_cmd = (
+                f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile={self.known_hosts_file} {username}@{switch_ip}"
+            )
 
             self.vlog.log_command([ssh_cmd], "Interactive SSH (pexpect)")
 
@@ -468,9 +458,7 @@ class ExternalPortMapper:
             child.sendline(command)
 
             # Wait for command completion (next prompt)
-            i = child.expect(
-                [r"\[.*\]\s*>", pexpect.TIMEOUT, pexpect.EOF], timeout=timeout
-            )
+            i = child.expect([r"\[.*\]\s*>", pexpect.TIMEOUT, pexpect.EOF], timeout=timeout)
 
             if i != 0:  # Command didn't complete
                 error_msg = f"Command timeout or connection lost: {child.before}"
@@ -493,9 +481,7 @@ class ExternalPortMapper:
             child.expect(pexpect.EOF, timeout=5)
             child.close()
 
-            self.vlog.log_data(
-                "Onyx Command Output", {"lines": len(output.split("\n"))}
-            )
+            self.vlog.log_data("Onyx Command Output", {"lines": len(output.split("\n"))})
             self.vlog.log(f"✅ Command succeeded: {len(output)} chars", self.vlog.GREEN)
 
             return (0, output, "")
@@ -542,15 +528,11 @@ class ExternalPortMapper:
                     "user": user,
                     "password": password,
                 }
-                print(
-                    f"✅ Switch {switch_ip}: {os_type.upper()} detected (using {user} credentials)"
-                )
+                print(f"✅ Switch {switch_ip}: {os_type.upper()} detected (using {user} credentials)")
 
             # Step 1: Collect node inventory via Basic Auth API
             node_inventory = self._collect_node_inventory_basic_auth()
-            self.logger.info(
-                f"Retrieved inventory for {len(node_inventory)} nodes via Basic Auth"
-            )
+            self.logger.info(f"Retrieved inventory for {len(node_inventory)} nodes via Basic Auth")
 
             # Step 2: Collect hostname to data IP mapping via clush
             hostname_to_ip = self._collect_hostname_to_ip_mapping()
@@ -560,17 +542,37 @@ class ExternalPortMapper:
             node_macs = self._collect_node_macs_via_clush()
             self.logger.info(f"Collected MACs for {len(node_macs)} nodes")
 
+            # If no hostname or MAC data at all, cannot build port map
+            if not hostname_to_ip and not node_macs:
+                self.logger.warning("No hostname or MAC data from clush — port mapping unavailable")
+                return {
+                    "available": False,
+                    "error": "No hostname or MAC data from clush (SSH or all nodes unreachable)",
+                    "port_map": [],
+                    "cross_connections": [],
+                }
+
             # Diagnostic: Count CNodes vs DNodes by hostname pattern
             # Build reverse mapping for diagnostic
             ip_to_hostname_lookup = {ip: hostname for hostname, ip in hostname_to_ip.items()}
-            cnode_count = sum(1 for ip in node_macs.keys()
-                            if any("cnode" in hostname.lower() or "cn-" in hostname.lower()
-                                   for hostname in [ip_to_hostname_lookup.get(ip, "")]
-                                   if ip_to_hostname_lookup.get(ip)))
-            dnode_count = sum(1 for ip in node_macs.keys()
-                            if any("dnode" in hostname.lower() or "dn-" in hostname.lower()
-                                   for hostname in [ip_to_hostname_lookup.get(ip, "")]
-                                   if ip_to_hostname_lookup.get(ip)))
+            cnode_count = sum(
+                1
+                for ip in node_macs.keys()
+                if any(
+                    "cnode" in hostname.lower() or "cn-" in hostname.lower()
+                    for hostname in [ip_to_hostname_lookup.get(ip, "")]
+                    if ip_to_hostname_lookup.get(ip)
+                )
+            )
+            dnode_count = sum(
+                1
+                for ip in node_macs.keys()
+                if any(
+                    "dnode" in hostname.lower() or "dn-" in hostname.lower()
+                    for hostname in [ip_to_hostname_lookup.get(ip, "")]
+                    if ip_to_hostname_lookup.get(ip)
+                )
+            )
             self.logger.info(f"Node breakdown: {cnode_count} CNodes, {dnode_count} DNodes (by hostname pattern)")
             self.vlog.log(f"Node breakdown: {cnode_count} CNodes, {dnode_count} DNodes", self.vlog.CYAN)
 
@@ -578,12 +580,12 @@ class ExternalPortMapper:
             switch_macs = self._collect_switch_mac_tables()
             total_switch_macs = sum(len(mac_table) for mac_table in switch_macs.values())
             self.logger.info(f"Collected MAC tables from {len(switch_macs)} switches ({total_switch_macs} total MACs)")
-            self.vlog.log(f"Switch MAC tables: {total_switch_macs} total MACs across {len(switch_macs)} switches", self.vlog.CYAN)
+            self.vlog.log(
+                f"Switch MAC tables: {total_switch_macs} total MACs across {len(switch_macs)} switches", self.vlog.CYAN
+            )
 
             # Step 5: Correlate node MACs with switch ports
-            port_map = self._correlate_node_to_switch(
-                node_inventory, hostname_to_ip, node_macs, switch_macs
-            )
+            port_map = self._correlate_node_to_switch(node_inventory, hostname_to_ip, node_macs, switch_macs)
             self.logger.info(f"Generated {len(port_map)} port mappings")
 
             # Diagnostic: Count connections by node type and network
@@ -592,10 +594,17 @@ class ExternalPortMapper:
             network_a_connections = sum(1 for conn in port_map if conn.get("network") == "A")
             network_b_connections = sum(1 for conn in port_map if conn.get("network") == "B")
 
-            self.logger.info(f"Connection breakdown: {cnode_connections} CNode connections, {dnode_connections} DNode connections")
+            self.logger.info(
+                f"Connection breakdown: {cnode_connections} CNode connections, {dnode_connections} DNode connections"
+            )
             self.logger.info(f"Network breakdown: {network_a_connections} Network A, {network_b_connections} Network B")
-            self.vlog.log(f"Port mapping summary: {cnode_connections} CNode, {dnode_connections} DNode connections", self.vlog.GREEN)
-            self.vlog.log(f"Network distribution: {network_a_connections} Net A, {network_b_connections} Net B", self.vlog.GREEN)
+            self.vlog.log(
+                f"Port mapping summary: {cnode_connections} CNode, {dnode_connections} DNode connections",
+                self.vlog.GREEN,
+            )
+            self.vlog.log(
+                f"Network distribution: {network_a_connections} Net A, {network_b_connections} Net B", self.vlog.GREEN
+            )
 
             # Step 5: Collect IPL connections between switches
             ipl_connections = self._collect_ipl_connections()
@@ -604,6 +613,10 @@ class ExternalPortMapper:
             cross_connections = self._detect_cross_connections(port_map)
 
             # Build diagnostic summary
+            expected_nodes = len(node_inventory)
+            partial = (expected_nodes > 0 and len(node_macs) < expected_nodes) or (
+                expected_nodes > 0 and hostname_to_ip and len(hostname_to_ip) < expected_nodes
+            )
             diagnostic_summary = {
                 "nodes_collected": len(node_macs),
                 "cnode_connections": cnode_connections,
@@ -614,7 +627,7 @@ class ExternalPortMapper:
                 "switches_queried": len(switch_macs),
             }
 
-            return {
+            result = {
                 "available": True,
                 "node_macs": node_macs,
                 "switch_macs": switch_macs,
@@ -627,6 +640,13 @@ class ExternalPortMapper:
                 "data_source": "External SSH collection (clush + switch CLI)",
                 "diagnostic_summary": diagnostic_summary,
             }
+            if partial:
+                result["partial"] = True
+                result["partial_reason"] = (
+                    "One or more nodes unreachable via SSH/clush; port map includes only accessible nodes."
+                )
+                self.logger.info("Port mapping partial: %s", result["partial_reason"])
+            return result
 
         except Exception as e:
             self.logger.error(f"Error collecting port mapping: {e}", exc_info=True)
@@ -679,9 +699,7 @@ class ExternalPortMapper:
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code != 200:
-                raise Exception(
-                    f"API request failed: HTTP {response.status_code} - {response.text}"
-                )
+                raise Exception(f"API request failed: HTTP {response.status_code} - {response.text}")
 
             data = response.json()
             node_inventory = {}
@@ -697,15 +715,9 @@ class ExternalPortMapper:
                             "hostname": hostname,
                             "mgmt_ip": host.get("mgmt_ip"),
                             "ipmi_ip": host.get("ipmi_ip"),
-                            "box_vendor": host.get("vast_install_info", {}).get(
-                                "box_vendor", "Unknown"
-                            ),
-                            "node_type": host.get("vast_install_info", {}).get(
-                                "node_type", "Unknown"
-                            ),
-                            "box_name": host.get("vast_install_info", {}).get(
-                                "box_name", "Unknown"
-                            ),
+                            "box_vendor": host.get("vast_install_info", {}).get("box_vendor", "Unknown"),
+                            "node_type": host.get("vast_install_info", {}).get("node_type", "Unknown"),
+                            "box_name": host.get("vast_install_info", {}).get("box_name", "Unknown"),
                         }
 
             self.logger.info(f"Collected inventory for {len(node_inventory)} nodes")
@@ -758,32 +770,33 @@ class ExternalPortMapper:
             )
 
             self.vlog.log("\nExecuting command...", self.vlog.BLUE)
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=30, env=env
-            )
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env)
 
             # Log result
             self.vlog.log_result(result, "CLUSH HOSTNAME RESULT")
 
-            if result.returncode != 0:
-                self.vlog.log_error(
-                    "clush hostname command failed", Exception(result.stderr)
-                )
-                raise Exception(f"clush hostname command failed: {result.stderr}")
-
-            # Parse output: "172.16.3.4: se-az-arrow-cb2-cn-1"
+            # Parse output: "172.16.3.4: se-az-arrow-cb2-cn-1" (even if returncode != 0 for partial)
             self.vlog.log_operation("Parsing hostname to IP mapping from clush output")
             hostname_to_ip = {}
-            for line in result.stdout.split("\n"):
+            for line in (result.stdout or "").split("\n"):
                 match = re.match(r"^([\d.]+):\s+(.+)$", line.strip())
                 if match:
                     data_ip = match.group(1)
                     hostname = match.group(2).strip()
                     hostname_to_ip[hostname] = data_ip
                     self.logger.debug(f"Mapped {hostname} → {data_ip}")
-                    self.vlog.log(
-                        f"  Mapped: {hostname} → {data_ip}", self.vlog.MAGENTA
+                    self.vlog.log(f"  Mapped: {hostname} → {data_ip}", self.vlog.MAGENTA)
+
+            if result.returncode != 0:
+                if hostname_to_ip:
+                    self.logger.warning(
+                        "clush hostname returned non-zero but got %d mappings — using partial data",
+                        len(hostname_to_ip),
                     )
+                    self.vlog.log_error("clush hostname partial", Exception(result.stderr))
+                else:
+                    self.vlog.log_error("clush hostname command failed", Exception(result.stderr))
+                    raise Exception(f"clush hostname command failed: {result.stderr}")
 
             self.vlog.log_data("hostname_to_ip", hostname_to_ip)
             self.vlog.log_function_exit(
@@ -817,9 +830,7 @@ class ExternalPortMapper:
 
         try:
             self.logger.info(f"Collecting node MACs via clush from {self.cnode_ip}")
-            self.vlog.log_operation(
-                f"Collecting node MACs via clush from {self.cnode_ip}"
-            )
+            self.vlog.log_operation(f"Collecting node MACs via clush from {self.cnode_ip}")
 
             # SSH to CNode and run clush to get all node interfaces
             # Use /sbin/ip as the 'ip' command may not be in PATH
@@ -840,18 +851,23 @@ class ExternalPortMapper:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=_subprocess_env())
             self.vlog.log_result(result, "CLUSH NODE MAC RESULT")
 
-            if result.returncode != 0:
-                error_msg = f"clush command failed: {result.stderr}"
-                self.logger.error(error_msg)
-                self.vlog.log(f"❌ {error_msg}", self.vlog.RED)
-                self.vlog.log_function_exit(
-                    "_collect_node_macs_via_clush", "FAILED - non-zero return code"
-                )
-                raise Exception(error_msg)
-
-            # Parse clush output
+            # Parse clush output (even when returncode != 0, to allow partial port map)
             self.vlog.log_operation("Parsing clush output for node MACs")
-            node_macs = self._parse_clush_output(result.stdout)
+            node_macs = self._parse_clush_output(result.stdout or "")
+
+            if result.returncode != 0:
+                if node_macs:
+                    self.logger.warning(
+                        "clush ip link returned non-zero but got MACs for %d nodes — using partial data",
+                        len(node_macs),
+                    )
+                    self.vlog.log(f"⚠ Partial node MACs ({len(node_macs)} nodes)", self.vlog.YELLOW)
+                else:
+                    error_msg = f"clush command failed: {result.stderr}"
+                    self.logger.error(error_msg)
+                    self.vlog.log(f"❌ {error_msg}", self.vlog.RED)
+                    self.vlog.log_function_exit("_collect_node_macs_via_clush", "FAILED - non-zero return code")
+                    raise Exception(error_msg)
 
             self.vlog.log_data("node_macs", node_macs)
             self.vlog.log_function_exit(
@@ -907,22 +923,13 @@ class ExternalPortMapper:
                 # Skip management interfaces (enp0s25, eno1, eno2 typically used for IPMI/mgmt)
                 # Only capture once per interface (first MAC = physical interface MAC)
                 is_data_interface = (
-                    (
-                        current_interface.startswith("enp")
-                        and not current_interface.startswith("enp0s25")
-                    )
+                    (current_interface.startswith("enp") and not current_interface.startswith("enp0s25"))
                     or current_interface.startswith("ens")
                     or current_interface.startswith("eth")
                 )
-                is_mgmt_interface = current_interface.startswith(
-                    "eno"
-                )  # eno1, eno2 are mgmt
+                is_mgmt_interface = current_interface.startswith("eno")  # eno1, eno2 are mgmt
 
-                if (
-                    is_data_interface
-                    and not is_mgmt_interface
-                    and current_interface not in node_macs[current_node_ip]
-                ):
+                if is_data_interface and not is_mgmt_interface and current_interface not in node_macs[current_node_ip]:
                     # VLAN subinterfaces (e.g., enp3s0f0.69@enp3s0f0) contain "@"
                     # Extract the base interface name for VLAN subinterfaces
                     if "@" in current_interface:
@@ -935,9 +942,7 @@ class ExternalPortMapper:
                     # Only store if we haven't already captured this base interface
                     if base_interface not in node_macs[current_node_ip]:
                         node_macs[current_node_ip][base_interface] = mac
-                        self.logger.debug(
-                            f"Found MAC: {current_node_ip} {base_interface} = {mac}"
-                        )
+                        self.logger.debug(f"Found MAC: {current_node_ip} {base_interface} = {mac}")
                         self.vlog.log(
                             f"Found MAC: {current_node_ip} {base_interface} = {mac} (from {current_interface})"
                         )
@@ -975,9 +980,7 @@ class ExternalPortMapper:
                 # Build command based on OS type
                 if os_type == "cumulus":
                     mac_cmd = "nv show bridge domain br_default mac-table"
-                    vlan69_cmd_str = (
-                        "nv show bridge domain br_default vlan 69 mac-table"
-                    )
+                    vlan69_cmd_str = "nv show bridge domain br_default vlan 69 mac-table"
                 else:  # onyx
                     mac_cmd = "show mac-address-table"
                     vlan69_cmd_str = "show mac-address-table vlan 69"
@@ -1008,9 +1011,7 @@ class ExternalPortMapper:
                     ]
 
                     self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
-                    result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
-                    )
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env())
                     self.vlog.log_result(result, "General MAC table result")
                     result_returncode = result.returncode
                     result_stdout = result.stdout
@@ -1019,40 +1020,26 @@ class ExternalPortMapper:
                 if result_returncode == 0:
                     # Parse based on OS type
                     if os_type == "cumulus":
-                        switch_macs[switch_ip] = self._parse_cumulus_mac_table(
-                            result_stdout
-                        )
+                        switch_macs[switch_ip] = self._parse_cumulus_mac_table(result_stdout)
                     else:  # onyx
-                        switch_macs[switch_ip] = self._parse_onyx_mac_table(
-                            result_stdout
-                        )
+                        switch_macs[switch_ip] = self._parse_onyx_mac_table(result_stdout)
 
                     general_count = len(switch_macs[switch_ip])
-                    self.logger.info(
-                        f"Collected {general_count} MACs from {switch_ip} ({os_type}, general table)"
-                    )
-                    self.vlog.log(
-                        f"General MAC table: {general_count} entries", self.vlog.GREEN
-                    )
+                    self.logger.info(f"Collected {general_count} MACs from {switch_ip} ({os_type}, general table)")
+                    self.vlog.log(f"General MAC table: {general_count} entries", self.vlog.GREEN)
                 else:
-                    self.logger.warning(
-                        f"Failed to get MAC table from {switch_ip}: {result_stderr}"
-                    )
+                    self.logger.warning(f"Failed to get MAC table from {switch_ip}: {result_stderr}")
                     switch_macs[switch_ip] = {}
 
                 # Additionally collect VLAN 69-specific MAC table for DNode Network B interfaces
                 # This is important for Cumulus; may or may not work on Onyx
-                self.vlog.log_operation(
-                    f"Collecting VLAN 69 MAC table from {switch_ip}"
-                )
+                self.vlog.log_operation(f"Collecting VLAN 69 MAC table from {switch_ip}")
 
                 # For Onyx, use interactive SSH; for Cumulus, use direct command
                 if os_type == "onyx":
                     # Use interactive SSH for Onyx
-                    vlan69_returncode, vlan69_stdout, vlan69_stderr = (
-                        self._run_onyx_interactive_command(
-                            switch_ip, user, password, vlan69_cmd_str, timeout=30
-                        )
+                    vlan69_returncode, vlan69_stdout, vlan69_stderr = self._run_onyx_interactive_command(
+                        switch_ip, user, password, vlan69_cmd_str, timeout=30
                     )
                 else:
                     # Use subprocess for Cumulus
@@ -1069,9 +1056,7 @@ class ExternalPortMapper:
                         vlan69_cmd_str,
                     ]
 
-                    self.vlog.log_command(
-                        vlan69_cmd, f"VLAN 69 MAC table query ({os_type})"
-                    )
+                    self.vlog.log_command(vlan69_cmd, f"VLAN 69 MAC table query ({os_type})")
                     vlan69_result = subprocess.run(
                         vlan69_cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
                     )
@@ -1095,9 +1080,7 @@ class ExternalPortMapper:
 
                     added_count = len(switch_macs[switch_ip]) - before_count
                     if added_count > 0:
-                        self.logger.info(
-                            f"Added {added_count} VLAN 69 MACs from {switch_ip}"
-                        )
+                        self.logger.info(f"Added {added_count} VLAN 69 MACs from {switch_ip}")
                         self.vlog.log(
                             f"VLAN 69 table: {len(vlan69_macs)} entries, {added_count} new",
                             self.vlog.GREEN,
@@ -1113,9 +1096,7 @@ class ExternalPortMapper:
                         self.vlog.YELLOW,
                     )
 
-                self.logger.info(
-                    f"Total: Collected {len(switch_macs[switch_ip])} MACs from {switch_ip}"
-                )
+                self.logger.info(f"Total: Collected {len(switch_macs[switch_ip])} MACs from {switch_ip}")
 
             except Exception as e:
                 self.logger.error(f"Error collecting MAC table from {switch_ip}: {e}")
@@ -1184,12 +1165,7 @@ class ExternalPortMapper:
 
         for line in output.split("\n"):
             # Skip header and separator lines
-            if (
-                "VID" in line
-                or "MAC Address" in line
-                or "---" in line
-                or not line.strip()
-            ):
+            if "VID" in line or "MAC Address" in line or "---" in line or not line.strip():
                 continue
 
             # Split line into columns
@@ -1224,9 +1200,7 @@ class ExternalPortMapper:
                                 "original_port": port,  # Keep original for debugging
                             }
                 except (IndexError, ValueError) as e:
-                    self.logger.debug(
-                        f"Could not parse Onyx MAC table line: {line} - {e}"
-                    )
+                    self.logger.debug(f"Could not parse Onyx MAC table line: {line} - {e}")
                     continue
 
         return mac_table
@@ -1292,9 +1266,7 @@ class ExternalPortMapper:
                     ]
 
                     self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
-                    result = subprocess.run(
-                        cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env()
-                    )
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=_subprocess_env())
                     self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
                     returncode = result.returncode
                     stdout = result.stdout
@@ -1319,26 +1291,19 @@ class ExternalPortMapper:
                         if key not in seen_connections:
                             seen_connections.add(key)
                             ipl_connections.append(conn)
-                            self.logger.info(
-                                f"Found IPL: {conn['switch1_port']} ↔ {conn['switch2_port']}"
-                            )
+                            self.logger.info(f"Found IPL: {conn['switch1_port']} ↔ {conn['switch2_port']}")
                 else:
-                    self.logger.warning(
-                        f"Failed to get LLDP data from {switch_ip}: {stderr}"
-                    )
+                    self.logger.warning(f"Failed to get LLDP data from {switch_ip}: {stderr}")
 
             except Exception as e:
                 self.logger.error(f"Error collecting IPL from {switch_ip}: {e}")
 
         self.logger.info(
-            f"Collected {len(ipl_connections)} unique IPL connections "
-            f"({len(ipl_connections) * 2} total ports)"
+            f"Collected {len(ipl_connections)} unique IPL connections " f"({len(ipl_connections) * 2} total ports)"
         )
         return ipl_connections
 
-    def _parse_cumulus_lldp_for_ipl(
-        self, json_output: str, current_switch_ip: str
-    ) -> List[Dict[str, Any]]:
+    def _parse_cumulus_lldp_for_ipl(self, json_output: str, current_switch_ip: str) -> List[Dict[str, Any]]:
         """
         Parse Cumulus 'nv show interface' JSON output to find IPL connections.
 
@@ -1370,9 +1335,7 @@ class ExternalPortMapper:
         try:
             data = json.loads(json_output)
 
-            self.vlog.log(
-                f"Parsing interface data for IPL discovery on {current_switch_ip}"
-            )
+            self.vlog.log(f"Parsing interface data for IPL discovery on {current_switch_ip}")
             self.vlog.log_data("Interface JSON keys", {"ports": list(data.keys())[:10]})
 
             # Look for swp29-32 (typical IPL ports)
@@ -1405,15 +1368,11 @@ class ExternalPortMapper:
                             if isinstance(port_info, dict):
                                 neighbor_port = port_info.get("name", "")
 
-                            self.vlog.log(
-                                f"{port_name}: remote_host={remote_hostname}, remote_port={neighbor_port}"
-                            )
+                            self.vlog.log(f"{port_name}: remote_host={remote_hostname}, remote_port={neighbor_port}")
 
                             # If neighbor port matches local port, it's an IPL
                             if neighbor_port and neighbor_port == port_name:
-                                remote_switch_ip = self._get_other_switch_ip(
-                                    current_switch_ip
-                                )
+                                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
                                 port_num = int(port_name.replace("swp", ""))
 
                                 ipl_connections.append(
@@ -1439,9 +1398,7 @@ class ExternalPortMapper:
 
         return ipl_connections
 
-    def _parse_onyx_lldp_for_ipl(
-        self, lldp_output: str, current_switch_ip: str
-    ) -> List[Dict[str, Any]]:
+    def _parse_onyx_lldp_for_ipl(self, lldp_output: str, current_switch_ip: str) -> List[Dict[str, Any]]:
         """
         Parse Mellanox Onyx 'show lldp remote' output to find IPL connections.
 
@@ -1461,9 +1418,7 @@ class ExternalPortMapper:
         ipl_connections = []
 
         try:
-            self.vlog.log(
-                f"Parsing LLDP data for IPL discovery on {current_switch_ip} (Onyx)"
-            )
+            self.vlog.log(f"Parsing LLDP data for IPL discovery on {current_switch_ip} (Onyx)")
 
             # Look for Eth1/29-32 (typical IPL ports on Onyx switches)
             for line in lldp_output.split("\n"):
@@ -1493,9 +1448,7 @@ class ExternalPortMapper:
                                 # Convert to swp naming for consistency
                                 local_swp = f"swp{local_port_num}"
                                 remote_swp = f"swp{local_port_num}"
-                                remote_switch_ip = self._get_other_switch_ip(
-                                    current_switch_ip
-                                )
+                                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
 
                                 ipl_connections.append(
                                     {
@@ -1551,8 +1504,7 @@ class ExternalPortMapper:
         switch_2 = sorted_switches[1] if len(sorted_switches) > 1 else None
 
         self.logger.info(
-            f"Switch assignments: Switch-1 (Network A) = {switch_1}, "
-            f"Switch-2 (Network B) = {switch_2}"
+            f"Switch assignments: Switch-1 (Network A) = {switch_1}, " f"Switch-2 (Network B) = {switch_2}"
         )
 
         # Build reverse mapping: data_ip -> hostname
@@ -1614,8 +1566,7 @@ class ExternalPortMapper:
                             # if switch mapping fails
                             network = "A" if interface.endswith("f0") else "B"
                             self.logger.warning(
-                                f"Unknown switch {switch_ip}, using "
-                                f"interface-based network detection"
+                                f"Unknown switch {switch_ip}, using " f"interface-based network detection"
                             )
 
                         port_map.append(
@@ -1639,31 +1590,24 @@ class ExternalPortMapper:
                 if not mac_found:
                     missing_mac_count += 1
                     self.logger.warning(
-                        f"MAC not found in any switch table: {hostname} ({data_ip}) "
-                        f"{interface} = {mac}"
+                        f"MAC not found in any switch table: {hostname} ({data_ip}) " f"{interface} = {mac}"
                     )
-                    self.vlog.log_warning(
-                        f"MAC {mac} from {hostname} {interface} not found in switch tables"
-                    )
+                    self.vlog.log_warning(f"MAC {mac} from {hostname} {interface} not found in switch tables")
 
         # Log correlation statistics
         self.logger.info(
             f"Correlation complete: {found_mac_count} MACs found, {missing_mac_count} MACs not found in switches"
         )
-        self.logger.info(
-            f"Missing hostname: {missing_hostname_count}, Missing inventory: {missing_inventory_count}"
-        )
+        self.logger.info(f"Missing hostname: {missing_hostname_count}, Missing inventory: {missing_inventory_count}")
         self.vlog.log(
             f"Correlation stats: {found_mac_count} found, {missing_mac_count} missing MACs, "
             f"{missing_hostname_count} missing hostnames, {missing_inventory_count} missing inventory",
-            self.vlog.YELLOW if missing_mac_count > 0 else self.vlog.GREEN
+            self.vlog.YELLOW if missing_mac_count > 0 else self.vlog.GREEN,
         )
 
         return port_map
 
-    def _detect_cross_connections(
-        self, port_map: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _detect_cross_connections(self, port_map: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Detect cross-connection issues.
 
