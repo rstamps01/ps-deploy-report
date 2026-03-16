@@ -66,24 +66,34 @@ class TestMainModeRouting(unittest.TestCase):
 
 
 class TestRunGuiFunction(unittest.TestCase):
-    """Verify run_gui starts Flask and opens a browser."""
+    """Verify run_gui starts the werkzeug server and opens a browser."""
 
+    @patch("main.webbrowser")
+    @patch("main._wait_for_server", return_value=True)
+    @patch("werkzeug.serving.make_server")
     @patch("utils.logger.enable_sse_logging")
     @patch("app.create_flask_app")
     @patch("main.setup_logging")
     @patch("main.load_configuration", return_value={})
-    def test_run_gui_starts_flask(self, _cfg, _log, mock_create, _sse):
+    def test_run_gui_starts_flask(self, _cfg, _log, mock_create, _sse, mock_make_server, mock_wait, mock_wb):
         mock_app = MagicMock()
+        mock_app.config = {}
         mock_create.return_value = mock_app
 
+        mock_server = MagicMock()
+        mock_make_server.return_value = mock_server
+
         from main import run_gui
-        with patch("threading.Timer"):
+
+        with patch("threading.Thread") as mock_thread_cls:
+            mock_thread = MagicMock()
+            mock_thread_cls.return_value = mock_thread
+            mock_thread.join.side_effect = KeyboardInterrupt
             run_gui(port=9999)
 
-        mock_app.run.assert_called_once()
-        call_kwargs = mock_app.run.call_args[1]
-        self.assertEqual(call_kwargs["port"], 9999)
-        self.assertFalse(call_kwargs["debug"])
+        mock_make_server.assert_called_once_with("127.0.0.1", 9999, mock_app, threaded=True)
+        mock_thread.start.assert_called_once()
+        mock_server.shutdown.assert_called_once()
 
 
 class TestRunCliFunction(unittest.TestCase):
@@ -98,6 +108,7 @@ class TestRunCliFunction(unittest.TestCase):
         mock_gen_cls.return_value = mock_gen
 
         from main import run_cli
+
         with patch.object(sys, "argv", ["main.py", "--cluster", "1.2.3.4", "--output", "/tmp/out"]):
             result = run_cli()
 

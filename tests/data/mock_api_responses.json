@@ -1,0 +1,32 @@
+{
+  "_comment": "Shared mock API responses for integration and unit tests",
+  "cluster_info": {
+    "name": "Test Cluster",
+    "guid": "test-guid-123",
+    "version": "5.3.0",
+    "state": "active",
+    "license": "Enterprise",
+    "psnt": "PSNT123456789",
+    "build": "5.3.0-12345",
+    "ssd_raid_state": "HEALTHY"
+  },
+  "cnodes": [
+    {"id": 1, "name": "cnode-1", "model": "C200", "serial_number": "CN001", "status": "active", "ip": "10.0.0.1", "mgmt_ip": "10.0.1.1"},
+    {"id": 2, "name": "cnode-2", "model": "C200", "serial_number": "CN002", "status": "active", "ip": "10.0.0.2", "mgmt_ip": "10.0.1.2"}
+  ],
+  "dnodes": [
+    {"id": 1, "name": "dnode-1", "model": "D200", "serial_number": "DN001", "status": "active", "ip": "10.0.0.11"},
+    {"id": 2, "name": "dnode-2", "model": "D200", "serial_number": "DN002", "status": "active", "ip": "10.0.0.12"}
+  ],
+  "cboxes": [
+    {"id": 1, "name": "cbox-1", "serial_number": "CB001", "model": "CBox", "status": "active"}
+  ],
+  "dboxes": [
+    {"id": 1, "name": "dbox-1", "serial_number": "DB001", "model": "DBox", "status": "active"}
+  ],
+  "switches": [
+    {"id": 1, "name": "switch-A", "ip": "10.0.0.101", "model": "SN2100"},
+    {"id": 2, "name": "switch-B", "ip": "10.0.0.102", "model": "SN2100"}
+  ],
+  "vnetmap_output": "=== Port Mapping Summary ===\nSwitch: 10.0.0.101\n  Port swp1 -> cnode-1 (10.0.0.1) [DATA]\n  Port swp2 -> dnode-1 (10.0.0.11) [DATA]\n=== Cross Connections ===\nNone detected"
+}

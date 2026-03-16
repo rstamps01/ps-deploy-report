@@ -1,13 +1,20 @@
 ---
-description: Task tracking — TODO management, session handoff, and status reporting conventions
+description: Task tracking — TODO management, session handoff, roadmap, and CI/CD status validation
 alwaysApply: true
 ---
 # Task & TODO Tracking
 
+## Canonical todo list — next steps and planned work
+
+- **File:** `docs/TODO-ROADMAP.md`
+- **Use:** This is the single reference for planned features, enhancements, and next steps. All such items must be tracked there with a status (Planned / In progress / Done / Deferred).
+- **Update:** When starting or finishing work that is on the roadmap, update the item’s status and the "Last updated" date. When completing items, move them to the Done section or archive as needed.
+- **CI/CD:** The pipeline validates that `docs/TODO-ROADMAP.md` exists and contains the required structure (see "Todo list validation" job in `ci.yml`). As part of release or merge to `main`, update the roadmap: set "Last updated", move completed items to Done, and ensure "Next steps" reflects current focus.
+
 ## Session Start Protocol
 At the start of every development session:
-1. Read `5-Development-Status.md` (or the latest status reference) to understand current state
-2. Review open TODOs and pending work items
+1. Read `docs/TODO-ROADMAP.md` for next steps and planned work (and `5-Development-Status.md` or latest status reference if present)
+2. Review open TODOs and pending items in the roadmap
 3. Check `CHANGELOG.md` for recent changes
 4. Run `python3 -m pytest tests/ -v` to confirm baseline health
 
@@ -16,17 +23,17 @@ At the start of every development session:
 - Only one task `in_progress` at a time
 - Mark tasks `completed` immediately after finishing
 - Break complex work into small, testable increments
+- When work aligns with a roadmap item, keep `docs/TODO-ROADMAP.md` status in sync (e.g. set "In progress", then "Done")
 
 ## Session End Protocol
 Before ending a session:
 1. Run all tests and confirm they pass
 2. Commit all changes with conventional commit messages
 3. Update `CHANGELOG.md` if user-facing changes were made
-4. Update status documentation with:
-   - What was completed
-   - What is in progress
-   - Known issues or blockers
-   - Next steps
+4. Update `docs/TODO-ROADMAP.md` with:
+   - Status changes for any roadmap items touched (Planned → In progress → Done)
+   - "Last updated" date
+   - "Next steps" if focus has changed
 5. Push to `develop` branch
 
 ## Status Update Format
@@ -39,8 +46,8 @@ Before ending a session:
 ### Known Issues
 - [scope] Description of issue and workaround
 ### Next Steps
-- [scope] Description of planned work
+- [scope] Description of planned work (align with docs/TODO-ROADMAP.md)
 ```
 
 ## RFE Tracking
-Requests for Enhancement from Confluence (page 6664028496) should be tracked as GitHub issues or referenced in development status when work begins.
+Requests for Enhancement from Confluence (page 6664028496) should be tracked as GitHub issues or added to `docs/TODO-ROADMAP.md` when work begins.

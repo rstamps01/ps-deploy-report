@@ -1,0 +1,119 @@
+---
+description: Release and packaging workflow — end-to-end process for shipping fixes, features, and .dmg builds
+alwaysApply: true
+---
+
+# Release & Packaging Workflow
+
+## When to Release
+
+A release MUST be prepared whenever changes are merged to `develop` that:
+
+- Fix a bug affecting user-visible behavior
+- Improve application stability or error handling
+- Add or enhance functionality
+- Change CLI options, config keys, or report output
+
+Do not batch unrelated fixes indefinitely. Ship small, frequent releases.
+
+## Version Source of Truth
+
+`src/app.py` → `APP_VERSION` is the canonical version. All other locations derive from it.
+
+### All Version Locations (must stay in sync)
+
+| File | Variable/Field | Notes |
+| --- | --- | --- |
+| `src/app.py` | `APP_VERSION` | **Primary — update first** |
+| `src/main.py` | `version=` in argparse | CLI `--version` output |
+| `src/__init__.py` | `__version__` | Package metadata |
+| `packaging/vast-reporter.spec` | `CFBundleShortVersionString`, `CFBundleVersion` | macOS .app bundle |
+| `packaging/build-windows.ps1` | `$Version` | Windows ZIP naming |
+| `CHANGELOG.md` | `## [X.Y.Z]` header | Release history |
+| `README.md` | Version badge/references | User-facing docs |
+
+`packaging/build-mac.sh` reads from `src/app.py` dynamically — no manual update needed.
+
+## End-to-End Release Checklist
+
+### Phase 1: Validate the Fix
+
+1. Confirm all tests pass: `python3 -m pytest tests/ -v`
+2. Lint check: `flake8 src/ tests/`
+3. Verify no credentials or secrets in staged files
+4. Manual smoke test if the fix is user-facing
+
+### Phase 2: Update Documentation
+
+1. Update `CHANGELOG.md` with the fix under `## [X.Y.Z] - YYYY-MM-DD`
+2. Update `README.md` if the fix changes usage, CLI options, or requirements
+3. Update `docs/deployment/*.md` if install/update/deploy behavior changed
+4. Update `docs/development/*.md` if internal patterns changed
+
+### Phase 3: Bump Version (all locations)
+
+Use semantic versioning: PATCH for bug fixes, MINOR for features, MAJOR for breaking changes.
+
+```bash
+# Update ALL of these — verify with:
+grep -n 'APP_VERSION\|__version__\|version=' src/app.py src/main.py src/__init__.py
+grep -n 'Version\|CFBundle' packaging/vast-reporter.spec packaging/build-windows.ps1
+```
+
+### Phase 4: Commit and Push
+
+1. Commit to `develop` with conventional message: `fix(scope): description` or `feat(scope): description`
+2. Push `develop`: `git push origin develop`
+3. Merge `develop` → `main`: `git checkout main && git merge develop`
+4. Push `main`: `git push origin main`
+
+### Phase 5: Tag and Build
+
+1. Create annotated tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z — short description"`
+2. Push tag: `git push origin vX.Y.Z`
+3. CI/CD (`.github/workflows/build-release.yml`) automatically:
+   - Runs tests
+   - Builds macOS .app + .dmg via `packaging/build-mac.sh`
+   - Builds Windows .exe + .zip via `packaging/build-windows.ps1`
+   - Creates GitHub Release with assets attached
+
+### Phase 6: Verify Release
+
+1. Check GitHub Actions completed successfully
+2. Download and verify .dmg and .zip from the GitHub Release page
+3. Optionally create `RELEASE_NOTES_vX.Y.Z.md` in project root for detailed notes
+
+## Local .dmg Build (when CI is not used)
+
+```bash
+# Ensure create-dmg is installed
+brew install create-dmg
+
+# Build from project root
+bash packaging/build-mac.sh
+
+# Output: dist/VAST-Reporter-vX.Y.Z-mac.dmg
+```
+
+## Quick Reference: Patch Release for a Bug Fix
+
+```bash
+# 1. Fix the bug on develop branch
+git checkout develop
+
+# 2. Update version in all locations (e.g., 1.4.1 → 1.4.2)
+# 3. Update CHANGELOG.md
+# 4. Commit
+git add -A
+git commit -m "fix(scope): description of the fix"
+git push origin develop
+
+# 5. Merge to main, tag, push
+git checkout main
+git merge develop
+git push origin main
+git tag -a v1.4.2 -m "Release v1.4.2 — fix description"
+git push origin v1.4.2
+
+# CI builds .dmg and .zip automatically
+```

@@ -115,9 +115,7 @@ class PortMapper:
             f"{dnode_index} DNodes to {len(self.dboxes)} DBoxes"
         )
 
-    def generate_node_designation(
-        self, node_ip: str, network: str, hostname: str = None
-    ) -> Tuple[str, str]:
+    def generate_node_designation(self, node_ip: str, network: str, hostname: str = None) -> Tuple[str, str]:
         """
         Generate standardized node-side port designation.
 
@@ -207,9 +205,7 @@ class PortMapper:
 
         return f"SW{switch_letter}-P{port_num}"
 
-    def detect_cross_connection(
-        self, switch_ip: str, node_ip: str, network: str
-    ) -> Tuple[bool, str]:
+    def detect_cross_connection(self, switch_ip: str, node_ip: str, network: str) -> Tuple[bool, str]:
         """
         Detect if a connection is cross-connected (incorrect cabling).
 

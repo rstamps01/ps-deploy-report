@@ -5,27 +5,81 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
 jobs:
   # -------------------------------------------------------------------
-  # Run tests before building
+  # Quality gate: lint, format check, type check (Linux only)
   # -------------------------------------------------------------------
-  test:
+  quality-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-release-quality-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-release-quality-
+
+      - name: Install quality tools
+        run: pip install flake8 black mypy types-requests types-PyYAML
+
+      - name: Lint with flake8
+        run: flake8 src/ tests/
+
+      - name: Check formatting with black
+        run: black --check --line-length 120 src/ tests/
+
+      - name: Type check with mypy
+        run: mypy src/ --ignore-missing-imports --no-strict-optional
+
+  # -------------------------------------------------------------------
+  # Run full test suite with coverage enforcement (Linux only)
+  # -------------------------------------------------------------------
+  test:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-release-test-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-release-test-
+
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-      - name: Run tests
-        run: python -m pytest tests/ -v
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run unit and integration tests with coverage
+        run: |
+          python -m pytest tests/ -v \
+            --ignore=tests/test_ui.py \
+            --cov=src \
+            --cov-report=xml \
+            --cov-fail-under=80
 
   # -------------------------------------------------------------------
   # Build platform-specific bundles
+  #   macOS = 10x Linux cost, Windows = 2x — pip cache added to both
   # -------------------------------------------------------------------
   build:
     needs: test
@@ -35,9 +89,11 @@ jobs:
           - os: macos-latest
             artifact: VAST-Reporter-mac
             script: bash packaging/build-mac.sh
+            pip-cache: ~/Library/Caches/pip
           - os: windows-latest
             artifact: VAST-Reporter-win
             script: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
+            pip-cache: ~\AppData\Local\pip\Cache
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -46,8 +102,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ matrix.pip-cache }}
+          key: ${{ runner.os }}-pip-release-build-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-release-build-
+
       - name: Install runtime + PyInstaller
         run: |
+          pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
@@ -61,7 +125,7 @@ jobs:
           path: dist/
 
   # -------------------------------------------------------------------
-  # Create GitHub release and attach assets
+  # Create GitHub release and attach assets (Linux only)
   # -------------------------------------------------------------------
   release:
     needs: build

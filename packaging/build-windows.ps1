@@ -39,7 +39,7 @@ if (-not (Test-Path $AppDir)) {
 Write-Host "App folder created: $AppDir" -ForegroundColor Green
 
 # 4. Create ZIP archive
-$Version = "1.4.0"
+$Version = "1.4.2"
 $ZipName = "VAST-Reporter-v$Version-win.zip"
 $ZipPath = Join-Path $DistDir $ZipName
 Write-Host "Creating ZIP: $ZipName" -ForegroundColor Yellow

@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Documentation — VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Documentation</h1>
+    <p class="subtitle">Guides, reference material, and API documentation</p>
+</div>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar" id="docsSidebar">
+        {% for category_name, docs in categories %}
+        <div class="docs-category">
+            <h4 class="docs-category-title">{{ category_name }}</h4>
+            {% for doc in docs %}
+            <a href="#{{ doc.id }}"
+               class="docs-nav-link{% if doc.id == initial_doc_id %} active{% endif %}"
+               data-doc-id="{{ doc.id }}"
+               hx-get="{{ url_for('docs_content', doc_id=doc.id) }}"
+               hx-target="#docsContent"
+               hx-swap="innerHTML">
+                {{ doc.title }}
+            </a>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+        <div class="docs-category">
+            <h4 class="docs-category-title">Live API Explorer</h4>
+            <div class="docs-swagger-panel">
+                <p class="docs-swagger-hint">Open the interactive API browser on your VAST cluster.</p>
+                <div class="docs-swagger-input">
+                    <input type="text" id="swaggerIp" placeholder="Management VIP" value="{{ cluster_ip }}">
+                    <a id="swaggerBtn" class="btn btn-sm btn-primary" href="#" target="_blank" rel="noopener noreferrer">Open</a>
+                    <a id="swaggerBtnV7" class="btn btn-sm btn-secondary" href="#" target="_blank" rel="noopener noreferrer">Open (v7)</a>
+                </div>
+                <span class="form-hint">https://&lt;management-vip&gt;/api</span>
+                <p class="docs-swagger-tip">If you see <strong>Fetch error 500</strong> when the page loads, the cluster's OpenAPI spec endpoint may be failing. Try the <strong>Open (v7)</strong> link, or log in to the cluster Web UI first, then open the API link in the same browser.</p>
+            </div>
+        </div>
+    </aside>
+
+    <div class="docs-content-area">
+        <div class="docs-rendered" id="docsContent">
+            {{ initial_html|safe }}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var sidebar = document.getElementById('docsSidebar');
+    var content = document.getElementById('docsContent');
+
+    document.body.addEventListener('htmx:beforeRequest', function(e) {
+        var link = e.target.closest('.docs-nav-link');
+        if (!link) return;
+        sidebar.querySelectorAll('.docs-nav-link.active').forEach(function(el) {
+            el.classList.remove('active');
+        });
+        link.classList.add('active');
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function(e) {
+        if (e.target.id === 'docsContent') {
+            window.scrollTo({ top: document.querySelector('.docs-layout').offsetTop - 72, behavior: 'smooth' });
+        }
+    });
+
+    var swaggerIp = document.getElementById('swaggerIp');
+    var swaggerBtn = document.getElementById('swaggerBtn');
+    var swaggerBtnV7 = document.getElementById('swaggerBtnV7');
+    function updateSwaggerLink() {
+        var ip = swaggerIp.value.trim();
+        if (ip) {
+            swaggerBtn.href = 'https://' + ip + '/api';
+            swaggerBtn.style.opacity = '1';
+            swaggerBtn.style.pointerEvents = 'auto';
+            swaggerBtnV7.href = 'https://' + ip + '/api/v7/';
+            swaggerBtnV7.style.opacity = '1';
+            swaggerBtnV7.style.pointerEvents = 'auto';
+        } else {
+            swaggerBtn.href = '#';
+            swaggerBtn.style.opacity = '0.5';
+            swaggerBtn.style.pointerEvents = 'none';
+            swaggerBtnV7.href = '#';
+            swaggerBtnV7.style.opacity = '0.5';
+            swaggerBtnV7.style.pointerEvents = 'none';
+        }
+    }
+    swaggerIp.addEventListener('input', updateSwaggerLink);
+    updateSwaggerLink();
+
+    function loadDocByHash() {
+        var hash = window.location.hash.substring(1);
+        if (hash) {
+            var link = sidebar.querySelector('.docs-nav-link[data-doc-id="' + hash + '"]');
+            if (link) {
+                sidebar.querySelectorAll('.docs-nav-link.active').forEach(function(el) { el.classList.remove('active'); });
+                link.classList.add('active');
+                link.click();
+            }
+        }
+    }
+    loadDocByHash();
+    window.addEventListener('hashchange', loadDocByHash);
+    content.addEventListener('click', function(e) {
+        var a = e.target.closest('a[href^="/docs#"]');
+        if (a) {
+            e.preventDefault();
+            window.location.hash = a.getAttribute('href').split('#')[1] || '';
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -68,6 +68,7 @@ def flask_server(tmp_path_factory):
     for _ in range(40):
         try:
             import urllib.request
+
             urllib.request.urlopen(base_url, timeout=0.5)
             break
         except Exception:
@@ -84,6 +85,7 @@ def flask_server(tmp_path_factory):
 # ---------------------------------------------------------------------------
 # Navigation & page-load tests
 # ---------------------------------------------------------------------------
+
 
 class TestPageLoads:
     """Verify that all pages render without errors."""
@@ -117,6 +119,7 @@ class TestPageLoads:
 # Generate page – form interactions
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateForm:
     """Verify form elements and basic interactions on the Generate page."""
 
@@ -136,9 +139,7 @@ class TestGenerateForm:
     def test_switch_placement_toggle_exists(self, flask_server, page):
         page.goto(f"{flask_server['url']}/generate")
         toggle = page.query_selector(
-            "input[name='switch_placement'], "
-            "#switch-placement-toggle, "
-            "[data-field='switch_placement']"
+            "input[name='switch_placement'], " "#switch-placement-toggle, " "[data-field='switch_placement']"
         )
         assert toggle is not None, "Switch placement toggle not found"
 
@@ -154,6 +155,7 @@ class TestGenerateForm:
 # Cluster Profiles
 # ---------------------------------------------------------------------------
 
+
 class TestClusterProfiles:
     """Test profile save/load/delete via the UI or API."""
 
@@ -161,13 +163,15 @@ class TestClusterProfiles:
         url = flask_server["url"]
         resp = page.request.post(
             f"{url}/profiles",
-            data=json.dumps({
-                "action": "save",
-                "name": "test-cluster",
-                "cluster_ip": "10.0.0.1",
-                "username": "admin",
-                "auth_method": "password",
-            }),
+            data=json.dumps(
+                {
+                    "action": "save",
+                    "name": "test-cluster",
+                    "cluster_ip": "10.0.0.1",
+                    "username": "admin",
+                    "auth_method": "password",
+                }
+            ),
             headers={"Content-Type": "application/json"},
         )
         assert resp.ok
@@ -181,12 +185,14 @@ class TestClusterProfiles:
         url = flask_server["url"]
         page.request.post(
             f"{url}/profiles",
-            data=json.dumps({
-                "name": "deleteme",
-                "cluster_ip": "10.0.0.2",
-                "username": "admin",
-                "auth_method": "password",
-            }),
+            data=json.dumps(
+                {
+                    "name": "deleteme",
+                    "cluster_ip": "10.0.0.2",
+                    "username": "admin",
+                    "auth_method": "password",
+                }
+            ),
             headers={"Content-Type": "application/json"},
         )
 
@@ -201,6 +207,7 @@ class TestClusterProfiles:
 # ---------------------------------------------------------------------------
 # Reports page
 # ---------------------------------------------------------------------------
+
 
 class TestReportsPage:
     """Test the reports browser page with sample files."""
@@ -224,9 +231,7 @@ class TestReportsPage:
         test_pdf = reports_dir / "vast_asbuilt_report_dl_20260304.pdf"
         test_pdf.write_bytes(b"%PDF-1.4 download test")
 
-        resp = page.request.get(
-            f"{flask_server['url']}/reports/download/vast_asbuilt_report_dl_20260304.pdf"
-        )
+        resp = page.request.get(f"{flask_server['url']}/reports/download/vast_asbuilt_report_dl_20260304.pdf")
         assert resp.ok
         assert b"%PDF-1.4 download test" in resp.body()
 
@@ -235,9 +240,7 @@ class TestReportsPage:
         test_file = reports_dir / "vast_data_delete_20260304.json"
         test_file.write_text('{"delete": true}')
 
-        resp = page.request.post(
-            f"{flask_server['url']}/reports/delete/vast_data_delete_20260304.json"
-        )
+        resp = page.request.post(f"{flask_server['url']}/reports/delete/vast_data_delete_20260304.json")
         assert resp.ok
         assert not test_file.exists()
 
@@ -245,6 +248,7 @@ class TestReportsPage:
 # ---------------------------------------------------------------------------
 # Config page
 # ---------------------------------------------------------------------------
+
 
 class TestConfigPage:
     """Test config viewing, editing, and resetting."""
@@ -264,11 +268,13 @@ class TestConfigPage:
 # SSE Log Stream
 # ---------------------------------------------------------------------------
 
+
 class TestSSEStream:
     """Test that the SSE endpoint responds with the correct content type."""
 
     def test_stream_logs_content_type(self, flask_server, page):
         import urllib.request
+
         url = f"{flask_server['url']}/stream/logs"
         req = urllib.request.Request(url)
         with urllib.request.urlopen(req, timeout=3) as resp:
@@ -279,6 +285,7 @@ class TestSSEStream:
 # ---------------------------------------------------------------------------
 # Browse API
 # ---------------------------------------------------------------------------
+
 
 class TestBrowseAPI:
     """Test the directory browse API endpoint."""

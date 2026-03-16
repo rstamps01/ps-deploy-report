@@ -4,19 +4,29 @@
 # Include runtime deps
 -r requirements.txt
 
-# PDF generation (optional fallback, requires system C libraries)
-weasyprint>=60.0
-cairocffi>=1.7.0
-pycairo>=1.28.0
-
 # Testing framework
 pytest>=7.4.0
 pytest-cov>=4.1.0
 pytest-mock>=3.11.0
 
+# Browser-based UI tests
+pytest-playwright>=0.4.0
+
 # Code quality and linting
 flake8>=6.0.0
 black>=23.0.0
+
+# Static type checking
+mypy>=1.8.0
+types-requests>=2.31.0
+types-PyYAML>=6.0.12
+
+# Security scanning
+bandit>=1.7.0
+pip-audit>=2.6.0
+
+# Pre-commit hooks
+pre-commit>=3.6.0
 
 # Packaging
 pyinstaller>=6.0.0

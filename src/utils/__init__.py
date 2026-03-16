@@ -37,5 +37,4 @@ def get_data_dir() -> Path:
     return get_bundle_dir()
 
 
-__all__ = ['setup_logging', 'get_logger', 'get_bundle_dir', 'get_data_dir']
-
+__all__ = ["setup_logging", "get_logger", "get_bundle_dir", "get_data_dir"]

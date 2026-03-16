@@ -43,15 +43,16 @@ fi
 
 # 4. Create DMG (if create-dmg is installed)
 if command -v create-dmg &> /dev/null; then
-    VERSION=$(grep -oP "version.*?(\d+\.\d+\.\d+)" "$PROJECT_ROOT/src/main.py" | head -1 | grep -oP "\d+\.\d+\.\d+") || VERSION="1.4.0"
+    VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' "$PROJECT_ROOT/src/app.py" | head -1) || VERSION="1.4.0"
     DMG_NAME="VAST-Reporter-v${VERSION}-mac.dmg"
     echo "Creating DMG: $DMG_NAME"
     create-dmg \
         --volname "VAST Reporter" \
         --window-pos 200 120 \
-        --window-size 600 400 \
+        --window-size 540 380 \
         --icon-size 100 \
-        --app-drop-link 450 185 \
+        --icon "VAST Reporter.app" 150 100 \
+        --app-drop-link 390 100 \
         "$DIST_DIR/$DMG_NAME" \
         "$APP_PATH"
     echo "DMG created: $DIST_DIR/$DMG_NAME"

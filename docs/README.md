@@ -2,9 +2,7 @@
 
 ## Overview
 
-This directory contains **user-facing documentation** for installing and using the VAST As-Built Report Generator.
-
-All development documentation, design guides, and implementation references have been moved to `.archive/development_docs/` to maintain a clean, user-focused structure.
+This directory contains all documentation for the VAST As-Built Report Generator, organized into three categories: deployment guides for end users, development references for contributors, and project design documents synced from Confluence.
 
 ---
 
@@ -12,206 +10,70 @@ All development documentation, design guides, and implementation references have
 
 ```
 docs/
-├── README.md (this file)
-└── deployment/
-    ├── DEPLOYMENT.md           # Production deployment guide
-    ├── INSTALLATION-GUIDE.md   # Installation instructions
-    ├── UPDATE-GUIDE.md         # Update/upgrade procedures
-    ├── UNINSTALL-GUIDE.md      # Uninstallation procedures
-    ├── PERMISSIONS-GUIDE.md    # API permissions & requirements
-    ├── install-mac.sh          # Mac installation script
-    ├── install-windows.ps1     # Windows installation script
-    ├── uninstall-mac.sh        # Mac uninstall script
-    └── uninstall-windows.ps1   # Windows uninstall script
+├── README.md                   # This file
+├── confluence/                 # Internal only — not published to GitHub
+│   └── (26 design & requirements docs synced from Confluence)
+├── deployment/                 # End-user installation and operations
+│   ├── DEPLOYMENT.md           # Production deployment guide
+│   ├── INSTALLATION-GUIDE.md   # Step-by-step installation
+│   ├── UPDATE-GUIDE.md         # Update/upgrade procedures
+│   ├── UNINSTALL-GUIDE.md      # Complete removal procedures
+│   ├── PERMISSIONS-GUIDE.md    # API permissions & support user requirements
+│   ├── PORT-MAPPING-GUIDE.md   # SSH-based switch port mapping setup
+│   ├── PYTHON_3.14_INSTALLATION_FIX.md
+│   ├── install-mac.sh          # Automated macOS installation
+│   ├── install-windows.ps1     # Automated Windows installation
+│   ├── uninstall-mac.sh        # Automated macOS uninstall
+│   └── uninstall-windows.ps1   # Automated Windows uninstall
+└── development/                # Developer references and analysis
+    ├── DYNAMIC-TOC-IMPLEMENTATION.md
+    ├── TOC-IMPLEMENTATION-GUIDE.md
+    ├── ONYX_INTERACTIVE_SSH_IMPLEMENTATION.md
+    ├── ONYX_SUPPORT_SUMMARY.md
+    ├── PORT_MAPPING_ANALYSIS.md
+    ├── PORT_MAPPING_ISSUE_ANALYSIS.md
+    ├── API_DISCOVERY_MULTI_RACK.md
+    ├── MULTI_RACK_FINDINGS_10.143.11.204.md
+    ├── MULTI_RACK_IDENTIFICATION_ANALYSIS.md
+    ├── MULTI_RACK_QUICK_START.md
+    ├── RCA_ANALYSIS_SUMMARY.md
+    ├── RCA_LAMBDA-VAST-SLC-02_DBox_Unresponsive_Issue.md
+    └── RCA_Slack_Thread_Analysis_Template.md
 ```
 
 ---
 
-## Quick Start
+## Quick Links
 
-### Installation
+### For End Users / PS Engineers
 
-**Mac/Linux**:
-```bash
-cd docs/deployment
-chmod +x install-mac.sh
-./install-mac.sh
-```
+| Document | Purpose |
+|----------|---------|
+| [Installation Guide](deployment/INSTALLATION-GUIDE.md) | Install the application from scratch |
+| [Update Guide](deployment/UPDATE-GUIDE.md) | Update an existing installation |
+| [Uninstall Guide](deployment/UNINSTALL-GUIDE.md) | Completely remove the application |
+| [Permissions Guide](deployment/PERMISSIONS-GUIDE.md) | Required API credentials and access |
+| [Port Mapping Guide](deployment/PORT-MAPPING-GUIDE.md) | Set up SSH-based switch port mapping |
+| [Deployment Guide](deployment/DEPLOYMENT.md) | Production configuration and operations |
 
-**Windows**:
-```powershell
-cd docs\deployment
-.\install-windows.ps1
-```
+### For Developers
 
-### Generating Reports
+| Document | Purpose |
+|----------|---------|
+| [Onyx SSH Implementation](development/ONYX_INTERACTIVE_SSH_IMPLEMENTATION.md) | Mellanox Onyx interactive SSH approach |
+| [Onyx Support Summary](development/ONYX_SUPPORT_SUMMARY.md) | Onyx OS detection and dual-credential support |
+| [Port Mapping Analysis](development/PORT_MAPPING_ANALYSIS.md) | Port mapping discovery troubleshooting |
+| [Multi-Rack Analysis](development/MULTI_RACK_IDENTIFICATION_ANALYSIS.md) | Multi-rack detection via API |
+| [TOC Implementation](development/TOC-IMPLEMENTATION-GUIDE.md) | Dynamic table of contents generation |
 
-After installation:
-```bash
-cd ps-deploy-report
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
-```
+### Project Design (Confluence — Internal Only)
 
-Example:
-```bash
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
-# Note: Use 'support' username for full API permissions
-```
+26 design documents are synced from Confluence (page 6664028496) into `docs/confluence/` on developer machines. These serve as the authoritative source for project requirements, design decisions, and implementation guidance. They are **not published to GitHub** — see `.cursor/rules/` for how they are referenced by workspace rules.
 
 ---
 
-## Documentation Files
-
-### Deployment Documentation
-
-**DEPLOYMENT.md**
-- Comprehensive deployment guide
-- System requirements
-- Configuration options
-- Troubleshooting common issues
-
-**INSTALLATION-GUIDE.md**
-- Step-by-step installation instructions
-- Platform-specific guidance
-- Dependency management
-- Verification procedures
-
-**UPDATE-GUIDE.md**
-- Update existing installations
-- Version upgrade procedures
-- Rollback strategies
-- Automated update scripts
-
-**UNINSTALL-GUIDE.md**
-- Complete removal procedures
-- Manual and automated uninstall
-- Data backup and preservation
-- Cleanup verification
-
-**PERMISSIONS-GUIDE.md**
-- Required API permissions
-- Support username requirements
-- Troubleshooting permission errors
-- Security best practices
-
-**Installation Scripts**
-- `install-mac.sh` - Automated Mac/Linux installation
-- `install-windows.ps1` - Automated Windows installation
-- `uninstall-mac.sh` - Automated Mac/Linux uninstall
-- `uninstall-windows.ps1` - Automated Windows uninstall
-
----
-
-## Development Documentation
-
-All development-related documentation has been moved to:
-```
-.archive/development_docs/
-├── design-guide/        # Original design documents and requirements
-├── analysis/            # Technical analysis and implementation studies
-├── guides/              # Development guides and technical references
-└── test/                # Test documentation
-```
-
-**To access development docs**: See `.archive/development_docs/README.md`
-
----
-
-## Support
-
-### Common Issues
-
-**Installation Problems**:
-- Check Python version (3.8+ required)
-- Verify pip is updated
-- Review logs in `logs/` directory
-
-**Report Generation Issues**:
-- Verify cluster connectivity
-- **Use 'support' username for full API access**
-- Check credentials and permissions
-- Review API version compatibility
-- Ensure elevated read permissions for all endpoints
-
-**Permission Errors**:
-- Standard user accounts may lack sufficient API permissions
-- Report generation requires comprehensive read access
-- Use `support` user or equivalent elevated account
-
-**For detailed troubleshooting**: See deployment documentation
-
----
-
-## System Requirements
-
-### Minimum Requirements
-- Python 3.8 or higher
-- pip (Python package installer)
-- Network access to VAST cluster
-- 500MB free disk space
-
-### Supported Platforms
-- macOS 10.15+
-- Linux (Ubuntu 18.04+, RHEL 7+)
-- Windows 10/11
-
----
-
-## Report Features
-
-### Generated Report Includes
-
-1. **Title Page** - Cluster identity and configuration
-2. **Executive Summary** - Overview tables
-3. **Cluster Information** - Detailed configuration
-4. **Hardware Summary** - Inventory and capacity
-5. **Hardware Inventory** - Detailed tables with images
-6. **Physical Rack Layout** - Visual 42U rack diagram
-7. **Network Configuration** - Network settings
-8. **Logical Network Diagram** - Topology visualization
-9. **Logical Configuration** - VIP pools, tenants, views
-10. **Security & Authentication** - Security settings
-
-### Report Formats
-- **PDF** - Professional formatted report
-- **JSON** - Raw data for programmatic access
-
----
-
-## Quick Reference
-
-### Generate Report
-```bash
-python3 -m src.main \
-  --cluster-ip <IP> \
-  --username <USER> \
-  --password <PASS> \
-  --output-dir reports
-```
-
-### View Latest Report
-```bash
-open reports/vast_asbuilt_report_*.pdf  # Mac
-xdg-open reports/vast_asbuilt_report_*.pdf  # Linux
-start reports\vast_asbuilt_report_*.pdf  # Windows
-```
-
-### Check Installation
-```bash
-python3 -m src.main --version
-```
-
----
-
-## Additional Resources
-
-- **Project README**: `../README.md` - Project overview
-- **Development Docs**: `.archive/development_docs/` - Technical details
-- **API Reference**: `.archive/development_docs/design-guide/10-API-Reference.pdf`
-- **Report Examples**: See `reports/MVP/` for sample output
-
----
-
-**Last Updated**: October 17, 2025
-**Version**: 1.0
+**Last Updated**: March 10, 2026  
 **Maintained By**: VAST Professional Services
+
+### API Reference
+- [API Reference](API-REFERENCE.md) — VAST REST API endpoints used by the app (v7 and v1), including cluster, hardware (CBox, DBox, EBox, CNodes, DNodes, switches), network, and data collection sequence.

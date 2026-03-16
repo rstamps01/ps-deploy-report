@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main, "feature/*", "fix/*"]
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------------
+  # Job 0: Todo/roadmap list validation — ensure planned work is tracked
+  # -------------------------------------------------------------------
+  todo-list-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate TODO-ROADMAP exists and has required structure
+        run: |
+          ROADMAP=docs/TODO-ROADMAP.md
+          if [ ! -f "$ROADMAP" ]; then
+            echo "::error file=$ROADMAP::docs/TODO-ROADMAP.md is missing. Create it and track planned items (see .cursor/rules/todo-tracking-09.mdc)."
+            exit 1
+          fi
+          if ! grep -qE "TODO-ROADMAP|TODO & Roadmap" "$ROADMAP"; then
+            echo "::error file=$ROADMAP::docs/TODO-ROADMAP.md must contain a title (TODO-ROADMAP or TODO & Roadmap)."
+            exit 1
+          fi
+          if ! grep -q "Last updated" "$ROADMAP"; then
+            echo "::error file=$ROADMAP::docs/TODO-ROADMAP.md must contain 'Last updated' for status maintenance."
+            exit 1
+          fi
+          if ! grep -qE "## (Planned|Next steps|In progress|Done)" "$ROADMAP"; then
+            echo "::error file=$ROADMAP::docs/TODO-ROADMAP.md must contain at least one of: ## Planned, ## Next steps, ## In progress, ## Done."
+            exit 1
+          fi
+          echo "Todo list validation passed."
+
+  # -------------------------------------------------------------------
+  # Job 1: Code quality checks (fast gate — Linux only)
+  # -------------------------------------------------------------------
+  quality-gate:
+    needs: todo-list-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-quality-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-quality-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flake8 black mypy types-requests types-PyYAML
+
+      - name: Lint with flake8
+        run: flake8 src/ tests/
+
+      - name: Check formatting with black
+        run: black --check --line-length 120 src/ tests/
+
+      - name: Type check with mypy
+        run: mypy src/ --ignore-missing-imports --no-strict-optional
+
+  # -------------------------------------------------------------------
+  # Job 2: Unit tests
+  #   - Feature/fix branches: Python 3.12 only (lowest cost)
+  #   - develop/main: Python 3.11 + 3.12 matrix (full validation)
+  # -------------------------------------------------------------------
+  unit-tests:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main') && fromJSON('["3.11", "3.12"]') || fromJSON('["3.12"]') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          python -m pytest tests/ -v \
+            --ignore=tests/test_ui.py \
+            --ignore=tests/test_integration.py \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Upload coverage report
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # -------------------------------------------------------------------
+  # Job 3: Integration tests (Linux only)
+  # -------------------------------------------------------------------
+  integration-tests:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-integration-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-integration-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run integration tests
+        run: |
+          python -m pytest tests/test_integration.py -v -m integration
+
+  # -------------------------------------------------------------------
+  # Job 4: UI tests (Playwright) — develop/main only
+  #   Playwright + Chromium install is heavy; skip on feature branches
+  # -------------------------------------------------------------------
+  ui-tests:
+    needs: quality-gate
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-ui-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-ui-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Install Playwright browsers
+        run: playwright install --with-deps chromium
+
+      - name: Run UI tests
+        run: |
+          python -m pytest tests/test_ui.py -v --screenshot=on --output=test-results/
+
+      - name: Upload test screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-screenshots
+          path: test-results/
+
+  # -------------------------------------------------------------------
+  # Job 5: Build smoke test — develop/main only
+  #   macOS runner = 10x Linux cost; Windows = 2x Linux cost.
+  #   Only validate builds on merge-target branches.
+  # -------------------------------------------------------------------
+  build-smoke:
+    needs: [unit-tests, integration-tests]
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main'
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            script: bash packaging/build-mac.sh
+          - os: windows-latest
+            script: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || '~/Library/Caches/pip' }}
+          key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-build-
+
+      - name: Install runtime and PyInstaller
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build application
+        run: ${{ matrix.script }}
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          if [ -d "dist/VAST Reporter.app" ] || [ -d "dist/VAST Reporter" ]; then
+            echo "Build succeeded"
+            ls -la dist/
+          else
+            echo "Build output not found"
+            exit 1
+          fi

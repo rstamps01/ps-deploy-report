@@ -1,0 +1,117 @@
+name: Security Audit
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"  # Every Monday at 9:00 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "requirements*.txt"
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  # -------------------------------------------------------------------
+  # Combined security scan: pip-audit + bandit in a single runner
+  # Eliminates redundant checkout, setup-python, and pip install overhead
+  # -------------------------------------------------------------------
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-security-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-security-
+
+      - name: Install dependencies and security tools
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pip-audit bandit
+
+      - name: Run pip-audit (dependency vulnerabilities)
+        id: audit
+        continue-on-error: true
+        run: |
+          pip-audit --format=json --output=audit-results.json 2>&1 || true
+          pip-audit --format=columns 2>&1 | tee audit-summary.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Run bandit (Python security scan)
+        id: bandit
+        continue-on-error: true
+        run: |
+          bandit -r src/ -ll --format json --output bandit-results.json 2>&1 || true
+          bandit -r src/ -ll --format screen 2>&1 | tee bandit-summary.txt
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan
+          path: |
+            audit-results.json
+            audit-summary.txt
+            bandit-results.json
+            bandit-summary.txt
+
+  # -------------------------------------------------------------------
+  # Open GitHub issue if vulnerabilities found
+  # -------------------------------------------------------------------
+  report:
+    needs: scan
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: security-scan
+          path: security-results/
+        continue-on-error: true
+
+      - name: Check for issues and create report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          HAS_ISSUES=false
+
+          if [ -f security-results/audit-summary.txt ]; then
+            if grep -qi "vulnerability\|found" security-results/audit-summary.txt; then
+              HAS_ISSUES=true
+            fi
+          fi
+
+          if [ -f security-results/bandit-summary.txt ]; then
+            if grep -qi "issue\|severity" security-results/bandit-summary.txt; then
+              HAS_ISSUES=true
+            fi
+          fi
+
+          if [ "$HAS_ISSUES" = true ]; then
+            EXISTING=$(gh issue list --label "security" --state open --limit 1 --json number -q '.[0].number' 2>/dev/null || echo "")
+            if [ -z "$EXISTING" ]; then
+              gh issue create \
+                --title "Security Audit: Vulnerabilities detected ($(date +%Y-%m-%d))" \
+                --label "security" \
+                --body "Automated security scan detected potential issues. Check the workflow run artifacts for details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            fi
+          fi
