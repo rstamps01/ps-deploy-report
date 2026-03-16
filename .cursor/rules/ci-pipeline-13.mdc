@@ -15,7 +15,7 @@ Three GitHub Actions workflows enforce quality at different stages:
 
 ## Quality Gates (must pass before merge)
 
-1. **Lint**: `flake8 src/ tests/` — no errors allowed
+1. **Lint**: `flake8 src/ tests/` — uses project `.flake8` (extend-ignore for style); separate step enforces no bare `except` (E722).
 2. **Format**: `black --check --line-length 120 src/ tests/` — must be formatted
 3. **Type check**: `mypy src/ --ignore-missing-imports` — no type errors
 4. **Secrets detection**: gitleaks pre-commit hook catches credentials before push
@@ -30,9 +30,9 @@ Three GitHub Actions workflows enforce quality at different stages:
 
 ## Coverage Requirements
 
-- Minimum **80% line coverage** enforced in CI via `--cov-fail-under=80`
-- Coverage report uploaded as artifact on every CI run
-- New features and bug fixes must include corresponding tests
+- Minimum **49% line coverage** enforced in CI and build-release via `--cov-fail-under=49` (aligned with pyproject.toml); raise toward 80% as tests expand (see docs/TODO-ROADMAP.md TSE-8–TSE-10).
+- Coverage report uploaded as artifact on every CI run (Python 3.12 matrix job).
+- New features and bug fixes should include corresponding tests where practical.
 
 ## Build Validation
 

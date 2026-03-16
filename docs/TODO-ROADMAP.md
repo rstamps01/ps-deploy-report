@@ -32,6 +32,8 @@
 | TSE-6 | **Profiles API:** Unit tests GET/POST/DELETE `/profiles` and `/profiles/<name>` (mock _load_profiles/_save_profiles) | Medium | Planned | test_app.py |
 | TSE-7 | **Shutdown:** Optional unit test POST `/shutdown` (200, no crash) or document as manual check | Lower | Planned | test_app.py or manual |
 | TSE-8 | **Coverage:** Add tests for external_port_mapper, rack_diagram, report_builder (EBox path, partial port mapping) toward 80% | Lower | Planned | per-module |
+| TSE-9 | **Coverage — low-coverage modules:** Add tests for comprehensive_report_template.py, enhanced_report_builder.py (and expand external_port_mapper, rack_diagram, report_builder per TSE-8) to raise total coverage toward 80% | Lower | Planned | per-module |
+| TSE-10 | **Coverage — omit config:** Optionally configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Planned | pyproject.toml / .coveragerc |
 
 ---
 
