@@ -409,7 +409,9 @@ class VastReportGenerator:
                         last_partial = port_mapping_data
                 except Exception as e:
                     last_error = _safe_str(e)
-                    self.logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
+                    self.logger.warning(
+                        "Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error
+                    )
 
             if last_partial and last_partial.get("port_map"):
                 self.logger.info("Using partial port mapping from last CNode attempt")

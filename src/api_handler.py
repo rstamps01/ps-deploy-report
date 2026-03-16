@@ -990,9 +990,7 @@ class VastApiHandler:
                                 f"Capacity display format: {'TB (base 10)' if cluster_info.capacity_base_10 else 'TiB (base 2)'}"
                             )
                 except Exception as e:
-                    self.logger.warning(
-                        "Could not retrieve capacity_base_10 from vms/ endpoint: %s", e
-                    )
+                    self.logger.warning("Could not retrieve capacity_base_10 from vms/ endpoint: %s", e)
 
             # Log additional valuable information
             if "build" in cluster_data:
