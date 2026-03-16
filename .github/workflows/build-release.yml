@@ -9,6 +9,10 @@ on:
     tags:
       - "v*"
 
+env:
+  # Opt into Node.js 24 for actions (Node 20 deprecated on runners)
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
@@ -92,6 +96,7 @@ jobs:
   # -------------------------------------------------------------------
   build:
     strategy:
+      fail-fast: false  # Run both macOS and Windows; one failure does not cancel the other
       matrix:
         include:
           - os: macos-latest
@@ -123,7 +128,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Ensure config files exist (spec expects them; cluster_profiles.json is gitignored)
+      - name: Ensure config files exist (Windows; cluster_profiles.json is gitignored)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path config | Out-Null
+          if (!(Test-Path config/cluster_profiles.json)) { '{}' | Set-Content -Path config/cluster_profiles.json }
+
+      - name: Ensure config files exist (macOS/Linux; cluster_profiles.json is gitignored)
+        if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           mkdir -p config
