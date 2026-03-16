@@ -110,7 +110,7 @@ class TestPageLoads:
     def test_nav_links_work(self, flask_server, page):
         page.goto(flask_server["url"])
         links = page.query_selector_all("nav a, .sidebar a, a.nav-link")
-        hrefs = [l.get_attribute("href") for l in links if l.get_attribute("href")]
+        hrefs = [anchor.get_attribute("href") for anchor in links if anchor.get_attribute("href")]
         expected = {"/", "/generate", "/reports", "/config"}
         assert expected.issubset(set(hrefs)), f"Missing nav links. Found: {hrefs}"
 

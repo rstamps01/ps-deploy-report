@@ -18,12 +18,10 @@ Author: Manus AI
 Date: September 12, 2025
 """
 
-import json
-import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 import requests
@@ -574,7 +572,7 @@ class VastApiHandler:
                     if "detail" in error_info and "maximum number of API Tokens" in error_info["detail"]:
                         self.logger.warning("User has reached maximum API token limit. Cannot create new token.")
                         return False
-                except:
+                except Exception as _:
                     pass
                 self.logger.error(f"API token creation failed: {response.status_code} - {response.text}")
                 return False
@@ -707,7 +705,9 @@ class VastApiHandler:
             self.rack_height_supported = True
             self.psnt_supported = True
             self.logger.info(
-                f"Enhanced features enabled: rack heights and PSNT (API {self.api_version}, Cluster {self.cluster_version})"
+                "Enhanced features enabled: rack heights and PSNT (API %s, Cluster %s)",
+                self.api_version,
+                self.cluster_version,
             )
         else:
             self.rack_height_supported = False
@@ -955,7 +955,10 @@ class VastApiHandler:
 
             # Debug logging for encryption fields
             self.logger.info(
-                f"Encryption fields extracted - enable_encryption: {cluster_info.enable_encryption}, encryption_type: {cluster_info.encryption_type}, ekm_port: {cluster_info.ekm_port}"
+                "Encryption fields extracted - enable_encryption: %s, encryption_type: %s, ekm_port: %s",
+                cluster_info.enable_encryption,
+                cluster_info.encryption_type,
+                cluster_info.ekm_port,
             )
 
             # Extract network configuration - Set defaults for fields not available in clusters endpoint
@@ -987,7 +990,9 @@ class VastApiHandler:
                                 f"Capacity display format: {'TB (base 10)' if cluster_info.capacity_base_10 else 'TiB (base 2)'}"
                             )
                 except Exception as e:
-                    self.logger.warning(f"Could not retrieve capacity_base_10 from vms/ endpoint: {e}")
+                    self.logger.warning(
+                        "Could not retrieve capacity_base_10 from vms/ endpoint: %s", e
+                    )
 
             # Log additional valuable information
             if "build" in cluster_data:
@@ -1086,7 +1091,11 @@ class VastApiHandler:
 
                 # Log key information
                 self.logger.debug(
-                    f"CNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.cores} cores, {hardware_info.status}"
+                    "CNode %s: %s, %s cores, %s",
+                    hardware_info.name,
+                    hardware_info.box_vendor,
+                    hardware_info.cores,
+                    hardware_info.status,
                 )
                 if hardware_info.is_leader:
                     self.logger.debug(f"CNode {hardware_info.name} is cluster leader")
@@ -1438,10 +1447,12 @@ class VastApiHandler:
                         self._cluster_info.management_vips = dns_info.get("vip", "Not Configured")
                         self._cluster_info.external_gateways = dns_info.get("vip_gateway", "Not Configured")
                         self._cluster_info.ext_netmask = (
-                            f"255.255.0.0" if dns_info.get("vip_subnet_cidr") == 16 else "Not Configured"
+                            "255.255.0.0" if dns_info.get("vip_subnet_cidr") == 16 else "Not Configured"
                         )
                         self.logger.info(
-                            f"Updated cluster network info from DNS: VIP={dns_info.get('vip')}, Gateway={dns_info.get('vip_gateway')}"
+                            "Updated cluster network info from DNS: VIP=%s, Gateway=%s",
+                            dns_info.get("vip"),
+                            dns_info.get("vip_gateway"),
                         )
             else:
                 self.logger.warning("DNS configuration not available")
@@ -1549,7 +1560,9 @@ class VastApiHandler:
             }
 
             self.logger.info(
-                f"Retrieved cluster network config: VIPs={network_config['management_vips']}, Gateways={network_config['external_gateways']}"
+                "Retrieved cluster network config: VIPs=%s, Gateways=%s",
+                network_config["management_vips"],
+                network_config["external_gateways"],
             )
             return network_config
 
