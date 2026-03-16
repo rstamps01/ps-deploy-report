@@ -38,8 +38,13 @@ if (-not (Test-Path $AppDir)) {
 }
 Write-Host "App folder created: $AppDir" -ForegroundColor Green
 
-# 4. Create ZIP archive
-$Version = "1.4.2"
+# 4. Create ZIP archive (version from src/app.py APP_VERSION)
+$AppPy = Join-Path $ProjectRoot "src" "app.py"
+$Version = "1.4.0"
+if (Test-Path $AppPy) {
+    $m = [regex]::Match((Get-Content $AppPy -Raw), 'APP_VERSION\s*=\s*["'']([0-9]+\.[0-9]+\.[0-9]+)["'']')
+    if ($m.Success) { $Version = $m.Groups[1].Value }
+}
 $ZipName = "VAST-Reporter-v$Version-win.zip"
 $ZipPath = Join-Path $DistDir $ZipName
 Write-Host "Creating ZIP: $ZipName" -ForegroundColor Yellow
