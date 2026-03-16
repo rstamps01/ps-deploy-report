@@ -35,6 +35,9 @@ python-dotenv>=1.0.0
 # Web UI (Flask-based GUI)
 flask>=3.0.0
 
+# Markdown rendering (in-app documentation viewer)
+markdown>=3.5.0
+
 # Cross-platform SSH (used for port mapping on all platforms)
 paramiko>=3.4.0
 

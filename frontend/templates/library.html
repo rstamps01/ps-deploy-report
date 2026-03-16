@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Library - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Hardware Device Library</h1>
+    <p class="subtitle">Manage device definitions and images used in rack and network diagrams</p>
+</div>
+
+{% if unrecognized %}
+<div class="card unrecognized-alert">
+    <h3>Unrecognized Devices</h3>
+    <p class="subtitle">These device models were encountered during the last report generation but have no matching image. Add them below to improve diagram accuracy.</p>
+    <div class="unrecognized-list">
+        {% for model in unrecognized %}
+        <span class="unrecognized-tag" data-key="{{ model }}" title="Click to pre-fill the add form">{{ model }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <h3>Add Device</h3>
+    <p class="lib-requirements">
+        <strong>Image requirements:</strong> PNG or JPEG &middot; 60–2000 px wide &middot; max 1 MB &middot;
+        ~240 px wide recommended for consistency
+    </p>
+    <form id="addDeviceForm" class="lib-add-form" enctype="multipart/form-data">
+        <div class="lib-form-grid">
+            <div class="form-group">
+                <label for="libKey">Identifier Key *</label>
+                <input type="text" id="libKey" name="key" required placeholder="e.g. dell_poweredge_r760">
+            </div>
+            <div class="form-group">
+                <label for="libType">Type *</label>
+                <select id="libType" name="type" required>
+                    <option value="cbox">CBox</option>
+                    <option value="dbox">DBox</option>
+                    <option value="ebox">EBox</option>
+                    <option value="switch">Switch</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="libHeight">U Height *</label>
+                <select id="libHeight" name="height_u">
+                    <option value="1">1U</option>
+                    <option value="2">2U</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="libDesc">Description</label>
+                <input type="text" id="libDesc" name="description" placeholder="Optional label">
+            </div>
+            <div class="form-group lib-image-group">
+                <label for="libImage">Device Image</label>
+                <div class="lib-upload-row">
+                    <input type="file" id="libImage" name="image" accept=".png,.jpg,.jpeg">
+                    <div id="libPreview" class="lib-preview hidden"></div>
+                </div>
+                <small class="text-muted">Leave empty to use generic placeholder</small>
+            </div>
+        </div>
+        <div class="lib-form-actions">
+            <button type="submit" class="btn btn-accent">Add Device</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h3>Device Definitions</h3>
+    <table class="data-table" id="libraryTable">
+        {% set row_counter = namespace(n=0) %}
+        {% for section in [
+            {'type': 'cbox',   'label': 'CBox Hardware',   'pending': false},
+            {'type': 'dbox',   'label': 'DBox Hardware',   'pending': false},
+            {'type': 'switch', 'label': 'Switch Hardware', 'pending': false},
+            {'type': 'ebox',   'label': 'EBox Hardware',   'pending': false},
+        ] %}
+        <thead>
+            <tr class="lib-section-header">
+                <th colspan="7">{{ section.label }}{% if section.pending %} <span class="lib-badge lib-badge-pending">Support Pending</span>{% endif %}</th>
+            </tr>
+            <tr>
+                <th>Identifier Key</th>
+                <th class="text-center">Height</th>
+                <th class="text-center">Image</th>
+                <th>Description</th>
+                <th class="text-center">Source</th>
+                <th class="text-right" colspan="2">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set section_devices = devices | selectattr('type', 'equalto', section.type) | list %}
+            {% if section_devices %}
+                {% for d in section_devices %}
+                {% set row_counter.n = row_counter.n + 1 %}
+                <tr id="lib-row-{{ row_counter.n }}">
+                    <td><code>{{ d.key }}</code></td>
+                    <td class="text-center">{{ d.height_u }}U</td>
+                    <td class="text-center">
+                        {% if d.image_filename %}
+                        <img class="lib-thumb"
+                             src="{% if d.source == 'built-in' %}{{ url_for('library_builtin_image', filename=d.image_filename) }}{% else %}{{ url_for('library_image', filename=d.image_filename) }}{% endif %}"
+                             alt="{{ d.key }}" title="{{ d.image_filename }}">
+                        {% else %}
+                        <span class="text-muted">generic</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.description or '—' }}</td>
+                    <td class="text-center">
+                        {% if d.source == 'built-in' %}
+                        <span class="lib-badge lib-badge-builtin">Built-in</span>
+                        {% else %}
+                        <span class="lib-badge lib-badge-user">User</span>
+                        {% endif %}
+                    </td>
+                    <td class="actions" colspan="2">
+                        {% if d.source == 'user' %}
+                        <span class="actions-inner">
+                            <button class="btn-icon-delete" onclick="deleteDevice('{{ d.key }}', 'lib-row-{{ row_counter.n }}')" title="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                        </span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted">{% if section.pending %}Not yet supported{% else %}No {{ section.type | upper }} devices defined{% endif %}</td>
+                </tr>
+            {% endif %}
+        </tbody>
+        {% endfor %}
+    </table>
+</div>
+
+<script>
+document.getElementById('addDeviceForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const form = this;
+    const formData = new FormData(form);
+    try {
+        const resp = await fetch('/api/library', { method: 'POST', body: formData });
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert(data.error || 'Failed to add device');
+            return;
+        }
+        location.reload();
+    } catch (err) {
+        alert('Network error: ' + err.message);
+    }
+});
+
+async function deleteDevice(key, rowId) {
+    if (!confirm('Delete device "' + key + '" from user library?')) return;
+    try {
+        const resp = await fetch('/api/library/' + encodeURIComponent(key), { method: 'DELETE' });
+        if (resp.ok) {
+            document.getElementById(rowId).remove();
+        } else {
+            const data = await resp.json();
+            alert(data.error || 'Failed to delete');
+        }
+    } catch (err) {
+        alert('Network error: ' + err.message);
+    }
+}
+
+document.getElementById('libImage').addEventListener('change', function() {
+    const preview = document.getElementById('libPreview');
+    if (this.files && this.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            preview.innerHTML = '<img src="' + e.target.result + '" alt="Preview">';
+            preview.classList.remove('hidden');
+        };
+        reader.readAsDataURL(this.files[0]);
+    } else {
+        preview.innerHTML = '';
+        preview.classList.add('hidden');
+    }
+});
+
+document.querySelectorAll('.unrecognized-tag').forEach(function(tag) {
+    tag.addEventListener('click', function() {
+        document.getElementById('libKey').value = this.dataset.key;
+        document.getElementById('libKey').focus();
+        document.getElementById('addDeviceForm').scrollIntoView({ behavior: 'smooth' });
+    });
+});
+</script>
+{% endblock %}

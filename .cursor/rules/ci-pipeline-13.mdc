@@ -1,0 +1,87 @@
+---
+description: CI/CD pipeline requirements — quality gates, test layers, coverage, security scanning, and build validation
+alwaysApply: true
+---
+
+# CI/CD Pipeline Standards
+
+## Pipeline Architecture
+
+Three GitHub Actions workflows enforce quality at different stages:
+
+- `ci.yml` — runs on every push to `develop`/`main` and all PRs
+- `build-release.yml` — runs on `v*` tag push; includes all quality gates before building release artifacts
+- `security.yml` — runs weekly and on `requirements*.txt` changes; scans for vulnerabilities
+
+## Quality Gates (must pass before merge)
+
+1. **Lint**: `flake8 src/ tests/` — no errors allowed
+2. **Format**: `black --check --line-length 120 src/ tests/` — must be formatted
+3. **Type check**: `mypy src/ --ignore-missing-imports` — no type errors
+4. **Secrets detection**: gitleaks pre-commit hook catches credentials before push
+
+## Test Layers
+
+| Layer | Command | Scope |
+| --- | --- | --- |
+| Unit | `pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py` | Isolated module tests with mocks |
+| Integration | `pytest tests/test_integration.py -m integration` | Full pipeline: API data -> extract -> report |
+| UI | `pytest tests/test_ui.py` | Flask routes + Playwright browser tests |
+
+## Coverage Requirements
+
+- Minimum **80% line coverage** enforced in CI via `--cov-fail-under=80`
+- Coverage report uploaded as artifact on every CI run
+- New features and bug fixes must include corresponding tests
+
+## Build Validation
+
+- Cross-platform build smoke tests run on macOS and Windows via PyInstaller
+- Build must succeed on both platforms before a release can be created
+- Version consistency verified: `src/app.py` APP_VERSION must match all other version locations
+
+## Security Scanning
+
+- `pip-audit` and `bandit` run in a single consolidated job to minimize runner minutes
+- Scans run weekly (Monday 9:00 UTC) and on `requirements*.txt` changes
+- Critical findings create a GitHub issue automatically
+
+## Cost Optimization Strategy
+
+All workflows are tuned to minimize GitHub Actions runner costs:
+
+| Runner | Cost | Usage Policy |
+| --- | --- | --- |
+| `ubuntu-latest` (Linux) | Baseline | All quality gates, tests, security scans |
+| `windows-latest` | 2x Linux | Build jobs only; develop/main and release tags only |
+| `macos-latest` | 10x Linux | Build jobs only; develop/main and release tags only |
+
+Key optimizations:
+
+- **Concurrency groups** cancel in-progress CI runs when a new push arrives
+- **Branch gating**: build-smoke and ui-tests only run on `develop`/`main` branches and PRs targeting them, not on every feature/fix push
+- **Dynamic matrix**: unit-tests run Python 3.12 only on feature branches; full 3.11+3.12 matrix on develop/main
+- **Pip caching** on all jobs including macOS/Windows builds to reduce install time on expensive runners
+- **Consolidated security scans**: pip-audit + bandit in one job instead of two, eliminating redundant runner startup
+- **Never use larger runners or GPU instances** — standard GitHub-hosted runners are sufficient
+
+When adding new CI jobs, always use `ubuntu-latest` unless the job specifically requires macOS or Windows. Gate expensive runners behind branch conditions.
+
+## Pre-Commit Hooks (local enforcement)
+
+Developers should install pre-commit hooks for local quality enforcement:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+This runs black, flake8, mypy, and gitleaks on every commit locally.
+
+## Adding New Tests
+
+- Unit tests: `tests/test_<module>.py` mirroring `src/<module>.py`
+- Integration tests: add to `tests/test_integration.py` with `@pytest.mark.integration`
+- UI tests: add to `tests/test_ui.py` (requires Playwright)
+- Shared fixtures: add to `tests/conftest.py`
+- Mock API data: add to `tests/data/mock_api_responses.json`

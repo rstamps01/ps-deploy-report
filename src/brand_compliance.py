@@ -28,6 +28,7 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm, inch
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.platypus import (
     KeepTogether,
     PageBreak,
@@ -83,9 +84,7 @@ class VastTypography:
     # Font families (Note: Moderat fonts would need to be installed)
     # Fallback to system fonts that closely match Moderat characteristics
     PRIMARY_FONT = "Helvetica-Bold"  # Moderat-Bold equivalent
-    SECONDARY_FONT = (
-        "Helvetica-Bold"  # Moderat-Black equivalent (using Bold as fallback)
-    )
+    SECONDARY_FONT = "Helvetica-Bold"  # Moderat-Black equivalent (using Bold as fallback)
     ITALIC_FONT = "Helvetica-BoldOblique"  # Moderat-Black-Italic equivalent
     BODY_FONT = "Helvetica"  # Body text
 
@@ -147,8 +146,7 @@ class VastBrandCompliance:
             alignment=TA_CENTER,
             spaceAfter=15,
             spaceBefore=5,
-            leading=self.typography.SUBTITLE_SIZE
-            * self.typography.HEADING_LINE_SPACING,
+            leading=self.typography.SUBTITLE_SIZE * self.typography.HEADING_LINE_SPACING,
         )
 
         # Section heading style
@@ -170,8 +168,7 @@ class VastBrandCompliance:
             textColor=self.colors.BACKGROUND_DARK,
             spaceAfter=8,
             spaceBefore=10,
-            leading=self.typography.SUBHEADING_SIZE
-            * self.typography.HEADING_LINE_SPACING,
+            leading=self.typography.SUBHEADING_SIZE * self.typography.HEADING_LINE_SPACING,
         )
 
         # Body text style
@@ -210,9 +207,7 @@ class VastBrandCompliance:
 
         return styles
 
-    def create_vast_header(
-        self, title: str, subtitle: str = None, cluster_info: Dict[str, Any] = None
-    ) -> List[Any]:
+    def create_vast_header(self, title: str, subtitle: str = None, cluster_info: Dict[str, Any] = None) -> List[Any]:
         """
         Create VAST Light gradient header with brand-compliant styling.
 
@@ -248,9 +243,7 @@ class VastBrandCompliance:
 
             # Load image with larger size and preserved aspect ratio
             # Increased from 2" to 4.5" width to fill more space
-            logo = Image(
-                str(logo_path), width=4.5 * inch, height=2.5 * inch, kind="proportional"
-            )
+            logo = Image(str(logo_path), width=4.5 * inch, height=2.5 * inch, kind="proportional")
             logo.hAlign = "CENTER"
             elements.append(logo)
             elements.append(Spacer(1, 20))
@@ -323,9 +316,7 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_table(
-        self, data: List[List[str]], title: str = None, headers: List[str] = None
-    ) -> List[Any]:
+    def create_vast_table(self, data: List[List[str]], title: str = None, headers: List[str] = None) -> List[Any]:
         """
         Create VAST brand-compliant table with gradient styling.
 
@@ -403,9 +394,7 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_hardware_table(
-        self, hardware_data: List[Dict[str, Any]], hardware_type: str
-    ) -> List[Any]:
+    def create_vast_hardware_table(self, hardware_data: List[Dict[str, Any]], hardware_type: str) -> List[Any]:
         """
         Create VAST brand-compliant hardware inventory table with auto-adjusting column widths.
 
@@ -430,11 +419,10 @@ class VastBrandCompliance:
         # Prepare table data
         table_data = []
         for item in hardware_data:
-            # Format model text with line breaks for better wrapping
+            # Model: show vendor only; strip NIC description (e.g. ", two dual-port NICs")
             model = item.get("model", "Unknown")
-            if model != "Unknown" and "," in model:
-                # Split on comma and join with line break for better wrapping
-                model = model.replace(", ", "<br/>")
+            if model and isinstance(model, str) and "," in model:
+                model = model.split(",")[0].strip()
 
             row = [
                 item.get("id", "Unknown"),
@@ -456,23 +444,49 @@ class VastBrandCompliance:
             table_data.append(row)
 
         # Create table with auto-adjusting column widths and multi-page support
-        return self.create_vast_hardware_table_with_pagination(
-            table_data, hardware_type, headers
-        )
+        return self.create_vast_hardware_table_with_pagination(table_data, hardware_type, headers)
+
+    def _content_based_column_widths(
+        self,
+        full_table_data: List[List[str]],
+        page_width: float,
+        font_name: str,
+        font_size: int,
+        min_col_pt: float = 36,
+        max_ratio: float = 0.45,
+        padding_pt: float = 24,
+    ) -> List[float]:
+        """
+        Compute column widths from actual content so columns fit variable value lengths.
+        Uses stringWidth for font-based measurement, then normalizes to page_width.
+        """
+        if not full_table_data:
+            return []
+        num_cols = len(full_table_data[0])
+        max_widths = [0.0] * num_cols
+        for row in full_table_data:
+            for j, cell in enumerate(row):
+                if j >= num_cols:
+                    continue
+                text = str(cell).replace("<br/>", " ").replace("<b>", "").replace("</b>", "")
+                w = stringWidth(text, font_name, font_size) + padding_pt
+                if w > max_widths[j]:
+                    max_widths[j] = w
+        min_pt = min_col_pt
+        max_pt = page_width * max_ratio
+        bounded = [max(min_pt, min(max_pt, w)) for w in max_widths]
+        total = sum(bounded)
+        if total <= 0:
+            return [page_width / num_cols] * num_cols
+        return [page_width * (w / total) for w in bounded]
 
     def create_vast_hardware_table_with_auto_width(
         self, table_data: List[List[str]], title: str, headers: List[str]
     ) -> List[Any]:
         """
         Create VAST brand-compliant hardware table with auto-adjusting column widths.
-
-        Args:
-            table_data (List[List[str]]): Table data
-            title (str): Table title
-            headers (List[str]): Column headers
-
-        Returns:
-            List[Any]: Table elements (title and table kept together)
+        For Hardware Inventory (Rack, Node, Model, Name/Serial Number, Status, Height),
+        column widths are computed from content to fit variable value lengths.
         """
         if not table_data:
             return []
@@ -491,55 +505,32 @@ class VastBrandCompliance:
             full_table_data.append(headers)
         full_table_data.extend(table_data)
 
-        # Calculate optimal column widths based on content
-        page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins
+        page_width = A4[0] - 1.0 * inch  # A4 width minus margins
         num_cols = len(headers)
 
-        # Define column width ratios based on typical content length
-        # ID: narrow, Model: wide, Serial Number: medium, Status: narrow, Rack Height: wider
-        if num_cols == 5:  # CNodes/DNodes/CBox Inventory
-            col_ratios = [
-                0.06,  # ID
-                0.45,  # Model (increased for long text)
-                0.25,  # Serial Number
-                0.12,  # Status
-                0.12,  # Rack Height
-            ]  # ID, Model, Serial, Status, Rack Height
-        elif num_cols == 6:
-            # Check if this is the hardware inventory table with Rack column
-            if headers and headers[0] == "Rack":
-                # Hardware Inventory: Rack, Node, Model, Name/Serial Number, Status, Height
-                # Rack, Node, Status, and Height should be narrow
-                # Model column needs more width for long text
-                narrow_width = 0.08  # Narrow width for Rack, Node, Status, Height
-                col_ratios = [
-                    narrow_width,  # Rack (decreased)
-                    0.12,          # Node (decreased from 0.18)
-                    0.40,          # Model (increased from 0.30)
-                    0.24,          # Name/Serial Number
-                    narrow_width,  # Status
-                    narrow_width,  # Height (renamed from Position)
-                ]
+        # Hardware Inventory: content-based column widths for flexible formatting
+        if num_cols == 6 and headers and headers[0] == "Rack":
+            col_widths = self._content_based_column_widths(
+                full_table_data,
+                page_width,
+                self.typography.BODY_FONT,
+                self.typography.BODY_SIZE,
+                min_col_pt=28,
+                max_ratio=0.45,
+                padding_pt=24,
+            )
+        else:
+            # Other tables: fixed ratios
+            if num_cols == 5:
+                col_ratios = [0.06, 0.45, 0.25, 0.12, 0.12]
+            elif num_cols == 6:
+                col_ratios = [0.08, 0.28, 0.15, 0.15, 0.20, 0.14]
             else:
-                # CBox/DBox Network Configuration (without Net Type)
-                col_ratios = [
-                    0.08,  # ID
-                    0.28,  # Hostname (increased from 0.20)
-                    0.15,  # Mgmt IP (reduced from 0.18)
-                    0.15,  # IPMI IP (reduced from 0.18)
-                    0.20,  # VAST OS
-                    0.14,  # VMS Host/Position (reduced from 0.16)
-                ]
-        else:  # Other hardware types
-            col_ratios = [
-                0.15,
-                0.35,
-                0.25,
-                0.15,
-                0.1,
-            ]  # ID, Model, Serial, Status, Position
-
-        col_widths = [page_width * ratio for ratio in col_ratios]
+                col_ratios = [0.15, 0.35, 0.25, 0.15, 0.1]
+            if len(col_ratios) == num_cols:
+                col_widths = [page_width * ratio for ratio in col_ratios]
+            else:
+                col_widths = [page_width / num_cols] * num_cols
 
         # Convert model column data to Paragraph objects for HTML support with center alignment
         processed_table_data = []
@@ -635,9 +626,7 @@ class VastBrandCompliance:
 
         # If only one page needed, use the regular method
         if num_pages <= 1:
-            return self.create_vast_hardware_table_with_auto_width(
-                table_data, title, headers
-            )
+            return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
 
         # Split data into pages
         for page_num in range(num_pages):
@@ -652,9 +641,7 @@ class VastBrandCompliance:
                 page_title = title
 
             # Create table for this page
-            page_elements = self.create_vast_hardware_table_with_auto_width(
-                page_data, page_title, headers
-            )
+            page_elements = self.create_vast_hardware_table_with_auto_width(page_data, page_title, headers)
             elements.extend(page_elements)
 
             # Add page break between pages (except for the last page)
@@ -663,9 +650,7 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_2d_diagram_placeholder(
-        self, title: str, description: str
-    ) -> List[Any]:
+    def create_vast_2d_diagram_placeholder(self, title: str, description: str) -> List[Any]:
         """
         Create placeholder for 2D visual diagrams following VAST brand guidelines.
 
@@ -690,9 +675,7 @@ class VastBrandCompliance:
 
         # Placeholder box with VAST styling
         placeholder_text = f"[{title} Diagram Placeholder]"
-        placeholder_para = Paragraph(
-            f"<i>{placeholder_text}</i>", self.styles["vast_caption"]
-        )
+        placeholder_para = Paragraph(f"<i>{placeholder_text}</i>", self.styles["vast_caption"])
         elements.append(placeholder_para)
         elements.append(Spacer(1, 12))
 
@@ -738,9 +721,7 @@ class VastBrandCompliance:
                 f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
             )
         else:
-            footer_text = (
-                "VAST Professional Services | Automated As-Built Documentation"
-            )
+            footer_text = "VAST Professional Services | Automated As-Built Documentation"
 
         # Create centered footer paragraph
         footer_style = ParagraphStyle(
@@ -798,9 +779,7 @@ class VastBrandCompliance:
                 f"Generated: {timestamp} | Data Completeness: {completeness:.1%}"
             )
         else:
-            footer_text = (
-                "VAST Professional Services | Automated As-Built Documentation"
-            )
+            footer_text = "VAST Professional Services | Automated As-Built Documentation"
 
         # Create centered footer paragraph
         footer_style = ParagraphStyle(
@@ -870,9 +849,7 @@ class VastBrandCompliance:
 
             from utils import get_bundle_dir
 
-            watermark_path = str(
-                get_bundle_dir() / "assets" / "diagrams" / "lg_vast_watermark.png"
-            )
+            watermark_path = str(get_bundle_dir() / "assets" / "diagrams" / "lg_vast_watermark.png")
 
             if not os.path.exists(watermark_path):
                 if page_num == 2:
@@ -949,9 +926,7 @@ class VastBrandCompliance:
             canvas.drawString(left_margin, y_position, generated_text)
 
             # Draw center text (VAST PS | Documentation | Management VIP)
-            center_text_width = canvas.stringWidth(
-                center_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE
-            )
+            center_text_width = canvas.stringWidth(center_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
             center_x_position = (page_width - center_text_width) / 2
             canvas.drawString(center_x_position, y_position, center_text)
 

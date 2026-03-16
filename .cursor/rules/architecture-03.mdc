@@ -15,9 +15,12 @@ The application follows a strict three-stage pipeline. Each layer only depends o
 
 ### Web UI Layer (app.py)
 - Flask application with SSE log streaming and background job execution
-- Routes: Dashboard (/), Generate (/generate), Reports (/reports), Config (/config)
+- Page routes: Dashboard (/), Generate (/generate), Reports (/reports), Config (/config), Library (/library)
 - API endpoints: /api/discover, /api/browse, /profiles, /stream/logs
-- Config keys: DEFAULT_OUTPUT_DIR, OUTPUT_DIRS, CONFIG_PATH, PROFILES_PATH, JOB_RUNNING, JOB_RESULT
+- Job control: /generate/start (POST), /generate/status (GET), /generate/cancel (POST)
+- Library endpoints: /library/devices (GET/POST), /library/devices/<key> (DELETE), /library/images/<filename> (GET)
+- Application control: /shutdown (POST) — graceful server termination via stored werkzeug server reference
+- Config keys: DEFAULT_OUTPUT_DIR, OUTPUT_DIRS, CONFIG_PATH, PROFILES_PATH, JOB_RUNNING, JOB_RESULT, JOB_LOCK, JOB_CANCEL, _SERVER
 - Templates in frontend/templates/, static assets in frontend/static/
 
 ## Module Boundaries

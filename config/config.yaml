@@ -42,7 +42,7 @@ logging:
 # Report Configuration
 report:
   # Company/organization name for report header
-  organization: "VAST Data Professional Services"
+  organization: "VAST Data - Format testing"
 
   # Report template settings
   template:

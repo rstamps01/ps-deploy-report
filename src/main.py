@@ -22,6 +22,8 @@ import argparse
 import getpass
 import os
 import sys
+import threading
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -180,9 +182,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to connect to cluster: {e}")
             return False
 
-    def _get_credentials(
-        self, args: argparse.Namespace
-    ) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    def _get_credentials(self, args: argparse.Namespace) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
         Get user credentials from various sources.
 
@@ -224,9 +224,7 @@ class VastReportGenerator:
 
             # Prompt for credentials
             self.logger.info("Prompting for credentials...")
-            auth_method = input(
-                "Authentication method (1=token, 2=username/password) [2]: "
-            ).strip()
+            auth_method = input("Authentication method (1=token, 2=username/password) [2]: ").strip()
 
             if auth_method == "1":
                 token = getpass.getpass("VAST API Token: ")
@@ -251,9 +249,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to get credentials: {e}")
             return None, None, None
 
-    def _get_switch_credentials(
-        self, args: argparse.Namespace
-    ) -> tuple[Optional[str], Optional[str]]:
+    def _get_switch_credentials(self, args: argparse.Namespace) -> tuple[Optional[str], Optional[str]]:
         """
         Get switch SSH credentials if port mapping is enabled.
 
@@ -271,26 +267,18 @@ class VastReportGenerator:
             node_password = args.node_password or os.getenv("VAST_NODE_PASSWORD")
             if not node_password:
                 self.logger.info("Prompting for node SSH password...")
-                node_password = getpass.getpass(
-                    f"SSH Password for nodes (user: {args.node_user}): "
-                )
+                node_password = getpass.getpass(f"SSH Password for nodes (user: {args.node_user}): ")
                 if not node_password:
-                    self.logger.warning(
-                        "Node password not provided - port mapping will be skipped"
-                    )
+                    self.logger.warning("Node password not provided - port mapping will be skipped")
                     return None, None
 
             # Get switch password
             switch_password = args.switch_password or os.getenv("VAST_SWITCH_PASSWORD")
             if not switch_password:
                 self.logger.info("Prompting for switch SSH password...")
-                switch_password = getpass.getpass(
-                    f"SSH Password for switches (user: {args.switch_user}): "
-                )
+                switch_password = getpass.getpass(f"SSH Password for switches (user: {args.switch_user}): ")
                 if not switch_password:
-                    self.logger.warning(
-                        "Switch password not provided - port mapping will be skipped"
-                    )
+                    self.logger.warning("Switch password not provided - port mapping will be skipped")
                     return None, None
 
             return node_password, switch_password
@@ -299,9 +287,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to get switch credentials: {e}")
             return None, None
 
-    def _collect_data(
-        self, args: argparse.Namespace = None
-    ) -> Optional[Dict[str, Any]]:
+    def _collect_data(self, args: argparse.Namespace = None) -> Optional[Dict[str, Any]]:
         """
         Collect data from the VAST cluster, including optional port mapping.
 
@@ -324,18 +310,10 @@ class VastReportGenerator:
             cluster_info = raw_data.get("cluster_info", {})
             enhanced_features = raw_data.get("enhanced_features", {})
 
-            self.logger.info(
-                f"Data collection completed for cluster: {cluster_info.get('name', 'Unknown')}"
-            )
-            self.logger.info(
-                f"Cluster version: {cluster_info.get('version', 'Unknown')}"
-            )
-            self.logger.info(
-                f"Enhanced features enabled: {enhanced_features.get('rack_height_supported', False)}"
-            )
-            self.logger.info(
-                f"PSNT available: {enhanced_features.get('psnt_supported', False)}"
-            )
+            self.logger.info(f"Data collection completed for cluster: {cluster_info.get('name', 'Unknown')}")
+            self.logger.info(f"Cluster version: {cluster_info.get('version', 'Unknown')}")
+            self.logger.info(f"Enhanced features enabled: {enhanced_features.get('rack_height_supported', False)}")
+            self.logger.info(f"PSNT available: {enhanced_features.get('psnt_supported', False)}")
 
             # Collect port mapping if enabled
             if args and args.enable_port_mapping:
@@ -345,9 +323,7 @@ class VastReportGenerator:
                     raw_data["port_mapping_external"] = port_mapping_data
                     self.logger.info("Port mapping data collected successfully")
                 else:
-                    self.logger.warning(
-                        "Port mapping collection failed - continuing without port mapping"
-                    )
+                    self.logger.warning("Port mapping collection failed - continuing without port mapping")
 
             return raw_data
 
@@ -355,9 +331,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to collect data: {e}")
             return None
 
-    def _collect_port_mapping(
-        self, args: argparse.Namespace, raw_data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    def _collect_port_mapping(self, args: argparse.Namespace, raw_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Collect port mapping data using external port mapper.
 
@@ -374,9 +348,7 @@ class VastReportGenerator:
             # Get switch credentials
             node_password, switch_password = self._get_switch_credentials(args)
             if not node_password or not switch_password:
-                self.logger.warning(
-                    "Switch credentials not available - skipping port mapping"
-                )
+                self.logger.warning("Switch credentials not available - skipping port mapping")
                 return None
 
             # Extract switch IPs from raw data
@@ -390,55 +362,60 @@ class VastReportGenerator:
 
             self.logger.info(f"Collecting port mapping from {len(switch_ips)} switches")
 
-            # Get CNode IP for clush access from cnodes_network section
+            # Get CNode IPs for clush access (try each until one works)
             cnodes_network = raw_data.get("cnodes_network", [])
             if not cnodes_network:
-                self.logger.warning(
-                    "No CNodes found in network data - cannot collect port mapping"
-                )
+                self.logger.warning("No CNodes found in network data - cannot collect port mapping")
                 return None
 
-            # Get first CNode's management IP for SSH access
-            cnode_ip = None
+            cnode_ips = []
             for cnode in cnodes_network:
-                cnode_ip = cnode.get("mgmt_ip") or cnode.get("ipmi_ip")
-                if cnode_ip and cnode_ip != "Unknown":
-                    self.logger.info(
-                        f"Using CNode {cnode.get('hostname', 'Unknown')} IP {cnode_ip} for clush access"
+                ip = cnode.get("mgmt_ip") or cnode.get("ipmi_ip")
+                if ip and ip != "Unknown" and ip not in cnode_ips:
+                    cnode_ips.append(ip)
+
+            if not cnode_ips:
+                self.logger.warning("No valid CNode IP available - cannot collect port mapping")
+                return None
+
+            last_error = None
+            last_partial = None
+            for cnode_ip in cnode_ips:
+                self.logger.info("Trying CNode %s for port mapping (clush)", cnode_ip)
+                try:
+                    port_mapper = ExternalPortMapper(
+                        cluster_ip=args.cluster_ip,
+                        api_user=self.api_handler.username or "support",
+                        api_password=self.api_handler.password or "",
+                        cnode_ip=cnode_ip,
+                        node_user=args.node_user,
+                        node_password=node_password,
+                        switch_ips=switch_ips,
+                        switch_user=args.switch_user,
+                        switch_password=switch_password,
                     )
-                    break
+                    port_mapping_data = port_mapper.collect_port_mapping()
+                    if port_mapping_data.get("available"):
+                        n = len(port_mapping_data.get("port_map", []))
+                        self.logger.info(
+                            "Collected %d port mappings via CNode %s%s",
+                            n,
+                            cnode_ip,
+                            " (partial)" if port_mapping_data.get("partial") else "",
+                        )
+                        return port_mapping_data
+                    last_error = port_mapping_data.get("error", "Unknown error")
+                    if port_mapping_data.get("port_map"):
+                        last_partial = port_mapping_data
+                except Exception as e:
+                    last_error = str(e)
+                    self.logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, e)
 
-            if not cnode_ip:
-                self.logger.warning(
-                    "No valid CNode IP available - cannot collect port mapping"
-                )
-                return None
-
-            # Initialize and run external port mapper
-            port_mapper = ExternalPortMapper(
-                cluster_ip=args.cluster_ip,
-                api_user=self.api_handler.username or "support",
-                api_password=self.api_handler.password or "",
-                cnode_ip=cnode_ip,
-                node_user=args.node_user,
-                node_password=node_password,
-                switch_ips=switch_ips,
-                switch_user=args.switch_user,
-                switch_password=switch_password,
-            )
-
-            port_mapping_data = port_mapper.collect_port_mapping()
-
-            if port_mapping_data.get("available"):
-                self.logger.info(
-                    f"Collected {len(port_mapping_data.get('port_map', []))} port mappings"
-                )
-                return port_mapping_data
-            else:
-                self.logger.warning(
-                    f"Port mapping collection failed: {port_mapping_data.get('error', 'Unknown error')}"
-                )
-                return None
+            if last_partial and last_partial.get("port_map"):
+                self.logger.info("Using partial port mapping from last CNode attempt")
+                return last_partial
+            self.logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown")
+            return None
 
         except ImportError as e:
             self.logger.error(f"Failed to import external_port_mapper: {e}")
@@ -447,9 +424,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to collect port mapping: {e}")
             return None
 
-    def _process_data(
-        self, raw_data: Dict[str, Any], args: argparse.Namespace = None
-    ) -> Optional[Dict[str, Any]]:
+    def _process_data(self, raw_data: Dict[str, Any], args: argparse.Namespace = None) -> Optional[Dict[str, Any]]:
         """
         Process raw data into report-ready format.
 
@@ -464,11 +439,7 @@ class VastReportGenerator:
             self.logger.info("Processing collected data...")
 
             # Process data with port mapping flag
-            use_external_port_mapping = (
-                args
-                and args.enable_port_mapping
-                and "port_mapping_external" in raw_data
-            )
+            use_external_port_mapping = args and args.enable_port_mapping and "port_mapping_external" in raw_data
             processed_data = self.data_extractor.extract_all_data(
                 raw_data, use_external_port_mapping=use_external_port_mapping
             )
@@ -496,9 +467,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to process data: {e}")
             return None
 
-    def _generate_reports(
-        self, processed_data: Dict[str, Any], args: argparse.Namespace
-    ) -> bool:
+    def _generate_reports(self, processed_data: Dict[str, Any], args: argparse.Namespace) -> bool:
         """
         Generate JSON and PDF reports.
 
@@ -518,17 +487,13 @@ class VastReportGenerator:
 
             # Generate timestamp for filenames
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            cluster_name = processed_data.get("cluster_summary", {}).get(
-                "name", "unknown"
-            )
+            cluster_name = processed_data.get("cluster_summary", {}).get("name", "unknown")
 
             # Generate JSON report
             json_filename = f"vast_data_{cluster_name}_{timestamp}.json"
             json_path = output_dir / json_filename
 
-            if not self.data_extractor.save_processed_data(
-                processed_data, str(json_path)
-            ):
+            if not self.data_extractor.save_processed_data(processed_data, str(json_path)):
                 self.logger.error("Failed to save JSON report")
                 return False
 
@@ -538,9 +503,7 @@ class VastReportGenerator:
             pdf_filename = f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
             pdf_path = output_dir / pdf_filename
 
-            if not self.report_builder.generate_pdf_report(
-                processed_data, str(pdf_path)
-            ):
+            if not self.report_builder.generate_pdf_report(processed_data, str(pdf_path)):
                 self.logger.error("Failed to generate PDF report")
                 return False
 
@@ -551,9 +514,7 @@ class VastReportGenerator:
             self.logger.error(f"Failed to generate reports: {e}")
             return False
 
-    def _display_summary(
-        self, processed_data: Dict[str, Any], args: argparse.Namespace
-    ) -> None:
+    def _display_summary(self, processed_data: Dict[str, Any], args: argparse.Namespace) -> None:
         """
         Display execution summary.
 
@@ -578,9 +539,7 @@ class VastReportGenerator:
             print(f"Total Nodes: {hardware.get('total_nodes', 0)}")
             print(f"CNodes: {len(hardware.get('cnodes', []))}")
             print(f"DNodes: {len(hardware.get('dnodes', []))}")
-            print(
-                f"Rack Positions Available: {hardware.get('rack_positions_available', False)}"
-            )
+            print(f"Rack Positions Available: {hardware.get('rack_positions_available', False)}")
 
             # Data completeness
             metadata = processed_data.get("metadata", {})
@@ -589,9 +548,7 @@ class VastReportGenerator:
 
             # Enhanced features
             enhanced_features = metadata.get("enhanced_features", {})
-            print(
-                f"Enhanced Features Enabled: {enhanced_features.get('rack_height_supported', False)}"
-            )
+            print(f"Enhanced Features Enabled: {enhanced_features.get('rack_height_supported', False)}")
 
             # Output files
             print(f"\nOutput Directory: {args.output_dir}")
@@ -664,13 +621,9 @@ Examples:
     )
 
     # Optional arguments
-    parser.add_argument(
-        "--username", "-u", help="VAST username (will prompt if not provided)"
-    )
+    parser.add_argument("--username", "-u", help="VAST username (will prompt if not provided)")
 
-    parser.add_argument(
-        "--password", "-p", help="VAST password (will prompt if not provided)"
-    )
+    parser.add_argument("--password", "-p", help="VAST password (will prompt if not provided)")
 
     parser.add_argument(
         "--token",
@@ -684,9 +637,7 @@ Examples:
         help="Path to configuration file (default: config/config.yaml)",
     )
 
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose output"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
 
     # Port mapping / switch access arguments (optional)
     parser.add_argument(
@@ -717,9 +668,7 @@ Examples:
         help="SSH password for VAST nodes (will prompt if not provided and port mapping enabled)",
     )
 
-    parser.add_argument(
-        "--version", action="version", version="VAST As-Built Report Generator 1.4.0"
-    )
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.2")
 
     return parser
 
@@ -746,9 +695,7 @@ def load_configuration(config_path: Optional[str] = None) -> Dict[str, Any]:
                 config = yaml.safe_load(f)
             return config or {}
         else:
-            print(
-                f"Warning: Configuration file {config_path} not found, using defaults"
-            )
+            print(f"Warning: Configuration file {config_path} not found, using defaults")
             return {}
     except Exception as e:
         print(f"Warning: Failed to load configuration: {e}")
@@ -790,10 +737,24 @@ def run_cli() -> int:
         return 1
 
 
+def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
+    """Poll until the Flask server is accepting connections."""
+    import socket
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.5):
+                return True
+        except OSError:
+            time.sleep(0.1)
+    return False
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     """Launch the Flask web UI and open the default browser."""
-    import threading
-    import webbrowser
+    from werkzeug.serving import make_server
 
     from app import create_flask_app
     from utils.logger import enable_sse_logging
@@ -804,17 +765,29 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
 
     flask_app = create_flask_app(config)
 
+    server = make_server(host, port, flask_app, threaded=True)
+    flask_app.config["_SERVER"] = server
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    if not _wait_for_server(host, port):
+        print("ERROR: Flask server failed to start.")
+        return 1
+
     url = f"http://{host}:{port}"
-    print(f"\n  VAST As-Built Reporter — Web UI")
+    print("\n  VAST As-Built Reporter — Web UI")
     print(f"  Running at {url}")
-    print(f"  Press Ctrl+C to stop\n")
+    print("  Press Ctrl+C to stop\n")
 
-    threading.Timer(1.0, lambda: webbrowser.open(url)).start()
-
+    webbrowser.open(url)
     try:
-        flask_app.run(host=host, port=port, debug=False, use_reloader=False)
+        server_thread.join()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        pass
+    finally:
+        print("Shutting down server…")
+        server.shutdown()
+
     return 0
 
 
@@ -834,9 +807,7 @@ def main() -> int:
         return run_cli()
 
     # If no recognised subcommand and no --cluster flag, default to GUI
-    if len(sys.argv) == 1 or not any(
-        a.startswith("--cluster") for a in sys.argv[1:]
-    ):
+    if len(sys.argv) == 1 or not any(a.startswith("--cluster") for a in sys.argv[1:]):
         return run_gui()
 
     # Legacy usage: direct CLI args like --cluster ... --output ...

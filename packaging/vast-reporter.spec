@@ -43,13 +43,24 @@ a = Analysis(
         # Frontend templates and static files
         (str(ROOT / "frontend" / "templates"), "frontend/templates"),
         (str(ROOT / "frontend" / "static"), "frontend/static"),
-        # Configuration
+        # Configuration (defaults copied to writable data dir at first launch)
         (str(ROOT / "config" / "config.yaml"), "config"),
-        (str(ROOT / "config" / "config.yaml.template") if (ROOT / "config" / "config.yaml.template").exists()
-         else str(ROOT / "templates" / "config.yaml.template"), "config"),
-        # Assets (logos, hardware images)
+        (str(ROOT / "config" / "config.yaml.template"), "config"),
+        (str(ROOT / "config" / "device_library.json"), "config"),
+        (str(ROOT / "config" / "cluster_profiles.json"), "config"),
+        # Assets (hardware images — exclude the large source composite)
         (str(ROOT / "assets" / "diagrams"), "assets/diagrams"),
-        (str(ROOT / "assets" / "hardware_images"), "assets/hardware_images"),
+        # Documentation (Docs page in UI): all _DOC_REGISTRY paths must be in the bundle
+        (str(ROOT / "README.md"), "."),
+        (str(ROOT / "CHANGELOG.md"), "."),
+        (str(ROOT / "docs" / "API-REFERENCE.md"), "docs"),
+        (str(ROOT / "docs" / "api" / "EBOX_API_V7_DISCOVERY.md"), "docs/api"),
+        (str(ROOT / "docs" / "deployment"), "docs/deployment"),
+    ] + [
+        (str(img), "assets/hardware_images")
+        for img in (ROOT / "assets" / "hardware_images").iterdir()
+        if img.suffix.lower() in (".png", ".jpeg", ".jpg")
+        and "image-20251227" not in img.name
     ] + ([(str(_rl_font_dir), "reportlab/fonts")] if _rl_font_dir else []),
     hiddenimports=[
         "flask",
@@ -129,8 +140,11 @@ if IS_MAC:
         icon=ICON_MAC,
         bundle_identifier="com.vastdata.asbuilt-reporter",
         info_plist={
-            "CFBundleShortVersionString": "1.4.0",
-            "CFBundleVersion": "1.4.0",
+            "CFBundleShortVersionString": "1.4.2",
+            "CFBundleVersion": "1.4.2",
             "NSHighResolutionCapable": True,
+            "NSAppTransportSecurity": {
+                "NSAllowsLocalNetworking": True,
+            },
         },
     )

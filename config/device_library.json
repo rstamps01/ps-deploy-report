@@ -1,0 +1,16 @@
+{
+  "supermicro_gen5_ebox": {
+    "type": "ebox",
+    "height_u": 1,
+    "image_filename": "supermicro_gen5_ebox_1u.png",
+    "description": "Supermicro Gen 5 EBox",
+    "added": "2026-03-12T06:51:50.962425"
+  },
+  "ebox": {
+    "type": "ebox",
+    "height_u": 1,
+    "image_filename": "ebox_1u.png",
+    "description": "Generic EBox",
+    "added": "2026-03-12T06:55:46.522516"
+  }
+}

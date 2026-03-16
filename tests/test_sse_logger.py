@@ -28,14 +28,17 @@ class TestSSELogHandler(unittest.TestCase):
     def setUp(self):
         self.q = queue.Queue(maxsize=10)
         self.handler = SSELogHandler(self.q)
-        self.handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        )
+        self.handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
 
     def test_emit_puts_entry_on_queue(self):
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="hello world", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="hello world",
+            args=(),
+            exc_info=None,
         )
         self.handler.emit(record)
         self.assertFalse(self.q.empty())
@@ -45,8 +48,13 @@ class TestSSELogHandler(unittest.TestCase):
 
     def test_emit_captures_module(self):
         record = logging.LogRecord(
-            name="mymod", level=logging.WARNING, pathname="mymod.py", lineno=42,
-            msg="oops", args=(), exc_info=None,
+            name="mymod",
+            level=logging.WARNING,
+            pathname="mymod.py",
+            lineno=42,
+            msg="oops",
+            args=(),
+            exc_info=None,
         )
         self.handler.emit(record)
         entry = self.q.get_nowait()

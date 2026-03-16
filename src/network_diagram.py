@@ -15,6 +15,7 @@ Color coding:
 - Purple lines: IPL/MLAG connections between switches
 """
 
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -30,31 +31,49 @@ from reportlab.lib.units import inch
 logger = logging.getLogger(__name__)
 
 
+def _load_user_library_net(library_path: Optional[str]) -> Dict[str, Any]:
+    if not library_path:
+        return {}
+    try:
+        with open(library_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
 class NetworkDiagramGenerator:
     """Generate logical network topology diagrams."""
 
-    def __init__(self, assets_path: str = "assets"):
+    def __init__(
+        self,
+        assets_path: str = "assets",
+        library_path: Optional[str] = None,
+        user_images_dir: Optional[str] = None,
+    ):
         """
         Initialize the network diagram generator.
 
         Args:
             assets_path: Path to assets directory containing hardware images
+            library_path: Path to user device_library.json file.
+            user_images_dir: Path to directory with user-uploaded hardware images.
         """
         self.logger = logging.getLogger(__name__)
         self.assets_path = Path(assets_path)
         self.hardware_images_path = self.assets_path / "hardware_images"
+        self.library_path = library_path
+        self.user_images_dir = user_images_dir
 
-        # Colors
-        self.switch_a_color = colors.HexColor("#00aa00")  # Green
-        self.switch_b_color = colors.HexColor("#0066cc")  # Blue
-        self.ipl_color = colors.HexColor("#9933cc")  # Purple
+        self.switch_a_color = colors.HexColor("#00aa00")
+        self.switch_b_color = colors.HexColor("#0066cc")
+        self.ipl_color = colors.HexColor("#9933cc")
 
-        # Image cache
-        self.image_cache = {}
+        self.image_cache: Dict[str, Optional[str]] = {}
+        self._user_library = _load_user_library_net(library_path)
 
     def load_hardware_image(self, hardware_type: str) -> Optional[str]:
         """
-        Load hardware image path for a given hardware type.
+        Load hardware image path using cascade: built-in -> user library -> generic.
 
         Args:
             hardware_type: Hardware type identifier
@@ -62,25 +81,58 @@ class NetworkDiagramGenerator:
         Returns:
             Path to image file or None if not found
         """
-        # Map hardware types to image files
         image_map = {
+            # CBoxes
             "supermicro_gen5_cbox": "supermicro_gen5_cbox_1u.png",
-            "broadwell": "broadwell_cbox_2u.png",  # Broadwell 2U CBox
-            "cascadelake": "cascadelake_cbox_2u.png",  # CascadeLake 2U CBox
+            "hpe_genoa_cbox": "hpe_genoa_cbox.png",
+            "hpe_icelake": "hpe_il_cbox_2u.png",
+            "dell_icelake": "dell_il_cbox_2u.png",
+            "dell_turin_cbox": "dell_turin_r6715_cbox_1u.png",
+            "smc_turin_cbox": "smc_turin_cbox_1u.png",
+            "broadwell": "broadwell_cbox_2u.png",
+            "cascadelake": "cascadelake_cbox_2u.png",
+            # DBoxes
             "ceres_v2": "ceres_v2_1u.png",
             "dbox-515": "ceres_v2_1u.png",
-            "sanmina": "ceres_v2_1u.png",  # Sanmina 1U DBox
-            "maverick_1.5": "maverick_2u.png",  # Maverick 2U DBox
-            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",  # Mellanox MSN3700 switch
-            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",  # Mellanox MSN2100 switch
+            "dbox-516": "ceres_v2_1u.png",
+            "sanmina": "maverick_2u.png",
+            "maverick_1.5": "maverick_2u.png",
+            # Switches
+            "msn2700": "mellanox_msn2700_1x32p_100g_switch_1u.png",
+            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",
+            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",
+            "msn4600c": "mellanox_msn4600C_1x64p_100g_switch_2u.png",
+            "msn4600": "mellanox_msn4600_1x64p_200g_switch_2u.png",
+            "sn5600": "mellanox_sn5600_1x64p_800g_switch_2u.png",
+            "arista_7060dx5": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "arista_7050cx4": "arista_7050cx4_24d_400g_switch_1u.png",
+            "arista_7050dx4": "arista_7050dx4_32s_400g_switch_1u.png",
+            "arista": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
         }
 
-        # Find matching image
-        for key, filename in image_map.items():
-            if key.lower() in hardware_type.lower():
-                image_path = self.hardware_images_path / filename
+        hw_lower = hardware_type.lower()
+
+        for key in sorted(image_map, key=len, reverse=True):
+            if key in hw_lower:
+                image_path = self.hardware_images_path / image_map[key]
                 if image_path.exists():
                     return str(image_path)
+
+        if self._user_library and self.user_images_dir:
+            udir = Path(self.user_images_dir)
+            for key in sorted(self._user_library, key=len, reverse=True):
+                entry = self._user_library[key]
+                if key in hw_lower:
+                    fname = entry.get("image_filename")
+                    if fname:
+                        img_path = udir / fname
+                        if img_path.exists():
+                            return str(img_path)
+
+        generic = self.hardware_images_path / "generic_1u.png"
+        if generic.exists():
+            self.logger.warning(f"No image for hardware type '{hardware_type}' — using generic placeholder")
+            return str(generic)
 
         self.logger.warning(f"No image found for hardware type: {hardware_type}")
         return None
@@ -123,27 +175,17 @@ class NetworkDiagramGenerator:
             switches = hardware_data.get("switches", [])
             port_map = port_mapping_data.get("port_map", [])
             ipl_connections = port_mapping_data.get("ipl_connections", [])
-            ipl_ports = port_mapping_data.get(
-                "ipl_ports", []
-            )  # Legacy format for backward compatibility
+            ipl_ports = port_mapping_data.get("ipl_ports", [])  # Legacy format for backward compatibility
 
-            self.logger.info(
-                f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches"
-            )
+            self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches")
             # Log IPL connections accurately
             ipl_count_msg = (
-                f"{len(ipl_connections)} IPL connections"
-                if ipl_connections
-                else f"{len(ipl_ports)} IPL ports (legacy)"
+                f"{len(ipl_connections)} IPL connections" if ipl_connections else f"{len(ipl_ports)} IPL ports (legacy)"
             )
-            self.logger.info(
-                f"Connections: {len(port_map)} port mappings, {ipl_count_msg}"
-            )
+            self.logger.info(f"Connections: {len(port_map)} port mappings, {ipl_count_msg}")
 
             # Layout parameters with dynamic sizing based on device count
-            layer_height = (
-                height / 4
-            )  # Divide into 4 layers (top margin, cbox, switch, dbox)
+            layer_height = height / 4  # Divide into 4 layers (top margin, cbox, switch, dbox)
 
             # Calculate max devices per row to determine sizing
             max_devices = max(len(cboxes), len(dboxes), 2)  # At least 2 for switches
@@ -166,9 +208,7 @@ class NetworkDiagramGenerator:
             else:
                 # For 8+ devices, calculate to fit all within width
                 available_width = width * 0.9  # Use 90% of width
-                device_width = min(
-                    40, available_width / (max_devices * 1.3)
-                )  # Reduced from 80
+                device_width = min(40, available_width / (max_devices * 1.3))  # Reduced from 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
@@ -192,9 +232,7 @@ class NetworkDiagramGenerator:
             dbox_y = layer_height
 
             # Calculate positions for CBoxes (wider spacing)
-            cbox_positions = self._calculate_positions(
-                len(cboxes), width, cbox_y, device_width, cbox_spacing
-            )
+            cbox_positions = self._calculate_positions(len(cboxes), width, cbox_y, device_width, cbox_spacing)
 
             # Calculate switch positions - centered with no border overlap
             # Switches are placed symmetrically around the center
@@ -213,9 +251,7 @@ class NetworkDiagramGenerator:
                     switch_y,
                 ),
                 2: (
-                    center_x
-                    - switch_gap / 2
-                    - device_width,  # Switch B on left (ends before gap)
+                    center_x - switch_gap / 2 - device_width,  # Switch B on left (ends before gap)
                     switch_y,
                 ),
             }
@@ -243,9 +279,7 @@ class NetworkDiagramGenerator:
                 dbox_positions = [(switch_midpoint_x - device_width / 2, dbox_y)]
             else:
                 # Multiple DBoxes - spread them centered on switch midpoint
-                dbox_positions = self._calculate_positions(
-                    len(dboxes), width, dbox_y, device_width, dbox_spacing
-                )
+                dbox_positions = self._calculate_positions(len(dboxes), width, dbox_y, device_width, dbox_spacing)
 
             # Draw connections first (so they appear behind devices)
             connection_group = Group()
@@ -274,20 +308,14 @@ class NetworkDiagramGenerator:
                 switch_ip = conn.get("switch_ip", "")
                 if switch_ip == switches[0].get("mgmt_ip") if switches else None:
                     switch_num = 1
-                elif (
-                    switch_ip == switches[1].get("mgmt_ip")
-                    if len(switches) > 1
-                    else None
-                ):
+                elif switch_ip == switches[1].get("mgmt_ip") if len(switches) > 1 else None:
                     switch_num = 2
                 else:
                     continue
 
                 # Get switch position
                 # For MSN2100 switches (side-by-side), both switches use position 1
-                msn2100_switches = [
-                    s for s in switches if "msn2100" in s.get("model", "").lower()
-                ]
+                msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
                 if len(msn2100_switches) >= 2:
                     # Both switches connect to the single MSN2100 image at position 1
                     if 1 not in switch_positions:
@@ -324,9 +352,7 @@ class NetworkDiagramGenerator:
                     continue
 
                 # Draw line (doubled stroke width)
-                line_color = (
-                    self.switch_a_color if switch_num == 1 else self.switch_b_color
-                )
+                line_color = self.switch_a_color if switch_num == 1 else self.switch_b_color
                 line = Line(
                     node_x + device_width / 2,
                     node_y,
@@ -345,15 +371,11 @@ class NetworkDiagramGenerator:
 
                 num_ipl_lines = len(ipl_connections)
 
-                self.logger.info(
-                    f"Drawing {num_ipl_lines} deduplicated IPL connections between switches"
-                )
+                self.logger.info(f"Drawing {num_ipl_lines} deduplicated IPL connections between switches")
 
                 # Draw IPL lines without labels (as specified)
                 for i in range(num_ipl_lines):
-                    offset = (
-                        i - (num_ipl_lines - 1) / 2
-                    ) * 10  # Center lines vertically
+                    offset = (i - (num_ipl_lines - 1) / 2) * 10  # Center lines vertically
                     line = Line(
                         sw1_x,
                         sw1_y + device_height / 2 + offset,
@@ -366,9 +388,7 @@ class NetworkDiagramGenerator:
             elif len(switches) >= 2:
                 # No IPL connections found - don't draw any
                 # IPL discovery either found 0 connections or failed
-                self.logger.info(
-                    f"No IPL connections detected - skipping IPL links in diagram"
-                )
+                self.logger.info(f"No IPL connections detected - skipping IPL links in diagram")
 
             drawing.add(connection_group)
 
@@ -380,9 +400,7 @@ class NetworkDiagramGenerator:
                 if idx < len(cbox_positions):
                     x, y = cbox_positions[idx]
                     # Get actual CBox model from hardware data
-                    cbox_model = cbox.get(
-                        "model", cbox.get("hardware_type", "supermicro_gen5_cbox")
-                    )
+                    cbox_model = cbox.get("model", cbox.get("hardware_type", "supermicro_gen5_cbox"))
                     self._draw_device(
                         device_group,
                         x,
@@ -398,9 +416,7 @@ class NetworkDiagramGenerator:
 
             # Draw Switches
             # Check if we have MSN2100 switches (side-by-side representation)
-            msn2100_switches = [
-                s for s in switches if "msn2100" in s.get("model", "").lower()
-            ]
+            msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
 
             if len(msn2100_switches) >= 2:
                 # Special case: MSN2100-CB2F represents BOTH switches in single image
@@ -426,9 +442,7 @@ class NetworkDiagramGenerator:
                         switch = switches[switch_num - 1]
                         switch_name = f"SW{'A' if switch_num == 1 else 'B'}"
                         # Get actual switch model from hardware data
-                        switch_model = switch.get(
-                            "model", switch.get("hardware_type", "msn3700-vs2fc")
-                        )
+                        switch_model = switch.get("model", switch.get("hardware_type", "msn3700-vs2fc"))
                         self._draw_device(
                             device_group,
                             x,
@@ -447,9 +461,7 @@ class NetworkDiagramGenerator:
                 if idx < len(dbox_positions):
                     x, y = dbox_positions[idx]
                     # Get actual DBox model from hardware data
-                    dbox_model = dbox.get(
-                        "model", dbox.get("hardware_type", "ceres_v2")
-                    )
+                    dbox_model = dbox.get("model", dbox.get("hardware_type", "ceres_v2"))
                     self._draw_device(
                         device_group,
                         x,
@@ -542,14 +554,11 @@ class NetworkDiagramGenerator:
             x = start_x + i * spacing
             # Verify position is within bounds
             if x < min_margin:
-                self.logger.warning(
-                    f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}"
-                )
+                self.logger.warning(f"Device {i} adjusted: x={x:.1f} < min_margin={min_margin}")
                 x = min_margin
             elif x + device_width > total_width - min_margin:
                 self.logger.warning(
-                    f"Device {i} adjusted: x={x:.1f}+width={device_width} > "
-                    f"max={total_width - min_margin}"
+                    f"Device {i} adjusted: x={x:.1f}+width={device_width} > " f"max={total_width - min_margin}"
                 )
                 x = total_width - min_margin - device_width
             positions.append((x, y))
@@ -689,17 +698,21 @@ class NetworkDiagramGenerator:
 
 def create_network_diagram_generator(
     assets_path: str = "assets",
+    library_path: Optional[str] = None,
+    user_images_dir: Optional[str] = None,
 ) -> NetworkDiagramGenerator:
     """
     Create and return a NetworkDiagramGenerator instance.
 
     Args:
         assets_path: Path to assets directory
+        library_path: Path to user device_library.json
+        user_images_dir: Path to user-uploaded hardware images directory
 
     Returns:
         NetworkDiagramGenerator instance
     """
-    return NetworkDiagramGenerator(assets_path)
+    return NetworkDiagramGenerator(assets_path, library_path, user_images_dir)
 
 
 if __name__ == "__main__":

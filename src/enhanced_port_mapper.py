@@ -141,18 +141,14 @@ class EnhancedPortMapper:
                     cbox_num = cbox_id if isinstance(cbox_id, int) else idx
 
                     # Get hostname
-                    hostname = (
-                        cnode.get("name") or cnode.get("hostname") or f"cnode-{idx}"
-                    )
+                    hostname = cnode.get("name") or cnode.get("hostname") or f"cnode-{idx}"
 
                     self.cnode_map[data_ip] = {
                         "cnode_num": idx,
                         "cbox_num": cbox_num,
                         "hostname": hostname,
                     }
-                    logger.debug(
-                        f"Mapped CNode {idx} from API: {data_ip} -> {hostname}"
-                    )
+                    logger.debug(f"Mapped CNode {idx} from API: {data_ip} -> {hostname}")
 
         # Supplement with DNode API data
         if len(self.dnode_map) < len(self.dnodes):
@@ -180,22 +176,16 @@ class EnhancedPortMapper:
                     dbox_num = dbox_id if isinstance(dbox_id, int) else 1
 
                     # Get hostname
-                    hostname = (
-                        dnode.get("name") or dnode.get("hostname") or f"dnode-{idx}"
-                    )
+                    hostname = dnode.get("name") or dnode.get("hostname") or f"dnode-{idx}"
 
                     self.dnode_map[data_ip] = {
                         "dnode_num": idx,
                         "dbox_num": dbox_num,
                         "hostname": hostname,
                     }
-                    logger.debug(
-                        f"Mapped DNode {idx} from API: {data_ip} -> {hostname}"
-                    )
+                    logger.debug(f"Mapped DNode {idx} from API: {data_ip} -> {hostname}")
 
-        logger.info(
-            f"Built node maps: {len(self.cnode_map)} CNodes, {len(self.dnode_map)} DNodes"
-        )
+        logger.info(f"Built node maps: {len(self.cnode_map)} CNodes, {len(self.dnode_map)} DNodes")
 
         # Log the mappings for debugging
         if self.cnode_map:
@@ -227,15 +217,11 @@ class EnhancedPortMapper:
                 "designation": designation,
                 "hostname": hostname,
             }
-            logger.debug(
-                f"Mapped Switch {idx}: {mgmt_ip} -> {hostname} ({designation})"
-            )
+            logger.debug(f"Mapped Switch {idx}: {mgmt_ip} -> {hostname} ({designation})")
 
         logger.info(f"Built switch map: {len(self.switch_map)} switches")
 
-    def generate_node_designation(
-        self, node_ip: str, network: str, hostname: str = None
-    ) -> Tuple[str, str]:
+    def generate_node_designation(self, node_ip: str, network: str, hostname: str = None) -> Tuple[str, str]:
         """
         Generate standardized node designation.
 
@@ -343,9 +329,7 @@ class EnhancedPortMapper:
 
         return False
 
-    def detect_cross_connection(
-        self, switch_ip: str, node_ip: str, actual_network: str
-    ) -> Tuple[bool, str]:
+    def detect_cross_connection(self, switch_ip: str, node_ip: str, actual_network: str) -> Tuple[bool, str]:
         """
         Detect if a connection is cross-connected (wrong network).
 
@@ -376,9 +360,7 @@ class EnhancedPortMapper:
 
         return False, actual_network
 
-    def generate_enhanced_port_map(
-        self, raw_port_map: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+    def generate_enhanced_port_map(self, raw_port_map: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Generate enhanced port map with standardized designations.
 
@@ -401,9 +383,7 @@ class EnhancedPortMapper:
             mac = conn.get("mac")
 
             # Generate designations
-            node_designation, node_type = self.generate_node_designation(
-                node_ip, network, conn.get("node_hostname")
-            )
+            node_designation, node_type = self.generate_node_designation(node_ip, network, conn.get("node_hostname"))
             switch_designation = self.generate_switch_designation(switch_ip, port_name)
 
             # Get hostnames
@@ -411,9 +391,7 @@ class EnhancedPortMapper:
             switch_hostname = self.get_switch_hostname(switch_ip)
 
             # Detect cross-connections
-            is_cross, expected_network = self.detect_cross_connection(
-                switch_ip, node_ip, network
-            )
+            is_cross, expected_network = self.detect_cross_connection(switch_ip, node_ip, network)
 
             # Check if IPL port (won't have node connections)
             # Note: We're looking at ports from MAC tables, so IPL ports

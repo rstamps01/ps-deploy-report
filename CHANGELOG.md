@@ -5,6 +5,85 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.4.2] - 2026-03-11
+
+### Added
+- **EBox discovery (API v7)**: Full EBox integration — `GET /api/v7/eboxes/`, cluster `ebox` flag, `ebox_id` on CNodes/DNodes; `get_ebox_details()` in API handler; EBox quantity and inventory in report (cover, executive summary, consolidated hardware table); `docs/api/EBOX_API_V7_DISCOVERY.md`
+- **Library — Type EBox**: Add Device supports type **EBox**; devices appear in the **EBox Hardware** section with images
+- **API reference**: EBox endpoints and fields documented in `docs/API-REFERENCE.md` (cluster `ebox`, node `ebox_id`, `get_ebox_details`, data collection sequence, enhanced features table)
+- **Rack diagram tests**: `tests/test_rack_diagram.py` verifies generic 1U/2U fallback when an identifier key is not found in the Library
+- **EBox in Physical Rack Layout**: For ebox clusters, diagram uses EBox U height (default 1U); DBox U height documented in Hardware Inventory only and omitted from rack diagram; Hardware Summary note for ebox clusters
+- **Switch placement for EBox**: Auto placement tries above ebox hardware then below ebox hardware (same logic as above CBox / below DBox)
+
+### Changed
+- **Data extractor**: Hardware inventory accepts list or dict for `cboxes`/`dboxes`/`eboxes` (normalized via `_normalize_boxes_to_dict`); `switch_inventory` may be list or dict; error-path `HardwareInventory` includes all required fields; `_normalize_to_list()` for cnodes/dnodes; `raw_hardware`/`raw_switch_inventory` in report data for fallback
+- **Report builder**: `total_devices` includes eboxes; consolidated inventory table shown when `cboxes or dboxes or eboxes or switches`; EBox rows in inventory table; title page and overview show hardware block from cboxes/dboxes/switches when cnodes/dnodes empty; `_ensure_hardware_inventory()` builds from raw when missing; Physical Rack Layout only includes racks present in VMS (excludes "Unknown"); content-based column widths for Hardware Inventory table
+- **API handler**: `_normalize_list_response()` handles list, paginated `results`, dict-of-items, and single resource; used for cnodes, dnodes, cboxes, dboxes, eboxes
+- **Rack diagram**: EBox drawing (1U default); `_gather_device_boundaries(eboxes=)`; switch placement above/below ebox; `generate_rack_diagram(eboxes=)`
+- **Export script**: `scripts/export_swagger.py` probes `GET /api/v7/eboxes/` in the v7 endpoint list
+
+### Fixed
+- **Report missing sections**: API list/dict response normalization and raw fallback so title page, Hardware Overview, Hardware Inventory, rack layout, switch config, port mapping, and diagram populate when API returns alternate shapes or extractor returns empty
+- **Unknown rack in diagram**: Physical Rack Layout only includes racks that exist in VMS (`data.racks`); "Unknown" rack excluded when not in VMS
+- **Hardware Inventory column widths**: Content-based column widths (stringWidth) for Rack, Node, Model, Name/Serial Number, Status, Height so columns fit variable value lengths
+
+### Technical Details
+- `src/api_handler.py`: `_normalize_list_response()`, list/dict/single-object handling for hardware endpoints
+- `src/data_extractor.py`: `_normalize_to_list()`, `raw_hardware`/`raw_switch_inventory` in report_data
+- `src/report_builder.py`: `_ensure_hardware_inventory()`, `_normalize_boxes_to_dict()`, vms_rack_names filter, ebox grouping and diagram_dboxes=[] for ebox clusters, per_rack_eboxes in auto placement
+- `src/rack_diagram.py`: EBox in `_get_device_height_units` (1U), `_gather_device_boundaries(eboxes)`, `_calculate_switch_positions(eboxes=)`, above/below ebox strategies, `generate_rack_diagram(eboxes=)`, ebox device drawing
+- `src/brand_compliance.py`: `_content_based_column_widths()` for Hardware Inventory table
+
+### Docs & UI (1.4.2 session)
+- **Documentation in-app**: Internal `.md` links in doc content are rewritten to `/docs#<doc_id>` so navigation stays in-app; `_build_doc_link_map()`, `_rewrite_doc_links_in_html()` in `app.py`; docs page hashchange and click handlers for in-app doc navigation
+- **Docs layout**: Content area constrained to avoid horizontal scroll; Swagger 500 hint and "Open (v7)" link added
+- **Port mapping**: Partial clush output accepted; multi-CNode fallback in `app.py` and `main.py`; partial-flag/reason surfaced in report when mapping is incomplete
+- **Hardware Inventory Model column**: Comma and trailing NIC description stripped; for `dell_turin_cbox`, display model includes ` / <CNode serial>` (serial from `serial_number`/`sn` in data_extractor and report_builder)
+- **Tests**: `TestDocsRoutes` in `tests/test_app.py` — docs page 200, content 200/404, internal link rewrite to `/docs#installation`
+
+## [1.4.1] - 2026-03-05
+
+### Added
+- **Hardware Device Library**: New Library page (`/library`) with categorized tables (CBox, DBox, Switch, EBox with Support Pending), user-defined device upload, image preview, and persistent JSON storage
+- **Hardware Image Refresh**: 20 bezel images extracted, cropped edge-to-edge, and added for CBoxes (Dell Turin, SMC Turin, HPE/Dell IceLake, HPE Genoa), DBoxes (Ceres V2, Maverick), and Switches (Arista 7050 series, SN5600, MSN2700, MSN4600)
+- **Partial Key Matching**: Device lookup in rack/network diagrams now sorts keys longest-first to prevent `msn4600` from incorrectly matching before `msn4600c`
+- **Job Cancellation**: Cancel button on the Generate page with `/generate/cancel` endpoint; 8 cancellation checkpoints in the report pipeline using `threading.Event` for graceful abort
+- **Exit Button**: Navbar Exit button with confirmation prompt; graceful server shutdown via stored `werkzeug` server reference
+- **Favicon & App Icon**: White VAST logo as browser favicon; blue VAST logo as `.icns`/`.ico` for macOS `.app` bundle and DMG installer
+- **macOS Launcher**: `Start Reporter.command` double-click launcher in project root
+- **Port Mapping Logging**: Specific error messages when SSH port mapping fails (missing switch IPs, CNode IPs, SSH errors) instead of silent failure
+
+### Changed
+- **Threaded Server**: `make_server` now runs with `threaded=True` to allow concurrent SSE log stream and status polling, fixing UI hang after report completion
+- **Status Polling**: Added `Cache-Control: no-store` headers and `?_t=<timestamp>` cache-buster to `/generate/status` to prevent stale browser caching
+- **Library Table Sections**: Device definitions organized into CBox, DBox, Switch, and EBox categories with section headers and pending-support badges
+- **Footer Copyright**: Updated to `© 2026 VAST Data`
+- **Height Field**: Removed spinner arrows from Manual Switch Placement U-position input
+- **Build Script**: Fixed `build-mac.sh` grep for macOS compatibility; `.spec` updated to bundle `device_library.json`, `cluster_profiles.json`, and exclude large source composite image
+- **Launcher Test**: Fixed `test_run_gui_starts_flask` to mock `make_server` instead of deprecated `flask_app.run()`
+
+### Fixed
+- **Rack Diagram Images**: Reverted from custom `_StretchedImage` widget to native `GraphicsImage` shape, fixing invisible hardware images in rack diagrams
+- **Image Padding**: Auto-cropped transparent/white borders from 6 hardware images to achieve edge-to-edge rack slot rendering
+- **Report Hang**: Enabled multi-threaded werkzeug server to prevent SSE stream from blocking status polling
+- **Shutdown Crash**: Replaced `os._exit(0)` with graceful `server.shutdown()` via background thread to prevent abrupt process termination
+- **WeasyPrint Cleanup**: Removed dead WeasyPrint/Cairo imports from `report_builder.py` and `requirements-dev.txt`
+
+### Technical Details
+- `src/app.py`: Added `/library`, `/generate/cancel`, `/shutdown` routes; `JOB_CANCEL` threading.Event; `_SERVER` config key for graceful shutdown; port mapping error logging
+- `src/rack_diagram.py`: Updated `image_map`, `one_u_models`, `two_u_models`; longest-first partial key matching in `_get_hardware_image_path()` and `_get_device_height_units()`
+- `src/network_diagram.py`: Longest-first partial key matching in `load_hardware_image()`
+- `src/main.py`: `threading` and `webbrowser` moved to module-level imports; `flask_app.config["_SERVER"] = server`
+- `frontend/templates/base.html`: Favicon link, apple-touch-icon, Exit button in navbar
+- `frontend/templates/library.html`: 4-section device table with Jinja2 `selectattr` filtering
+- `frontend/static/css/app.css`: `.btn-exit`, `.btn-cancel`, `.lib-section-header`, `.lib-badge-pending`, spinner removal for `#uPositionInput`
+- `frontend/static/js/app.js`: Exit button handler with confirmation; Cancel button handler; cache-busting on status fetch
+- `packaging/icons/icon.icns`, `icon.ico`: Generated from VAST-Data-Icon-Blue.png
+- `packaging/vast-reporter.spec`: Bundled device_library.json, cluster_profiles.json; per-file hardware image inclusion; NSAppTransportSecurity plist entry
+- Tests: 214 passed (fixed hanging `test_run_gui_starts_flask`)
+
 ## [1.4.0] - 2026-03-04
 
 ### Added

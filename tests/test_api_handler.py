@@ -18,7 +18,7 @@ import requests
 import sys
 
 # Add src directory to Python path
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from api_handler import (
     VastApiHandler,
@@ -26,7 +26,7 @@ from api_handler import (
     VastHardwareInfo,
     VastApiError,
     VastApiVersion,
-    create_vast_api_handler
+    create_vast_api_handler,
 )
 
 
@@ -37,20 +37,11 @@ class TestVastApiHandler(unittest.TestCase):
         """Set up test environment."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_config = {
-            'api': {
-                'timeout': 30,
-                'max_retries': 3,
-                'retry_delay': 2,
-                'verify_ssl': True,
-                'version': 'v7'
-            }
+            "api": {"timeout": 30, "max_retries": 3, "retry_delay": 2, "verify_ssl": True, "version": "v7"}
         }
 
         self.handler = VastApiHandler(
-            cluster_ip='192.168.1.100',
-            username='admin',
-            password='password',
-            config=self.test_config
+            cluster_ip="192.168.1.100", username="admin", password="password", config=self.test_config
         )
 
     def tearDown(self):
@@ -61,9 +52,9 @@ class TestVastApiHandler(unittest.TestCase):
 
     def test_initialization(self):
         """Test API handler initialization."""
-        self.assertEqual(self.handler.cluster_ip, '192.168.1.100')
-        self.assertEqual(self.handler.username, 'admin')
-        self.assertEqual(self.handler.password, 'password')
+        self.assertEqual(self.handler.cluster_ip, "192.168.1.100")
+        self.assertEqual(self.handler.username, "admin")
+        self.assertEqual(self.handler.password, "password")
         self.assertEqual(self.handler.timeout, 30)
         self.assertEqual(self.handler.max_retries, 3)
         self.assertFalse(self.handler.authenticated)
@@ -73,12 +64,12 @@ class TestVastApiHandler(unittest.TestCase):
         session = self.handler._setup_session()
 
         self.assertIsInstance(session, requests.Session)
-        self.assertIn('User-Agent', session.headers)
-        self.assertEqual(session.headers['Content-Type'], 'application/json')
+        self.assertIn("User-Agent", session.headers)
+        self.assertEqual(session.headers["Content-Type"], "application/json")
 
-    @patch.object(VastApiHandler, '_detect_cluster_capabilities')
-    @patch.object(VastApiHandler, '_try_existing_tokens', return_value=True)
-    @patch.object(VastApiHandler, '_detect_api_version', return_value='v7')
+    @patch.object(VastApiHandler, "_detect_cluster_capabilities")
+    @patch.object(VastApiHandler, "_try_existing_tokens", return_value=True)
+    @patch.object(VastApiHandler, "_detect_api_version", return_value="v7")
     def test_successful_authentication(self, mock_detect, mock_tokens, mock_caps):
         """Test successful authentication."""
         result = self.handler.authenticate()
@@ -89,10 +80,10 @@ class TestVastApiHandler(unittest.TestCase):
         mock_tokens.assert_called_once()
         mock_caps.assert_called_once()
 
-    @patch.object(VastApiHandler, '_check_token_availability', return_value=False)
-    @patch.object(VastApiHandler, '_try_basic_auth', return_value=False)
-    @patch.object(VastApiHandler, '_try_existing_tokens', return_value=False)
-    @patch.object(VastApiHandler, '_detect_api_version', return_value='v7')
+    @patch.object(VastApiHandler, "_check_token_availability", return_value=False)
+    @patch.object(VastApiHandler, "_try_basic_auth", return_value=False)
+    @patch.object(VastApiHandler, "_try_existing_tokens", return_value=False)
+    @patch.object(VastApiHandler, "_detect_api_version", return_value="v7")
     def test_failed_authentication(self, mock_detect, mock_tokens, mock_basic, mock_avail):
         """Test failed authentication when all methods fail."""
         result = self.handler.authenticate()
@@ -100,8 +91,9 @@ class TestVastApiHandler(unittest.TestCase):
         self.assertFalse(result)
         self.assertFalse(self.handler.authenticated)
 
-    @patch.object(VastApiHandler, '_detect_api_version',
-                  side_effect=requests.exceptions.RequestException("Network error"))
+    @patch.object(
+        VastApiHandler, "_detect_api_version", side_effect=requests.exceptions.RequestException("Network error")
+    )
     def test_authentication_request_exception(self, mock_detect):
         """Test authentication with request exception."""
         result = self.handler.authenticate()
@@ -111,13 +103,13 @@ class TestVastApiHandler(unittest.TestCase):
 
     def test_detect_cluster_capabilities(self):
         """Test cluster capability detection."""
-        cluster_data = {'version': '5.3.0'}
-        self.handler.api_version = 'v7'
+        cluster_data = {"version": "5.3.0"}
+        self.handler.api_version = "v7"
 
-        with patch.object(self.handler, '_make_api_request', return_value=cluster_data):
+        with patch.object(self.handler, "_make_api_request", return_value=cluster_data):
             self.handler._detect_cluster_capabilities()
 
-            self.assertEqual(self.handler.cluster_version, '5.3.0')
+            self.assertEqual(self.handler.cluster_version, "5.3.0")
             self.assertTrue(self.handler.rack_height_supported)
             self.assertTrue(self.handler.psnt_supported)
 
@@ -138,7 +130,7 @@ class TestVastApiHandler(unittest.TestCase):
         self.assertTrue(self.handler.rack_height_supported)
         self.assertTrue(self.handler.psnt_supported)
 
-    @patch('requests.Session.get')
+    @patch("requests.Session.get")
     def test_make_api_request_success(self, mock_get):
         """Test successful API request."""
         # Set up authenticated handler
@@ -148,15 +140,15 @@ class TestVastApiHandler(unittest.TestCase):
         # Mock successful response
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {'test': 'data'}
+        mock_response.json.return_value = {"test": "data"}
         mock_get.return_value = mock_response
 
-        result = self.handler._make_api_request('test/')
+        result = self.handler._make_api_request("test/")
 
-        self.assertEqual(result, {'test': 'data'})
+        self.assertEqual(result, {"test": "data"})
         mock_get.assert_called_once()
 
-    @patch('requests.Session.get')
+    @patch("requests.Session.get")
     def test_make_api_request_unauthorized(self, mock_get):
         """Test API request with 401 response."""
         # Set up authenticated handler
@@ -168,28 +160,28 @@ class TestVastApiHandler(unittest.TestCase):
         mock_response.status_code = 401
         mock_get.return_value = mock_response
 
-        with patch.object(self.handler, 'authenticate', return_value=False):
-            result = self.handler._make_api_request('test/')
+        with patch.object(self.handler, "authenticate", return_value=False):
+            result = self.handler._make_api_request("test/")
 
             self.assertIsNone(result)
 
     def test_make_api_request_not_authenticated(self):
         """Test API request without authentication."""
-        result = self.handler._make_api_request('test/')
+        result = self.handler._make_api_request("test/")
 
         self.assertIsNone(result)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_cluster_info_success(self, mock_request):
         """Test successful cluster info retrieval."""
         # Mock cluster data with PSNT
         cluster_data = {
-            'name': 'Test Cluster',
-            'guid': 'test-guid-123',
-            'version': '5.3.0',
-            'state': 'active',
-            'license': 'Enterprise',
-            'psnt': 'PSNT123456'
+            "name": "Test Cluster",
+            "guid": "test-guid-123",
+            "version": "5.3.0",
+            "state": "active",
+            "license": "Enterprise",
+            "psnt": "PSNT123456",
         }
         mock_request.return_value = cluster_data
 
@@ -200,21 +192,21 @@ class TestVastApiHandler(unittest.TestCase):
         result = self.handler.get_cluster_info()
 
         self.assertIsInstance(result, VastClusterInfo)
-        self.assertEqual(result.name, 'Test Cluster')
-        self.assertEqual(result.guid, 'test-guid-123')
-        self.assertEqual(result.version, '5.3.0')
-        self.assertEqual(result.psnt, 'PSNT123456')
+        self.assertEqual(result.name, "Test Cluster")
+        self.assertEqual(result.guid, "test-guid-123")
+        self.assertEqual(result.version, "5.3.0")
+        self.assertEqual(result.psnt, "PSNT123456")
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_cluster_info_no_psnt(self, mock_request):
         """Test cluster info retrieval without PSNT."""
         # Mock cluster data without PSNT
         cluster_data = {
-            'name': 'Test Cluster',
-            'guid': 'test-guid-123',
-            'version': '5.1.0',
-            'state': 'active',
-            'license': 'Enterprise'
+            "name": "Test Cluster",
+            "guid": "test-guid-123",
+            "version": "5.1.0",
+            "state": "active",
+            "license": "Enterprise",
         }
         mock_request.return_value = cluster_data
 
@@ -225,28 +217,16 @@ class TestVastApiHandler(unittest.TestCase):
         result = self.handler.get_cluster_info()
 
         self.assertIsInstance(result, VastClusterInfo)
-        self.assertEqual(result.name, 'Test Cluster')
+        self.assertEqual(result.name, "Test Cluster")
         self.assertIsNone(result.psnt)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_cnode_details_success(self, mock_request):
         """Test successful CNode details retrieval."""
         # Mock CNode data with rack positions
         cnodes_data = [
-            {
-                'id': 'cnode-1',
-                'model': 'CBox-100',
-                'serial_number': 'SN123456',
-                'state': 'active',
-                'index_in_rack': 5
-            },
-            {
-                'id': 'cnode-2',
-                'model': 'CBox-100',
-                'serial_number': 'SN123457',
-                'state': 'active',
-                'index_in_rack': 6
-            }
+            {"id": "cnode-1", "model": "CBox-100", "serial_number": "SN123456", "state": "active", "index_in_rack": 5},
+            {"id": "cnode-2", "model": "CBox-100", "serial_number": "SN123457", "state": "active", "index_in_rack": 6},
         ]
         mock_request.return_value = cnodes_data
 
@@ -258,22 +238,16 @@ class TestVastApiHandler(unittest.TestCase):
 
         self.assertEqual(len(result), 2)
         self.assertIsInstance(result[0], VastHardwareInfo)
-        self.assertEqual(result[0].node_id, 'cnode-1')
+        self.assertEqual(result[0].node_id, "cnode-1")
         self.assertEqual(result[0].rack_position, 5)
         self.assertEqual(result[1].rack_position, 6)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_dnode_details_success(self, mock_request):
         """Test successful DNode details retrieval."""
         # Mock DNode data with rack positions
         dnodes_data = [
-            {
-                'id': 'dnode-1',
-                'model': 'DBox-100',
-                'serial_number': 'SN789012',
-                'state': 'active',
-                'index_in_rack': 10
-            }
+            {"id": "dnode-1", "model": "DBox-100", "serial_number": "SN789012", "state": "active", "index_in_rack": 10}
         ]
         mock_request.return_value = dnodes_data
 
@@ -285,23 +259,23 @@ class TestVastApiHandler(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertIsInstance(result[0], VastHardwareInfo)
-        self.assertEqual(result[0].node_id, 'dnode-1')
+        self.assertEqual(result[0].node_id, "dnode-1")
         self.assertEqual(result[0].rack_position, 10)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_network_configuration(self, mock_request):
         """Test network configuration retrieval."""
         # Mock network data
-        dns_data = {'servers': ['8.8.8.8', '8.8.4.4']}
-        ntp_data = {'servers': ['pool.ntp.org']}
-        vippool_data = {'pools': [{'name': 'default', 'vips': ['192.168.1.10']}]}
+        dns_data = {"servers": ["8.8.8.8", "8.8.4.4"]}
+        ntp_data = {"servers": ["pool.ntp.org"]}
+        vippool_data = {"pools": [{"name": "default", "vips": ["192.168.1.10"]}]}
 
         def side_effect(endpoint):
-            if 'dns' in endpoint:
+            if "dns" in endpoint:
                 return dns_data
-            elif 'ntp' in endpoint:
+            elif "ntp" in endpoint:
                 return ntp_data
-            elif 'vippool' in endpoint:
+            elif "vippool" in endpoint:
                 return vippool_data
             return None
 
@@ -310,25 +284,25 @@ class TestVastApiHandler(unittest.TestCase):
 
         result = self.handler.get_network_configuration()
 
-        self.assertIn('dns', result)
-        self.assertIn('ntp', result)
-        self.assertIn('vippools', result)
-        self.assertEqual(result['dns'], dns_data)
+        self.assertIn("dns", result)
+        self.assertIn("ntp", result)
+        self.assertIn("vippools", result)
+        self.assertEqual(result["dns"], dns_data)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_logical_configuration(self, mock_request):
         """Test logical configuration retrieval."""
         # Mock logical data
-        tenants_data = [{'name': 'tenant1', 'id': 't1'}]
-        views_data = [{'name': 'view1', 'path': '/view1'}]
-        viewpolicies_data = [{'name': 'policy1', 'type': 'read-only'}]
+        tenants_data = [{"name": "tenant1", "id": "t1"}]
+        views_data = [{"name": "view1", "path": "/view1"}]
+        viewpolicies_data = [{"name": "policy1", "type": "read-only"}]
 
         def side_effect(endpoint):
-            if 'tenant' in endpoint:
+            if "tenant" in endpoint:
                 return tenants_data
-            elif 'view' in endpoint and 'policy' not in endpoint:
+            elif "view" in endpoint and "policy" not in endpoint:
                 return views_data
-            elif 'viewpolicy' in endpoint:
+            elif "viewpolicy" in endpoint:
                 return viewpolicies_data
             return None
 
@@ -337,25 +311,25 @@ class TestVastApiHandler(unittest.TestCase):
 
         result = self.handler.get_logical_configuration()
 
-        self.assertIn('tenants', result)
-        self.assertIn('views', result)
-        self.assertIn('viewpolicies', result)
-        self.assertEqual(result['tenants'], tenants_data)
+        self.assertIn("tenants", result)
+        self.assertIn("views", result)
+        self.assertIn("viewpolicies", result)
+        self.assertEqual(result["tenants"], tenants_data)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_security_configuration(self, mock_request):
         """Test security configuration retrieval."""
         # Mock security data
-        ad_data = {'enabled': True, 'domain': 'example.com'}
-        ldap_data = {'enabled': False}
-        nis_data = {'enabled': False}
+        ad_data = {"enabled": True, "domain": "example.com"}
+        ldap_data = {"enabled": False}
+        nis_data = {"enabled": False}
 
         def side_effect(endpoint):
-            if 'activedirectory' in endpoint:
+            if "activedirectory" in endpoint:
                 return ad_data
-            elif 'ldap' in endpoint:
+            elif "ldap" in endpoint:
                 return ldap_data
-            elif 'nis' in endpoint:
+            elif "nis" in endpoint:
                 return nis_data
             return None
 
@@ -364,22 +338,22 @@ class TestVastApiHandler(unittest.TestCase):
 
         result = self.handler.get_security_configuration()
 
-        self.assertIn('activedirectory', result)
-        self.assertIn('ldap', result)
-        self.assertIn('nis', result)
-        self.assertEqual(result['activedirectory'], ad_data)
+        self.assertIn("activedirectory", result)
+        self.assertIn("ldap", result)
+        self.assertIn("nis", result)
+        self.assertEqual(result["activedirectory"], ad_data)
 
-    @patch.object(VastApiHandler, '_make_api_request')
+    @patch.object(VastApiHandler, "_make_api_request")
     def test_get_data_protection_configuration(self, mock_request):
         """Test data protection configuration retrieval."""
         # Mock protection data
-        snapprograms_data = [{'name': 'daily', 'schedule': '0 2 * * *'}]
-        protectionpolicies_data = [{'name': 'backup', 'retention': '30d'}]
+        snapprograms_data = [{"name": "daily", "schedule": "0 2 * * *"}]
+        protectionpolicies_data = [{"name": "backup", "retention": "30d"}]
 
         def side_effect(endpoint):
-            if 'snapprogram' in endpoint:
+            if "snapprogram" in endpoint:
                 return snapprograms_data
-            elif 'protectionpolicy' in endpoint:
+            elif "protectionpolicy" in endpoint:
                 return protectionpolicies_data
             return None
 
@@ -388,31 +362,31 @@ class TestVastApiHandler(unittest.TestCase):
 
         result = self.handler.get_data_protection_configuration()
 
-        self.assertIn('snapprograms', result)
-        self.assertIn('protectionpolicies', result)
-        self.assertEqual(result['snapprograms'], snapprograms_data)
+        self.assertIn("snapprograms", result)
+        self.assertIn("protectionpolicies", result)
+        self.assertEqual(result["snapprograms"], snapprograms_data)
 
-    @patch.object(VastApiHandler, 'get_cluster_info')
-    @patch.object(VastApiHandler, 'get_cnode_details')
-    @patch.object(VastApiHandler, 'get_dnode_details')
-    @patch.object(VastApiHandler, 'get_network_configuration')
-    @patch.object(VastApiHandler, 'get_logical_configuration')
-    @patch.object(VastApiHandler, 'get_security_configuration')
-    @patch.object(VastApiHandler, 'get_data_protection_configuration')
-    def test_get_all_data(self, mock_protection, mock_security, mock_logical,
-                         mock_network, mock_dnodes, mock_cnodes, mock_cluster):
+    @patch.object(VastApiHandler, "get_cluster_info")
+    @patch.object(VastApiHandler, "get_cnode_details")
+    @patch.object(VastApiHandler, "get_dnode_details")
+    @patch.object(VastApiHandler, "get_network_configuration")
+    @patch.object(VastApiHandler, "get_logical_configuration")
+    @patch.object(VastApiHandler, "get_security_configuration")
+    @patch.object(VastApiHandler, "get_data_protection_configuration")
+    def test_get_all_data(
+        self, mock_protection, mock_security, mock_logical, mock_network, mock_dnodes, mock_cnodes, mock_cluster
+    ):
         """Test comprehensive data collection."""
         # Mock all data collection methods
         mock_cluster.return_value = VastClusterInfo(
-            name='Test Cluster', guid='test-guid', version='5.3.0',
-            state='active', license='Enterprise', psnt='PSNT123'
+            name="Test Cluster", guid="test-guid", version="5.3.0", state="active", license="Enterprise", psnt="PSNT123"
         )
-        mock_cnodes.return_value = [VastHardwareInfo('cnode-1', 'cnode', 'CBox-100', 'SN123', 5)]
-        mock_dnodes.return_value = [VastHardwareInfo('dnode-1', 'dnode', 'DBox-100', 'SN456', 10)]
-        mock_network.return_value = {'dns': {'servers': ['8.8.8.8']}}
-        mock_logical.return_value = {'tenants': [{'name': 'tenant1'}]}
-        mock_security.return_value = {'activedirectory': {'enabled': True}}
-        mock_protection.return_value = {'snapprograms': [{'name': 'daily'}]}
+        mock_cnodes.return_value = [VastHardwareInfo("cnode-1", "cnode", "CBox-100", "SN123", 5)]
+        mock_dnodes.return_value = [VastHardwareInfo("dnode-1", "dnode", "DBox-100", "SN456", 10)]
+        mock_network.return_value = {"dns": {"servers": ["8.8.8.8"]}}
+        mock_logical.return_value = {"tenants": [{"name": "tenant1"}]}
+        mock_security.return_value = {"activedirectory": {"enabled": True}}
+        mock_protection.return_value = {"snapprograms": [{"name": "daily"}]}
 
         self.handler.authenticated = True
         self.handler.rack_height_supported = True
@@ -420,15 +394,15 @@ class TestVastApiHandler(unittest.TestCase):
 
         result = self.handler.get_all_data()
 
-        self.assertIn('cluster_info', result)
-        self.assertIn('hardware', result)
-        self.assertIn('network', result)
-        self.assertIn('logical', result)
-        self.assertIn('security', result)
-        self.assertIn('data_protection', result)
-        self.assertIn('enhanced_features', result)
-        self.assertTrue(result['enhanced_features']['rack_height_supported'])
-        self.assertTrue(result['enhanced_features']['psnt_supported'])
+        self.assertIn("cluster_info", result)
+        self.assertIn("hardware", result)
+        self.assertIn("network", result)
+        self.assertIn("logical", result)
+        self.assertIn("security", result)
+        self.assertIn("data_protection", result)
+        self.assertIn("enhanced_features", result)
+        self.assertTrue(result["enhanced_features"]["rack_height_supported"])
+        self.assertTrue(result["enhanced_features"]["psnt_supported"])
 
     def test_get_all_data_not_authenticated(self):
         """Test get_all_data without authentication."""
@@ -447,18 +421,18 @@ class TestVastApiHandler(unittest.TestCase):
 
     def test_context_manager(self):
         """Test context manager functionality."""
-        with patch.object(self.handler, 'close') as mock_close:
+        with patch.object(self.handler, "close") as mock_close:
             with self.handler as handler:
                 self.assertEqual(handler, self.handler)
             mock_close.assert_called_once()
 
     def test_create_vast_api_handler(self):
         """Test convenience function for creating API handler."""
-        handler = create_vast_api_handler('192.168.1.100', 'admin', 'password', self.test_config)
+        handler = create_vast_api_handler("192.168.1.100", "admin", "password", self.test_config)
 
         self.assertIsInstance(handler, VastApiHandler)
-        self.assertEqual(handler.cluster_ip, '192.168.1.100')
-        self.assertEqual(handler.username, 'admin')
+        self.assertEqual(handler.cluster_ip, "192.168.1.100")
+        self.assertEqual(handler.username, "admin")
 
 
 class TestVastClusterInfo(unittest.TestCase):
@@ -467,32 +441,28 @@ class TestVastClusterInfo(unittest.TestCase):
     def test_cluster_info_creation(self):
         """Test VastClusterInfo creation."""
         cluster = VastClusterInfo(
-            name='Test Cluster',
-            guid='test-guid',
-            version='5.3.0',
-            state='active',
-            license='Enterprise',
-            psnt='PSNT123456'
+            name="Test Cluster",
+            guid="test-guid",
+            version="5.3.0",
+            state="active",
+            license="Enterprise",
+            psnt="PSNT123456",
         )
 
-        self.assertEqual(cluster.name, 'Test Cluster')
-        self.assertEqual(cluster.guid, 'test-guid')
-        self.assertEqual(cluster.version, '5.3.0')
-        self.assertEqual(cluster.state, 'active')
-        self.assertEqual(cluster.license, 'Enterprise')
-        self.assertEqual(cluster.psnt, 'PSNT123456')
+        self.assertEqual(cluster.name, "Test Cluster")
+        self.assertEqual(cluster.guid, "test-guid")
+        self.assertEqual(cluster.version, "5.3.0")
+        self.assertEqual(cluster.state, "active")
+        self.assertEqual(cluster.license, "Enterprise")
+        self.assertEqual(cluster.psnt, "PSNT123456")
 
     def test_cluster_info_without_psnt(self):
         """Test VastClusterInfo creation without PSNT."""
         cluster = VastClusterInfo(
-            name='Test Cluster',
-            guid='test-guid',
-            version='5.1.0',
-            state='active',
-            license='Enterprise'
+            name="Test Cluster", guid="test-guid", version="5.1.0", state="active", license="Enterprise"
         )
 
-        self.assertEqual(cluster.name, 'Test Cluster')
+        self.assertEqual(cluster.name, "Test Cluster")
         self.assertIsNone(cluster.psnt)
 
 
@@ -502,39 +472,35 @@ class TestVastHardwareInfo(unittest.TestCase):
     def test_hardware_info_creation(self):
         """Test VastHardwareInfo creation."""
         hardware = VastHardwareInfo(
-            node_id='node-1',
-            node_type='cnode',
-            name='cnode-1-1',
-            model='CBox-100',
-            serial_number='SN123456',
+            node_id="node-1",
+            node_type="cnode",
+            name="cnode-1-1",
+            model="CBox-100",
+            serial_number="SN123456",
             rack_position=5,
-            status='active'
+            status="active",
         )
 
-        self.assertEqual(hardware.node_id, 'node-1')
-        self.assertEqual(hardware.node_type, 'cnode')
-        self.assertEqual(hardware.name, 'cnode-1-1')
-        self.assertEqual(hardware.model, 'CBox-100')
-        self.assertEqual(hardware.serial_number, 'SN123456')
+        self.assertEqual(hardware.node_id, "node-1")
+        self.assertEqual(hardware.node_type, "cnode")
+        self.assertEqual(hardware.name, "cnode-1-1")
+        self.assertEqual(hardware.model, "CBox-100")
+        self.assertEqual(hardware.serial_number, "SN123456")
         self.assertEqual(hardware.rack_position, 5)
-        self.assertEqual(hardware.status, 'active')
+        self.assertEqual(hardware.status, "active")
 
     def test_hardware_info_without_rack_position(self):
         """Test VastHardwareInfo creation without rack position."""
         hardware = VastHardwareInfo(
-            node_id='node-1',
-            node_type='dnode',
-            name='dnode-1-1',
-            model='DBox-100',
-            serial_number='SN789012'
+            node_id="node-1", node_type="dnode", name="dnode-1-1", model="DBox-100", serial_number="SN789012"
         )
 
-        self.assertEqual(hardware.node_id, 'node-1')
-        self.assertEqual(hardware.node_type, 'dnode')
-        self.assertEqual(hardware.name, 'dnode-1-1')
+        self.assertEqual(hardware.node_id, "node-1")
+        self.assertEqual(hardware.node_type, "dnode")
+        self.assertEqual(hardware.name, "dnode-1-1")
         self.assertIsNone(hardware.rack_position)
-        self.assertEqual(hardware.status, 'unknown')
+        self.assertEqual(hardware.status, "unknown")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
