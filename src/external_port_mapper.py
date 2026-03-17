@@ -1761,9 +1761,9 @@ class ExternalPortMapper:
         ip_to_hostname = {ip: hostname for hostname, ip in hostname_to_ip.items()}
 
         # For EBox clusters, build hostname -> ebox_id mapping and get DNodes per EBox
-        hostname_to_ebox_id = {}
-        ebox_cnode_names = {}  # {ebox_id: cnode_name (e.g., cnode-128-21-4200)}
-        ebox_dnodes = {}  # {ebox_id: [{node_id, position, hostname, name}, ...]}
+        hostname_to_ebox_id: Dict[str, Any] = {}
+        ebox_cnode_names: Dict[Any, str] = {}  # {ebox_id: cnode_name (e.g., cnode-128-21-4200)}
+        ebox_dnodes: Dict[Any, List[Dict[str, Any]]] = {}  # {ebox_id: [{node_id, position, hostname, name}, ...]}
         if is_ebox_cluster:
             for key, node_info in ebox_node_mapping.items():
                 ebox_id = node_info.get("ebox_id")
