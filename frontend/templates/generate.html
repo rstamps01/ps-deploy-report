@@ -12,7 +12,8 @@
     <div class="card form-card">
         <form id="generateForm">
             <fieldset id="formFields">
-                <legend>Cluster Profile</legend>
+                <legend class="sr-only">Report Generation Options</legend>
+                <div class="fieldset-section">Cluster Profile</div>
                 <div class="form-group">
                     <label for="profileSelect">Saved Profiles</label>
                     <div class="profile-controls">
@@ -24,7 +25,7 @@
                     </div>
                 </div>
 
-                <legend>Cluster Connection</legend>
+                <div class="fieldset-section">Cluster Connection</div>
                 <div class="form-group">
                     <label for="cluster_ip">Cluster IP / Hostname *</label>
                     <input type="text" id="cluster_ip" name="cluster_ip" required
@@ -60,7 +61,7 @@
                     </div>
                 </div>
 
-                <legend>Advanced</legend>
+                <div class="fieldset-section">Advanced</div>
                 <div class="form-group toggle-row">
                     <label>Switch Placement Mode</label>
                     <div class="toggle-control">
