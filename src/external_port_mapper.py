@@ -19,6 +19,7 @@ SUPPORTED SWITCH OPERATING SYSTEMS:
 
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -26,7 +27,11 @@ from typing import Any, Dict, List, Tuple
 from datetime import datetime
 from pathlib import Path
 
+from utils.ssh_adapter import run_ssh_command, run_interactive_ssh
+
 logger = logging.getLogger(__name__)
+
+IS_WINDOWS = platform.system() == "Windows"
 
 
 def _safe_str(s) -> str:
@@ -306,7 +311,8 @@ class ExternalPortMapper:
         Detect switch operating system (Cumulus vs Onyx) and determine credentials.
 
         Tries both credential sets and identifies the OS based on successful authentication
-        and command responses.
+        and command responses. Uses cross-platform SSH adapter (paramiko on Windows,
+        sshpass/subprocess on macOS/Linux).
 
         Args:
             switch_ip: Switch management IP address
@@ -338,40 +344,23 @@ class ExternalPortMapper:
                 # Onyx: "show version" will work
                 test_cmd = "nv show system" if expected_os == "cumulus" else "show version"
 
-                cmd = [
-                    "sshpass",
-                    "-p",
-                    password,
-                    "ssh",
-                    "-T",  # Disable PTY allocation for non-interactive command
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    "UserKnownHostsFile=/dev/null",  # Don't persist host keys for detection
-                    "-o",
-                    "ConnectTimeout=10",
-                    f"{user}@{switch_ip}",
-                    test_cmd,
-                ]
+                # Use cross-platform SSH adapter
+                self.vlog.log(f"Running SSH command via adapter: {test_cmd}")
 
-                self.vlog.log_command(cmd, f"OS Detection test for {expected_os}")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=15,
-                    env=_subprocess_env(),
-                    encoding="utf-8",
-                    errors="replace",
-                )
-                self.vlog.log_result(result, f"{expected_os} test result")
+                # For Onyx switches, use interactive SSH (they require PTY)
+                if expected_os == "onyx":
+                    returncode, stdout, stderr = run_interactive_ssh(switch_ip, user, password, test_cmd, timeout=15)
+                else:
+                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, test_cmd, timeout=15)
+
+                self.vlog.log(f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
 
                 # Check both stdout and stderr for OS identification
-                output_lower = (result.stdout + result.stderr).lower()
+                output_lower = (stdout + stderr).lower()
 
                 if expected_os == "cumulus":
                     # Cumulus will have specific output format or "cumulus" in response
-                    if result.returncode == 0 and ("cumulus" in output_lower or "hostname" in output_lower):
+                    if returncode == 0 and ("cumulus" in output_lower or "hostname" in output_lower):
                         self.vlog.log(
                             f"✓ Detected Cumulus Linux on {switch_ip}",
                             self.vlog.GREEN,
@@ -397,9 +386,6 @@ class ExternalPortMapper:
                         self.logger.info(f"Switch {switch_ip}: Mellanox Onyx detected")
                         return ("onyx", user, password)
 
-            except subprocess.TimeoutExpired:
-                self.vlog.log_warning(f"Timeout testing {expected_os} on {switch_ip}")
-                continue
             except Exception as e:
                 self.vlog.log_warning(f"Error testing {expected_os} on {switch_ip}: {e}")
                 continue
@@ -944,47 +930,31 @@ class ExternalPortMapper:
             )
 
             # SSH to CNode and run clush to get all node hostnames
-            cmd = [
-                "sshpass",
-                "-p",
-                self.node_password,
-                "ssh",
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                f"UserKnownHostsFile={self.known_hosts_file}",
-                f"{self.node_user}@{self.cnode_ip}",
-                "clush -a hostname",
-            ]
+            clush_cmd = "clush -a hostname"
 
             # Verbose logging
             self.vlog.log_operation("Collecting hostname to IP mapping via clush")
-            self.vlog.log_command(cmd, "CLUSH HOSTNAME COMMAND")
+            self.vlog.log(f"SSH to {self.node_user}@{self.cnode_ip}: {clush_cmd}", self.vlog.BLUE)
 
-            env = _subprocess_env()
-            self.vlog.log(
-                f"subprocess.run() parameters: capture_output=True, text=True, timeout=30, env={len(env)} vars",
-                self.vlog.BLUE,
-            )
-
-            self.vlog.log("\nExecuting command...", self.vlog.BLUE)
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+            # Use cross-platform SSH adapter
+            returncode, stdout, stderr = run_ssh_command(
+                self.cnode_ip,
+                self.node_user,
+                self.node_password,
+                clush_cmd,
                 timeout=30,
-                env=env,
-                encoding="utf-8",
-                errors="replace",
             )
 
             # Log result
-            self.vlog.log_result(result, "CLUSH HOSTNAME RESULT")
+            self.vlog.log(
+                f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}",
+                self.vlog.GREEN if returncode == 0 else self.vlog.RED,
+            )
 
             # Parse output: "172.16.3.4: se-az-arrow-cb2-cn-1" (even if returncode != 0 for partial)
             self.vlog.log_operation("Parsing hostname to IP mapping from clush output")
             hostname_to_ip = {}
-            for line in (result.stdout or "").split("\n"):
+            for line in (stdout or "").split("\n"):
                 match = re.match(r"^([\d.]+):\s+(.+)$", line.strip())
                 if match:
                     data_ip = match.group(1)
@@ -993,16 +963,16 @@ class ExternalPortMapper:
                     self.logger.debug(f"Mapped {hostname} → {data_ip}")
                     self.vlog.log(f"  Mapped: {hostname} → {data_ip}", self.vlog.MAGENTA)
 
-            if result.returncode != 0:
+            if returncode != 0:
                 if hostname_to_ip:
                     self.logger.warning(
                         "clush hostname returned non-zero but got %d mappings — using partial data",
                         len(hostname_to_ip),
                     )
-                    self.vlog.log_error("clush hostname partial", Exception(result.stderr))
+                    self.vlog.log_error("clush hostname partial", Exception(stderr))
                 else:
-                    self.vlog.log_error("clush hostname command failed", Exception(result.stderr))
-                    raise Exception(f"clush hostname command failed: {result.stderr}")
+                    self.vlog.log_error("clush hostname command failed", Exception(stderr))
+                    raise Exception(f"clush hostname command failed: {stderr}")
 
             self.vlog.log_data("hostname_to_ip", hostname_to_ip)
             self.vlog.log_function_exit(
@@ -1040,36 +1010,29 @@ class ExternalPortMapper:
 
             # SSH to CNode and run clush to get all node interfaces
             # Use /sbin/ip as the 'ip' command may not be in PATH
-            cmd = [
-                "sshpass",
-                "-p",
-                self.node_password,
-                "ssh",
-                "-o",
-                "StrictHostKeyChecking=no",
-                "-o",
-                f"UserKnownHostsFile={self.known_hosts_file}",
-                f"{self.node_user}@{self.cnode_ip}",
-                "clush -a '/sbin/ip link show'",
-            ]
+            clush_cmd = "clush -a '/sbin/ip link show'"
 
-            self.vlog.log_command(cmd, "CLUSH NODE MAC COMMAND")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
+            self.vlog.log(f"SSH to {self.node_user}@{self.cnode_ip}: {clush_cmd}", self.vlog.BLUE)
+
+            # Use cross-platform SSH adapter
+            returncode, stdout, stderr = run_ssh_command(
+                self.cnode_ip,
+                self.node_user,
+                self.node_password,
+                clush_cmd,
                 timeout=60,
-                env=_subprocess_env(),
-                encoding="utf-8",
-                errors="replace",
             )
-            self.vlog.log_result(result, "CLUSH NODE MAC RESULT")
+
+            self.vlog.log(
+                f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}",
+                self.vlog.GREEN if returncode == 0 else self.vlog.RED,
+            )
 
             # Parse clush output (even when returncode != 0, to allow partial port map)
             self.vlog.log_operation("Parsing clush output for node MACs")
-            node_macs = self._parse_clush_output(result.stdout or "")
+            node_macs = self._parse_clush_output(stdout or "")
 
-            if result.returncode != 0:
+            if returncode != 0:
                 if node_macs:
                     self.logger.warning(
                         "clush ip link returned non-zero but got MACs for %d nodes — using partial data",
@@ -1077,7 +1040,7 @@ class ExternalPortMapper:
                     )
                     self.vlog.log(f"⚠ Partial node MACs ({len(node_macs)} nodes)", self.vlog.YELLOW)
                 else:
-                    error_msg = f"clush command failed: {result.stderr}"
+                    error_msg = f"clush command failed: {stderr}"
                     self.logger.error(error_msg)
                     self.vlog.log(f"❌ {error_msg}", self.vlog.RED)
                     self.vlog.log_function_exit("_collect_node_macs_via_clush", "FAILED - non-zero return code")
@@ -1210,34 +1173,15 @@ class ExternalPortMapper:
                     result_stdout = stdout
                     result_stderr = stderr
                 else:
-                    # Use subprocess for Cumulus
-                    cmd = [
-                        "sshpass",
-                        "-p",
-                        password,
-                        "ssh",
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        "-o",
-                        f"UserKnownHostsFile={self.known_hosts_file}",
-                        f"{user}@{switch_ip}",
-                        mac_cmd,
-                    ]
-
-                    self.vlog.log_command(cmd, f"General MAC table query ({os_type})")
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        env=_subprocess_env(),
-                        encoding="utf-8",
-                        errors="replace",
+                    # Use cross-platform SSH adapter for Cumulus
+                    self.vlog.log(f"SSH to {user}@{switch_ip}: {mac_cmd}", self.vlog.BLUE)
+                    result_returncode, result_stdout, result_stderr = run_ssh_command(
+                        switch_ip, user, password, mac_cmd, timeout=30
                     )
-                    self.vlog.log_result(result, "General MAC table result")
-                    result_returncode = result.returncode
-                    result_stdout = result.stdout
-                    result_stderr = result.stderr
+                    self.vlog.log(
+                        f"SSH result: rc={result_returncode}, stdout_len={len(result_stdout)}",
+                        self.vlog.GREEN if result_returncode == 0 else self.vlog.RED,
+                    )
 
                 if result_returncode == 0:
                     # Parse based on OS type
@@ -1264,34 +1208,15 @@ class ExternalPortMapper:
                         switch_ip, user, password, vlan69_cmd_str, timeout=30
                     )
                 else:
-                    # Use subprocess for Cumulus
-                    vlan69_cmd = [
-                        "sshpass",
-                        "-p",
-                        password,
-                        "ssh",
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        "-o",
-                        f"UserKnownHostsFile={self.known_hosts_file}",
-                        f"{user}@{switch_ip}",
-                        vlan69_cmd_str,
-                    ]
-
-                    self.vlog.log_command(vlan69_cmd, f"VLAN 69 MAC table query ({os_type})")
-                    vlan69_result = subprocess.run(
-                        vlan69_cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        env=_subprocess_env(),
-                        encoding="utf-8",
-                        errors="replace",
+                    # Use cross-platform SSH adapter for Cumulus
+                    self.vlog.log(f"SSH to {user}@{switch_ip}: {vlan69_cmd_str}", self.vlog.BLUE)
+                    vlan69_returncode, vlan69_stdout, vlan69_stderr = run_ssh_command(
+                        switch_ip, user, password, vlan69_cmd_str, timeout=30
                     )
-                    self.vlog.log_result(vlan69_result, "VLAN 69 MAC table result")
-                    vlan69_returncode = vlan69_result.returncode
-                    vlan69_stdout = vlan69_result.stdout
-                    vlan69_stderr = vlan69_result.stderr
+                    self.vlog.log(
+                        f"VLAN 69 SSH result: rc={vlan69_returncode}, stdout_len={len(vlan69_stdout)}",
+                        self.vlog.GREEN if vlan69_returncode == 0 else self.vlog.YELLOW,
+                    )
 
                 if vlan69_returncode == 0:
                     # Parse based on OS type
@@ -1479,34 +1404,13 @@ class ExternalPortMapper:
                         switch_ip, user, password, lldp_cmd, timeout=30
                     )
                 else:
-                    # Use subprocess for Cumulus
-                    cmd = [
-                        "sshpass",
-                        "-p",
-                        password,
-                        "ssh",
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        "-o",
-                        f"UserKnownHostsFile={self.known_hosts_file}",
-                        f"{user}@{switch_ip}",
-                        lldp_cmd,
-                    ]
-
-                    self.vlog.log_command(cmd, f"IPL/LLDP query ({os_type})")
-                    result = subprocess.run(
-                        cmd,
-                        capture_output=True,
-                        text=True,
-                        timeout=30,
-                        env=_subprocess_env(),
-                        encoding="utf-8",
-                        errors="replace",
+                    # Use cross-platform SSH adapter for Cumulus
+                    self.vlog.log(f"SSH to {user}@{switch_ip}: {lldp_cmd}", self.vlog.BLUE)
+                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, lldp_cmd, timeout=30)
+                    self.vlog.log(
+                        f"IPL/LLDP SSH result: rc={returncode}, stdout_len={len(stdout)}",
+                        self.vlog.GREEN if returncode == 0 else self.vlog.RED,
                     )
-                    self.vlog.log_result(result, f"IPL/LLDP result ({os_type})")
-                    returncode = result.returncode
-                    stdout = result.stdout
-                    stderr = result.stderr
 
                 if returncode == 0:
                     # Parse based on OS type
