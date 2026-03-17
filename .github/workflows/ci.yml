@@ -156,7 +156,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration.py -v -m integration
+          python -m pytest tests/test_integration.py -v -m integration --no-cov
 
   # -------------------------------------------------------------------
   # Job 4: UI tests (Playwright) — develop/main only
