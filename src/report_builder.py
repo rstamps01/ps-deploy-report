@@ -1757,14 +1757,14 @@ class VastReportBuilder:
         # For CBoxes/DBoxes, sort by CNode/DNode name; for switches, use Name/Serial Number column
         def sort_key(row):
             rack_name = row[0] or "Unknown"
-            node_col = row[1]  # CNode/DNode column
-            name_col = row[3]  # Name/Serial Number column
+            node_col = row[1] or ""  # CNode/DNode column
+            name_col = row[3] or ""  # Name/Serial Number column
 
             # Determine hardware type based on CNode/DNode column content
             if node_col == "EBox":
                 hw_type = "C"  # EBox
                 sort_value = name_col
-            elif node_col != "N/A":
+            elif node_col and node_col != "N/A":
                 # Check if it's a CNode or DNode by the prefix
                 if node_col.startswith("cnode-"):
                     hw_type = "A"  # CBox
@@ -1773,14 +1773,14 @@ class VastReportBuilder:
                 else:
                     hw_type = "A"  # Default to CBox for unknown node types
                 sort_value = node_col  # Sort by node name
-            elif name_col.startswith("dbox-") or "DB-" in name_col:
+            elif name_col and (name_col.startswith("dbox-") or "DB-" in name_col):
                 hw_type = "B"  # DBox (no nodes found)
                 sort_value = name_col
             else:
                 hw_type = "D"  # Switch
                 sort_value = name_col
 
-            return (rack_name, hw_type, sort_value)
+            return (rack_name, hw_type, sort_value or "")
 
         all_rows.sort(key=sort_key)
 
