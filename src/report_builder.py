@@ -289,7 +289,9 @@ class VastReportBuilder:
         # Add port mapping (if available) - method includes its own PageBreak at start
         port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
         port_mapping_data = port_mapping_section.get("data", {})
-        if port_mapping_data.get("available") and port_mapping_section.get("status") == "complete":
+        port_mapping_enabled = port_mapping_data.get("available") and port_mapping_section.get("status") == "complete"
+
+        if port_mapping_enabled:
             # Extract port mapping data and switches for the method
             hardware = processed_data.get("hardware_inventory", {})
             switches = hardware.get("switches") or []
@@ -302,19 +304,19 @@ class VastReportBuilder:
                 )
             )
             story.append(PageBreak())
-        else:
-            # Add page break before network diagram if no port mapping
-            story.append(PageBreak())
 
-        # Add logical network diagram
-        story.extend(
-            self._create_logical_network_diagram(
-                processed_data,
-                page_tracker,
-                "network_diagram" if is_first_pass else None,
+            # Add logical network diagram (only when port mapping is enabled)
+            story.extend(
+                self._create_logical_network_diagram(
+                    processed_data,
+                    page_tracker,
+                    "network_diagram" if is_first_pass else None,
+                )
             )
-        )
-        story.append(PageBreak())
+            story.append(PageBreak())
+        else:
+            # No port mapping - skip network diagram section entirely
+            story.append(PageBreak())
 
         # Add logical configuration
         story.extend(
@@ -3551,92 +3553,29 @@ class VastReportBuilder:
                     )
                     content.append(image_table)
 
-                    self.logger.info(f"Embedded dynamically generated network diagram")
-
-                    # Skip loading static placeholder since we have the dynamic one
+                    self.logger.info("Embedded dynamically generated network diagram")
                     return content
 
                 except Exception as e:
                     self.logger.error(f"Error embedding generated diagram: {e}", exc_info=True)
-                    # Fall through to try static placeholder
+                    # Fall through to show "no data" message
 
             else:
-                self.logger.warning(
-                    "Network diagram PNG not available (renderPM and PDF fallback failed). Using bundled placeholder."
-                )
+                self.logger.warning("Network diagram PNG not available (renderPM and PDF fallback failed)")
 
         except Exception as e:
             self.logger.error(f"Error generating network diagram: {e}", exc_info=True)
 
-        _bundle = get_bundle_dir()
-        diagram_path_png = _bundle / "assets" / "diagrams" / "network_topology_placeholder.png"
-        diagram_path_jpg = _bundle / "assets" / "diagrams" / "network_topology_placeholder.jpg"
-
-        diagram_path = None
-        if diagram_path_png.exists():
-            diagram_path = diagram_path_png
-        elif diagram_path_jpg.exists():
-            diagram_path = diagram_path_jpg
-
-        if diagram_path:
-            try:
-                # Calculate image size to fit on page
-                # A4 width in points
-                if self.config.page_size == "Letter":
-                    page_width = 8.5 * inch
-                else:
-                    page_width = 595.27
-
-                available_width = page_width - (2 * 0.5 * inch)
-                max_height = 5.5 * inch
-
-                # Load and add the network diagram image
-                img = Image(
-                    str(diagram_path),
-                    width=available_width * 0.9,
-                    height=max_height,
-                    kind="proportional",
-                )
-
-                # Center the image using a table
-                from reportlab.platypus import Table as RLTable
-
-                image_table = RLTable(
-                    [[img]],
-                    colWidths=[available_width],
-                )
-                image_table.setStyle(
-                    TableStyle(
-                        [
-                            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                        ]
-                    )
-                )
-                content.append(Spacer(1, 12))
-                content.append(image_table)
-
-                self.logger.info(f"Added network topology diagram from {diagram_path}")
-
-            except Exception as e:
-                self.logger.error(f"Error loading network diagram: {e}", exc_info=True)
-                # Add placeholder text if image fails to load
-                content.append(
-                    Paragraph(
-                        "<i>[Network topology diagram placeholder - " "Image failed to load]</i>",
-                        styles["Normal"],
-                    )
-                )
-        else:
-            # Add placeholder if image doesn't exist
-            placeholder_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
-                "Network Topology Diagram",
-                "Visual representation of cluster network connectivity "
-                "showing CBoxes, DBoxes, switches, and customer network "
-                "connections.",
+        # Show "No switch data available" message instead of placeholder image
+        content.append(Spacer(1, 24))
+        content.append(
+            Paragraph(
+                "<i>No switch data available. The network diagram could not be generated "
+                "due to insufficient switch connectivity information.</i>",
+                styles["Normal"],
             )
-            content.extend(placeholder_elements)
-            self.logger.info("Network diagram placeholder shown - static image not found")
+        )
+        self.logger.info("Network diagram not generated - no switch data available")
 
         return content
 
