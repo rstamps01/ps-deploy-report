@@ -413,11 +413,11 @@ class EnhancedReportBuilder:
         return cast(
             List[Any],
             self.template.create_physical_hardware_inventory(
-            hardware_components["cnodes"],
-            hardware_components["dnodes"],
-            hardware_components["cboxes"],
-            hardware_components["dboxes"],
-        ),
+                hardware_components["cnodes"],
+                hardware_components["dnodes"],
+                hardware_components["cboxes"],
+                hardware_components["dboxes"],
+            ),
         )
 
     def _create_physical_layout_diagram(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:

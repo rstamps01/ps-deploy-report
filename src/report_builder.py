@@ -3846,7 +3846,7 @@ class VastReportBuilder:
                 # Use notes from port map entry
                 # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
                 is_ebox_entry = conn.get("ebox_id") is not None or conn.get("ebox_node_type") is not None
-                
+
                 if is_ebox_entry:
                     # EBox clusters: notes contain the CNode/DNode name
                     notes_str = conn.get("notes", "")

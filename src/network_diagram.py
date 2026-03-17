@@ -189,7 +189,7 @@ class NetworkDiagramGenerator:
             # 2. DBox names contain "ebox-" prefix (API puts EBox data in dboxes)
             # 3. Port map contains EB designations
             is_ebox_cluster = False
-            
+
             # Check if eboxes list is populated
             if len(eboxes) > 0:
                 is_ebox_cluster = True
@@ -198,13 +198,13 @@ class NetworkDiagramGenerator:
             elif len(dboxes) > 0:
                 # Check if any dbox name contains "ebox"
                 ebox_in_dboxes = any(
-                    "ebox" in str(d.get("name", "")).lower() 
+                    "ebox" in str(d.get("name", "")).lower()
                     for d in dboxes
                 )
                 if ebox_in_dboxes:
                     is_ebox_cluster = True
                     bottom_devices = dboxes  # Use dboxes but treat as eboxes
-            
+
             # Also check port map for EB designations as fallback
             if not is_ebox_cluster and port_map:
                 for conn in port_map:
@@ -213,10 +213,10 @@ class NetworkDiagramGenerator:
                         is_ebox_cluster = True
                         bottom_devices = dboxes if dboxes else eboxes
                         break
-            
+
             if not is_ebox_cluster:
                 bottom_devices = dboxes
-            
+
             bottom_device_type = "EBox" if is_ebox_cluster else "DBox"
 
             self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(eboxes)} EBoxes, {len(switches)} Switches")
@@ -342,7 +342,7 @@ class NetworkDiagramGenerator:
                     if idx < len(bottom_positions):
                         node_x, node_y = bottom_positions[idx]
                         ebox_id = device.get("id", idx + 1)
-                        
+
                         # Draw connection to Switch A (Network A - Green, L side)
                         sw1_x, sw1_y = switch_positions[1]
                         line_a = Line(
@@ -355,7 +355,7 @@ class NetworkDiagramGenerator:
                         )
                         connection_group.add(line_a)
                         self.logger.debug(f"Drew EB{ebox_id} -> SWA (Network A, Green)")
-                        
+
                         # Draw connection to Switch B (Network B - Blue, R side)
                         sw2_x, sw2_y = switch_positions[2]
                         line_b = Line(
@@ -459,7 +459,7 @@ class NetworkDiagramGenerator:
                     # Draw line (doubled stroke width)
                     # Network A = Switch 1 (SWA), Network B = Switch 2 (SWB)
                     line_color = self.switch_a_color if switch_num == 1 else self.switch_b_color
-                    
+
                     # Determine connection points based on device position relative to switch
                     # CNodes are above switches, DNodes are below
                     if is_cnode:
@@ -470,7 +470,7 @@ class NetworkDiagramGenerator:
                         # DNode (bottom) to switch: from top of DNode to bottom of switch
                         node_connect_y = node_y + device_height  # top of dnode
                         switch_connect_y = switch_y_pos  # bottom of switch
-                    
+
                     line = Line(
                         node_x + device_width / 2,
                         node_connect_y,
@@ -481,7 +481,7 @@ class NetworkDiagramGenerator:
                     )
                     connection_group.add(line)
                     connections_drawn += 1
-                
+
                 self.logger.info(f"Standard cluster: Drew {connections_drawn} connections")
 
             # Draw IPL/MLAG connections between switches
