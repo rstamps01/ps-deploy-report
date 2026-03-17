@@ -4485,7 +4485,9 @@ class VastReportBuilder:
             encryption_type = cluster_summary.get("encryption_type")
             # Handle potential list values from API
             if isinstance(encryption_type, list):
-                encryption_type_display = ", ".join(str(t) for t in encryption_type) if encryption_type else "Not Configured"
+                encryption_type_display = (
+                    ", ".join(str(t) for t in encryption_type) if encryption_type else "Not Configured"
+                )
             else:
                 encryption_type_display = (
                     str(encryption_type) if encryption_type and encryption_type != "Unknown" else "Not Configured"
@@ -4510,7 +4512,9 @@ class VastReportBuilder:
                 ekm_servers_display = ", ".join(str(s) for s in ekm_servers) if ekm_servers else "Not Configured"
             else:
                 ekm_servers_display = (
-                    str(ekm_servers) if ekm_servers and ekm_servers != "Unknown" and ekm_servers != "" else "Not Configured"
+                    str(ekm_servers)
+                    if ekm_servers and ekm_servers != "Unknown" and ekm_servers != ""
+                    else "Not Configured"
                 )
             table_data.append(["Security", "EKM", "Servers", ekm_servers_display])
 
@@ -4520,7 +4524,9 @@ class VastReportBuilder:
                 ekm_address_display = ", ".join(str(a) for a in ekm_address) if ekm_address else "Not Configured"
             else:
                 ekm_address_display = (
-                    str(ekm_address) if ekm_address and ekm_address != "Unknown" and ekm_address != "" else "Not Configured"
+                    str(ekm_address)
+                    if ekm_address and ekm_address != "Unknown" and ekm_address != ""
+                    else "Not Configured"
                 )
             table_data.append(["Security", "EKM", "Address", ekm_address_display])
 
@@ -4531,7 +4537,9 @@ class VastReportBuilder:
             ekm_auth_domain = cluster_summary.get("ekm_auth_domain")
             # Handle potential list values from API
             if isinstance(ekm_auth_domain, list):
-                ekm_auth_domain_display = ", ".join(str(d) for d in ekm_auth_domain) if ekm_auth_domain else "Not Configured"
+                ekm_auth_domain_display = (
+                    ", ".join(str(d) for d in ekm_auth_domain) if ekm_auth_domain else "Not Configured"
+                )
             else:
                 ekm_auth_domain_display = (
                     str(ekm_auth_domain)
@@ -4544,10 +4552,14 @@ class VastReportBuilder:
             secondary_ekm_address = cluster_summary.get("secondary_ekm_address")
             # Handle potential list values from API
             if isinstance(secondary_ekm_address, list):
-                secondary_ekm_address_display = ", ".join(str(a) for a in secondary_ekm_address) if secondary_ekm_address else "Not Configured"
+                secondary_ekm_address_display = (
+                    ", ".join(str(a) for a in secondary_ekm_address) if secondary_ekm_address else "Not Configured"
+                )
             else:
                 secondary_ekm_address_display = (
-                    str(secondary_ekm_address) if secondary_ekm_address and secondary_ekm_address != "null" else "Not Configured"
+                    str(secondary_ekm_address)
+                    if secondary_ekm_address and secondary_ekm_address != "null"
+                    else "Not Configured"
                 )
             table_data.append(["Security", "Secondary EKM", "Address", secondary_ekm_address_display])
 

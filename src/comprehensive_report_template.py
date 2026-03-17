@@ -887,7 +887,9 @@ class ComprehensiveReportTemplate:
         • Cluster configuration backup: cluster-config-{timestamp}.json<br/>
         • Network configuration: network-config-{timestamp}.yaml<br/>
         • Security policies: security-policies-{timestamp}.json
-        """.format(timestamp=datetime.now().strftime("%Y%m%d"))
+        """.format(
+            timestamp=datetime.now().strftime("%Y%m%d")
+        )
         content.append(Paragraph(config_text, body_style))
         content.append(Spacer(1, 15))
 
