@@ -99,6 +99,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "maverick_2u.png",
         "description": "Maverick/MLK 2U DBox",
     },
+    "ceres_4u": {
+        "type": "dbox",
+        "height_u": 2,
+        "image_filename": None,  # Uses generic_2u.png fallback
+        "description": "Ceres 4U 2U DBox",
+    },
     # =========================================================================
     # EBoxes (Enclosure Boxes)
     # =========================================================================
