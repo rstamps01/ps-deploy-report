@@ -3007,6 +3007,31 @@ class VastReportBuilder:
 
         return content
 
+    def _safe_table_value(self, value: Any, default: str = "Not Configured") -> str:
+        """
+        Safely convert any value to a string for use in table cells.
+        Handles lists, None, and other types that could cause ReportLab errors.
+
+        Args:
+            value: Any value that might be placed in a table cell
+            default: Default string to return if value is None/empty
+
+        Returns:
+            String safe for use in ReportLab table cells
+        """
+        if value is None:
+            return default
+        if isinstance(value, list):
+            if not value:
+                return default
+            return ", ".join(str(v) for v in value)
+        if isinstance(value, (dict,)):
+            return str(value) if value else default
+        value_str = str(value)
+        if not value_str or value_str in ("Unknown", "null", "None"):
+            return default
+        return value_str
+
     def _ip_sort_key(self, node: Dict[str, Any]) -> Tuple[int, ...]:
         """
         Convert IP address to tuple for sorting (lowest to highest).
@@ -3099,55 +3124,32 @@ class VastReportBuilder:
         if cluster_network_config:
             network_summary_data = []
 
-            # Management and Gateway settings
-            if (
-                cluster_network_config.get("management_vips")
-                and cluster_network_config.get("management_vips") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "Management VIPs",
-                        cluster_network_config.get("management_vips", "Not Configured"),
-                    ]
-                )
-            if (
-                cluster_network_config.get("external_gateways")
-                and cluster_network_config.get("external_gateways") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "External Gateways",
-                        cluster_network_config.get("external_gateways", "Not Configured"),
-                    ]
-                )
+            # Management and Gateway settings - use _safe_table_value for potential list values
+            mgmt_vips = self._safe_table_value(cluster_network_config.get("management_vips"))
+            if mgmt_vips != "Not Configured":
+                network_summary_data.append(["Management VIPs", mgmt_vips])
 
-            # DNS and NTP settings
-            if cluster_network_config.get("dns") and cluster_network_config.get("dns") != "Not Configured":
-                network_summary_data.append(["DNS Servers", cluster_network_config.get("dns", "Not Configured")])
-            if cluster_network_config.get("ntp") and cluster_network_config.get("ntp") != "Not Configured":
-                network_summary_data.append(["NTP Servers", cluster_network_config.get("ntp", "Not Configured")])
+            ext_gateways = self._safe_table_value(cluster_network_config.get("external_gateways"))
+            if ext_gateways != "Not Configured":
+                network_summary_data.append(["External Gateways", ext_gateways])
 
-            # Network interface settings
-            if (
-                cluster_network_config.get("ext_netmask")
-                and cluster_network_config.get("ext_netmask") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "External Netmask",
-                        cluster_network_config.get("ext_netmask", "Not Configured"),
-                    ]
-                )
-            if (
-                cluster_network_config.get("auto_ports_ext_iface")
-                and cluster_network_config.get("auto_ports_ext_iface") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "Auto Ports Ext Interface",
-                        cluster_network_config.get("auto_ports_ext_iface", "Not Configured"),
-                    ]
-                )
+            # DNS and NTP settings - use _safe_table_value for potential list values
+            dns_servers = self._safe_table_value(cluster_network_config.get("dns"))
+            if dns_servers != "Not Configured":
+                network_summary_data.append(["DNS Servers", dns_servers])
+
+            ntp_servers = self._safe_table_value(cluster_network_config.get("ntp"))
+            if ntp_servers != "Not Configured":
+                network_summary_data.append(["NTP Servers", ntp_servers])
+
+            # Network interface settings - use _safe_table_value for potential list values
+            ext_netmask = self._safe_table_value(cluster_network_config.get("ext_netmask"))
+            if ext_netmask != "Not Configured":
+                network_summary_data.append(["External Netmask", ext_netmask])
+
+            auto_ports = self._safe_table_value(cluster_network_config.get("auto_ports_ext_iface"))
+            if auto_ports != "Not Configured":
+                network_summary_data.append(["Auto Ports Ext Interface", auto_ports])
 
             # MTU settings
             if cluster_network_config.get("eth_mtu") and cluster_network_config.get("eth_mtu") != "Not Configured":
@@ -3165,24 +3167,20 @@ class VastReportBuilder:
                     ]
                 )
 
-            # IPMI settings (always show, even if Not Configured)
-            ipmi_gateway = cluster_network_config.get("ipmi_gateway") or "Not Configured"
+            # IPMI settings (always show, even if Not Configured) - use _safe_table_value
+            ipmi_gateway = self._safe_table_value(cluster_network_config.get("ipmi_gateway"))
             network_summary_data.append(["IPMI Gateway", ipmi_gateway])
-            ipmi_netmask = cluster_network_config.get("ipmi_netmask") or "Not Configured"
+            ipmi_netmask = self._safe_table_value(cluster_network_config.get("ipmi_netmask"))
             network_summary_data.append(["IPMI Netmask", ipmi_netmask])
 
             # B2B IPMI setting
             if cluster_network_config.get("b2b_ipmi") is not None:
                 network_summary_data.append(["B2B IPMI", str(cluster_network_config.get("b2b_ipmi", False))])
 
-            # Net Type setting
-            if cluster_network_config.get("net_type") and cluster_network_config.get("net_type") != "Not Configured":
-                network_summary_data.append(
-                    [
-                        "Net Type",
-                        cluster_network_config.get("net_type", "Not Configured"),
-                    ]
-                )
+            # Net Type setting - use _safe_table_value for potential list values
+            net_type = self._safe_table_value(cluster_network_config.get("net_type"))
+            if net_type != "Not Configured":
+                network_summary_data.append(["Net Type", net_type])
 
             if network_summary_data:
                 network_table_elements = self.brand_compliance.create_vast_table(
@@ -4485,9 +4483,13 @@ class VastReportBuilder:
             table_data.append(["Security", "Encryption", "Enabled", str(enable_encryption_display)])
 
             encryption_type = cluster_summary.get("encryption_type")
-            encryption_type_display = (
-                encryption_type if encryption_type and encryption_type != "Unknown" else "Not Configured"
-            )
+            # Handle potential list values from API
+            if isinstance(encryption_type, list):
+                encryption_type_display = ", ".join(str(t) for t in encryption_type) if encryption_type else "Not Configured"
+            else:
+                encryption_type_display = (
+                    str(encryption_type) if encryption_type and encryption_type != "Unknown" else "Not Configured"
+                )
             table_data.append(["Security", "Encryption", "Type", encryption_type_display])
 
             s3_aes_ciphers = cluster_summary.get("s3_enable_only_aes_ciphers")
@@ -4503,15 +4505,23 @@ class VastReportBuilder:
 
             # External Key Management (EKM) settings
             ekm_servers = cluster_summary.get("ekm_servers")
-            ekm_servers_display = (
-                ekm_servers if ekm_servers and ekm_servers != "Unknown" and ekm_servers != "" else "Not Configured"
-            )
+            # Handle list values from API - convert to comma-separated string
+            if isinstance(ekm_servers, list):
+                ekm_servers_display = ", ".join(str(s) for s in ekm_servers) if ekm_servers else "Not Configured"
+            else:
+                ekm_servers_display = (
+                    str(ekm_servers) if ekm_servers and ekm_servers != "Unknown" and ekm_servers != "" else "Not Configured"
+                )
             table_data.append(["Security", "EKM", "Servers", ekm_servers_display])
 
             ekm_address = cluster_summary.get("ekm_address")
-            ekm_address_display = (
-                ekm_address if ekm_address and ekm_address != "Unknown" and ekm_address != "" else "Not Configured"
-            )
+            # Handle list values from API - convert to comma-separated string
+            if isinstance(ekm_address, list):
+                ekm_address_display = ", ".join(str(a) for a in ekm_address) if ekm_address else "Not Configured"
+            else:
+                ekm_address_display = (
+                    str(ekm_address) if ekm_address and ekm_address != "Unknown" and ekm_address != "" else "Not Configured"
+                )
             table_data.append(["Security", "EKM", "Address", ekm_address_display])
 
             ekm_port = cluster_summary.get("ekm_port")
@@ -4519,18 +4529,26 @@ class VastReportBuilder:
             table_data.append(["Security", "EKM", "Port", str(ekm_port_display)])
 
             ekm_auth_domain = cluster_summary.get("ekm_auth_domain")
-            ekm_auth_domain_display = (
-                ekm_auth_domain
-                if ekm_auth_domain and ekm_auth_domain != "Unknown" and ekm_auth_domain != ""
-                else "Not Configured"
-            )
+            # Handle potential list values from API
+            if isinstance(ekm_auth_domain, list):
+                ekm_auth_domain_display = ", ".join(str(d) for d in ekm_auth_domain) if ekm_auth_domain else "Not Configured"
+            else:
+                ekm_auth_domain_display = (
+                    str(ekm_auth_domain)
+                    if ekm_auth_domain and ekm_auth_domain != "Unknown" and ekm_auth_domain != ""
+                    else "Not Configured"
+                )
             table_data.append(["Security", "EKM", "Auth Domain", ekm_auth_domain_display])
 
             # Secondary EKM settings
             secondary_ekm_address = cluster_summary.get("secondary_ekm_address")
-            secondary_ekm_address_display = (
-                secondary_ekm_address if secondary_ekm_address and secondary_ekm_address != "null" else "Not Configured"
-            )
+            # Handle potential list values from API
+            if isinstance(secondary_ekm_address, list):
+                secondary_ekm_address_display = ", ".join(str(a) for a in secondary_ekm_address) if secondary_ekm_address else "Not Configured"
+            else:
+                secondary_ekm_address_display = (
+                    str(secondary_ekm_address) if secondary_ekm_address and secondary_ekm_address != "null" else "Not Configured"
+                )
             table_data.append(["Security", "Secondary EKM", "Address", secondary_ekm_address_display])
 
             secondary_ekm_port = cluster_summary.get("secondary_ekm_port")
