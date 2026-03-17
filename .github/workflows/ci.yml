@@ -190,7 +190,7 @@ jobs:
 
       - name: Run UI tests
         run: |
-          python -m pytest tests/test_ui.py -v --screenshot=on --output=test-results/
+          python -m pytest tests/test_ui.py -v --screenshot=on --output=test-results/ --no-cov
 
       - name: Upload test screenshots on failure
         if: failure()
