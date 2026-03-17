@@ -636,7 +636,10 @@ class ExternalPortMapper:
 
             # Step 5: Correlate node MACs with switch ports
             port_map = self._correlate_node_to_switch(
-                node_inventory, hostname_to_ip, node_macs, switch_macs,
+                node_inventory,
+                hostname_to_ip,
+                node_macs,
+                switch_macs,
                 is_ebox_cluster=is_ebox_cluster,
                 ebox_mapping=ebox_mapping,
                 ebox_node_mapping=ebox_node_mapping,
@@ -804,6 +807,7 @@ class ExternalPortMapper:
             headers = {"Authorization": f"Basic {b64_credentials}"}
 
             import urllib3
+
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             url = f"https://{self.cluster_ip}/api/v7/eboxes/"
@@ -859,6 +863,7 @@ class ExternalPortMapper:
             headers = {"Authorization": f"Basic {b64_credentials}"}
 
             import urllib3
+
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             node_mapping = {}
@@ -1776,13 +1781,17 @@ class ExternalPortMapper:
                             ebox_dnodes[ebox_id] = []
                         # Get DNode name from API - format: dnode-128-21-4000
                         dnode_name = node_info.get("name", f"dnode-{node_info.get('node_id', '')}")
-                        ebox_dnodes[ebox_id].append({
-                            "node_id": node_info.get("node_id"),
-                            "position": node_info.get("position", "primary"),
-                            "hostname": hostname,
-                            "name": dnode_name,
-                        })
-                        self.logger.debug(f"EBox {ebox_id} DNode name: {dnode_name} ({node_info.get('position', 'primary')})")
+                        ebox_dnodes[ebox_id].append(
+                            {
+                                "node_id": node_info.get("node_id"),
+                                "position": node_info.get("position", "primary"),
+                                "hostname": hostname,
+                                "name": dnode_name,
+                            }
+                        )
+                        self.logger.debug(
+                            f"EBox {ebox_id} DNode name: {dnode_name} ({node_info.get('position', 'primary')})"
+                        )
 
         # Track statistics for diagnostics
         missing_hostname_count = 0
@@ -1810,7 +1819,9 @@ class ExternalPortMapper:
 
             node_type = node_info.get("node_type", "Unknown")
             ebox_id = hostname_to_ebox_id.get(hostname) if is_ebox_cluster else None
-            self.vlog.log(f"Processing {node_type} {hostname} ({data_ip}): {len(interfaces)} interfaces, EBox ID: {ebox_id}")
+            self.vlog.log(
+                f"Processing {node_type} {hostname} ({data_ip}): {len(interfaces)} interfaces, EBox ID: {ebox_id}"
+            )
 
             for interface, mac in interfaces.items():
                 # Find this MAC in switch tables
@@ -1828,9 +1839,7 @@ class ExternalPortMapper:
                             network = "B"
                         else:
                             network = "A" if interface.endswith("f0") else "B"
-                            self.logger.warning(
-                                f"Unknown switch {switch_ip}, using interface-based network detection"
-                            )
+                            self.logger.warning(f"Unknown switch {switch_ip}, using interface-based network detection")
 
                         # Determine port side (R=Right=f0=Network B, L=Left=f1=Network A)
                         # Note: Network A connects to SWA (L side), Network B connects to SWB (R side)

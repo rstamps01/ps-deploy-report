@@ -773,8 +773,7 @@ class VastApiHandler:
         """
         if method.upper() != "GET":
             self.logger.error(
-                "Read-only policy: _make_api_request allows GET only. "
-                "Do not use POST/PUT/DELETE for cluster data."
+                "Read-only policy: _make_api_request allows GET only. " "Do not use POST/PUT/DELETE for cluster data."
             )
             raise ValueError("Only GET is allowed for VAST API data collection")
         if not self.authenticated:

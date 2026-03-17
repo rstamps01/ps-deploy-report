@@ -211,6 +211,7 @@ class TestLibraryRoutes(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -326,6 +327,7 @@ class TestReportsDirsRoutes(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -352,6 +354,7 @@ class TestReportsDirsRoutes(unittest.TestCase):
         finally:
             if os.path.exists(other_dir):
                 import shutil
+
                 shutil.rmtree(other_dir, ignore_errors=True)
 
     def test_reports_dirs_post_empty_dir_returns_400(self):
@@ -383,6 +386,7 @@ class TestApiDiscover(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir, ignore_errors=True)
 
@@ -464,6 +468,7 @@ class TestProfilesRoutes(unittest.TestCase):
 
     def tearDown(self):
         import shutil
+
         if os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir, ignore_errors=True)
 

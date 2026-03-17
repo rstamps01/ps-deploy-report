@@ -1505,9 +1505,7 @@ class VastReportBuilder:
             return None
         return cast(
             List[Any],
-            self.brand_compliance.create_vast_hardware_table_with_pagination(
-                all_rows, "Hardware Inventory", headers_5
-            ),
+            self.brand_compliance.create_vast_hardware_table_with_pagination(all_rows, "Hardware Inventory", headers_5),
         )
 
     def _create_consolidated_inventory_table(
@@ -1539,9 +1537,7 @@ class VastReportBuilder:
         # row order EBox → CNode → 2× DNodes per EBox, model from CNode vendor, switches at bottom.
         is_ebox_cluster = bool(eboxes)
         if is_ebox_cluster:
-            ebox_only_elements = self._create_ebox_only_inventory_table(
-                eboxes, cnodes, dnodes, switches
-            )
+            ebox_only_elements = self._create_ebox_only_inventory_table(eboxes, cnodes, dnodes, switches)
             if ebox_only_elements is not None:
                 return ebox_only_elements
             # Fall through to standard table if no rows produced (e.g. no rack_unit)
@@ -3205,14 +3201,16 @@ class VastReportBuilder:
             # EBox clusters: use hardware_inventory cnodes (from /api/v7/cnodes/)
             hw_cnodes = hardware_inventory.get("cnodes", [])
             for c in hw_cnodes:
-                cnodes.append({
-                    "id": c.get("id", "Unknown"),
-                    "name": c.get("name", "Unknown"),
-                    "mgmt_ip": c.get("mgmt_ip", "Unknown"),
-                    "ipmi_ip": c.get("ipmi_ip", "Unknown"),
-                    "vast_os": c.get("os_version", "Unknown"),
-                    "is_vms_host": c.get("is_mgmt", False),
-                })
+                cnodes.append(
+                    {
+                        "id": c.get("id", "Unknown"),
+                        "name": c.get("name", "Unknown"),
+                        "mgmt_ip": c.get("mgmt_ip", "Unknown"),
+                        "ipmi_ip": c.get("ipmi_ip", "Unknown"),
+                        "vast_os": c.get("os_version", "Unknown"),
+                        "is_vms_host": c.get("is_mgmt", False),
+                    }
+                )
         else:
             # Non-EBox clusters: try network_settings, fallback to hardware_inventory
             cnodes_network_config = sections.get("cnodes_network_configuration", {}).get("data", {})
@@ -3220,14 +3218,16 @@ class VastReportBuilder:
             if not cnodes:
                 hw_cnodes = hardware_inventory.get("cnodes", [])
                 for c in hw_cnodes:
-                    cnodes.append({
-                        "id": c.get("id", "Unknown"),
-                        "name": c.get("name", "Unknown"),
-                        "mgmt_ip": c.get("mgmt_ip", "Unknown"),
-                        "ipmi_ip": c.get("ipmi_ip", "Unknown"),
-                        "vast_os": c.get("os_version", "Unknown"),
-                        "is_vms_host": c.get("is_mgmt", False),
-                    })
+                    cnodes.append(
+                        {
+                            "id": c.get("id", "Unknown"),
+                            "name": c.get("name", "Unknown"),
+                            "mgmt_ip": c.get("mgmt_ip", "Unknown"),
+                            "ipmi_ip": c.get("ipmi_ip", "Unknown"),
+                            "vast_os": c.get("os_version", "Unknown"),
+                            "is_vms_host": c.get("is_mgmt", False),
+                        }
+                    )
 
         if cnodes:
             # Sort CNodes by Mgmt IP (lowest to highest)
@@ -3275,14 +3275,16 @@ class VastReportBuilder:
                 # Position: "primary" (when empty) or "virtual"
                 raw_pos = d.get("position") or ""
                 pos = "virtual" if raw_pos == "virtual" else "primary"
-                dnodes.append({
-                    "id": d.get("id", "Unknown"),
-                    "name": d.get("name", "Unknown"),
-                    "mgmt_ip": d.get("mgmt_ip", "Unknown"),
-                    "ipmi_ip": d.get("ipmi_ip", "Unknown"),
-                    "vast_os": d.get("os_version", "Unknown"),
-                    "position": pos,
-                })
+                dnodes.append(
+                    {
+                        "id": d.get("id", "Unknown"),
+                        "name": d.get("name", "Unknown"),
+                        "mgmt_ip": d.get("mgmt_ip", "Unknown"),
+                        "ipmi_ip": d.get("ipmi_ip", "Unknown"),
+                        "vast_os": d.get("os_version", "Unknown"),
+                        "position": pos,
+                    }
+                )
         else:
             # Non-EBox clusters: try network_settings, fallback to hardware_inventory
             dnodes_network_config = sections.get("dnodes_network_configuration", {}).get("data", {})
@@ -3293,14 +3295,16 @@ class VastReportBuilder:
                     # Position: "primary" (when empty) or "virtual"
                     raw_pos = d.get("position") or ""
                     pos = "virtual" if raw_pos == "virtual" else "primary"
-                    dnodes.append({
-                        "id": d.get("id", "Unknown"),
-                        "name": d.get("name", "Unknown"),
-                        "mgmt_ip": d.get("mgmt_ip", "Unknown"),
-                        "ipmi_ip": d.get("ipmi_ip", "Unknown"),
-                        "vast_os": d.get("os_version", "Unknown"),
-                        "position": pos,
-                    })
+                    dnodes.append(
+                        {
+                            "id": d.get("id", "Unknown"),
+                            "name": d.get("name", "Unknown"),
+                            "mgmt_ip": d.get("mgmt_ip", "Unknown"),
+                            "ipmi_ip": d.get("ipmi_ip", "Unknown"),
+                            "vast_os": d.get("os_version", "Unknown"),
+                            "position": pos,
+                        }
+                    )
 
         if dnodes:
             # Sort DNodes by Mgmt IP (lowest to highest)
@@ -3778,10 +3782,7 @@ class VastReportBuilder:
             switch_ip_to_number[switch.get("mgmt_ip")] = idx
 
         # Sort switches by switch number (Switch 1 before Switch 2)
-        sorted_switch_ips = sorted(
-            ports_by_switch.keys(),
-            key=lambda ip: switch_ip_to_number.get(ip, 999)
-        )
+        sorted_switch_ips = sorted(ports_by_switch.keys(), key=lambda ip: switch_ip_to_number.get(ip, 999))
 
         # Create port map table for each switch (in order: Switch 1, Switch 2, etc.)
         for switch_ip in sorted_switch_ips:

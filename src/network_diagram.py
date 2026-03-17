@@ -197,10 +197,7 @@ class NetworkDiagramGenerator:
             # Check if dboxes contain ebox names (API stores EBoxes as DBoxes)
             elif len(dboxes) > 0:
                 # Check if any dbox name contains "ebox"
-                ebox_in_dboxes = any(
-                    "ebox" in str(d.get("name", "")).lower()
-                    for d in dboxes
-                )
+                ebox_in_dboxes = any("ebox" in str(d.get("name", "")).lower() for d in dboxes)
                 if ebox_in_dboxes:
                     is_ebox_cluster = True
                     bottom_devices = dboxes  # Use dboxes but treat as eboxes
@@ -219,7 +216,9 @@ class NetworkDiagramGenerator:
 
             bottom_device_type = "EBox" if is_ebox_cluster else "DBox"
 
-            self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(eboxes)} EBoxes, {len(switches)} Switches")
+            self.logger.info(
+                f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(eboxes)} EBoxes, {len(switches)} Switches"
+            )
             if is_ebox_cluster:
                 self.logger.info(f"EBox cluster detected - using {len(bottom_devices)} devices for bottom layer")
             # Log IPL connections accurately
@@ -326,7 +325,9 @@ class NetworkDiagramGenerator:
                 bottom_positions = [(switch_midpoint_x - device_width / 2, dbox_y)]
             else:
                 # Multiple devices - spread them centered on switch midpoint
-                bottom_positions = self._calculate_positions(len(bottom_devices), width, dbox_y, device_width, bottom_spacing)
+                bottom_positions = self._calculate_positions(
+                    len(bottom_devices), width, dbox_y, device_width, bottom_spacing
+                )
 
             # Draw connections first (so they appear behind devices)
             connection_group = Group()

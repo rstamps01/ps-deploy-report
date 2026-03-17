@@ -402,7 +402,9 @@ class EnhancedReportBuilder:
             "psnt_supported": True,
         }
 
-        return cast(List[Any], self.template.create_executive_summary(cluster_overview, hardware_summary, enhanced_features))
+        return cast(
+            List[Any], self.template.create_executive_summary(cluster_overview, hardware_summary, enhanced_features)
+        )
 
     def _create_architecture_overview(self) -> List[Any]:
         """Create architecture overview section."""
