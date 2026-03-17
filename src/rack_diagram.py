@@ -258,6 +258,8 @@ class RackDiagram:
             "msn2700",
             "msn3700-vs2fc",
             "msn2100-cb2f",
+            "msn4700-ws2rc",
+            "msn4700",
             "arista_7050cx4",
             "arista_7050dx4",
         ]
