@@ -642,7 +642,7 @@ class NetworkDiagramGenerator:
                 self.logger.info(f"Network diagram also saved as PNG: {png_path}")
                 return str(png_path)
             except Exception as e:
-                self.logger.warning(f"Could not save PNG via renderPM ({e}). Trying PDF-to-PNG fallback.")
+                self.logger.debug(f"renderPM unavailable ({e}), using PDF-to-PNG fallback")
                 # Fallback: convert the PDF we just wrote to PNG (avoids T1 font on Windows / renderPM issues)
                 try:
                     import fitz
