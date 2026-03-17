@@ -26,7 +26,6 @@ from typing import Dict, Optional, Any
 import yaml
 import colorlog
 
-
 # Global queue for SSE log streaming to the web UI
 _sse_log_queue: Optional[queue.Queue] = None
 
