@@ -21,12 +21,18 @@ echo "Project root: $PROJECT_ROOT"
 # 1. Clean previous build
 rm -rf "$DIST_DIR" "$PROJECT_ROOT/build"
 
-# 2. Run PyInstaller
+# 2. Ensure required config files exist (gitignored files that may not be present in CI)
+if [ ! -f "$PROJECT_ROOT/config/cluster_profiles.json" ]; then
+    echo "{}" > "$PROJECT_ROOT/config/cluster_profiles.json"
+    echo "Created empty cluster_profiles.json"
+fi
+
+# 3. Run PyInstaller
 echo "Running PyInstaller..."
 cd "$PROJECT_ROOT"
 pyinstaller packaging/vast-reporter.spec --noconfirm
 
-# 3. Verify output
+# 4. Verify output
 APP_PATH="$DIST_DIR/VAST Reporter.app"
 if [ -d "$APP_PATH" ]; then
     echo "App bundle created: $APP_PATH"
@@ -41,7 +47,7 @@ else
     fi
 fi
 
-# 4. Create DMG (if create-dmg is installed)
+# 5. Create DMG (if create-dmg is installed)
 if command -v create-dmg &> /dev/null; then
     VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' "$PROJECT_ROOT/src/app.py" | head -1) || VERSION="1.4.0"
     DMG_NAME="VAST-Reporter-v${VERSION}-mac.dmg"
