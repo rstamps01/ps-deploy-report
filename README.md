@@ -398,4 +398,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.4.6 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Tests:** `pytest tests/ -v`
+**Version:** 1.4.7 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Tests:** `pytest tests/ -v`

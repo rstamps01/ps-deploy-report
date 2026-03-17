@@ -5,6 +5,21 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.7] - 2026-03-17
+
+### Fixed
+- **PDF Generation Error:** Fixed `'str' object has no attribute 'wrapOn'` error when API returns list values (e.g., `ekm_servers`, `dns`, `ntp`) that were placed directly in ReportLab table cells
+- **Security & Authentication Table:** EKM servers, addresses, and encryption settings now properly handle list values from API by converting to comma-separated strings
+- **Network Configuration Table:** Management VIPs, external gateways, DNS servers, NTP servers, and IPMI settings now safely converted to strings before table insertion
+
+### Added
+- **Safe Table Value Helper:** New `_safe_table_value()` method in `VastReportBuilder` that converts any value type (lists, None, dicts) to safe strings for table cells
+
+### Technical Details
+- Root cause: VAST API returns `ekm_servers` as nested list (e.g., `[['hostname', port]]`) which ReportLab cannot render directly in table cells
+- Fix handles lists by joining elements with commas; handles None/empty with configurable default
+- Validated with JSON-to-PDF regeneration test on affected cluster data
+
 ## [1.4.6] - 2026-03-17
 
 ### Added

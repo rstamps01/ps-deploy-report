@@ -683,7 +683,7 @@ Examples:
         help="SSH password for VAST nodes (will prompt if not provided and port mapping enabled)",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.6")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.7")
 
     return parser
 

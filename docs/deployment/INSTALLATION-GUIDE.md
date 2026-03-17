@@ -20,12 +20,12 @@
 The fastest way to get started. No Python, package managers, or terminal commands required.
 
 **macOS:**
-1. Download **[VAST-Reporter-v1.4.6-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.6-mac.dmg)**
+1. Download **[VAST-Reporter-v1.4.7-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.7-mac.dmg)**
 2. Open the `.dmg` and drag **VAST Reporter** to **Applications**
 3. Launch from Applications
 
 **Windows:**
-1. Download **VAST-Reporter-v1.4.6-win.zip** from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest)
+1. Download **VAST-Reporter-v1.4.7-win.zip** from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest)
 2. Extract the `.zip` to a folder (e.g. `C:\Program Files\VAST Reporter`)
 3. Run `vast-reporter.exe`
 
@@ -45,11 +45,11 @@ The application opens a browser window at `http://127.0.0.1:5173` with the full 
 
 1. **Download the DMG installer:**
 
-   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.6-mac.dmg`.
+   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.7-mac.dmg`.
 
    Or from the terminal:
    ```bash
-   curl -LO https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.6-mac.dmg
+   curl -LO https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.7-mac.dmg
    ```
 
 2. **Install the application:**
@@ -97,7 +97,7 @@ The application is fully self-contained — it bundles Python, all libraries, an
 
 1. **Download the ZIP package:**
 
-   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.6-win.zip`.
+   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.4.7-win.zip`.
 
 2. **Extract and install:**
 
@@ -301,6 +301,6 @@ rm -rf ps-deploy-report/
 
 ---
 
-**Version**: 1.4.6
+**Version**: 1.4.7
 **Last Updated**: March 17, 2026
 **Compatibility**: macOS 11+, Windows 10+
