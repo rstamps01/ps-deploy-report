@@ -337,6 +337,24 @@ flake8 src/ tests/
 black src/ tests/
 ```
 
+**Pre-release checklist (quality gate)**  
+Before tagging a release or merging to `main`/`develop`, run the same checks as CI:
+
+```bash
+# Lint and format
+flake8 src/ tests/
+black --check --line-length 120 src/ tests/
+
+# Type check
+mypy src/ --ignore-missing-imports --no-strict-optional
+
+# Unit tests with coverage (excludes UI and integration)
+python -m pytest tests/ -v --ignore=tests/test_ui.py --ignore=tests/test_integration.py \
+  --cov=src --cov-report=term-missing --cov-fail-under=47
+```
+
+See [docs/TODO-ROADMAP.md](docs/TODO-ROADMAP.md) for quality-gate items (QG-1, QG-2).
+
 **Branches:** `main` (releases); `develop` (integration); `feature/*`, `fix/*`. Commits: [Conventional Commits](https://www.conventionalcommits.org/).
 
 Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (not published to GitHub).

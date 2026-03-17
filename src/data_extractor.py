@@ -22,7 +22,7 @@ import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from utils.logger import get_logger
 
@@ -522,6 +522,7 @@ class VastDataExtractor:
             "id": node_data.get("id", "Unknown"),
             "type": node_type,
             "name": node_data.get("name"),  # Programmatically generated name (e.g., cnode-3-10, dnode-3-112)
+            "hostname": node_data.get("hostname"),  # Network hostname
             "model": node_data.get("model", "Unknown"),
             "serial_number": node_data.get("serial_number", node_data.get("sn", "Unknown")),  # sn = Dell Asset Tag
             "status": node_data.get("status", "unknown"),
@@ -530,12 +531,21 @@ class VastDataExtractor:
             "box_vendor": node_data.get("box_vendor", "Unknown"),
             "cbox_id": node_data.get("cbox_id"),
             "ebox_id": node_data.get("ebox_id"),
+            # Network configuration fields (from /api/v7/cnodes/ and /api/v7/dnodes/)
+            "mgmt_ip": node_data.get("mgmt_ip"),
+            "ipmi_ip": node_data.get("ipmi_ip"),
+            "os_version": node_data.get("os_version"),
         }
 
-        # For dnodes, also capture hardware_type and dbox_id for rack diagram
+        # For cnodes, capture is_mgmt (VMS Host)
+        if node_type == "cnode":
+            processed_node["is_mgmt"] = node_data.get("is_mgmt", False)
+
+        # For dnodes, also capture hardware_type, dbox_id, and position for rack diagram
         if node_type == "dnode":
             processed_node["hardware_type"] = node_data.get("hardware_type", "Unknown")
             processed_node["dbox_id"] = node_data.get("dbox_id")
+            processed_node["position"] = node_data.get("position") or ""
 
         # Add enhanced information if available
         if processed_node["rack_position"] is not None:
@@ -560,7 +570,7 @@ class VastDataExtractor:
         """
         try:
             # Group nodes by rack position
-            rack_layout = {}
+            rack_layout: dict[str, Any] = {}
 
             # Process CNodes
             for cnode in cnodes:
@@ -1638,6 +1648,7 @@ class VastDataExtractor:
                 dboxes = raw_data.get("dboxes", [])
                 cnodes = raw_data.get("cnodes", [])
                 dnodes = raw_data.get("dnodes", [])
+                eboxes = raw_data.get("eboxes", [])
                 # Switches are in switch_inventory, not switches
                 switch_inventory = raw_data.get("switch_inventory", {})
                 switches = switch_inventory.get("switches", [])
@@ -1650,6 +1661,7 @@ class VastDataExtractor:
                     dnodes=dnodes,
                     switches=switches,
                     external_port_map=external_data["port_map"],
+                    eboxes=eboxes,
                 )
 
                 # External mapper returns port_map directly, pass it to enhanced mapper
@@ -1693,6 +1705,7 @@ class VastDataExtractor:
                 dboxes = raw_data.get("dboxes", [])
                 cnodes = raw_data.get("cnodes", [])
                 dnodes = raw_data.get("dnodes", [])
+                eboxes = raw_data.get("eboxes", [])
                 # Switches are in switch_inventory, not switches
                 switch_inventory = raw_data.get("switch_inventory", {})
                 switches = switch_inventory.get("switches", [])
@@ -1704,6 +1717,7 @@ class VastDataExtractor:
                     cnodes=cnodes,
                     dnodes=dnodes,
                     switches=switches,
+                    eboxes=eboxes,
                 )
 
                 # Generate enhanced port map with standardized designations
@@ -1849,7 +1863,7 @@ class VastDataExtractor:
             self.logger.info("Starting comprehensive data extraction")
 
             def _section_enabled(key: str) -> bool:
-                return self.sections_config.get(key, True)
+                return cast(bool, self.sections_config.get(key, True))
 
             # Extract all sections (respecting config toggles)
             cluster_summary = self.extract_cluster_summary(raw_data)

@@ -298,8 +298,8 @@ class ExternalPortMapper:
         print(f"✅ SSH known_hosts file created: {self.known_hosts_file}\n")
 
         # Detect switch OS types (Cumulus vs Onyx) and store credentials
-        self.switch_os_map = {}  # {switch_ip: 'cumulus' or 'onyx'}
-        self.switch_credentials = {}  # {switch_ip: {'user': '', 'password': ''}}
+        self.switch_os_map: dict[str, str] = {}  # {switch_ip: 'cumulus' or 'onyx'}
+        self.switch_credentials: dict[str, dict[str, str]] = {}  # {switch_ip: {'user': '', 'password': ''}}
 
     def _detect_switch_os(self, switch_ip: str) -> Tuple[str, str, str]:
         """
@@ -562,6 +562,28 @@ class ExternalPortMapper:
             node_inventory = self._collect_node_inventory_basic_auth()
             self.logger.info(f"Retrieved inventory for {len(node_inventory)} nodes via Basic Auth")
 
+            # Step 1.5: Detect EBox cluster and collect EBox mappings
+            ebox_mapping = self._collect_ebox_mapping()
+            is_ebox_cluster = len(ebox_mapping) > 0
+            ebox_node_mapping = {}
+
+            if is_ebox_cluster:
+                self.logger.info(f"Detected EBox cluster with {len(ebox_mapping)} EBoxes")
+                self.vlog.log(f"EBox cluster detected: {len(ebox_mapping)} EBoxes", self.vlog.GREEN)
+
+                # Collect CNode/DNode to EBox mapping
+                ebox_node_mapping = self._collect_ebox_node_mapping()
+                self.logger.info(f"Collected {len(ebox_node_mapping)} EBox node mappings")
+
+                # Enhance node_inventory with ebox_id
+                for hostname, node_info in node_inventory.items():
+                    # Find matching entry in ebox_node_mapping
+                    if hostname in ebox_node_mapping:
+                        node_info["ebox_id"] = ebox_node_mapping[hostname].get("ebox_id")
+                        self.logger.debug(f"Added ebox_id {node_info['ebox_id']} to {hostname}")
+            else:
+                self.logger.info("Standard CBox/DBox cluster (no EBoxes detected)")
+
             # Step 2: Collect hostname to data IP mapping via clush
             hostname_to_ip = self._collect_hostname_to_ip_mapping()
             self.logger.info(f"Mapped {len(hostname_to_ip)} hostnames to data IPs")
@@ -613,7 +635,12 @@ class ExternalPortMapper:
             )
 
             # Step 5: Correlate node MACs with switch ports
-            port_map = self._correlate_node_to_switch(node_inventory, hostname_to_ip, node_macs, switch_macs)
+            port_map = self._correlate_node_to_switch(
+                node_inventory, hostname_to_ip, node_macs, switch_macs,
+                is_ebox_cluster=is_ebox_cluster,
+                ebox_mapping=ebox_mapping,
+                ebox_node_mapping=ebox_node_mapping,
+            )
             self.logger.info(f"Generated {len(port_map)} port mappings")
 
             # Diagnostic: Count connections by node type and network
@@ -667,6 +694,9 @@ class ExternalPortMapper:
                 "total_ipl_ports": len(ipl_connections) * 2,
                 "data_source": "External SSH collection (clush + switch CLI)",
                 "diagnostic_summary": diagnostic_summary,
+                "is_ebox_cluster": is_ebox_cluster,
+                "ebox_mapping": ebox_mapping,
+                "ebox_node_mapping": ebox_node_mapping,
             }
             if partial:
                 result["partial"] = True
@@ -732,10 +762,10 @@ class ExternalPortMapper:
             data = response.json()
             node_inventory = {}
 
-            # Parse CNodes
+            # Parse CNodes and DNodes from CBoxes, DBoxes, and EBoxes
             for box in data.get("data", {}).get("boxes", []):
                 box_name = box.get("box_name", "")
-                if box_name.startswith("cbox-") or box_name.startswith("dbox-"):
+                if box_name.startswith("cbox-") or box_name.startswith("dbox-") or box_name.startswith("ebox-"):
                     for host in box.get("hosts", []):
                         hostname = host.get("hostname", "Unknown")
                         node_inventory[hostname] = {
@@ -753,6 +783,141 @@ class ExternalPortMapper:
 
         except Exception as e:
             self.logger.error(f"Error collecting node inventory: {e}")
+            return {}
+
+    def _collect_ebox_mapping(self) -> Dict[str, int]:
+        """
+        Collect EBox GUID to numeric ID mapping from /api/v7/eboxes/.
+
+        Returns:
+            Dict mapping EBox GUID (box_name) to numeric ebox_id:
+            {'ebox-8a1f17bc-49ed-4d94-8c6b-397b4b2df745': 1}
+        """
+        try:
+            import base64
+            import requests
+
+            self.logger.info("Collecting EBox GUID to ID mapping")
+
+            credentials = f"{self.api_user}:{self.api_password}"
+            b64_credentials = base64.b64encode(credentials.encode()).decode()
+            headers = {"Authorization": f"Basic {b64_credentials}"}
+
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+            url = f"https://{self.cluster_ip}/api/v7/eboxes/"
+            response = requests.get(url, headers=headers, verify=False, timeout=30)
+
+            if response.status_code != 200:
+                self.logger.warning(f"Failed to get EBox data: HTTP {response.status_code}")
+                return {}
+
+            data = response.json()
+            ebox_mapping = {}
+
+            # Handle both list and dict response formats
+            eboxes = data if isinstance(data, list) else data.get("results", data.get("data", []))
+
+            for ebox in eboxes:
+                ebox_id = ebox.get("id")
+                ebox_name = ebox.get("name", "")  # GUID format: ebox-8a1f17bc-...
+                if ebox_id and ebox_name:
+                    ebox_mapping[ebox_name] = ebox_id
+                    self.logger.debug(f"Mapped EBox: {ebox_name} -> ID {ebox_id}")
+
+            self.logger.info(f"Collected {len(ebox_mapping)} EBox GUID mappings")
+            return ebox_mapping
+
+        except Exception as e:
+            self.logger.error(f"Error collecting EBox mapping: {e}")
+            return {}
+
+    def _collect_ebox_node_mapping(self) -> Dict[str, Dict[str, Any]]:
+        """
+        Collect CNode/DNode to EBox mapping from /api/v7/cnodes/ and /api/v7/dnodes/.
+
+        Returns:
+            Dict mapping hostname to node info including ebox_id:
+            {
+                'v3217en1': {
+                    'ebox_id': 1,
+                    'node_type': 'cnode',
+                    'node_id': 3,
+                    'position': None  # or 'virtual' for virtual DNodes
+                }
+            }
+        """
+        try:
+            import base64
+            import requests
+
+            self.logger.info("Collecting CNode/DNode to EBox mapping")
+
+            credentials = f"{self.api_user}:{self.api_password}"
+            b64_credentials = base64.b64encode(credentials.encode()).decode()
+            headers = {"Authorization": f"Basic {b64_credentials}"}
+
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+            node_mapping = {}
+
+            # Collect CNodes
+            url = f"https://{self.cluster_ip}/api/v7/cnodes/"
+            response = requests.get(url, headers=headers, verify=False, timeout=30)
+
+            if response.status_code == 200:
+                data = response.json()
+                cnodes = data if isinstance(data, list) else data.get("results", data.get("data", []))
+
+                for cnode in cnodes:
+                    hostname = cnode.get("hostname")
+                    if hostname:
+                        node_mapping[hostname] = {
+                            "ebox_id": cnode.get("ebox_id"),
+                            "cbox_id": cnode.get("cbox_id"),
+                            "node_type": "cnode",
+                            "node_id": cnode.get("id"),
+                            "position": None,
+                            "mgmt_ip": cnode.get("mgmt_ip"),
+                            "name": cnode.get("name", hostname),  # e.g., cnode-128-21-4200
+                        }
+                        self.logger.debug(f"Mapped CNode: {cnode.get('name')} -> EBox {cnode.get('ebox_id')}")
+
+            # Collect DNodes
+            url = f"https://{self.cluster_ip}/api/v7/dnodes/"
+            response = requests.get(url, headers=headers, verify=False, timeout=30)
+
+            if response.status_code == 200:
+                data = response.json()
+                dnodes = data if isinstance(data, list) else data.get("results", data.get("data", []))
+
+                for dnode in dnodes:
+                    hostname = dnode.get("hostname")
+                    if hostname:
+                        # DNodes share hostname with CNode in EBox clusters
+                        # Store separately with dnode_ prefix for lookup
+                        dnode_key = f"dnode_{dnode.get('id')}_{hostname}"
+                        node_mapping[dnode_key] = {
+                            "ebox_id": dnode.get("ebox_id"),
+                            "dbox_id": dnode.get("dbox_id"),
+                            "node_type": "dnode",
+                            "node_id": dnode.get("id"),
+                            "position": dnode.get("position") or "primary",
+                            "mgmt_ip": dnode.get("mgmt_ip"),
+                            "hostname": hostname,
+                            "name": dnode.get("name", f"dnode-{dnode.get('id')}"),  # e.g., dnode-128-21-4000
+                        }
+                        self.logger.debug(
+                            f"Mapped DNode: {dnode.get('name')} -> EBox {dnode.get('ebox_id')} ({dnode.get('position') or 'primary'})"
+                        )
+
+            self.logger.info(f"Collected {len(node_mapping)} node-to-EBox mappings")
+            return node_mapping
+
+        except Exception as e:
+            self.logger.error(f"Error collecting EBox node mapping: {e}")
             return {}
 
     def _collect_hostname_to_ip_mapping(self) -> Dict[str, str]:
@@ -937,7 +1102,7 @@ class ExternalPortMapper:
         Returns:
             Dict mapping node IPs to {interface: mac}
         """
-        node_macs = {}
+        node_macs: dict[str, dict[str, str]] = {}
         current_node_ip = None
         current_interface = None
 
@@ -1549,20 +1714,31 @@ class ExternalPortMapper:
         hostname_to_ip: Dict[str, str],
         node_macs: Dict[str, Dict[str, str]],
         switch_macs: Dict[str, Dict[str, Dict[str, Any]]],
+        is_ebox_cluster: bool = False,
+        ebox_mapping: Dict[str, int] = None,
+        ebox_node_mapping: Dict[str, Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Correlate node MACs with switch ports using hostname-based mapping.
+
+        For EBox clusters, generates port mappings for all virtual nodes
+        (CNode + DNodes) that share each physical EBox connection.
 
         Args:
             node_inventory: {hostname: {mgmt_ip, node_type, box_vendor, ...}}
             hostname_to_ip: {hostname: data_ip}
             node_macs: {data_ip: {interface: mac}}
             switch_macs: {switch_ip: {mac: {port, vlan}}}
+            is_ebox_cluster: True if this is an EBox cluster
+            ebox_mapping: {ebox_guid: ebox_id} mapping
+            ebox_node_mapping: {hostname/key: {ebox_id, node_type, position, ...}}
 
         Returns:
             List of port mappings with node and switch details
         """
         port_map = []
+        ebox_mapping = ebox_mapping or {}
+        ebox_node_mapping = ebox_node_mapping or {}
 
         # Determine switch assignments (Switch 1 = Network A, Switch 2 = Network B)
         sorted_switches = sorted(self.switch_ips)
@@ -1573,8 +1749,40 @@ class ExternalPortMapper:
             f"Switch assignments: Switch-1 (Network A) = {switch_1}, " f"Switch-2 (Network B) = {switch_2}"
         )
 
+        if is_ebox_cluster:
+            self.logger.info("Using EBox-specific port correlation logic")
+
         # Build reverse mapping: data_ip -> hostname
         ip_to_hostname = {ip: hostname for hostname, ip in hostname_to_ip.items()}
+
+        # For EBox clusters, build hostname -> ebox_id mapping and get DNodes per EBox
+        hostname_to_ebox_id = {}
+        ebox_cnode_names = {}  # {ebox_id: cnode_name (e.g., cnode-128-21-4200)}
+        ebox_dnodes = {}  # {ebox_id: [{node_id, position, hostname, name}, ...]}
+        if is_ebox_cluster:
+            for key, node_info in ebox_node_mapping.items():
+                ebox_id = node_info.get("ebox_id")
+                if ebox_id:
+                    if node_info.get("node_type") == "cnode":
+                        hostname = key
+                        hostname_to_ebox_id[hostname] = ebox_id
+                        # Get CNode name from API - format: cnode-128-21-4200
+                        cnode_name = node_info.get("name", hostname)
+                        ebox_cnode_names[ebox_id] = cnode_name
+                        self.logger.debug(f"EBox {ebox_id} CNode name: {cnode_name}")
+                    elif node_info.get("node_type") == "dnode":
+                        hostname = node_info.get("hostname")
+                        if ebox_id not in ebox_dnodes:
+                            ebox_dnodes[ebox_id] = []
+                        # Get DNode name from API - format: dnode-128-21-4000
+                        dnode_name = node_info.get("name", f"dnode-{node_info.get('node_id', '')}")
+                        ebox_dnodes[ebox_id].append({
+                            "node_id": node_info.get("node_id"),
+                            "position": node_info.get("position", "primary"),
+                            "hostname": hostname,
+                            "name": dnode_name,
+                        })
+                        self.logger.debug(f"EBox {ebox_id} DNode name: {dnode_name} ({node_info.get('position', 'primary')})")
 
         # Track statistics for diagnostics
         missing_hostname_count = 0
@@ -1601,62 +1809,102 @@ class ExternalPortMapper:
                 continue
 
             node_type = node_info.get("node_type", "Unknown")
-            self.vlog.log(f"Processing {node_type} {hostname} ({data_ip}): {len(interfaces)} interfaces")
+            ebox_id = hostname_to_ebox_id.get(hostname) if is_ebox_cluster else None
+            self.vlog.log(f"Processing {node_type} {hostname} ({data_ip}): {len(interfaces)} interfaces, EBox ID: {ebox_id}")
 
             for interface, mac in interfaces.items():
                 # Find this MAC in switch tables
                 mac_found = False
-                found_on_switch = None
                 for switch_ip, mac_table in switch_macs.items():
                     if mac in mac_table:
                         mac_found = True
-                        found_on_switch = switch_ip
                         switch_entry = mac_table[mac]
                         found_mac_count += 1
 
                         # Determine network (A or B) based on WHICH SWITCH
-                        # the MAC is found on. This is the correct way to
-                        # determine network assignment:
-                        # - Switch 1 (lower IP) = Network A
-                        # - Switch 2 (higher IP) = Network B
-                        #
-                        # The interface name (f0 vs f1) tells us which
-                        # physical port on the node, but the NETWORK is
-                        # determined by which switch it connects to.
                         if switch_ip == switch_1:
                             network = "A"
                         elif switch_ip == switch_2:
                             network = "B"
                         else:
-                            # Fallback to interface-based detection
-                            # if switch mapping fails
                             network = "A" if interface.endswith("f0") else "B"
                             self.logger.warning(
-                                f"Unknown switch {switch_ip}, using " f"interface-based network detection"
+                                f"Unknown switch {switch_ip}, using interface-based network detection"
                             )
 
-                        port_map.append(
-                            {
-                                "node_ip": data_ip,
-                                "node_hostname": hostname,
-                                "node_type": node_info.get("node_type", "Unknown"),
-                                "mgmt_ip": node_info.get("mgmt_ip"),
-                                "box_vendor": node_info.get("box_vendor"),
-                                "box_name": node_info.get("box_name"),
-                                "interface": interface,
-                                "mac": mac,
-                                "switch_ip": switch_ip,
-                                "port": switch_entry["port"],
-                                "vlan": switch_entry["vlan"],
-                                "network": network,
-                            }
-                        )
+                        # Determine port side (R=Right=f0=Network B, L=Left=f1=Network A)
+                        # Note: Network A connects to SWA (L side), Network B connects to SWB (R side)
+                        port_side = "L" if network == "A" else "R"
+
+                        # Determine connection notes based on interface type
+                        is_physical_nic = interface.startswith("enp3s0f") and "." not in interface
+                        is_bond = "bond" in interface.lower()
+                        is_virtual_nic = mac.startswith("be:ef:")
+
+                        # Determine notes based on connection type
+                        # Only "Visible Bond0 Path" (physical NIC on Network B/SWB) = Primary
+                        # Alt paths = Secondary (not Virtual)
+                        if is_physical_nic and network == "B":
+                            notes = "Visible Bond0 Path = Primary"
+                        elif is_bond or is_virtual_nic:
+                            notes = "Alt Bond0 Path = Secondary"
+                        else:
+                            notes = "Alt Bond0 Path = Secondary"
+
+                        base_entry = {
+                            "node_ip": data_ip,
+                            "node_hostname": hostname,
+                            "node_type": node_info.get("node_type", "Unknown"),
+                            "mgmt_ip": node_info.get("mgmt_ip"),
+                            "box_vendor": node_info.get("box_vendor"),
+                            "box_name": node_info.get("box_name"),
+                            "interface": interface,
+                            "mac": mac,
+                            "switch_ip": switch_ip,
+                            "port": switch_entry["port"],
+                            "vlan": switch_entry["vlan"],
+                            "network": network,
+                            "port_side": port_side,
+                            "notes": notes,
+                        }
+
+                        if is_ebox_cluster and ebox_id:
+                            # For EBox clusters, add ebox_id and create entries for virtual nodes
+                            base_entry["ebox_id"] = ebox_id
+
+                            # Get CNode name for this EBox
+                            cnode_name = ebox_cnode_names.get(ebox_id, f"CNode-{ebox_id}")
+
+                            # Add CNode entry
+                            cnode_entry = base_entry.copy()
+                            cnode_entry["ebox_node_type"] = "cnode"
+                            cnode_entry["ebox_node_num"] = 1  # CN1 per EBox
+                            # Use actual CNode name as notes
+                            cnode_entry["notes"] = cnode_name
+                            cnode_entry["node_name"] = cnode_name
+                            port_map.append(cnode_entry)
+
+                            # Add DNode entries for this EBox
+                            dnodes = ebox_dnodes.get(ebox_id, [])
+                            for idx, dnode in enumerate(dnodes, start=1):
+                                dnode_entry = base_entry.copy()
+                                dnode_entry["ebox_node_type"] = "dnode"
+                                dnode_entry["ebox_node_num"] = idx  # DN1, DN2 per EBox
+                                dnode_entry["dnode_position"] = dnode.get("position", "primary")
+                                # Use actual DNode name as notes
+                                dnode_name = dnode.get("name", f"DNode-{ebox_id}-{idx}")
+                                dnode_entry["notes"] = dnode_name
+                                dnode_entry["node_name"] = dnode_name
+                                port_map.append(dnode_entry)
+                        else:
+                            # Standard CBox/DBox cluster
+                            port_map.append(base_entry)
 
                 # Log if MAC was not found in any switch
                 if not mac_found:
                     missing_mac_count += 1
                     self.logger.warning(
-                        f"MAC not found in any switch table: {hostname} ({data_ip}) " f"{interface} = {mac}"
+                        f"MAC not found in any switch table: {hostname} ({data_ip}) {interface} = {mac}"
                     )
                     self.vlog.log_warning(f"MAC {mac} from {hostname} {interface} not found in switch tables")
 

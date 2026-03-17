@@ -39,8 +39,8 @@ class PortMapper:
         self.switches = sorted(switches, key=lambda x: x.get("mgmt_ip", ""))
 
         # Build lookup tables
-        self.cnode_to_cbox = {}
-        self.dnode_to_dbox = {}
+        self.cnode_to_cbox: dict[str, str] = {}
+        self.dnode_to_dbox: dict[str, str] = {}
         self._assign_nodes_to_boxes()
 
     def _extract_ip_last_octet(self, node: Dict[str, Any]) -> int:

@@ -133,9 +133,10 @@ class TestVastApiHandler(unittest.TestCase):
     @patch("requests.Session.get")
     def test_make_api_request_success(self, mock_get):
         """Test successful API request."""
-        # Set up authenticated handler
+        # Set up authenticated handler (session + base_url required for _make_api_request)
         self.handler.authenticated = True
         self.handler.session = self.handler._setup_session()
+        self.handler.base_url = f"https://{self.handler.cluster_ip}/api/v1/"
 
         # Mock successful response
         mock_response = Mock()
@@ -151,9 +152,10 @@ class TestVastApiHandler(unittest.TestCase):
     @patch("requests.Session.get")
     def test_make_api_request_unauthorized(self, mock_get):
         """Test API request with 401 response."""
-        # Set up authenticated handler
+        # Set up authenticated handler (session + base_url required for _make_api_request)
         self.handler.authenticated = True
         self.handler.session = self.handler._setup_session()
+        self.handler.base_url = f"https://{self.handler.cluster_ip}/api/v1/"
 
         # Mock 401 response
         mock_response = Mock()
@@ -170,6 +172,18 @@ class TestVastApiHandler(unittest.TestCase):
         result = self.handler._make_api_request("test/")
 
         self.assertIsNone(result)
+
+    def test_make_api_request_only_get_allowed(self):
+        """Read-only policy: _make_api_request rejects POST/PUT/DELETE."""
+        self.handler.authenticated = True
+        self.handler.session = self.handler._setup_session()
+        self.handler.base_url = f"https://{self.handler.cluster_ip}/api/v1/"
+
+        for method in ("POST", "PUT", "DELETE", "PATCH"):
+            with self.subTest(method=method):
+                with self.assertRaises(ValueError) as ctx:
+                    self.handler._make_api_request("test/", method=method)
+                self.assertIn("Only GET", str(ctx.exception))
 
     @patch.object(VastApiHandler, "_make_api_request")
     def test_get_cluster_info_success(self, mock_request):

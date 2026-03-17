@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, cast
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Circle, Drawing, Group, Image as GraphicsImage, Line, Rect, String
@@ -38,8 +38,8 @@ def _load_user_library(library_path: Optional[str]) -> Dict[str, Any]:
     if not library_path:
         return {}
     try:
-        with open(library_path, "r") as f:
-            return json.load(f)
+        with open(library_path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -173,6 +173,12 @@ class RackDiagram:
             "arista_7050cx4": HARDWARE_IMAGE_DIR / "arista_7050cx4_24d_400g_switch_1u.png",
             "arista_7050dx4": HARDWARE_IMAGE_DIR / "arista_7050dx4_32s_400g_switch_1u.png",
             "arista": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "n42c-00rb-7c0": HARDWARE_IMAGE_DIR / "mellanox_sn5400_1x64p_400g_switch_2u.png",
+            "msn4700-ws2rc": HARDWARE_IMAGE_DIR / "msn4700-ws2rc_1u.png",
+            "msn4700": HARDWARE_IMAGE_DIR / "msn4700-ws2rc_1u.png",
+            # EBoxes
+            "supermicro_gen5_ebox": HARDWARE_IMAGE_DIR / "supermicro_gen5_ebox_1u.png",
+            "dell_genoa_ebox": HARDWARE_IMAGE_DIR / "dell_genoa_ebox_1u.png",
         }
 
         available_images: Dict[str, Optional[Path]] = {}
@@ -230,7 +236,7 @@ class RackDiagram:
                 f"No image for model '{model}' — using generic {height_u}U placeholder. "
                 f"Add this device to the Library to improve diagram accuracy."
             )
-            return generic
+            return cast(Optional[Path], generic)
 
         logger.warning(f"No image found for hardware type: {model}")
         return None
@@ -269,6 +275,7 @@ class RackDiagram:
             "sn5600",
             "arista_7060dx5",
             "arista",
+            "n42c-00rb-7c0",
         ]
 
         model_lower = model.lower() if model else ""
@@ -289,7 +296,7 @@ class RackDiagram:
         for key in sorted(user_lib, key=len, reverse=True):
             entry = user_lib[key]
             if key in model_lower:
-                return entry.get("height_u", 1)
+                return cast(int, entry.get("height_u", 1))
 
         logger.warning(f"Unknown model '{model}', defaulting to 1U")
         return 1

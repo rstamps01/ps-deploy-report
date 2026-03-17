@@ -19,9 +19,9 @@ Date: September 12, 2025
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from urllib.parse import urljoin
 
 import requests
@@ -126,6 +126,7 @@ class VastHardwareInfo:
     status: str = "unknown"
     rack_position: Optional[int] = None  # Enhanced: Rack height/U position
     hostname: Optional[str] = None  # Network hostname (more descriptive than name)
+    position: Optional[str] = None  # Physical position (e.g., "left", "right" for DNodes)
 
     # Network information
     primary_ip: Optional[str] = None
@@ -219,16 +220,16 @@ class VastApiHandler:
         self.logger.debug(f"SSL verification setting: {self.verify_ssl}")
 
         # API version detection - will be determined during authentication
-        self.api_version = None
-        self.detected_api_version = None
+        self.api_version: Optional[str] = None
+        self.detected_api_version: Optional[str] = None
 
         # Session management
-        self.session = None
-        self.base_url = None  # Will be set after API version detection
+        self.session: Optional[requests.Session] = None
+        self.base_url: Optional[str] = None  # Will be set after API version detection
         self.authenticated = False
-        self.api_token = None
-        self.cluster_version = None
-        self.supported_features = set()
+        self.api_token: Optional[str] = None
+        self.cluster_version: Optional[str] = None
+        self.supported_features: set[str] = set()
 
         # Enhanced API capabilities
         self.rack_height_supported = False
@@ -755,62 +756,54 @@ class VastApiHandler:
         params: Optional[Dict] = None,
     ) -> Optional[Dict]:
         """
-        Make an authenticated API request with retry logic.
+        Make an authenticated read-only API request (GET only).
+
+        This app is a report-generation tool and must not modify the cluster.
+        Only GET is allowed for data collection. Authentication uses direct
+        session.post() for login/token endpoints only.
 
         Args:
             endpoint (str): API endpoint (relative to base URL)
-            method (str): HTTP method
-            data (Dict, optional): Request data for POST/PUT
+            method (str): Must be "GET"
+            data (Dict, optional): Unused (GET only)
             params (Dict, optional): Query parameters
 
         Returns:
             Optional[Dict]: API response data or None if failed
         """
+        if method.upper() != "GET":
+            self.logger.error(
+                "Read-only policy: _make_api_request allows GET only. "
+                "Do not use POST/PUT/DELETE for cluster data."
+            )
+            raise ValueError("Only GET is allowed for VAST API data collection")
         if not self.authenticated:
             self.logger.error("Not authenticated. Call authenticate() first.")
+            return None
+        if self.session is None or self.base_url is None:
+            self.logger.error("Session or base_url not set.")
             return None
 
         try:
             url = urljoin(self.base_url, endpoint)
 
             # Prepare headers for this request
-            headers = {}
+            headers: dict[str, str] = {}
             if self.api_token:
                 headers["Authorization"] = f"Api-Token {self.api_token}"
 
-            # Make request with appropriate method
-            if method.upper() == "GET":
-                response = self.session.get(
-                    url,
-                    params=params,
-                    headers=headers,
-                    timeout=self.timeout,
-                    verify=self.verify_ssl,
-                )
-            elif method.upper() == "POST":
-                response = self.session.post(
-                    url,
-                    json=data,
-                    headers=headers,
-                    timeout=self.timeout,
-                    verify=self.verify_ssl,
-                )
-            elif method.upper() == "PUT":
-                response = self.session.put(
-                    url,
-                    json=data,
-                    headers=headers,
-                    timeout=self.timeout,
-                    verify=self.verify_ssl,
-                )
-            elif method.upper() == "DELETE":
-                response = self.session.delete(url, headers=headers, timeout=self.timeout, verify=self.verify_ssl)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {method}")
+            # Read-only: GET only for data collection
+            response = self.session.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=self.timeout,
+                verify=self.verify_ssl,
+            )
 
             # Handle response
             if response.status_code == 200:
-                return response.json()
+                return cast(Optional[Dict[str, Any]], response.json())
             elif response.status_code == 401:
                 self.logger.warning("Session expired, attempting re-authentication")
                 if self.authenticate():
@@ -1207,6 +1200,7 @@ class VastApiHandler:
                 # Log key information
                 self.logger.debug(f"DNode {hardware_info.name}: {hardware_info.box_vendor}, {hardware_info.status}")
                 if "position" in dnode:
+                    hardware_info.position = dnode["position"]
                     self.logger.debug(f"DNode {hardware_info.name} position: {dnode['position']}")
                 if hardware_info.hardware_type:
                     self.logger.debug(f"DNode {hardware_info.name} hardware type: {hardware_info.hardware_type}")
@@ -1584,30 +1578,35 @@ class VastApiHandler:
 
             for box in boxes:
                 box_name = box.get("box_name", "")
-                if box_name.startswith("cbox-"):
+                # Handle CBox (standard) and EBox (EBox clusters) - CNodes can be in either
+                if box_name.startswith("cbox-") or box_name.startswith("ebox-"):
                     hosts = box.get("hosts", [])
                     for host in hosts:
                         vast_install_info = host.get("vast_install_info", {})
-                        cnode_info = {
-                            "id": host.get("id", "Unknown"),
-                            "hostname": host.get("hostname", "Unknown"),
-                            "mgmt_ip": host.get("mgmt_ip", "Unknown"),
-                            "ipmi_ip": host.get("ipmi_ip", "Unknown"),
-                            "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
-                            "vast_os": vast_install_info.get("vast_os", "Unknown"),
-                            "node_type": vast_install_info.get("node_type", "Unknown"),
-                            "box_name": vast_install_info.get("box_name", "Unknown"),
-                            "is_vms_host": vast_install_info.get("is_vms_host", False),
-                            "tpm_boot_dev_encryption_supported": vast_install_info.get(
-                                "tpm_boot_dev_encryption_supported", False
-                            ),
-                            "tpm_boot_dev_encryption_enabled": vast_install_info.get(
-                                "tpm_boot_dev_encryption_enabled", False
-                            ),
-                            "single_nic": vast_install_info.get("single_nic", False),
-                            "net_type": vast_install_info.get("net_type", "Unknown"),
-                        }
-                        cnodes.append(cnode_info)
+                        node_type = vast_install_info.get("node_type", "")
+                        # Only include CNodes (not DNodes which may also be in EBox)
+                        if node_type == "cnode" or (box_name.startswith("cbox-") and not node_type):
+                            cnode_info = {
+                                "id": host.get("id", "Unknown"),
+                                "name": host.get("name") or vast_install_info.get("name", "Unknown"),
+                                "hostname": host.get("hostname", "Unknown"),
+                                "mgmt_ip": host.get("mgmt_ip", "Unknown"),
+                                "ipmi_ip": host.get("ipmi_ip", "Unknown"),
+                                "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
+                                "vast_os": vast_install_info.get("vast_os", "Unknown"),
+                                "node_type": vast_install_info.get("node_type", "Unknown"),
+                                "box_name": vast_install_info.get("box_name", "Unknown"),
+                                "is_vms_host": vast_install_info.get("is_vms_host", False),
+                                "tpm_boot_dev_encryption_supported": vast_install_info.get(
+                                    "tpm_boot_dev_encryption_supported", False
+                                ),
+                                "tpm_boot_dev_encryption_enabled": vast_install_info.get(
+                                    "tpm_boot_dev_encryption_enabled", False
+                                ),
+                                "single_nic": vast_install_info.get("single_nic", False),
+                                "net_type": vast_install_info.get("net_type", "Unknown"),
+                            }
+                            cnodes.append(cnode_info)
 
             self.logger.info(f"Retrieved {len(cnodes)} CNodes network configuration")
             return cnodes
@@ -1632,25 +1631,32 @@ class VastApiHandler:
 
             for box in boxes:
                 box_name = box.get("box_name", "")
-                if box_name.startswith("dbox-"):
+                # Handle DBox (standard) and EBox (EBox clusters) - DNodes can be in either
+                if box_name.startswith("dbox-") or box_name.startswith("ebox-"):
                     hosts = box.get("hosts", [])
                     for host in hosts:
                         vast_install_info = host.get("vast_install_info", {})
-                        dnode_info = {
-                            "id": host.get("id", "Unknown"),
-                            "hostname": host.get("hostname", "Unknown"),
-                            "mgmt_ip": host.get("mgmt_ip", "Unknown"),
-                            "ipmi_ip": host.get("ipmi_ip", "Unknown"),
-                            "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
-                            "vast_os": vast_install_info.get("vast_os", "Unknown"),
-                            "node_type": vast_install_info.get("node_type", "Unknown"),
-                            "position": vast_install_info.get("position", "Unknown"),
-                            "box_name": vast_install_info.get("box_name", "Unknown"),
-                            "is_ceres": vast_install_info.get("is_ceres", False),
-                            "is_ceres_v2": vast_install_info.get("is_ceres_v2", False),
-                            "net_type": vast_install_info.get("net_type", "Unknown"),
-                        }
-                        dnodes.append(dnode_info)
+                        node_type = vast_install_info.get("node_type", "")
+                        # Only include DNodes (not CNodes which may also be in EBox)
+                        if node_type == "dnode" or (box_name.startswith("dbox-") and not node_type):
+                            # Position: use actual value (e.g., "virtual" for EBox) or empty string
+                            pos = vast_install_info.get("position") or host.get("position") or ""
+                            dnode_info = {
+                                "id": host.get("id", "Unknown"),
+                                "name": host.get("name") or vast_install_info.get("name", "Unknown"),
+                                "hostname": host.get("hostname", "Unknown"),
+                                "mgmt_ip": host.get("mgmt_ip", "Unknown"),
+                                "ipmi_ip": host.get("ipmi_ip", "Unknown"),
+                                "box_vendor": vast_install_info.get("box_vendor", "Unknown"),
+                                "vast_os": vast_install_info.get("vast_os", "Unknown"),
+                                "node_type": vast_install_info.get("node_type", "Unknown"),
+                                "position": pos,
+                                "box_name": vast_install_info.get("box_name", "Unknown"),
+                                "is_ceres": vast_install_info.get("is_ceres", False),
+                                "is_ceres_v2": vast_install_info.get("is_ceres_v2", False),
+                                "net_type": vast_install_info.get("net_type", "Unknown"),
+                            }
+                            dnodes.append(dnode_info)
 
             self.logger.info(f"Retrieved {len(dnodes)} DNodes network configuration")
             return dnodes
@@ -1804,10 +1810,9 @@ class VastApiHandler:
             cluster_info = self.get_cluster_info()
             if cluster_info:
                 # Convert VastClusterInfo to dict if needed
-                if hasattr(cluster_info, "__dict__"):
-                    cluster_dict = cluster_info.__dict__
-                else:
-                    cluster_dict = cluster_info
+                cluster_dict: Dict[str, Any] = (
+                    asdict(cluster_info) if isinstance(cluster_info, VastClusterInfo) else cluster_info
+                )
 
                 performance_data.update(
                     {
@@ -1820,11 +1825,7 @@ class VastApiHandler:
 
             # Get performance ratings from cluster info
             if cluster_info:
-                # Convert VastClusterInfo to dict if needed
-                if hasattr(cluster_info, "__dict__"):
-                    cluster_dict = cluster_info.__dict__
-                else:
-                    cluster_dict = cluster_info
+                cluster_dict = asdict(cluster_info) if isinstance(cluster_info, VastClusterInfo) else cluster_info
 
                 performance_data.update(
                     {
@@ -1857,11 +1858,7 @@ class VastApiHandler:
             # Get cluster info for license data
             cluster_info = self.get_cluster_info()
             if cluster_info:
-                # Convert VastClusterInfo to dict if needed
-                if hasattr(cluster_info, "__dict__"):
-                    cluster_dict = cluster_info.__dict__
-                else:
-                    cluster_dict = cluster_info
+                cluster_dict = asdict(cluster_info) if isinstance(cluster_info, VastClusterInfo) else cluster_info
 
                 licensing_data.update(
                     {
@@ -1938,7 +1935,7 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting customer integration information")
 
-            integration_data = {}
+            integration_data: Dict[str, Any] = {}
 
             # Network configuration for customer integration
             network_config = self.get_network_configuration()
@@ -2182,6 +2179,8 @@ class VastApiHandler:
         Returns:
             List[Dict[str, Any]]: List of switches with detailed metadata
         """
+        if self.session is None:
+            return []
         try:
             self.logger.info("Collecting detailed switch information")
 
@@ -2196,7 +2195,7 @@ class VastApiHandler:
                 switches_data = response.json()
                 if switches_data:
                     self.logger.info(f"Retrieved {len(switches_data)} switch details")
-                    return switches_data
+                    return cast(List[Dict[str, Any]], switches_data)
                 else:
                     self.logger.warning("No switch detail data available")
                     return []
@@ -2215,6 +2214,8 @@ class VastApiHandler:
         Returns:
             List[Dict[str, Any]]: List of all switch ports with their configurations
         """
+        if self.session is None:
+            return []
         try:
             self.logger.info("Collecting switch port information")
 
@@ -2229,7 +2230,7 @@ class VastApiHandler:
                 ports_data = response.json()
                 if ports_data:
                     self.logger.info(f"Retrieved {len(ports_data)} port entries")
-                    return ports_data
+                    return cast(List[Dict[str, Any]], ports_data)
                 else:
                     self.logger.warning("No switch port data available")
                     return []
@@ -2490,6 +2491,10 @@ class VastApiHandler:
                         "box_vendor": cnode.box_vendor,
                         "cbox_id": cnode.cbox_id,
                         "ebox_id": cnode.ebox_id,
+                        "mgmt_ip": cnode.mgmt_ip,
+                        "ipmi_ip": cnode.ipmi_ip,
+                        "os_version": cnode.os_version,
+                        "is_mgmt": cnode.is_mgmt,
                     }
                     for cnode in cnodes
                 ],
@@ -2498,6 +2503,7 @@ class VastApiHandler:
                         "id": dnode.node_id,
                         "type": dnode.node_type,
                         "name": dnode.name,  # DNode name (programmatically generated)
+                        "hostname": dnode.hostname,
                         "model": dnode.model,
                         "hardware_type": dnode.hardware_type,
                         "serial_number": dnode.serial_number,
@@ -2505,6 +2511,10 @@ class VastApiHandler:
                         "status": dnode.status,
                         "dbox_id": dnode.box_id,  # DBox ID (stored in box_id field for DNodes)
                         "ebox_id": dnode.ebox_id,
+                        "mgmt_ip": dnode.mgmt_ip,
+                        "ipmi_ip": dnode.ipmi_ip,
+                        "os_version": dnode.os_version,
+                        "position": dnode.position,
                     }
                     for dnode in dnodes
                 ],

@@ -20,9 +20,9 @@ class VNetMapParser:
             output_file: Path to vnetmap output file
         """
         self.output_file = Path(output_file)
-        self.raw_data = []
-        self.topology_data = []
-        self.cross_connections = []
+        self.raw_data: list[Any] = []
+        self.topology_data: list[Any] = []
+        self.cross_connections: list[Any] = []
 
     def parse(self) -> Dict[str, Any]:
         """
@@ -133,7 +133,7 @@ class VNetMapParser:
         Returns:
             Dict mapping switch IPs to list of connections
         """
-        connections_by_switch = {}
+        connections_by_switch: dict[str, list[Dict[str, Any]]] = {}
 
         for conn in self.topology_data:
             switch_ip = conn["switch_ip"]
@@ -154,7 +154,7 @@ class VNetMapParser:
         Returns:
             Dict mapping node hostnames to list of connections
         """
-        connections_by_node = {}
+        connections_by_node: dict[str, list[Dict[str, Any]]] = {}
 
         for conn in self.topology_data:
             hostname = conn["hostname"]

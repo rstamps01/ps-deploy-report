@@ -22,7 +22,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -265,7 +265,7 @@ class EnhancedReportBuilder:
             )
 
         # Create CBoxes (group CNodes by rack position)
-        rack_groups = {}
+        rack_groups: Dict[str, List[Any]] = {}
         for cnode in cnodes:
             rack_pos = cnode.rack_position
             if rack_pos not in rack_groups:
@@ -288,7 +288,7 @@ class EnhancedReportBuilder:
             )
 
         # Create DBoxes (group DNodes by rack position)
-        drack_groups = {}
+        drack_groups: Dict[str, List[Any]] = {}
         for dnode in dnodes:
             rack_pos = dnode.rack_position
             if rack_pos not in drack_groups:
@@ -381,7 +381,7 @@ class EnhancedReportBuilder:
 
     def _create_title_page(self, metadata: ReportMetadata) -> List[Any]:
         """Create professional title page."""
-        return self.template.create_title_page(metadata)
+        return cast(List[Any], self.template.create_title_page(metadata))
 
     def _create_executive_summary(
         self,
@@ -402,19 +402,22 @@ class EnhancedReportBuilder:
             "psnt_supported": True,
         }
 
-        return self.template.create_executive_summary(cluster_overview, hardware_summary, enhanced_features)
+        return cast(List[Any], self.template.create_executive_summary(cluster_overview, hardware_summary, enhanced_features))
 
     def _create_architecture_overview(self) -> List[Any]:
         """Create architecture overview section."""
-        return self.template.create_architecture_overview()
+        return cast(List[Any], self.template.create_architecture_overview())
 
     def _create_physical_hardware_inventory(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
         """Create comprehensive physical hardware inventory."""
-        return self.template.create_physical_hardware_inventory(
+        return cast(
+            List[Any],
+            self.template.create_physical_hardware_inventory(
             hardware_components["cnodes"],
             hardware_components["dnodes"],
             hardware_components["cboxes"],
             hardware_components["dboxes"],
+        ),
         )
 
     def _create_physical_layout_diagram(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
@@ -529,7 +532,7 @@ class EnhancedReportBuilder:
 
     def _create_network_configuration(self, network_config: NetworkConfiguration) -> List[Any]:
         """Create network configuration section."""
-        return self.template.create_network_configuration(network_config)
+        return cast(List[Any], self.template.create_network_configuration(network_config))
 
     def _create_switch_port_map(self, hardware_components: Dict[str, List[HardwareComponent]]) -> List[Any]:
         """Create switch port map section."""
@@ -600,15 +603,15 @@ class EnhancedReportBuilder:
 
     def _create_deployment_configuration(self, deployment_config: DeploymentConfiguration) -> List[Any]:
         """Create deployment configuration section."""
-        return self.template.create_deployment_configuration(deployment_config)
+        return cast(List[Any], self.template.create_deployment_configuration(deployment_config))
 
     def _create_validation_testing(self) -> List[Any]:
         """Create validation and testing section."""
-        return self.template.create_validation_testing()
+        return cast(List[Any], self.template.create_validation_testing())
 
     def _create_support_information(self, metadata: ReportMetadata) -> List[Any]:
         """Create support information section."""
-        return self.template.create_support_information(metadata.cluster_psnt)
+        return cast(List[Any], self.template.create_support_information(metadata.cluster_psnt))
 
     def _create_appendix(self, metadata: ReportMetadata, processed_data: Dict[str, Any]) -> List[Any]:
         """Create appendix section."""

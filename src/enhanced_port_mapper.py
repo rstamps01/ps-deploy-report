@@ -19,6 +19,8 @@ class EnhancedPortMapper:
     Node Designation Format:
     - CBox-1/CNode-1/Port-A = CB1-CN1-R
     - DBox-1/DNode-2/Port-B = DB1-DN2-L
+    - EBox-1/CNode-1/Port-A = EB1-CN1-R (EBox clusters)
+    - EBox-1/DNode-2/Port-B = EB1-DN2-L (EBox clusters)
 
     Switch Designation Format:
     - Switch-1/Port-12 = SWA-P12
@@ -37,6 +39,7 @@ class EnhancedPortMapper:
         dnodes: List[Dict[str, Any]],
         switches: List[Dict[str, Any]],
         external_port_map: List[Dict[str, Any]] = None,
+        eboxes: List[Dict[str, Any]] = None,
     ):
         """
         Initialize enhanced port mapper.
@@ -48,6 +51,7 @@ class EnhancedPortMapper:
             dnodes: List of DNode data
             switches: List of switch hardware data
             external_port_map: Optional pre-collected port map data with node IPs
+            eboxes: List of EBox hardware data (for EBox-only clusters)
         """
         self.cboxes = cboxes
         self.dboxes = dboxes
@@ -55,6 +59,10 @@ class EnhancedPortMapper:
         self.dnodes = dnodes
         self.switches = switches
         self.external_port_map = external_port_map or []
+        self.eboxes = eboxes or []
+
+        # Detect if this is an EBox-only cluster
+        self.is_ebox_cluster = bool(self.eboxes)
 
         # Build lookup maps
         self._build_node_maps()
@@ -136,16 +144,21 @@ class EnhancedPortMapper:
 
                 # Only add if not already in map
                 if data_ip and data_ip not in self.cnode_map:
-                    # Determine CBox number from CNode data
-                    cbox_id = cnode.get("cbox_id", idx)
-                    cbox_num = cbox_id if isinstance(cbox_id, int) else idx
+                    # For EBox clusters, use ebox_id; for CBox clusters, use cbox_id
+                    if self.is_ebox_cluster:
+                        box_id = cnode.get("ebox_id", idx)
+                        box_num = box_id if isinstance(box_id, int) else idx
+                    else:
+                        box_id = cnode.get("cbox_id", idx)
+                        box_num = box_id if isinstance(box_id, int) else idx
 
                     # Get hostname
                     hostname = cnode.get("name") or cnode.get("hostname") or f"cnode-{idx}"
 
                     self.cnode_map[data_ip] = {
                         "cnode_num": idx,
-                        "cbox_num": cbox_num,
+                        "cbox_num": box_num,  # cbox_num used for both CBox and EBox
+                        "ebox_num": box_num if self.is_ebox_cluster else None,
                         "hostname": hostname,
                     }
                     logger.debug(f"Mapped CNode {idx} from API: {data_ip} -> {hostname}")
@@ -171,16 +184,21 @@ class EnhancedPortMapper:
 
                 # Only add if not already in map
                 if data_ip and data_ip not in self.dnode_map:
-                    # Determine DBox number from DNode data
-                    dbox_id = dnode.get("dbox_id", 1)
-                    dbox_num = dbox_id if isinstance(dbox_id, int) else 1
+                    # For EBox clusters, use ebox_id; for DBox clusters, use dbox_id
+                    if self.is_ebox_cluster:
+                        box_id = dnode.get("ebox_id", 1)
+                        box_num = box_id if isinstance(box_id, int) else 1
+                    else:
+                        box_id = dnode.get("dbox_id", 1)
+                        box_num = box_id if isinstance(box_id, int) else 1
 
                     # Get hostname
                     hostname = dnode.get("name") or dnode.get("hostname") or f"dnode-{idx}"
 
                     self.dnode_map[data_ip] = {
                         "dnode_num": idx,
-                        "dbox_num": dbox_num,
+                        "dbox_num": box_num,  # dbox_num used for both DBox and EBox
+                        "ebox_num": box_num if self.is_ebox_cluster else None,
                         "hostname": hostname,
                     }
                     logger.debug(f"Mapped DNode {idx} from API: {data_ip} -> {hostname}")
@@ -233,31 +251,37 @@ class EnhancedPortMapper:
         Returns:
             Tuple of (designation, node_type)
             Examples:
-            - ("CB1-CN1-R", "cnode") for CNode-1 Network A
-            - ("DB1-DN2-L", "dnode") for DNode-2 Network B
+            - ("CB1-CN1-R", "cnode") for CNode-1 Network A (CBox cluster)
+            - ("DB1-DN2-L", "dnode") for DNode-2 Network B (DBox cluster)
+            - ("EB1-CN1-R", "cnode") for CNode-1 Network A (EBox cluster)
+            - ("EB1-DN2-L", "dnode") for DNode-2 Network B (EBox cluster)
         """
         # Check if CNode
         if node_ip in self.cnode_map:
             node_info = self.cnode_map[node_ip]
-            cbox_num = node_info["cbox_num"]
+            box_num = node_info["cbox_num"]
             cnode_num = node_info["cnode_num"]
 
             # Network A = Port-A = R, Network B = Port-B = L
             port_side = "R" if network == "A" else "L"
 
-            designation = f"CB{cbox_num}-CN{cnode_num}-{port_side}"
+            # Use EB prefix for EBox clusters, CB for CBox clusters
+            box_prefix = "EB" if self.is_ebox_cluster else "CB"
+            designation = f"{box_prefix}{box_num}-CN{cnode_num}-{port_side}"
             return designation, "cnode"
 
         # Check if DNode
         elif node_ip in self.dnode_map:
             node_info = self.dnode_map[node_ip]
-            dbox_num = node_info["dbox_num"]
+            box_num = node_info["dbox_num"]
             dnode_num = node_info["dnode_num"]
 
             # Network A = Port-A = R, Network B = Port-B = L
             port_side = "R" if network == "A" else "L"
 
-            designation = f"DB{dbox_num}-DN{dnode_num}-{port_side}"
+            # Use EB prefix for EBox clusters, DB for DBox clusters
+            box_prefix = "EB" if self.is_ebox_cluster else "DB"
+            designation = f"{box_prefix}{box_num}-DN{dnode_num}-{port_side}"
             return designation, "dnode"
 
         else:
@@ -294,16 +318,16 @@ class EnhancedPortMapper:
     def get_node_hostname(self, node_ip: str) -> str:
         """Get full hostname for a node IP."""
         if node_ip in self.cnode_map:
-            return self.cnode_map[node_ip]["hostname"]
+            return str(self.cnode_map[node_ip]["hostname"])
         elif node_ip in self.dnode_map:
-            return self.dnode_map[node_ip]["hostname"]
+            return str(self.dnode_map[node_ip]["hostname"])
         else:
             return "Unknown"
 
     def get_switch_hostname(self, switch_ip: str) -> str:
         """Get full hostname for a switch IP."""
         if switch_ip in self.switch_map:
-            return self.switch_map[switch_ip]["hostname"]
+            return str(self.switch_map[switch_ip]["hostname"])
         else:
             return "Unknown"
 
@@ -364,6 +388,9 @@ class EnhancedPortMapper:
         """
         Generate enhanced port map with standardized designations.
 
+        For EBox clusters, uses EB#-CN1-R/L and EB#-DN1-R/L format.
+        For CBox/DBox clusters, uses CB#-CN#-R/L and DB#-DN#-R/L format.
+
         Args:
             raw_port_map: Raw port mapping data from external_port_mapper
 
@@ -372,7 +399,7 @@ class EnhancedPortMapper:
         """
         enhanced_map = []
         cross_connections = []
-        ipl_connections = []
+        ipl_connections: list[Any] = []
 
         for conn in raw_port_map:
             node_ip = conn.get("node_ip")
@@ -382,20 +409,33 @@ class EnhancedPortMapper:
             interface = conn.get("interface")
             mac = conn.get("mac")
 
+            # Check for EBox-specific fields
+            ebox_id = conn.get("ebox_id")
+            ebox_node_type = conn.get("ebox_node_type")
+            ebox_node_num = conn.get("ebox_node_num")
+            port_side = conn.get("port_side", "R" if network == "A" else "L")
+            notes = conn.get("notes", "")
+
             # Generate designations
-            node_designation, node_type = self.generate_node_designation(node_ip, network, conn.get("node_hostname"))
+            if ebox_id and ebox_node_type:
+                # EBox-specific designation: EB#-CN1-R or EB#-DN1-L
+                node_type_abbrev = "CN" if ebox_node_type == "cnode" else "DN"
+                node_designation = f"EB{ebox_id}-{node_type_abbrev}{ebox_node_num}-{port_side}"
+                node_type = ebox_node_type
+            else:
+                # Standard CBox/DBox designation
+                node_designation, node_type = self.generate_node_designation(
+                    node_ip, network, conn.get("node_hostname")
+                )
+
             switch_designation = self.generate_switch_designation(switch_ip, port_name)
 
             # Get hostnames
-            node_hostname = self.get_node_hostname(node_ip)
+            node_hostname = self.get_node_hostname(node_ip) or conn.get("node_hostname", "Unknown")
             switch_hostname = self.get_switch_hostname(switch_ip)
 
             # Detect cross-connections
             is_cross, expected_network = self.detect_cross_connection(switch_ip, node_ip, network)
-
-            # Check if IPL port (won't have node connections)
-            # Note: We're looking at ports from MAC tables, so IPL ports
-            # won't show up here unless misconfigured
 
             enhanced_entry = {
                 "node_ip": node_ip,
@@ -405,22 +445,28 @@ class EnhancedPortMapper:
                 "interface": interface,
                 "mac": mac,
                 "network": network,
-                "port_side": "R" if network == "A" else "L",
+                "port_side": port_side,
                 "switch_ip": switch_ip,
                 "switch_hostname": switch_hostname,
                 "switch_designation": switch_designation,
                 "port": port_name,
                 "is_cross_connected": is_cross,
                 "expected_network": expected_network,
+                "notes": notes,
             }
+
+            # Add EBox-specific fields if present
+            if ebox_id:
+                enhanced_entry["ebox_id"] = ebox_id
+                enhanced_entry["ebox_node_type"] = ebox_node_type
+                enhanced_entry["ebox_node_num"] = ebox_node_num
+                if conn.get("dnode_position"):
+                    enhanced_entry["dnode_position"] = conn.get("dnode_position")
 
             enhanced_map.append(enhanced_entry)
 
             if is_cross:
                 cross_connections.append(enhanced_entry)
-
-        # Identify IPL ports from switches (separate from node connections)
-        # This would require separate switch port data
 
         result = {
             "port_map": enhanced_map,

@@ -23,7 +23,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -179,7 +179,7 @@ class VastReportBuilder:
         self.config = config or ReportConfig()
         self.library_path = library_path
         self.user_images_dir = user_images_dir
-        self.switch_positions = {}
+        self.switch_positions: dict[int, Any] = {}
 
         if not REPORTLAB_AVAILABLE:
             raise ReportGenerationError("ReportLab is not available. Please install it: pip install reportlab")
@@ -280,28 +280,30 @@ class VastReportBuilder:
                 "network_config" if is_first_pass else None,
             )
         )
-        story.append(PageBreak())
 
-        # Add switch configuration section
+        # Add switch configuration section (no PageBreak - let content flow naturally)
         story.extend(
             self._create_switch_configuration(processed_data, page_tracker, "switch_config" if is_first_pass else None)
         )
-        story.append(PageBreak())
 
-        # Add port mapping (if available)
-        port_mapping = processed_data.get("sections", {}).get("port_mapping", {})
-        if port_mapping.get("available") and port_mapping.get("status") == "complete":
+        # Add port mapping (if available) - method includes its own PageBreak at start
+        port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
+        port_mapping_data = port_mapping_section.get("data", {})
+        if port_mapping_data.get("available") and port_mapping_section.get("status") == "complete":
             # Extract port mapping data and switches for the method
             hardware = processed_data.get("hardware_inventory", {})
             switches = hardware.get("switches") or []
             story.extend(
                 self._create_port_mapping_section(
-                    port_mapping,
+                    port_mapping_data,
                     switches,
                     page_tracker,
                     "port_mapping" if is_first_pass else None,
                 )
             )
+            story.append(PageBreak())
+        else:
+            # Add page break before network diagram if no port mapping
             story.append(PageBreak())
 
         # Add logical network diagram
@@ -515,58 +517,62 @@ class VastReportBuilder:
         content.extend(header_elements)
 
         # Add hardware information when any hardware is present (nodes, boxes, or switches)
-        if cnodes or dnodes or cboxes or dboxes or switches:
+        eboxes = hardware_inventory.get("eboxes") or {}
+        if cnodes or dnodes or cboxes or dboxes or switches or eboxes:
             hardware_text = ""
 
-            # CBox Hardware: from CNode box_vendor when available, else from CBox data
-            if cboxes:
-                cbox_vendors = set()
-                cbox_ids = set()
-                if cnodes:
-                    for cnode in cnodes:
-                        box_vendor = cnode.get("box_vendor", "Unknown")
-                        if box_vendor and box_vendor != "Unknown":
-                            cbox_vendors.add(box_vendor)
-                        cbox_id = cnode.get("id")
-                        if cbox_id:
-                            cbox_ids.add(str(cbox_id))
-                if not cbox_vendors:
-                    for _name, cbox_data in cboxes.items():
-                        model = cbox_data.get("model") or cbox_data.get("hardware_type")
-                        if model and model != "Unknown":
-                            cbox_vendors.add(str(model))
-                        cbox_id = cbox_data.get("id")
-                        if cbox_id is not None:
-                            cbox_ids.add(str(cbox_id))
-                if cbox_vendors:
-                    hardware_text += f"<b>CBox Hardware:</b> {', '.join(sorted(cbox_vendors))}<br/>"
-                # CBox quantity is number of CBoxes; use len(cboxes) when available
-                cbox_qty = len(cboxes) if cboxes else len(cbox_ids)
-                hardware_text += f"<b>CBox Quantity:</b> {cbox_qty}<br/>"
-
-            # DBox Hardware (from DBox data using hardware_type)
-            if dboxes:
-                dbox_hardware_types = set()
-                dbox_ids = set()
-
-                for dbox_name, dbox_data in dboxes.items():
-                    hardware_type = dbox_data.get("hardware_type")
-                    if hardware_type and hardware_type != "Unknown":
-                        dbox_hardware_types.add(hardware_type)
-
-                    dbox_id = dbox_data.get("id")
-                    if dbox_id:
-                        dbox_ids.add(str(dbox_id))
-
-                if dbox_hardware_types:
-                    hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
-
-                hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
-
-            # EBox Hardware (enclosures; optional)
-            eboxes = hardware_inventory.get("eboxes") or {}
+            # EBox cluster: show EBox Hardware + EBox Quantity only (no CBox/DBox lines)
             if eboxes:
+                ebox_vendors = set()
+                for cnode in cnodes:
+                    box_vendor = cnode.get("box_vendor", "") or ""
+                    if box_vendor and box_vendor != "Unknown":
+                        model = box_vendor.split(",")[0].strip()
+                        if model:
+                            ebox_vendors.add(model)
+                if ebox_vendors:
+                    hardware_text += f"<b>EBox Hardware:</b> {', '.join(sorted(ebox_vendors))}<br/>"
                 hardware_text += f"<b>EBox Quantity:</b> {len(eboxes)}<br/>"
+            else:
+                # CBox Hardware: from CNode box_vendor when available, else from CBox data
+                if cboxes:
+                    cbox_vendors = set()
+                    cbox_ids = set()
+                    if cnodes:
+                        for cnode in cnodes:
+                            box_vendor = cnode.get("box_vendor", "Unknown")
+                            if box_vendor and box_vendor != "Unknown":
+                                cbox_vendors.add(box_vendor)
+                            cbox_id = cnode.get("id")
+                            if cbox_id:
+                                cbox_ids.add(str(cbox_id))
+                    if not cbox_vendors:
+                        for _name, cbox_data in cboxes.items():
+                            model = cbox_data.get("model") or cbox_data.get("hardware_type")
+                            if model and model != "Unknown":
+                                cbox_vendors.add(str(model))
+                            cbox_id = cbox_data.get("id")
+                            if cbox_id is not None:
+                                cbox_ids.add(str(cbox_id))
+                    if cbox_vendors:
+                        hardware_text += f"<b>CBox Hardware:</b> {', '.join(sorted(cbox_vendors))}<br/>"
+                    cbox_qty = len(cboxes) if cboxes else len(cbox_ids)
+                    hardware_text += f"<b>CBox Quantity:</b> {cbox_qty}<br/>"
+
+                # DBox Hardware (from DBox data using hardware_type)
+                if dboxes:
+                    dbox_hardware_types = set()
+                    dbox_ids = set()
+                    for dbox_name, dbox_data in dboxes.items():
+                        hardware_type = dbox_data.get("hardware_type")
+                        if hardware_type and hardware_type != "Unknown":
+                            dbox_hardware_types.add(hardware_type)
+                        dbox_id = dbox_data.get("id")
+                        if dbox_id:
+                            dbox_ids.add(str(dbox_id))
+                    if dbox_hardware_types:
+                        hardware_text += f"<b>DBox Hardware:</b> {', '.join(sorted(dbox_hardware_types))}<br/>"
+                    hardware_text += f"<b>DBox Quantity:</b> {len(dbox_ids)}<br/>"
 
             # Switch Hardware (from switch inventory)
             switches = hardware_inventory.get("switches") or []
@@ -636,7 +642,7 @@ class VastReportBuilder:
 
         # Read TOC data from Excel (A1:C60)
         available_width = A4[0] - 1.0 * inch
-        toc_table_data = []
+        toc_table_data: list[Any] = []
 
         for row in range(1, 61):
             # Read values from columns A, B, C
@@ -910,7 +916,7 @@ class VastReportBuilder:
 
         # Build TOC table with calculated dot leaders
         available_width = A4[0] - 1.0 * inch
-        toc_table_data = []
+        toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them
         subsections_with_space_after = [
@@ -955,7 +961,7 @@ class VastReportBuilder:
 
             # Add extra space after specific subsections
             if text in subsections_with_space_after:
-                extra_space_after = 8
+                extra_space_after = 8.0
             else:
                 extra_space_after = 0.5
 
@@ -1121,7 +1127,7 @@ class VastReportBuilder:
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
         available_width = A4[0] - 1.0 * inch  # Page width minus margins
-        toc_table_data = []
+        toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them (to separate section groups)
         subsections_with_space_after = [
@@ -1162,7 +1168,7 @@ class VastReportBuilder:
 
             # Add extra space after specific subsections to separate section groups
             if text in subsections_with_space_after:
-                extra_space_after = 8  # Extra space after these subsections
+                extra_space_after = 8.0  # Extra space after these subsections
             else:
                 extra_space_after = 0.5
 
@@ -1336,11 +1342,23 @@ class VastReportBuilder:
         total_nodes = hardware.get("total_nodes", 0)
         cnodes = len(hardware.get("cnodes") or [])
         dnodes = len(hardware.get("dnodes") or [])
-        cboxes = len(hardware.get("cboxes") or {})
-        dboxes = len(hardware.get("dboxes") or {})
-        eboxes = len(hardware.get("eboxes") or {})
+        cboxes_raw = hardware.get("cboxes") or {}
+        dboxes_raw = hardware.get("dboxes") or {}
+        eboxes_raw = hardware.get("eboxes") or {}
+        cboxes_count = len(cboxes_raw)
+        dboxes_count = len(dboxes_raw)
+        eboxes = len(eboxes_raw)
         switches_list = hardware.get("switches") or []
         total_switches = len(switches_list)
+
+        # EBox clusters: when any EBoxes are present, show CBoxes=0 and DBoxes=0 in Overview (per EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN)
+        is_ebox_cluster = bool(eboxes_raw)
+        if is_ebox_cluster:
+            cboxes_display = 0
+            dboxes_display = 0
+        else:
+            cboxes_display = cboxes_count
+            dboxes_display = dboxes_count
 
         # Calculate leaf and spine switches
         # Logic: If 2 switches = 2 leaf, if 4 = 2 leaf + 2 spine, if >4 = 2 spine + rest are leaf
@@ -1358,10 +1376,10 @@ class VastReportBuilder:
             spine_switches = 0
 
         hardware_overview_data = [
-            ["CBoxes", str(cboxes)],
+            ["CBoxes", str(cboxes_display)],
             ["CNodes", str(cnodes)],
             ["", ""],  # Empty line
-            ["DBoxes", str(dboxes)],
+            ["DBoxes", str(dboxes_display)],
             ["DNodes", str(dnodes)],
             ["", ""],  # Empty line
             ["EBoxes", str(eboxes)],
@@ -1388,6 +1406,110 @@ class VastReportBuilder:
 
         return content
 
+    def _create_ebox_only_inventory_table(
+        self,
+        eboxes: Dict[str, Any],
+        cnodes: List[Dict[str, Any]],
+        dnodes: List[Dict[str, Any]],
+        switches: List[Dict[str, Any]],
+    ) -> Optional[List[Any]]:
+        """
+        Build Hardware Inventory table for EBox-only clusters: 5 columns (no Node),
+        row order EBox → CNode → 2× DNodes per EBox, model from CNode box_vendor, switches at bottom.
+        Returns None if no rows (e.g. no eboxes with rack_unit).
+        """
+        headers_5 = ["Rack", "Model", "Name/Serial Number", "Status", "Height"]
+        ebox_list = list(eboxes.values())
+
+        def ebox_sort_key(e: Dict[str, Any]) -> tuple:
+            eid = e.get("id")
+            if eid is None:
+                return (True, 0)
+            try:
+                return (False, int(eid)) if str(eid).isdigit() else (False, 0)
+            except (TypeError, ValueError):
+                return (False, 0)
+
+        ebox_list.sort(key=ebox_sort_key)
+        all_rows: List[List[str]] = []
+
+        for ebox in ebox_list:
+            ebox_id = ebox.get("id")
+            rack_name = ebox.get("rack_name") or "Unknown"
+            ebox_name = ebox.get("name", "Unknown")
+            ebox_state = ebox.get("state", "Unknown")
+            rack_unit = ebox.get("rack_unit") or "1U"
+
+            # Find associated CNode and DNodes by ebox_id
+            cnode = None
+            for c in cnodes:
+                if c.get("ebox_id") == ebox_id:
+                    cnode = c
+                    break
+            model = "Unknown"
+            if cnode:
+                bv = cnode.get("box_vendor") or "Unknown"
+                model = (bv.split(",")[0].strip()) if isinstance(bv, str) and bv else "Unknown"
+
+            # EBox row
+            all_rows.append([rack_name, model, ebox_name, ebox_state, rack_unit])
+
+            # CNode row (no Model value)
+            if cnode:
+                cnode_name = cnode.get("name") or f"cnode-{cnode.get('id', 'Unknown')}"
+                cnode_status = cnode.get("status", "Unknown")
+                all_rows.append([rack_name, "", cnode_name, cnode_status, rack_unit])
+            else:
+                all_rows.append([rack_name, "", "N/A", "Unknown", rack_unit])
+
+            # Up to 2 DNode rows (no Model value; Status = ACTIVE/FAILED from API)
+            matching_dnodes = [d for d in dnodes if d.get("ebox_id") == ebox_id]
+            for d in matching_dnodes[:2]:
+                dnode_name = d.get("name") or f"dnode-{d.get('id', 'Unknown')}"
+                dnode_state = d.get("status") or d.get("state") or ""
+                all_rows.append([rack_name, "", dnode_name, dnode_state, rack_unit])
+            if len(matching_dnodes) == 0:
+                all_rows.append([rack_name, "", "N/A", "", rack_unit])
+
+        # Switches at bottom
+        if switches:
+            manual_rack_map = getattr(self, "manual_rack_placements", {})
+            manual_sw_rack: Dict[str, str] = {}
+            if manual_rack_map:
+                for rn, placements in manual_rack_map.items():
+                    for p in placements:
+                        sw_name = p.get("name", p.get("hostname", ""))
+                        if sw_name:
+                            manual_sw_rack[sw_name] = rn
+            default_rack = "Unknown"
+            if not manual_sw_rack:
+                if hasattr(self, "switch_rack_name") and self.switch_rack_name:
+                    default_rack = self.switch_rack_name
+                elif ebox_list:
+                    default_rack = ebox_list[0].get("rack_name") or "Unknown"
+            for switch_num, switch in enumerate(switches, start=1):
+                sw_name = switch.get("name", switch.get("hostname", "Unknown"))
+                hostname = switch.get("hostname", sw_name)
+                model_sw = switch.get("model", "Unknown")
+                if isinstance(model_sw, str) and "," in model_sw:
+                    model_sw = model_sw.split(",")[0].strip()
+                serial = switch.get("serial", "Unknown")
+                state_sw = switch.get("state", "Unknown")
+                rack_name_sw = manual_sw_rack.get(sw_name, default_rack)
+                position = ""
+                if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
+                    position = f"U{self.switch_positions[switch_num]}"
+                all_rows.append([rack_name_sw, model_sw, serial, state_sw, position])
+
+        if not all_rows:
+            return None
+        return cast(
+            List[Any],
+            self.brand_compliance.create_vast_hardware_table_with_pagination(
+                all_rows, "Hardware Inventory", headers_5
+            ),
+        )
+
     def _create_consolidated_inventory_table(
         self,
         cboxes: Dict[str, Any],
@@ -1413,6 +1535,17 @@ class VastReportBuilder:
             List[Any]: Table elements
         """
         eboxes = eboxes or {}
+        # EBox-only path: when cluster has EBoxes, use 5-column table (no Node column),
+        # row order EBox → CNode → 2× DNodes per EBox, model from CNode vendor, switches at bottom.
+        is_ebox_cluster = bool(eboxes)
+        if is_ebox_cluster:
+            ebox_only_elements = self._create_ebox_only_inventory_table(
+                eboxes, cnodes, dnodes, switches
+            )
+            if ebox_only_elements is not None:
+                return ebox_only_elements
+            # Fall through to standard table if no rows produced (e.g. no rack_unit)
+
         # Prepare table data - will be grouped by rack
         all_rows = []
         headers = ["Rack", "Node", "Model", "Name/Serial Number", "Status", "Height"]
@@ -1439,7 +1572,7 @@ class VastReportBuilder:
             cbox_vendor_map = {}
             cbox_status_map = {}
             # Create a mapping of cbox_id to list of cnode names
-            cbox_to_cnode_names = {}
+            cbox_to_cnode_names: dict[str, list[str]] = {}
             # CNode name -> serial (Dell Asset Tag) for dell_turin_cbox Model column
             cnode_name_to_serial = {}
             for cnode in cnodes:
@@ -1473,17 +1606,12 @@ class VastReportBuilder:
                     model = model.split(",")[0].strip()
                 status = cbox_status_map.get(cbox_id, "Unknown")
 
-                # Get CNode names for this CBox - create one row per CNode
+                # Get CNode names for this CBox - create one row per CNode with Model
                 cnode_names = cbox_to_cnode_names.get(cbox_id, [])
                 if cnode_names:
                     # Create one row for each CNode
                     for cnode_name in cnode_names:
-                        display_model = model
-                        if display_model == "dell_turin_cbox":
-                            serial = cnode_name_to_serial.get(cnode_name, "").strip()
-                            if serial:
-                                display_model = f"{display_model} / {serial}"
-                        row = [rack_name, cnode_name, display_model, name, status, rack_unit]
+                        row = [rack_name, cnode_name, model, name, status, rack_unit]
                         cbox_rows.append((rack_name, cbox_id, cnode_name, row))
                 else:
                     # No CNodes found, create one row with N/A
@@ -1496,18 +1624,16 @@ class VastReportBuilder:
 
         # Add DBoxes with DNode names
         if dboxes and dnodes:
-            # Create a mapping of dbox_id to list of dnode names
-            dbox_to_dnode_names = {}
+            # Create a mapping of dbox_id to list of (dnode_name, dnode_state)
+            dbox_to_dnodes: dict[str, list[tuple[str, str]]] = {}
             for dnode in dnodes:
                 dbox_id = dnode.get("dbox_id")
-                # Use name field (programmatically generated) not hostname (customer-assigned)
-                # Name is based on deployment index (e.g., dnode-3-112, dnode-3-113)
                 dnode_name = dnode.get("name") or f"dnode-{dnode.get('id', 'Unknown')}"
+                dnode_state = dnode.get("status") or dnode.get("state") or "Unknown"
                 if dbox_id:
-                    # Build list of DNode names for this DBox
-                    if dbox_id not in dbox_to_dnode_names:
-                        dbox_to_dnode_names[dbox_id] = []
-                    dbox_to_dnode_names[dbox_id].append(dnode_name)
+                    if dbox_id not in dbox_to_dnodes:
+                        dbox_to_dnodes[dbox_id] = []
+                    dbox_to_dnodes[dbox_id].append((dnode_name, dnode_state))
 
             dbox_rows = []
             for dbox_name, dbox_data in dboxes.items():
@@ -1520,17 +1646,16 @@ class VastReportBuilder:
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
                 rack_name = dbox_data.get("rack_name") or "Unknown"
 
-                # Get DNode names for this DBox - create one row per DNode
-                dnode_names = dbox_to_dnode_names.get(dbox_id, [])
-                if dnode_names:
-                    # Create one row for each DNode
-                    for dnode_name in dnode_names:
+                # Get DNodes for this DBox - create one row per DNode with Model and Status (ACTIVE/FAILED)
+                dnode_list = dbox_to_dnodes.get(dbox_id, [])
+                if dnode_list:
+                    for dnode_name, dnode_state in dnode_list:
                         row = [
                             rack_name,
                             dnode_name,
                             hardware_type,
                             name,
-                            state,
+                            dnode_state,
                             rack_unit,
                         ]
                         dbox_rows.append((rack_name, dbox_id, dnode_name, row))
@@ -1555,13 +1680,13 @@ class VastReportBuilder:
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
                 rack_name = dbox_data.get("rack_name") or "Unknown"
 
-                # Create row data with N/A for DNode column
+                # Create row data with N/A for DNode column (4-tuple to match dnode branch)
                 row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
-                dbox_rows.append((rack_name, dbox_id, row))
+                dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID
             dbox_rows.sort(key=lambda x: (x[0], int(x[1]) if str(x[1]).isdigit() else 0))
-            all_rows.extend([row for _, _, row in dbox_rows])
+            all_rows.extend([row for _, _, _, row in dbox_rows])
 
         # Add EBoxes (enclosures; one row per EBox)
         if eboxes:
@@ -1664,7 +1789,10 @@ class VastReportBuilder:
         all_rows.sort(key=sort_key)
 
         # Create table with VAST styling
-        return self.brand_compliance.create_vast_hardware_table_with_pagination(all_rows, "Hardware Inventory", headers)
+        return cast(
+            List[Any],
+            self.brand_compliance.create_vast_hardware_table_with_pagination(all_rows, "Hardware Inventory", headers),
+        )
 
     def _create_cluster_information(
         self,
@@ -2114,7 +2242,7 @@ class VastReportBuilder:
                 vms_rack_names = {str(r.get("name")).strip() for r in racks_info if r.get("name")}
 
                 # Group hardware by rack_name
-                racks_data = {}  # rack_name -> {cboxes: [], dboxes: [], eboxes: [], switches: []}
+                racks_data: dict[str, Any] = {}  # rack_name -> {cboxes: [], dboxes: [], eboxes: [], switches: []}
 
                 # Get CBox information and group by rack (one entry per CBox, not per CNode)
                 hw_cnodes = hardware.get("cnodes") or []
@@ -2190,10 +2318,19 @@ class VastReportBuilder:
                                 "eboxes": [],
                                 "switches": [],
                             }
+                        # EBox model from associated CNode box_vendor (for library image lookup)
+                        ebox_id = ebox_info.get("id")
+                        model_key = "ebox"
+                        for cnode in hw_cnodes:
+                            if cnode.get("ebox_id") == ebox_id:
+                                bv = cnode.get("box_vendor") or ""
+                                if isinstance(bv, str) and bv:
+                                    model_key = bv.split(",")[0].strip()
+                                break
                         ebox_data = {
                             "id": ebox_info.get("id"),
-                            "model": "ebox",
-                            "hardware_type": "ebox",
+                            "model": model_key,
+                            "hardware_type": model_key,
                             "rack_unit": rack_unit,
                             "state": ebox_info.get("state", "ACTIVE"),
                         }
@@ -3030,27 +3167,11 @@ class VastReportBuilder:
                     ]
                 )
 
-            # IPMI settings
-            if (
-                cluster_network_config.get("ipmi_gateway")
-                and cluster_network_config.get("ipmi_gateway") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "IPMI Gateway",
-                        cluster_network_config.get("ipmi_gateway", "Not Configured"),
-                    ]
-                )
-            if (
-                cluster_network_config.get("ipmi_netmask")
-                and cluster_network_config.get("ipmi_netmask") != "Not Configured"
-            ):
-                network_summary_data.append(
-                    [
-                        "IPMI Netmask",
-                        cluster_network_config.get("ipmi_netmask", "Not Configured"),
-                    ]
-                )
+            # IPMI settings (always show, even if Not Configured)
+            ipmi_gateway = cluster_network_config.get("ipmi_gateway") or "Not Configured"
+            network_summary_data.append(["IPMI Gateway", ipmi_gateway])
+            ipmi_netmask = cluster_network_config.get("ipmi_netmask") or "Not Configured"
+            network_summary_data.append(["IPMI Netmask", ipmi_netmask])
 
             # B2B IPMI setting
             if cluster_network_config.get("b2b_ipmi") is not None:
@@ -3073,9 +3194,40 @@ class VastReportBuilder:
                 content.append(Spacer(1, 16))
 
         # 1. CNodes Network Configuration
-        cnodes_network_config = sections.get("cnodes_network_configuration", {}).get("data", {})
-        cnodes = cnodes_network_config.get("cnodes", [])
-        total_cnodes = cnodes_network_config.get("total_cnodes", 0)
+        # For EBox clusters, use hardware_inventory directly (from /api/v7/cnodes/)
+        # For non-EBox clusters, try network_settings first then fallback
+        hardware_inventory = data.get("hardware_inventory", {})
+        eboxes = hardware_inventory.get("eboxes", {})
+        is_ebox_cluster = bool(eboxes)
+
+        cnodes = []
+        if is_ebox_cluster:
+            # EBox clusters: use hardware_inventory cnodes (from /api/v7/cnodes/)
+            hw_cnodes = hardware_inventory.get("cnodes", [])
+            for c in hw_cnodes:
+                cnodes.append({
+                    "id": c.get("id", "Unknown"),
+                    "name": c.get("name", "Unknown"),
+                    "mgmt_ip": c.get("mgmt_ip", "Unknown"),
+                    "ipmi_ip": c.get("ipmi_ip", "Unknown"),
+                    "vast_os": c.get("os_version", "Unknown"),
+                    "is_vms_host": c.get("is_mgmt", False),
+                })
+        else:
+            # Non-EBox clusters: try network_settings, fallback to hardware_inventory
+            cnodes_network_config = sections.get("cnodes_network_configuration", {}).get("data", {})
+            cnodes = cnodes_network_config.get("cnodes", [])
+            if not cnodes:
+                hw_cnodes = hardware_inventory.get("cnodes", [])
+                for c in hw_cnodes:
+                    cnodes.append({
+                        "id": c.get("id", "Unknown"),
+                        "name": c.get("name", "Unknown"),
+                        "mgmt_ip": c.get("mgmt_ip", "Unknown"),
+                        "ipmi_ip": c.get("ipmi_ip", "Unknown"),
+                        "vast_os": c.get("os_version", "Unknown"),
+                        "is_vms_host": c.get("is_mgmt", False),
+                    })
 
         if cnodes:
             # Sort CNodes by Mgmt IP (lowest to highest)
@@ -3084,7 +3236,7 @@ class VastReportBuilder:
             # Create table for CNodes with scale-out support
             headers = [
                 "ID",
-                "Hostname",
+                "Name",
                 "Mgmt IP",
                 "IPMI IP",
                 "VAST OS",
@@ -3093,10 +3245,12 @@ class VastReportBuilder:
 
             table_data = []
             for cnode in cnodes:
+                # Use 'name' field; fall back to 'hostname' for backward compatibility
+                cnode_name = cnode.get("name") or cnode.get("hostname", "Unknown")
                 table_data.append(
                     [
                         cnode.get("id", "Unknown"),
-                        cnode.get("hostname", "Unknown"),
+                        cnode_name,
                         cnode.get("mgmt_ip", "Unknown"),
                         cnode.get("ipmi_ip", "Unknown"),
                         cnode.get("vast_os", "Unknown"),
@@ -3112,8 +3266,41 @@ class VastReportBuilder:
             content.append(Spacer(1, 16))
 
         # 2. DNodes Network Configuration
-        dnodes_network_config = sections.get("dnodes_network_configuration", {}).get("data", {})
-        dnodes = dnodes_network_config.get("dnodes", [])
+        # For EBox clusters, use hardware_inventory directly (from /api/v7/dnodes/)
+        dnodes = []
+        if is_ebox_cluster:
+            # EBox clusters: use hardware_inventory dnodes (from /api/v7/dnodes/)
+            hw_dnodes = hardware_inventory.get("dnodes", [])
+            for d in hw_dnodes:
+                # Position: "primary" (when empty) or "virtual"
+                raw_pos = d.get("position") or ""
+                pos = "virtual" if raw_pos == "virtual" else "primary"
+                dnodes.append({
+                    "id": d.get("id", "Unknown"),
+                    "name": d.get("name", "Unknown"),
+                    "mgmt_ip": d.get("mgmt_ip", "Unknown"),
+                    "ipmi_ip": d.get("ipmi_ip", "Unknown"),
+                    "vast_os": d.get("os_version", "Unknown"),
+                    "position": pos,
+                })
+        else:
+            # Non-EBox clusters: try network_settings, fallback to hardware_inventory
+            dnodes_network_config = sections.get("dnodes_network_configuration", {}).get("data", {})
+            dnodes = dnodes_network_config.get("dnodes", [])
+            if not dnodes:
+                hw_dnodes = hardware_inventory.get("dnodes", [])
+                for d in hw_dnodes:
+                    # Position: "primary" (when empty) or "virtual"
+                    raw_pos = d.get("position") or ""
+                    pos = "virtual" if raw_pos == "virtual" else "primary"
+                    dnodes.append({
+                        "id": d.get("id", "Unknown"),
+                        "name": d.get("name", "Unknown"),
+                        "mgmt_ip": d.get("mgmt_ip", "Unknown"),
+                        "ipmi_ip": d.get("ipmi_ip", "Unknown"),
+                        "vast_os": d.get("os_version", "Unknown"),
+                        "position": pos,
+                    })
 
         if dnodes:
             # Sort DNodes by Mgmt IP (lowest to highest)
@@ -3122,7 +3309,7 @@ class VastReportBuilder:
             # Create table for DNodes with scale-out support
             headers = [
                 "ID",
-                "Hostname",
+                "Name",
                 "Mgmt IP",
                 "IPMI IP",
                 "VAST OS",
@@ -3131,14 +3318,19 @@ class VastReportBuilder:
 
             table_data = []
             for dnode in dnodes:
+                # Use 'name' field; fall back to 'hostname' for backward compatibility
+                dnode_name = dnode.get("name") or dnode.get("hostname", "Unknown")
+                # Position: "primary" or "virtual"
+                raw_pos = dnode.get("position") or ""
+                position = "virtual" if raw_pos == "virtual" else "primary"
                 table_data.append(
                     [
                         dnode.get("id", "Unknown"),
-                        dnode.get("hostname", "Unknown"),
+                        dnode_name,
                         dnode.get("mgmt_ip", "Unknown"),
                         dnode.get("ipmi_ip", "Unknown"),
                         dnode.get("vast_os", "Unknown"),
-                        dnode.get("position", "Unknown"),
+                        position,
                     ]
                 )
 
@@ -3221,25 +3413,29 @@ class VastReportBuilder:
             # Prepare hardware data from hardware_inventory
             hardware_inventory = data.get("hardware_inventory", {})
 
-            # Convert cboxes/dboxes from dict to list if needed
+            # Convert cboxes/dboxes/eboxes from dict to list if needed
             cboxes_data = hardware_inventory.get("cboxes") or {}
             dboxes_data = hardware_inventory.get("dboxes") or {}
+            eboxes_data = hardware_inventory.get("eboxes") or {}
             switches_data = hardware_inventory.get("switches") or []
 
-            # If cboxes/dboxes are dicts (keyed by name), convert to list of values
+            # If cboxes/dboxes/eboxes are dicts (keyed by name), convert to list of values
             cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
             dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
+            eboxes_list = list(eboxes_data.values()) if isinstance(eboxes_data, dict) else eboxes_data
             switches_list = switches_data if isinstance(switches_data, list) else []
 
             hardware_data = {
                 "cboxes": cboxes_list,
                 "dboxes": dboxes_list,
+                "eboxes": eboxes_list,
                 "switches": switches_list,
             }
 
             self.logger.info(
                 f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
-                f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['switches'])} Switches"
+                f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['eboxes'])} EBoxes, "
+                f"{len(hardware_data['switches'])} Switches"
             )
 
             diagrams_dir = get_data_dir() / "output" / "diagrams"
@@ -3509,6 +3705,9 @@ class VastReportBuilder:
         content = []
         styles = getSampleStyleSheet()
 
+        # Add page break to ensure Port Mapping starts at top of new page
+        content.append(PageBreak())
+
         # Add section heading
         heading_elements = self.brand_compliance.create_vast_section_heading("Port Mapping", level=1)
         content.extend(heading_elements)
@@ -3558,7 +3757,7 @@ class VastReportBuilder:
             return content
 
         # Group ports by switch
-        ports_by_switch = {}
+        ports_by_switch: dict[str, Any] = {}
         for entry in port_map:
             switch_ip = entry["switch_ip"]
             if switch_ip not in ports_by_switch:
@@ -3578,8 +3777,15 @@ class VastReportBuilder:
         for idx, switch in enumerate(switches, start=1):
             switch_ip_to_number[switch.get("mgmt_ip")] = idx
 
-        # Create port map table for each switch
-        for switch_ip, connections in ports_by_switch.items():
+        # Sort switches by switch number (Switch 1 before Switch 2)
+        sorted_switch_ips = sorted(
+            ports_by_switch.keys(),
+            key=lambda ip: switch_ip_to_number.get(ip, 999)
+        )
+
+        # Create port map table for each switch (in order: Switch 1, Switch 2, etc.)
+        for switch_ip in sorted_switch_ips:
+            connections = ports_by_switch[switch_ip]
             switch_num = switch_ip_to_number.get(switch_ip, "?")
 
             # Build table data - filter to show only primary physical connections
@@ -3637,8 +3843,19 @@ class VastReportBuilder:
 
                 speed = "200G"  # Default, would need to get from switch port data
 
-                # Simple notes - all primary connections are correct
-                notes_str = "Primary"
+                # Use notes from port map entry
+                # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
+                is_ebox_entry = conn.get("ebox_id") is not None or conn.get("ebox_node_type") is not None
+                
+                if is_ebox_entry:
+                    # EBox clusters: notes contain the CNode/DNode name
+                    notes_str = conn.get("notes", "")
+                    if not notes_str:
+                        # Fallback for EBox entries without notes
+                        notes_str = conn.get("node_name", "")
+                else:
+                    # Standard CBox/DBox clusters: show "Primary" for all active connections
+                    notes_str = "Primary"
 
                 table_data.append([port_display, node_display, network, speed, notes_str])
 
@@ -3789,6 +4006,9 @@ class VastReportBuilder:
         """Create switch configuration section with port details."""
         content = []
 
+        # Add page break to ensure Switch Configuration starts at top of new page
+        content.append(PageBreak())
+
         # Add section heading with VAST styling
         heading_elements = self.brand_compliance.create_vast_section_heading("Switch Configuration", level=1)
         content.extend(heading_elements)
@@ -3891,7 +4111,7 @@ class VastReportBuilder:
             # Create port summary table with port numbers
             if ports:
                 # Aggregate ports by speed, collecting port names
-                port_summary = {}
+                port_summary: dict[str, Any] = {}
 
                 for port in ports:
                     speed = port.get("speed")
@@ -4047,16 +4267,6 @@ class VastReportBuilder:
                 port_summary_elements = [title_para, Spacer(1, 8), port_table]
                 content.append(KeepTogether(port_summary_elements))
                 content.append(Spacer(1, 12))
-
-        # Add port mapping section if available
-        port_mapping_section = data.get("sections", {}).get("port_mapping", {})
-        port_mapping_data = port_mapping_section.get("data", {})
-
-        if port_mapping_data.get("available"):
-            # Add spacer instead of page break to keep within switch configuration section
-            content.append(Spacer(1, 0.3 * inch))
-            port_mapping_content = self._create_port_mapping_section(port_mapping_data, switches, None, None)
-            content.extend(port_mapping_content)
 
         return content
 

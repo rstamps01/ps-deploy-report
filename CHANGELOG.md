@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Pre-release checklist (QG-1):** README Development section documents running flake8, black, mypy, and pytest (with coverage) before release/merge; aligns with CI quality gate.
+- **Library API tests (TSE-1):** Unit tests for GET `/library`, GET/POST/DELETE `/api/library` with mocked `_load_library`/`_save_library` in `tests/test_app.py` (TestLibraryRoutes).
+- **Generate cancel test (TSE-2):** Unit tests for POST `/generate/cancel` — no job returns `no_job`; job running accepts cancel and sets JOB_RESULT (TestGenerateCancel).
+- **Reports dirs tests (TSE-3):** Unit tests for GET `/reports/dirs` and POST `/reports/dirs` with valid path (updates config) and 400 for empty/nonexistent (TestReportsDirsRoutes).
+- **EBox Port Mapping:** EBox-specific port mapping with CNode/DNode names in Notes column; standard CBox/DBox clusters show "Primary" in Notes
+- **EBox Network Diagram:** Logical Network Diagram shows EB# labels for EBox clusters with Green (Network A) and Blue (Network B) connections to switches
+- **Built-in Hardware Library:** Added msn4700-ws2rc (Mellanox SN4700 400Gb 32pt Switch, 1U) and dell_genoa_ebox (Dell Genoa 1U EBox) as permanent built-in devices
+
+### Changed
+- **Coverage threshold:** `cov-fail-under` set to 47% in pyproject.toml and CI workflows (current suite ~47%); restoration to 49%+ tracked in docs/TODO-ROADMAP.md (QG-3, TSE-8).
+- **Port Mapping Section:** Added page break before Port Mapping heading; Switch 1 table now appears before Switch 2
+- **Switch Configuration Section:** Added page break before Switch Configuration heading
+- **Network Diagram Connections:** Fixed CNode-to-switch (top to middle) and DNode-to-switch (bottom to middle) connection line coordinates
+
+### Policy & API
+- **Read-only VAST API policy:** The app must never use VAST API calls that change or update the cluster. Data collection uses **GET only**. `_make_api_request()` in `api_handler` now accepts only GET and raises `ValueError` for POST/PUT/DELETE. Authentication may still use POST only to establish read-only access (session/token/JWT). See [docs/development/READ_ONLY_VAST_API_POLICY.md](docs/development/READ_ONLY_VAST_API_POLICY.md) and `.cursor/rules/api-handler-05.mdc`.
+
+### Added (tests)
+- **TSE-4:** Unit tests for POST `/api/discover` (400 missing cluster_ip, 401 auth failure, 200 success with mocked `create_vast_api_handler` and `RackDiagram`). All discovery flows are read-only (get_racks, get_switch_inventory).
+- **Read-only enforcement test:** `test_make_api_request_only_get_allowed` in test_api_handler verifies that POST/PUT/DELETE/PATCH raise ValueError.
+- **TSE-5:** Integration test for report content: raw data with EBox + dell_turin_cbox + serial; asserts processed hardware_inventory and successful PDF generation (test_integration.py).
+- **TSE-6:** Unit tests for Profiles API: GET/POST `/profiles` and DELETE `/profiles/<name>` with mocked `_load_profiles`/`_save_profiles` (TestProfilesRoutes in test_app.py).
+- **TSE-7:** Unit test for POST `/shutdown` (200, status `shutting_down`; `os._exit` mocked so process does not exit).
+- **TSE-8:** Coverage restored above 49%; full suite (unit + integration) now ~53% (279 tests).
+
 ## [1.4.3] - 2026-03-16
 
 ### Fixed

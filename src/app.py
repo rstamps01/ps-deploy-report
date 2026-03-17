@@ -13,7 +13,7 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
@@ -105,17 +105,17 @@ def _rewrite_doc_links_in_html(html: str) -> str:
     def replace_href(match: re.Match) -> str:
         href = match.group(1)
         if not href or href.startswith("#") or "docs#" in href:
-            return match.group(0)
+            return str(match.group(0))
         parsed = urlparse(unquote(href))
         path = (parsed.path or "").strip().lstrip("/")
         if path.startswith("./"):
             path = path[2:]
         if not path.endswith(".md"):
-            return match.group(0)
+            return str(match.group(0))
         doc_id = _DOC_LINK_MAP.get(path) or _DOC_LINK_MAP.get(path.split("/")[-1])
         if doc_id:
             return f'<a href="/docs#{doc_id}"'
-        return match.group(0)
+        return str(match.group(0))
 
     return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
 
@@ -725,12 +725,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 raw_data["port_mapping_external"] = port_data
                 job_logger.info("Port mapping data collected successfully")
             else:
-                job_logger.warning("Port mapping collection failed — check SSH " "credentials and network connectivity")
+                job_logger.warning("Port mapping collection failed — check SSH credentials and network connectivity")
 
         # Process data
         _check_cancel(app)
         job_logger.info("Processing collected data...")
-        use_ext = params.get("enable_port_mapping") and "port_mapping_external" in raw_data
+        use_ext = bool(params.get("enable_port_mapping") and "port_mapping_external" in raw_data)
         processed_data = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext)
         if not processed_data:
             raise RuntimeError("Data processing failed")
@@ -800,12 +800,25 @@ def _collect_port_mapping_web(
             logger.warning("No switch management IPs found — cannot collect port mapping")
             return None
 
+        # Try cnodes_network first, then fall back to raw cnodes data (for EBox clusters)
         cnodes_network = raw_data.get("cnodes_network", [])
         cnode_ips = []
         for cn in cnodes_network:
             ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
             if ip and ip != "Unknown" and ip not in cnode_ips:
                 cnode_ips.append(ip)
+
+        # Fallback: check hardware.cnodes data (from /api/v7/cnodes/)
+        if not cnode_ips:
+            hardware = raw_data.get("hardware", {})
+            raw_cnodes = hardware.get("cnodes", [])
+            for cn in raw_cnodes:
+                ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
+                if ip and ip != "Unknown" and ip not in cnode_ips:
+                    cnode_ips.append(ip)
+            if cnode_ips:
+                logger.info(f"Found {len(cnode_ips)} CNode IPs from hardware data: {cnode_ips}")
+
         if not cnode_ips:
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
@@ -835,7 +848,7 @@ def _collect_port_mapping_web(
                         )
                     else:
                         logger.info("Port mapping collection succeeded via CNode %s", cnode_ip)
-                    return result
+                    return cast(Optional[Dict[str, Any]], result)
                 last_error = result.get("error", "unknown reason")
                 if result.get("port_map"):
                     last_partial = result
@@ -845,7 +858,7 @@ def _collect_port_mapping_web(
 
         if last_partial and last_partial.get("port_map"):
             logger.info("Using partial port mapping from last attempt")
-            return last_partial
+            return cast(Optional[Dict[str, Any]], last_partial)
         logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown reason")
         return None
     except Exception as exc:
@@ -893,7 +906,7 @@ def _list_reports(output_dirs) -> list:
                     )
                 except (PermissionError, OSError):
                     continue
-    files.sort(key=lambda x: x["modified"], reverse=True)
+    files.sort(key=lambda x: str(x["modified"]), reverse=True)
     return files
 
 
@@ -913,7 +926,7 @@ def _load_yaml(path: str) -> Dict[str, Any]:
 
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+            return cast(Dict[str, Any], yaml.safe_load(f) or {})
     except (OSError, yaml.YAMLError) as exc:
         logger.debug("Failed to load YAML %s: %s", path, exc)
         return {}
@@ -921,29 +934,29 @@ def _load_yaml(path: str) -> Dict[str, Any]:
 
 def _load_profiles(path: str) -> Dict[str, Any]:
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def _save_profiles(path: str, profiles: Dict[str, Any]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(profiles, f, indent=2)
 
 
 def _load_library(path: str) -> Dict[str, Any]:
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def _save_library(path: str, library: Dict[str, Any]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(library, f, indent=2)
 
 
@@ -967,7 +980,7 @@ def _validate_image(file_storage) -> Optional[str]:
         from PIL import Image as PILImage
 
         img = PILImage.open(file_storage)
-        w, h = img.size
+        w, _ = img.size
         if w < 60 or w > 2000:
             return f"Width {w}px out of range (60-2000 px)"
         file_storage.seek(0)
@@ -1143,6 +1156,42 @@ def _get_builtin_devices() -> Dict[str, Any]:
             "description": "Arista Switch (generic)",
             "source": "built-in",
         },
+        "n42c-00rb-7c0": {
+            "type": "switch",
+            "height_u": 2,
+            "image_filename": "mellanox_sn5400_1x64p_400g_switch_2u.png",
+            "description": "Mellanox SN5400 400Gb 64pt Switch",
+            "source": "built-in",
+        },
+        "msn4700-ws2rc": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "msn4700-ws2rc_1u.png",
+            "description": "Mellanox SN4700 400Gb 32pt Switch",
+            "source": "built-in",
+        },
+        "msn4700": {
+            "type": "switch",
+            "height_u": 1,
+            "image_filename": "msn4700-ws2rc_1u.png",
+            "description": "Mellanox SN4700 400Gb 32pt Switch",
+            "source": "built-in",
+        },
+        # EBoxes
+        "supermicro_gen5_ebox": {
+            "type": "ebox",
+            "height_u": 1,
+            "image_filename": "supermicro_gen5_ebox_1u.png",
+            "description": "Supermicro Gen 5 EBox",
+            "source": "built-in",
+        },
+        "dell_genoa_ebox": {
+            "type": "ebox",
+            "height_u": 1,
+            "image_filename": "dell_genoa_ebox_1u.png",
+            "description": "Dell Genoa 1U EBox",
+            "source": "built-in",
+        },
     }
     return builtin
 
@@ -1170,7 +1219,7 @@ def _render_doc_markdown(bundle_dir: str, rel_path: str) -> str:
     md_text = file_path.read_text(encoding="utf-8")
 
     try:
-        import markdown as md_lib
+        import markdown as md_lib  # type: ignore[import-untyped]
 
         html = md_lib.markdown(
             md_text,
@@ -1200,7 +1249,7 @@ def _get_saved_cluster_ip(profiles_path: str) -> str:
     """Return the first cluster IP found in saved profiles, or empty string."""
     profiles = _load_profiles(profiles_path)
     for profile in profiles.values():
-        ip = profile.get("cluster_ip", "").strip()
-        if ip:
-            return ip
+        ip = profile.get("cluster_ip", "")
+        if isinstance(ip, str) and ip.strip():
+            return ip.strip()
     return ""

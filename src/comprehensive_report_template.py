@@ -1014,7 +1014,7 @@ class ComprehensiveReportTemplate:
                 )
 
             # Create CBoxes (group CNodes by rack position)
-            rack_groups = {}
+            rack_groups: dict[str, list[Any]] = {}
             for cnode in cnodes:
                 rack_pos = cnode.rack_position
                 if rack_pos not in rack_groups:
@@ -1033,7 +1033,7 @@ class ComprehensiveReportTemplate:
                 )
 
             # Create DBoxes (group DNodes by rack position)
-            drack_groups = {}
+            drack_groups: dict[str, list[Any]] = {}
             for dnode in dnodes:
                 rack_pos = dnode.rack_position
                 if rack_pos not in drack_groups:

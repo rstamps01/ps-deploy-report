@@ -18,7 +18,7 @@ Color coding:
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.shapes import Drawing, Group
@@ -35,8 +35,8 @@ def _load_user_library_net(library_path: Optional[str]) -> Dict[str, Any]:
     if not library_path:
         return {}
     try:
-        with open(library_path, "r") as f:
-            return json.load(f)
+        with open(library_path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
@@ -108,6 +108,12 @@ class NetworkDiagramGenerator:
             "arista_7050cx4": "arista_7050cx4_24d_400g_switch_1u.png",
             "arista_7050dx4": "arista_7050dx4_32s_400g_switch_1u.png",
             "arista": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
+            "n42c-00rb-7c0": "mellanox_sn5400_1x64p_400g_switch_2u.png",
+            "msn4700-ws2rc": "msn4700-ws2rc_1u.png",
+            "msn4700": "msn4700-ws2rc_1u.png",
+            # EBoxes
+            "supermicro_gen5_ebox": "supermicro_gen5_ebox_1u.png",
+            "dell_genoa_ebox": "dell_genoa_ebox_1u.png",
         }
 
         hw_lower = hardware_type.lower()
@@ -172,12 +178,50 @@ class NetworkDiagramGenerator:
             # Extract data
             cboxes = hardware_data.get("cboxes", [])
             dboxes = hardware_data.get("dboxes", [])
+            eboxes = hardware_data.get("eboxes", [])
             switches = hardware_data.get("switches", [])
             port_map = port_mapping_data.get("port_map", [])
             ipl_connections = port_mapping_data.get("ipl_connections", [])
             ipl_ports = port_mapping_data.get("ipl_ports", [])  # Legacy format for backward compatibility
 
-            self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(switches)} Switches")
+            # Detect EBox cluster - check multiple conditions:
+            # 1. Explicit eboxes list exists and dboxes is empty
+            # 2. DBox names contain "ebox-" prefix (API puts EBox data in dboxes)
+            # 3. Port map contains EB designations
+            is_ebox_cluster = False
+            
+            # Check if eboxes list is populated
+            if len(eboxes) > 0:
+                is_ebox_cluster = True
+                bottom_devices = eboxes
+            # Check if dboxes contain ebox names (API stores EBoxes as DBoxes)
+            elif len(dboxes) > 0:
+                # Check if any dbox name contains "ebox"
+                ebox_in_dboxes = any(
+                    "ebox" in str(d.get("name", "")).lower() 
+                    for d in dboxes
+                )
+                if ebox_in_dboxes:
+                    is_ebox_cluster = True
+                    bottom_devices = dboxes  # Use dboxes but treat as eboxes
+            
+            # Also check port map for EB designations as fallback
+            if not is_ebox_cluster and port_map:
+                for conn in port_map:
+                    node_des = conn.get("node_designation", "")
+                    if node_des.startswith("EB"):
+                        is_ebox_cluster = True
+                        bottom_devices = dboxes if dboxes else eboxes
+                        break
+            
+            if not is_ebox_cluster:
+                bottom_devices = dboxes
+            
+            bottom_device_type = "EBox" if is_ebox_cluster else "DBox"
+
+            self.logger.info(f"Hardware: {len(cboxes)} CBoxes, {len(dboxes)} DBoxes, {len(eboxes)} EBoxes, {len(switches)} Switches")
+            if is_ebox_cluster:
+                self.logger.info(f"EBox cluster detected - using {len(bottom_devices)} devices for bottom layer")
             # Log IPL connections accurately
             ipl_count_msg = (
                 f"{len(ipl_connections)} IPL connections" if ipl_connections else f"{len(ipl_ports)} IPL ports (legacy)"
@@ -185,37 +229,40 @@ class NetworkDiagramGenerator:
             self.logger.info(f"Connections: {len(port_map)} port mappings, {ipl_count_msg}")
 
             # Layout parameters with dynamic sizing based on device count
-            layer_height = height / 4  # Divide into 4 layers (top margin, cbox, switch, dbox)
+            layer_height = height / 4  # Divide into 4 layers (top margin, cbox, switch, dbox/ebox)
 
             # Calculate max devices per row to determine sizing
-            max_devices = max(len(cboxes), len(dboxes), 2)  # At least 2 for switches
+            max_devices = max(len(cboxes), len(bottom_devices), 2)  # At least 2 for switches
 
             # Dynamic device sizing - scale down as more devices are added
             # Base size for 3 or fewer devices, scale down for more
             # Sizes reduced by 50% to fit better within page borders
+            device_width: float
+            device_height: float
+            base_spacing: float
             if max_devices <= 3:
-                device_width = 80  # Reduced from 160
-                device_height = 40  # Reduced from 80
-                base_spacing = 300
+                device_width = 80.0  # Reduced from 160
+                device_height = 40.0  # Reduced from 80
+                base_spacing = 300.0
             elif max_devices <= 5:
-                device_width = 60  # Reduced from 120
-                device_height = 30  # Reduced from 60
-                base_spacing = 220
+                device_width = 60.0  # Reduced from 120
+                device_height = 30.0  # Reduced from 60
+                base_spacing = 220.0
             elif max_devices <= 7:
-                device_width = 50  # Reduced from 100
-                device_height = 25  # Reduced from 50
-                base_spacing = 160
+                device_width = 50.0  # Reduced from 100
+                device_height = 25.0  # Reduced from 50
+                base_spacing = 160.0
             else:
                 # For 8+ devices, calculate to fit all within width
                 available_width = width * 0.9  # Use 90% of width
-                device_width = min(40, available_width / (max_devices * 1.3))  # Reduced from 80
+                device_width = min(40.0, available_width / (max_devices * 1.3))  # Reduced from 80
                 device_height = device_width * 0.5
                 base_spacing = device_width * 1.2
 
             # Different spacing for different device types
             cbox_spacing = base_spacing
             switch_spacing = device_width * 1.5  # Slightly more space for switches
-            dbox_spacing = base_spacing * 0.9
+            bottom_spacing = base_spacing * 0.9  # Spacing for DBoxes or EBoxes
 
             # Calculate dynamic font sizes based on device size
             label_font_size = max(8, int(device_width / 8))
@@ -270,98 +317,172 @@ class NetworkDiagramGenerator:
                 switch_positions[1] = (swa_x - margin_diff, switch_y)
                 switch_positions[2] = (swb_x + margin_diff, switch_y)
 
-            # Calculate midpoint between switches for DBox alignment
+            # Calculate midpoint between switches for bottom device alignment
             switch_midpoint_x = center_x
 
-            # Calculate DBox positions
-            # If only one DBox, center it at switch midpoint
-            if len(dboxes) == 1:
-                dbox_positions = [(switch_midpoint_x - device_width / 2, dbox_y)]
+            # Calculate bottom device positions (DBoxes or EBoxes)
+            # If only one device, center it at switch midpoint
+            if len(bottom_devices) == 1:
+                bottom_positions = [(switch_midpoint_x - device_width / 2, dbox_y)]
             else:
-                # Multiple DBoxes - spread them centered on switch midpoint
-                dbox_positions = self._calculate_positions(len(dboxes), width, dbox_y, device_width, dbox_spacing)
+                # Multiple devices - spread them centered on switch midpoint
+                bottom_positions = self._calculate_positions(len(bottom_devices), width, dbox_y, device_width, bottom_spacing)
 
             # Draw connections first (so they appear behind devices)
             connection_group = Group()
 
-            # Draw node-to-switch connections
-            for conn in port_map:
-                # Skip if not primary interface
-                # Show only f0 and f1 (primary physical ports)
-                # Network assignment is already correct from switch-based logic
-                interface = conn.get("interface", "")
-                network = conn.get("network", "?")
-                node_designation = conn.get("node_designation", "Unknown")
+            # Track drawn connections to avoid duplicates (especially for EBox clusters)
+            drawn_connections = set()
 
-                is_dnode = "DN" in node_designation
-                is_cnode = "CN" in node_designation
+            # For EBox clusters, generate connections directly from bottom devices to switches
+            # since port_map might not have proper EB designations
+            if is_ebox_cluster and len(bottom_devices) > 0 and len(switches) >= 2:
+                self.logger.info(f"EBox cluster: Drawing {len(bottom_devices)} EBox-to-switch connections")
+                for idx, device in enumerate(bottom_devices):
+                    if idx < len(bottom_positions):
+                        node_x, node_y = bottom_positions[idx]
+                        ebox_id = device.get("id", idx + 1)
+                        
+                        # Draw connection to Switch A (Network A - Green, L side)
+                        sw1_x, sw1_y = switch_positions[1]
+                        line_a = Line(
+                            node_x + device_width / 2,
+                            node_y + device_height,
+                            sw1_x + device_width / 2,
+                            sw1_y,
+                            strokeColor=self.switch_a_color,  # Green
+                            strokeWidth=4,
+                        )
+                        connection_group.add(line_a)
+                        self.logger.debug(f"Drew EB{ebox_id} -> SWA (Network A, Green)")
+                        
+                        # Draw connection to Switch B (Network B - Blue, R side)
+                        sw2_x, sw2_y = switch_positions[2]
+                        line_b = Line(
+                            node_x + device_width / 2,
+                            node_y + device_height,
+                            sw2_x + device_width / 2,
+                            sw2_y,
+                            strokeColor=self.switch_b_color,  # Blue
+                            strokeWidth=4,
+                        )
+                        connection_group.add(line_b)
+                        self.logger.debug(f"Drew EB{ebox_id} -> SWB (Network B, Blue)")
+            else:
+                # Standard cluster: Draw connections from port_map
+                self.logger.info(f"Standard cluster: Processing {len(port_map)} port map entries")
+                connections_drawn = 0
+                # Draw node-to-switch connections
+                for conn in port_map:
+                    # Skip if not primary interface
+                    # Show only f0 and f1 (primary physical ports)
+                    # Network assignment is already correct from switch-based logic
+                    interface = conn.get("interface", "")
+                    network = conn.get("network", "?")
+                    node_designation = conn.get("node_designation", "Unknown")
 
-                # Only draw primary physical interfaces (f0 and f1)
-                is_primary = False
-                if "f0" in interface or "f1" in interface:
-                    is_primary = True
+                    is_dnode = "DN" in node_designation
+                    is_cnode = "CN" in node_designation
+                    is_ebox_node = "EB" in node_designation
 
-                if not is_primary:
-                    continue
+                    # Only draw primary physical interfaces (f0 and f1)
+                    is_primary = False
+                    if "f0" in interface or "f1" in interface:
+                        is_primary = True
 
-                # Determine switch (1 or 2)
-                switch_ip = conn.get("switch_ip", "")
-                if switch_ip == switches[0].get("mgmt_ip") if switches else None:
-                    switch_num = 1
-                elif switch_ip == switches[1].get("mgmt_ip") if len(switches) > 1 else None:
-                    switch_num = 2
-                else:
-                    continue
-
-                # Get switch position
-                # For MSN2100 switches (side-by-side), both switches use position 1
-                msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
-                if len(msn2100_switches) >= 2:
-                    # Both switches connect to the single MSN2100 image at position 1
-                    if 1 not in switch_positions:
+                    if not is_primary:
                         continue
-                    switch_x, switch_y_pos = switch_positions[1]
-                else:
-                    # Normal case: use the specific switch position
-                    if switch_num not in switch_positions:
-                        continue
-                    switch_x, switch_y_pos = switch_positions[switch_num]
 
-                # Determine node position
-                if is_cnode:
-                    # Extract CBox number from designation (CB1-CN1-R -> 1)
-                    try:
-                        cbox_num = int(node_designation.split("-")[0].replace("CB", ""))
-                        if cbox_num <= len(cbox_positions):
-                            node_x, node_y = cbox_positions[cbox_num - 1]
-                        else:
+                    # Determine switch (1 or 2)
+                    switch_ip = conn.get("switch_ip", "")
+                    if switch_ip == switches[0].get("mgmt_ip") if switches else None:
+                        switch_num = 1
+                    elif switch_ip == switches[1].get("mgmt_ip") if len(switches) > 1 else None:
+                        switch_num = 2
+                    else:
+                        continue
+
+                    # Get switch position
+                    # For MSN2100 switches (side-by-side), both switches use position 1
+                    msn2100_switches = [s for s in switches if "msn2100" in s.get("model", "").lower()]
+                    if len(msn2100_switches) >= 2:
+                        # Both switches connect to the single MSN2100 image at position 1
+                        if 1 not in switch_positions:
                             continue
-                    except (ValueError, IndexError):
-                        continue
-                elif is_dnode:
-                    # Extract DBox number from designation (DB1-DN1-R -> 1)
-                    try:
-                        dbox_num = int(node_designation.split("-")[0].replace("DB", ""))
-                        if dbox_num <= len(dbox_positions):
-                            node_x, node_y = dbox_positions[dbox_num - 1]
-                        else:
+                        switch_x, switch_y_pos = switch_positions[1]
+                    else:
+                        # Normal case: use the specific switch position
+                        if switch_num not in switch_positions:
                             continue
-                    except (ValueError, IndexError):
-                        continue
-                else:
-                    continue
+                        switch_x, switch_y_pos = switch_positions[switch_num]
 
-                # Draw line (doubled stroke width)
-                line_color = self.switch_a_color if switch_num == 1 else self.switch_b_color
-                line = Line(
-                    node_x + device_width / 2,
-                    node_y,
-                    switch_x + device_width / 2,
-                    switch_y_pos + device_height,
-                    strokeColor=line_color,
-                    strokeWidth=4,  # Doubled from 2
-                )
-                connection_group.add(line)
+                    # Determine node position based on cluster type
+                    node_x = None
+                    node_y = None
+
+                    if is_ebox_node:
+                        # EBox cluster: Extract EBox number from designation (EB1-CN1-R -> 1)
+                        # For EBox clusters, only draw one connection per EBox per switch
+                        # since multiple nodes (1 CNode + 2 DNodes) share the same physical connection
+                        try:
+                            ebox_num = int(node_designation.split("-")[0].replace("EB", ""))
+                            # Create unique key for this EBox-to-switch connection
+                            conn_key = (ebox_num, switch_num)
+                            if conn_key in drawn_connections:
+                                continue  # Skip duplicate connections
+                            drawn_connections.add(conn_key)
+
+                            if ebox_num <= len(bottom_positions):
+                                node_x, node_y = bottom_positions[ebox_num - 1]
+                        except (ValueError, IndexError):
+                            continue
+                    elif is_cnode:
+                        # Standard cluster: Extract CBox number from designation (CB1-CN1-R -> 1)
+                        try:
+                            cbox_num = int(node_designation.split("-")[0].replace("CB", ""))
+                            if cbox_num <= len(cbox_positions):
+                                node_x, node_y = cbox_positions[cbox_num - 1]
+                        except (ValueError, IndexError):
+                            continue
+                    elif is_dnode:
+                        # Standard cluster: Extract DBox number from designation (DB1-DN1-R -> 1)
+                        try:
+                            dbox_num = int(node_designation.split("-")[0].replace("DB", ""))
+                            if dbox_num <= len(bottom_positions):
+                                node_x, node_y = bottom_positions[dbox_num - 1]
+                        except (ValueError, IndexError):
+                            continue
+
+                    if node_x is None or node_y is None:
+                        continue
+
+                    # Draw line (doubled stroke width)
+                    # Network A = Switch 1 (SWA), Network B = Switch 2 (SWB)
+                    line_color = self.switch_a_color if switch_num == 1 else self.switch_b_color
+                    
+                    # Determine connection points based on device position relative to switch
+                    # CNodes are above switches, DNodes are below
+                    if is_cnode:
+                        # CNode (top) to switch: from bottom of CNode to top of switch
+                        node_connect_y = node_y  # bottom of cnode
+                        switch_connect_y = switch_y_pos + device_height  # top of switch
+                    else:
+                        # DNode (bottom) to switch: from top of DNode to bottom of switch
+                        node_connect_y = node_y + device_height  # top of dnode
+                        switch_connect_y = switch_y_pos  # bottom of switch
+                    
+                    line = Line(
+                        node_x + device_width / 2,
+                        node_connect_y,
+                        switch_x + device_width / 2,
+                        switch_connect_y,
+                        strokeColor=line_color,
+                        strokeWidth=4,
+                    )
+                    connection_group.add(line)
+                    connections_drawn += 1
+                
+                self.logger.info(f"Standard cluster: Drew {connections_drawn} connections")
 
             # Draw IPL/MLAG connections between switches
             # Use new ipl_connections format (deduplicated)
@@ -456,37 +577,63 @@ class NetworkDiagramGenerator:
                             name_font_size,
                         )
 
-            # Draw DBoxes
-            for idx, dbox in enumerate(dboxes):
-                if idx < len(dbox_positions):
-                    x, y = dbox_positions[idx]
-                    # Get actual DBox model from hardware data
-                    dbox_model = dbox.get("model", dbox.get("hardware_type", "ceres_v2"))
-                    self._draw_device(
-                        device_group,
-                        x,
-                        y,
-                        device_width,
-                        device_height,
-                        f"DB{idx + 1}",
-                        dbox.get("name", "DBox"),
-                        dbox_model,  # Use actual model instead of hardcoded "ceres_v2"
-                        label_font_size,
-                        name_font_size,
-                    )
+            # Draw bottom devices (DBoxes or EBoxes)
+            for idx, device in enumerate(bottom_devices):
+                if idx < len(bottom_positions):
+                    x, y = bottom_positions[idx]
+                    if is_ebox_cluster:
+                        # EBox cluster: Use EB# label with EBox ID
+                        # Try to get ID from device data, fallback to index+1
+                        ebox_id = device.get("id")
+                        if ebox_id is None:
+                            # If no ID, use sequential number
+                            ebox_id = idx + 1
+                        device_name = device.get("name", "EBox")
+                        # Use EBox-specific model or detect from name
+                        device_model = device.get("model", device.get("hardware_type", ""))
+                        if not device_model or device_model == "unknown":
+                            device_model = "supermicro_gen5_ebox"
+                        self._draw_device(
+                            device_group,
+                            x,
+                            y,
+                            device_width,
+                            device_height,
+                            f"EB{ebox_id}",
+                            device_name,
+                            device_model,
+                            label_font_size,
+                            name_font_size,
+                        )
+                        self.logger.debug(f"Drew EBox: EB{ebox_id} - {device_name}")
+                    else:
+                        # Standard cluster: Use DB# label
+                        device_model = device.get("model", device.get("hardware_type", "ceres_v2"))
+                        self._draw_device(
+                            device_group,
+                            x,
+                            y,
+                            device_width,
+                            device_height,
+                            f"DB{idx + 1}",
+                            device.get("name", "DBox"),
+                            device_model,
+                            label_font_size,
+                            name_font_size,
+                        )
 
             drawing.add(device_group)
 
             # Save diagram
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path_p = Path(output_path)
+            output_path_p.parent.mkdir(parents=True, exist_ok=True)
 
             # Save as PDF
-            renderPDF.drawToFile(drawing, str(output_path), "Network Topology Diagram")
-            self.logger.info(f"Network diagram saved to: {output_path}")
+            renderPDF.drawToFile(drawing, str(output_path_p), "Network Topology Diagram")
+            self.logger.info(f"Network diagram saved to: {output_path_p}")
 
             # Try to also save as PNG for embedding in report
-            png_path = output_path.with_suffix(".png")
+            png_path = output_path_p.with_suffix(".png")
             try:
                 from reportlab.graphics import renderPM
 
@@ -499,7 +646,7 @@ class NetworkDiagramGenerator:
                 try:
                     import fitz
 
-                    doc = fitz.open(str(output_path))
+                    doc = fitz.open(str(output_path_p))
                     if len(doc) > 0:
                         page = doc[0]
                         pix = page.get_pixmap(dpi=150)
@@ -517,12 +664,12 @@ class NetworkDiagramGenerator:
                         if platform.system() == "Darwin":
                             out_dir = str(png_path.parent)
                             subprocess.run(
-                                ["qlmanage", "-t", "-s", "1000", "-o", out_dir, str(output_path)],
+                                ["qlmanage", "-t", "-s", "1000", "-o", out_dir, str(output_path_p)],
                                 check=True,
                                 capture_output=True,
                                 timeout=15,
                             )
-                            ql_png = output_path.parent / f"{output_path.name}.png"
+                            ql_png = output_path_p.parent / f"{output_path_p.name}.png"
                             if ql_png.exists():
                                 ql_png.rename(png_path)
                                 self.logger.info(f"Network diagram PNG created via qlmanage: {png_path}")

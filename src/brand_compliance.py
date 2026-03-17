@@ -508,8 +508,8 @@ class VastBrandCompliance:
         page_width = A4[0] - 1.0 * inch  # A4 width minus margins
         num_cols = len(headers)
 
-        # Hardware Inventory: content-based column widths for flexible formatting
-        if num_cols == 6 and headers and headers[0] == "Rack":
+        # Hardware Inventory: content-based column widths (6-col or 5-col EBox-only)
+        if headers and headers[0] == "Rack" and (num_cols == 6 or num_cols == 5):
             col_widths = self._content_based_column_widths(
                 full_table_data,
                 page_width,

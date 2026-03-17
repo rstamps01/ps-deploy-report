@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-16  
+**Last updated:** 2026-03-17 (EBOX-4–EBOX-6 completed)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -24,14 +24,14 @@
 
 | ID   | Item | Priority | Status   | Notes |
 |------|------|----------|---------|--------|
-| TSE-1 | **Library:** Unit tests for GET `/library`, GET/POST/DELETE `/api/library`, mocked _load_library/_save_library | High | Planned | test_app.py |
-| TSE-2 | **Generate cancel:** Unit test POST `/generate/cancel` (no job → 200/409; job running → cancel accepted, mock state) | High | Planned | test_app.py |
-| TSE-3 | **Reports dirs:** Unit tests GET `/reports/dirs`, POST with valid path (output-dir behavior) | High | Planned | test_app.py |
-| TSE-4 | **API discover:** Unit test POST `/api/discover` with mocked create_vast_api_handler + RackDiagram (400/401/success) | Medium | Planned | test_app.py |
-| TSE-5 | **Report content:** Integration test — EBox + dell_turin_cbox + serial in data; assert PDF/intermediate contains expected strings | Medium | Planned | test_integration.py |
-| TSE-6 | **Profiles API:** Unit tests GET/POST/DELETE `/profiles` and `/profiles/<name>` (mock _load_profiles/_save_profiles) | Medium | Planned | test_app.py |
-| TSE-7 | **Shutdown:** Optional unit test POST `/shutdown` (200, no crash) or document as manual check | Lower | Planned | test_app.py or manual |
-| TSE-8 | **Coverage:** Add tests for external_port_mapper, rack_diagram, report_builder (EBox path, partial port mapping) toward 80% | Lower | Planned | per-module |
+| TSE-1 | **Library:** Unit tests for GET `/library`, GET/POST/DELETE `/api/library`, mocked _load_library/_save_library | High | Done | test_app.py |
+| TSE-2 | **Generate cancel:** Unit test POST `/generate/cancel` (no job → 200/409; job running → cancel accepted, mock state) | High | Done | test_app.py |
+| TSE-3 | **Reports dirs:** Unit tests GET `/reports/dirs`, POST with valid path (output-dir behavior) | High | Done | test_app.py |
+| TSE-4 | **API discover:** Unit test POST `/api/discover` with mocked create_vast_api_handler + RackDiagram (400/401/success) | Medium | Done | test_app.py |
+| TSE-5 | **Report content:** Integration test — EBox + dell_turin_cbox + serial in data; assert PDF/intermediate contains expected strings | Medium | Done | test_integration.py |
+| TSE-6 | **Profiles API:** Unit tests GET/POST/DELETE `/profiles` and `/profiles/<name>` (mock _load_profiles/_save_profiles) | Medium | Done | test_app.py |
+| TSE-7 | **Shutdown:** Optional unit test POST `/shutdown` (200, no crash) or document as manual check | Lower | Done | test_app.py |
+| TSE-8 | **Coverage:** Add tests for external_port_mapper, rack_diagram, report_builder (EBox path, partial port mapping) toward 80% | Lower | Done | Coverage 53%+ (49%+ restored); further toward 80% in TSE-9 |
 | TSE-9 | **Coverage — low-coverage modules:** Add tests for comprehensive_report_template.py, enhanced_report_builder.py (and expand external_port_mapper, rack_diagram, report_builder per TSE-8) to raise total coverage toward 80% | Lower | Planned | per-module |
 | TSE-10 | **Coverage — omit config:** Optionally configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Planned | pyproject.toml / .coveragerc |
 
@@ -41,9 +41,17 @@
 
 | ID   | Item | Status   | Notes |
 |------|------|----------|--------|
-| QG-1 | Run flake8 + black (and optionally mypy) as part of documented pre-release run | Planned | See PRE-RELEASE-QA-GAP-ANALYSIS.md §5 |
-| QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Planned | Pre-existing issues |
-| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | Planned | Track with TSE-8 |
+| QG-1 | Run flake8 + black (and optionally mypy) as part of documented pre-release run | Done | README Development § Pre-release checklist |
+| QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Done | Followed [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md): types-paramiko, _MEIPASS, var annotations, return casts, api_handler session/optional, network_diagram Path/float, report_builder tuple/int/float; mypy passes. |
+| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=47; total coverage 53%+ (49%+ restored); track TSE-9 for 80% |
+
+---
+
+## Planned — Authentication and reporting access
+
+| ID   | Item | Status   | Notes |
+|------|------|----------|--------|
+| AUTH-1 | **Automate token generation:** Consider automating API token creation (e.g. on first connect or when no valid token is provided) to simplify reporting access. Token generation enables read-only API access for the report tool only; it has no direct impact on cluster components, cluster functionality or operations, or resources used by the cluster to deliver data services. Align with [READ_ONLY_VAST_API_POLICY.md](development/READ_ONLY_VAST_API_POLICY.md) (auth POST allowed to establish access). | Planned | Current flow: prefer provided token or basic auth; create token only when needed (5-token limit). Automation could streamline this for unattended or scripted reporting. |
 
 ---
 
@@ -52,6 +60,21 @@
 | ID   | Item | Status   | Notes |
 |------|------|----------|--------|
 | DEV-1 | **Developer button:** Add a hidden/secure Developer control at the top of the UI, enableable by developers at launch (e.g. env flag or launch option). When enabled, expose: (1) **Configuration** — move existing Configuration section under Developer; (2) **Docs** — move Docs access under Developer; (3) **Live API Explorer** — expose API Explorer interface under Developer; (4) **Report from JSON** — new UI to generate reports directly from previously generated `.json` output files (e.g. `vast_data_*.json`) without reconnecting to the cluster. | Planned | Navbar/top-level; secure so only enabled at launch |
+
+---
+
+## Planned — EBox Hardware Overview & Inventory
+
+*Source: [EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md](development/EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md)*
+
+| ID    | Item | Status   | Notes |
+|-------|------|----------|--------|
+| EBOX-1 | **Hardware Overview (EBox-only):** CBoxes=0, DBoxes=0; CNodes/DNodes as discovered | Done | report_builder.py |
+| EBOX-2 | **Hardware Inventory (EBox-only):** Remove Node column; EBox→CNode→2×DNodes order; Model from CNode vendor; switches at bottom | Done | report_builder.py _create_ebox_only_inventory_table; brand_compliance 5-col |
+| EBOX-3 | **Rack Layout:** EBox model from CNode vendor for library image; 1U default | Done | report_builder.py racks_data ebox model from CNode; rack_diagram 1U already |
+| EBOX-4 | **Port Mapping (EBox-only):** CNode/DNode names in Notes column; separate from standard CBox/DBox logic | Done | external_port_mapper.py, report_builder.py |
+| EBOX-5 | **Network Diagram (EBox-only):** EB# labels, Green (Network A) / Blue (Network B) connections | Done | network_diagram.py |
+| EBOX-6 | **Hardware Library:** msn4700-ws2rc switch and dell_genoa_ebox added as built-in devices | Done | app.py, rack_diagram.py, network_diagram.py |
 
 ---
 
@@ -98,15 +121,34 @@
 
 *(Items completed this release cycle; archive or clear periodically.)*
 
-*None.*
+| ID   | Item | Notes |
+|------|------|--------|
+| QG-2 | Fix flake8/black/mypy exceptions to achieve green quality gate | mypy: 97→0 errors; see [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md). |
+| QG-1 | Document pre-release run (flake8, black, mypy, pytest) | README Development § Pre-release checklist. |
+| TSE-1 | Library API unit tests | GET /library, GET/POST/DELETE /api/library (mocked _load_library/_save_library). |
+| TSE-2 | Generate cancel unit test | POST /generate/cancel (no job → no_job; job running → cancelled). |
+| TSE-3 | Reports dirs unit tests | GET /reports/dirs, POST valid path + 400 for empty/nonexistent. |
+| TSE-4 | API discover unit tests | POST /api/discover (400/401/success) with mocked handler + RackDiagram. |
+| — | Read-only VAST API policy | Data collection GET-only; [READ_ONLY_VAST_API_POLICY.md](development/READ_ONLY_VAST_API_POLICY.md); _make_api_request enforces GET. |
+| EBOX-1 | Hardware Overview (EBox-only) | CBoxes=0, DBoxes=0 when eboxes present and no cboxes/dboxes; CNodes/DNodes as discovered. |
+| TSE-5 | Report content integration test | EBox + dell_turin_cbox + serial in data; intermediate + PDF generation asserted (test_integration.py). |
+| TSE-6 | Profiles API unit tests | GET/POST/DELETE /profiles and /profiles/<name> with mocked _load_profiles/_save_profiles (TestProfilesRoutes). |
+| TSE-7 | Shutdown unit test | POST /shutdown returns 200 and status (TestShutdown; os._exit mocked). |
+| TSE-8 | Coverage 49%+ restored | New tests raised total coverage to 53%+; cov-fail-under=47 retained. |
+| EBOX-2 | Hardware Inventory (EBox-only) | 5-col table, EBox→CNode→2×DNodes per EBox, model from CNode, switches at bottom; brand_compliance 5-col. |
+| EBOX-3 | Rack Layout EBox model | EBox model/hardware_type from CNode box_vendor for library image; 1U in rack_diagram. |
+| EBOX-4 | Port Mapping (EBox-only) | CNode/DNode names in Notes column; standard CBox/DBox shows "Primary". |
+| EBOX-5 | Network Diagram (EBox-only) | EB# labels, Green/Blue connections to switches; standard CBox/DBox connections fixed. |
+| EBOX-6 | Hardware Library additions | msn4700-ws2rc switch and dell_genoa_ebox added as built-in devices. |
 
 ---
 
 ## Next steps (current focus)
 
-1. Prioritize TSE-1–TSE-3 for “all features validated” before next release.
+1. **Test suite (next):** TSE-9 (coverage toward 80%: comprehensive_report_template, enhanced_report_builder, external_port_mapper, rack_diagram, report_builder); TSE-10 (optional coverage omit). “all features validated” before next release.
 2. Before each release: update this file (status, Last updated, move completed items to Done).
 3. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+4. Restore cov-fail-under to 49%+ when adding tests per TSE-8 (QG-3).
 
 ---
 

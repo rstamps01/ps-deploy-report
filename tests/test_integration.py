@@ -82,9 +82,25 @@ class TestFullPipelineIntegration(unittest.TestCase):
                 ],
                 "cboxes": [
                     {"id": 1, "name": "cbox-1", "serial_number": "CB001", "model": "CBox", "status": "active"},
+                    {
+                        "id": 2,
+                        "name": "cbox-2",
+                        "serial_number": "SERIAL123",
+                        "model": "dell_turin_cbox",
+                        "status": "active",
+                    },
                 ],
                 "dboxes": [
                     {"id": 1, "name": "dbox-1", "serial_number": "DB001", "model": "DBox", "status": "active"},
+                ],
+                "eboxes": [
+                    {
+                        "id": 1,
+                        "name": "ebox-1",
+                        "state": "active",
+                        "rack_name": "R1",
+                        "rack_unit": "1",
+                    },
                 ],
             },
             "network": {
@@ -169,6 +185,24 @@ class TestFullPipelineIntegration(unittest.TestCase):
         with open(output_path, "rb") as f:
             magic = f.read(5)
         self.assertEqual(magic, b"%PDF-")
+
+    def test_report_content_contains_ebox_and_model_serial(self):
+        """TSE-5: EBox + dell_turin_cbox + serial in data; assert intermediate and PDF generation."""
+        processed = self.extractor.extract_all_data(self.raw_data)
+        hw = processed.get("hardware_inventory", {})
+        eboxes = hw.get("eboxes") or {}
+        cboxes = hw.get("cboxes") or {}
+        self.assertGreater(len(eboxes), 0, "Processed data should include EBox(es)")
+        self.assertGreater(len(cboxes), 0, "Processed data should include CBox(es)")
+        cbox_models = [c.get("model") or c.get("hardware_type") or "" for c in cboxes.values()]
+        self.assertIn("dell_turin_cbox", cbox_models, "Processed data should include dell_turin_cbox model")
+        serials = [c.get("serial_number", "") for c in cboxes.values()]
+        self.assertIn("SERIAL123", serials, "Processed data should include expected serial")
+        output_path = os.path.join(self.tmpdir, "tse5_report.pdf")
+        result = self.builder.generate_pdf_report(processed, output_path)
+        self.assertTrue(result, "PDF report should be generated")
+        self.assertTrue(os.path.exists(output_path))
+        self.assertGreater(os.path.getsize(output_path), 0, "Generated PDF should be non-empty")
 
     def test_save_processed_data_produces_valid_json(self):
         processed = self.extractor.extract_all_data(self.raw_data)
