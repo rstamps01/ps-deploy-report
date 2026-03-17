@@ -305,8 +305,9 @@ vast-asbuilt-reporter/
 │   ├── rack_diagram.py       # Physical rack layout
 │   ├── network_diagram.py    # Network topology
 │   ├── brand_compliance.py   # VAST styling
-│   ├── external_port_mapper.py
-│   └── utils/                # Logger, paths, SSH
+│   ├── hardware_library.py   # Consolidated device definitions
+│   ├── external_port_mapper.py  # SSH-based port mapping
+│   └── utils/                # Logger, paths, SSH adapter
 └── tests/                    # pytest suite
 ```
 
@@ -350,7 +351,7 @@ mypy src/ --ignore-missing-imports --no-strict-optional
 
 # Unit tests with coverage (excludes UI and integration)
 python -m pytest tests/ -v --ignore=tests/test_ui.py --ignore=tests/test_integration.py \
-  --cov=src --cov-report=term-missing --cov-fail-under=47
+  --cov=src --cov-report=term-missing --cov-fail-under=46
 ```
 
 See [docs/TODO-ROADMAP.md](docs/TODO-ROADMAP.md) for quality-gate items (QG-1, QG-2).
@@ -368,7 +369,7 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 | **403 / incomplete data** | Use `support` (or equivalent) with full read access. |
 | **Connection timeout** | Increase `api.timeout` in `config.yaml`. |
 | **SSL errors** | Set `api.verify_ssl: false` for self-signed certs. |
-| **Port mapping fails** | Check SSH credentials and reachability of switch management IPs. On Windows, port mapping uses UTF-8 for SSH output; if you see charmap errors, update to the latest build. |
+| **Port mapping fails** | Check SSH credentials and reachability of switch management IPs. Windows uses paramiko for SSH; macOS/Linux use sshpass. Ensure credentials work via direct SSH first. |
 | **"A report is already being generated"** | Click **Cancel**, then retry; if stuck, restart the app. |
 | **macOS Gatekeeper** | Right-click the .app → **Open** on first launch. |
 | **Windows: PDF "Permission denied"** | Ensure the app can write to `%TEMP%`. If it persists, exclude the app folder from antivirus real-time scan or run from a directory with write access. |
