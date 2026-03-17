@@ -28,6 +28,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 
+from hardware_library import BUILTIN_DEVICES
+
 logger = logging.getLogger(__name__)
 
 
@@ -81,40 +83,8 @@ class NetworkDiagramGenerator:
         Returns:
             Path to image file or None if not found
         """
-        image_map = {
-            # CBoxes
-            "supermicro_gen5_cbox": "supermicro_gen5_cbox_1u.png",
-            "hpe_genoa_cbox": "hpe_genoa_cbox.png",
-            "hpe_icelake": "hpe_il_cbox_2u.png",
-            "dell_icelake": "dell_il_cbox_2u.png",
-            "dell_turin_cbox": "dell_turin_r6715_cbox_1u.png",
-            "smc_turin_cbox": "smc_turin_cbox_1u.png",
-            "broadwell": "broadwell_cbox_2u.png",
-            "cascadelake": "cascadelake_cbox_2u.png",
-            # DBoxes
-            "ceres_v2": "ceres_v2_1u.png",
-            "dbox-515": "ceres_v2_1u.png",
-            "dbox-516": "ceres_v2_1u.png",
-            "sanmina": "maverick_2u.png",
-            "maverick_1.5": "maverick_2u.png",
-            # Switches
-            "msn2700": "mellanox_msn2700_1x32p_100g_switch_1u.png",
-            "msn3700-vs2fc": "mellanox_msn3700_1x32p_200g_switch_1u.png",
-            "msn2100-cb2f": "mellanox_msn2100_2x16p_100g_switch_1u.png",
-            "msn4600c": "mellanox_msn4600C_1x64p_100g_switch_2u.png",
-            "msn4600": "mellanox_msn4600_1x64p_200g_switch_2u.png",
-            "sn5600": "mellanox_sn5600_1x64p_800g_switch_2u.png",
-            "arista_7060dx5": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "arista_7050cx4": "arista_7050cx4_24d_400g_switch_1u.png",
-            "arista_7050dx4": "arista_7050dx4_32s_400g_switch_1u.png",
-            "arista": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "n42c-00rb-7c0": "mellanox_sn5400_1x64p_400g_switch_2u.png",
-            "msn4700-ws2rc": "msn4700-ws2rc_1u.png",
-            "msn4700": "msn4700-ws2rc_1u.png",
-            # EBoxes
-            "supermicro_gen5_ebox": "supermicro_gen5_ebox_1u.png",
-            "dell_genoa_ebox": "dell_genoa_ebox_1u.png",
-        }
+        # Build image map from centralized hardware library
+        image_map = {key: device.get("image_filename", "") for key, device in BUILTIN_DEVICES.items()}
 
         hw_lower = hardware_type.lower()
 

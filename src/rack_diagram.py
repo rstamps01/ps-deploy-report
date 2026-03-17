@@ -23,6 +23,7 @@ from reportlab.platypus import KeepTogether, Paragraph, Spacer, Table, TableStyl
 logger = logging.getLogger(__name__)
 
 from utils import get_bundle_dir
+from hardware_library import BUILTIN_DEVICES, get_device_height, build_image_map
 
 HARDWARE_IMAGE_DIR = get_bundle_dir() / "assets" / "hardware_images"
 
@@ -146,40 +147,8 @@ class RackDiagram:
         Returns:
             Dictionary mapping model names to image file paths
         """
-        image_map = {
-            # CBoxes
-            "supermicro_gen5_cbox": HARDWARE_IMAGE_DIR / "supermicro_gen5_cbox_1u.png",
-            "hpe_genoa_cbox": HARDWARE_IMAGE_DIR / "hpe_genoa_cbox.png",
-            "hpe_icelake": HARDWARE_IMAGE_DIR / "hpe_il_cbox_2u.png",
-            "dell_icelake": HARDWARE_IMAGE_DIR / "dell_il_cbox_2u.png",
-            "dell_turin_cbox": HARDWARE_IMAGE_DIR / "dell_turin_r6715_cbox_1u.png",
-            "smc_turin_cbox": HARDWARE_IMAGE_DIR / "smc_turin_cbox_1u.png",
-            "broadwell": HARDWARE_IMAGE_DIR / "broadwell_cbox_2u.png",
-            "cascadelake": HARDWARE_IMAGE_DIR / "cascadelake_cbox_2u.png",
-            # DBoxes
-            "ceres_v2": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
-            "dbox-515": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
-            "dbox-516": HARDWARE_IMAGE_DIR / "ceres_v2_1u.png",
-            "sanmina": HARDWARE_IMAGE_DIR / "maverick_2u.png",
-            "maverick_1.5": HARDWARE_IMAGE_DIR / "maverick_2u.png",
-            # Switches
-            "msn2700": HARDWARE_IMAGE_DIR / "mellanox_msn2700_1x32p_100g_switch_1u.png",
-            "msn3700-vs2fc": HARDWARE_IMAGE_DIR / "mellanox_msn3700_1x32p_200g_switch_1u.png",
-            "msn2100-cb2f": HARDWARE_IMAGE_DIR / "mellanox_msn2100_2x16p_100g_switch_1u.png",
-            "msn4600c": HARDWARE_IMAGE_DIR / "mellanox_msn4600C_1x64p_100g_switch_2u.png",
-            "msn4600": HARDWARE_IMAGE_DIR / "mellanox_msn4600_1x64p_200g_switch_2u.png",
-            "sn5600": HARDWARE_IMAGE_DIR / "mellanox_sn5600_1x64p_800g_switch_2u.png",
-            "arista_7060dx5": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "arista_7050cx4": HARDWARE_IMAGE_DIR / "arista_7050cx4_24d_400g_switch_1u.png",
-            "arista_7050dx4": HARDWARE_IMAGE_DIR / "arista_7050dx4_32s_400g_switch_1u.png",
-            "arista": HARDWARE_IMAGE_DIR / "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "n42c-00rb-7c0": HARDWARE_IMAGE_DIR / "mellanox_sn5400_1x64p_400g_switch_2u.png",
-            "msn4700-ws2rc": HARDWARE_IMAGE_DIR / "msn4700-ws2rc_1u.png",
-            "msn4700": HARDWARE_IMAGE_DIR / "msn4700-ws2rc_1u.png",
-            # EBoxes
-            "supermicro_gen5_ebox": HARDWARE_IMAGE_DIR / "supermicro_gen5_ebox_1u.png",
-            "dell_genoa_ebox": HARDWARE_IMAGE_DIR / "dell_genoa_ebox_1u.png",
-        }
+        # Build image map from centralized hardware library
+        image_map = build_image_map(HARDWARE_IMAGE_DIR)
 
         available_images: Dict[str, Optional[Path]] = {}
         for model, path in image_map.items():
@@ -245,63 +214,28 @@ class RackDiagram:
         """
         Determine the height in rack units (U) for a device based on its model.
 
-        Checks built-in patterns first, then the user library.
+        Uses the centralized hardware_library for lookups.
         """
-        one_u_models = [
-            "supermicro_gen5_cbox",
-            "hpe_genoa_cbox",
-            "dell_turin_cbox",
-            "smc_turin_cbox",
-            "ceres_v2",
-            "dbox-515",
-            "dbox-516",
-            "msn2700",
-            "msn3700-vs2fc",
-            "msn2100-cb2f",
-            "msn4700-ws2rc",
-            "msn4700",
-            "arista_7050cx4",
-            "arista_7050dx4",
-        ]
-        two_u_models = [
-            "supermicro_2u_cbox",
-            "hpe_icelake",
-            "dell_icelake",
-            "broadwell",
-            "cascadelake",
-            "ceres_4u",
-            "sanmina",
-            "maverick_1.5",
-            "msn4600c",
-            "msn4600",
-            "sn5600",
-            "arista_7060dx5",
-            "arista",
-            "n42c-00rb-7c0",
-        ]
-
-        model_lower = model.lower() if model else ""
-
-        # EBox (enclosure) U height for Physical Rack Layout (default 1U)
-        if model_lower and ("ebox" in model_lower or "enclosure" in model_lower):
-            return 1
-
-        for pattern in sorted(two_u_models, key=len, reverse=True):
-            if pattern in model_lower:
-                return 2
-
-        for pattern in sorted(one_u_models, key=len, reverse=True):
-            if pattern in model_lower:
-                return 1
-
         user_lib = getattr(self, "_user_library", {}) or {}
-        for key in sorted(user_lib, key=len, reverse=True):
-            entry = user_lib[key]
-            if key in model_lower:
-                return cast(int, entry.get("height_u", 1))
+        height = get_device_height(model, user_lib)
 
-        logger.warning(f"Unknown model '{model}', defaulting to 1U")
-        return 1
+        # Log warning for unknown models (not in library)
+        if model and height == 1:
+            model_lower = model.lower()
+            found = False
+            for key in BUILTIN_DEVICES:
+                if key in model_lower:
+                    found = True
+                    break
+            if not found and "ebox" not in model_lower and "enclosure" not in model_lower:
+                for key in user_lib:
+                    if key in model_lower:
+                        found = True
+                        break
+            if not found:
+                logger.warning(f"Unknown model '{model}', defaulting to 1U")
+
+        return int(height)
 
     def _parse_rack_position(self, position: str) -> int:
         """
