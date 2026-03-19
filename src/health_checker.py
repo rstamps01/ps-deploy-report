@@ -206,6 +206,7 @@ class HealthChecker:
             self._check_quotas,
             self._check_data_protection,
             self._check_monitoring_config,
+            self._check_device_health,
         ]
         results: List[HealthCheckResult] = []
         for i, fn in enumerate(checks, 1):
@@ -1602,6 +1603,126 @@ class HealthChecker:
         except Exception as e:
             return HealthCheckResult(
                 check_name="Monitoring Config",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # ------------------------------------------------------------------
+    # Prometheus metrics parser and device health (WP-10)
+    # ------------------------------------------------------------------
+
+    def _parse_prometheus_metrics(self, text: str) -> List[Dict[str, Any]]:
+        """Parse Prometheus text format into list of {name, labels, value} dicts."""
+        results: List[Dict[str, Any]] = []
+        for line in text.strip().split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "{" in line:
+                name_part, rest = line.split("{", 1)
+                labels_part, value_part = rest.rsplit("}", 1)
+                labels = {}
+                for item in labels_part.split(","):
+                    if "=" in item:
+                        k, v = item.split("=", 1)
+                        labels[k.strip()] = v.strip().strip('"')
+                name_part = name_part.strip()
+            else:
+                parts = line.split()
+                name_part = parts[0]
+                value_part = parts[1] if len(parts) > 1 else "0"
+                labels = {}
+            try:
+                value = float(value_part.strip())
+            except (ValueError, TypeError):
+                continue
+            results.append({"name": name_part, "labels": labels, "value": value})
+        return results
+
+    def _check_device_health(self) -> HealthCheckResult:
+        """Check SSD/NVRAM device health via prometheusmetrics/devices."""
+        start = time.time()
+        try:
+            if not hasattr(self.api_handler, "get_prometheus_metrics"):
+                return HealthCheckResult(
+                    check_name="Device Health (Prometheus)",
+                    category="api",
+                    status="skipped",
+                    message="API handler does not support Prometheus metrics",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            text = self.api_handler.get_prometheus_metrics("devices")
+            if not text:
+                return HealthCheckResult(
+                    check_name="Device Health (Prometheus)",
+                    category="api",
+                    status="skipped",
+                    message="Prometheus devices endpoint unavailable",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            metrics = self._parse_prometheus_metrics(text)
+            if not metrics:
+                return HealthCheckResult(
+                    check_name="Device Health (Prometheus)",
+                    category="api",
+                    status="skipped",
+                    message="No device metrics returned",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            failed_devices = [m for m in metrics if "state" in m["name"].lower() and m["value"] != 1.0]
+            media_errors = [m for m in metrics if "media_error" in m["name"].lower() and m["value"] > 0]
+            total_metrics = len(metrics)
+
+            details: Dict[str, Any] = {
+                "total_metrics": total_metrics,
+                "failed_device_count": len(failed_devices),
+                "media_error_count": len(media_errors),
+            }
+            if failed_devices:
+                details["failed_devices"] = [
+                    {"name": m["name"], "labels": m["labels"], "value": m["value"]} for m in failed_devices[:10]
+                ]
+            if media_errors:
+                details["media_errors"] = [
+                    {"name": m["name"], "labels": m["labels"], "value": m["value"]} for m in media_errors[:10]
+                ]
+
+            if failed_devices or media_errors:
+                issues: List[str] = []
+                if failed_devices:
+                    issues.append(f"{len(failed_devices)} device(s) in non-healthy state")
+                if media_errors:
+                    issues.append(f"{len(media_errors)} device(s) with media errors")
+                return HealthCheckResult(
+                    check_name="Device Health (Prometheus)",
+                    category="api",
+                    status="fail",
+                    message="; ".join(issues),
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Device Health (Prometheus)",
+                category="api",
+                status="pass",
+                message=f"All devices healthy ({total_metrics} metrics scanned)",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Device Health (Prometheus)",
                 category="api",
                 status="error",
                 message=f"Check failed: {e}",
