@@ -326,5 +326,87 @@ class TestDataConsistency(unittest.TestCase):
         self.assertLessEqual(completeness, 100)
 
 
+@pytest.mark.integration
+class TestHealthCheckIntegration(unittest.TestCase):
+    """Verify health check data flows through the extraction pipeline."""
+
+    def setUp(self):
+        self.extractor = VastDataExtractor()
+        self.tmpdir = tempfile.mkdtemp(prefix="vast_health_")
+
+    def _make_mock_health_report(self):
+        """Return a mock HealthCheckReport dict (as from HealthChecker.to_dict)."""
+        return {
+            "cluster_ip": "192.168.1.100",
+            "cluster_name": "Health-Test-Cluster",
+            "cluster_version": "5.3.0",
+            "timestamp": "2025-03-19T12:00:00",
+            "results": [
+                {
+                    "check_name": "Cluster RAID Health",
+                    "category": "api",
+                    "status": "pass",
+                    "message": "All RAID states are HEALTHY",
+                    "details": {"ssd_raid_state": "HEALTHY"},
+                    "timestamp": "2025-03-19T12:00:01",
+                    "duration_seconds": 0.5,
+                },
+                {
+                    "check_name": "Panic/Alert Logs",
+                    "category": "node_ssh",
+                    "status": "pass",
+                    "message": "No PANIC/ALERT entries found",
+                    "details": {},
+                    "timestamp": "2025-03-19T12:00:02",
+                    "duration_seconds": 1.0,
+                },
+            ],
+            "summary": {"pass": 2, "fail": 0, "warning": 0, "skipped": 0, "error": 0},
+            "manual_checklist": [{"item": "Failover Testing", "description": "VMS migration test", "status": "Manual"}],
+            "tiers_run": [1, 2],
+        }
+
+    def test_health_check_json_in_report_data(self):
+        raw = {
+            "collection_timestamp": 1695672000.0,
+            "cluster_ip": "192.168.1.100",
+            "api_version": "v7",
+            "cluster_version": "5.3.0",
+            "enhanced_features": {"rack_height_supported": False, "psnt_supported": False},
+            "cluster_info": {"name": "Health-Test", "guid": "h-001", "version": "5.3.0", "state": "active"},
+            "hardware": {"cnodes": [], "dnodes": [], "cboxes": [], "dboxes": []},
+            "logical": {"tenants": [], "views": [], "viewpolicies": []},
+            "security": {"activedirectory": {"enabled": False}, "ldap": {"enabled": False}},
+            "data_protection": {"snapprograms": [], "protectionpolicies": []},
+        }
+        raw["health_check_results"] = self._make_mock_health_report()
+        processed = self.extractor.extract_all_data(raw)
+        self.assertIn("health_check", processed["sections"])
+        self.assertIn("post_deployment_validation", processed["sections"])
+
+    def test_health_check_report_section_present(self):
+        raw = {
+            "collection_timestamp": 1695672000.0,
+            "cluster_ip": "192.168.1.100",
+            "api_version": "v7",
+            "cluster_version": "5.3.0",
+            "enhanced_features": {"rack_height_supported": False, "psnt_supported": False},
+            "cluster_info": {"name": "Health-Test", "guid": "h-001", "version": "5.3.0", "state": "active"},
+            "hardware": {"cnodes": [], "dnodes": [], "cboxes": [], "dboxes": []},
+            "logical": {"tenants": [], "views": [], "viewpolicies": []},
+            "security": {"activedirectory": {"enabled": False}, "ldap": {"enabled": False}},
+            "data_protection": {"snapprograms": [], "protectionpolicies": []},
+        }
+        raw["health_check_results"] = self._make_mock_health_report()
+        processed = self.extractor.extract_all_data(raw)
+        health_section = processed["sections"]["health_check"]
+        self.assertEqual(health_section["title"], "Cluster Health Check Results")
+        self.assertEqual(health_section["completeness"], 100.0)
+        self.assertEqual(health_section["status"], "complete")
+        pvd_section = processed["sections"]["post_deployment_validation"]
+        self.assertEqual(pvd_section["title"], "Post Deployment Validation")
+        self.assertEqual(pvd_section["completeness"], 100.0)
+
+
 if __name__ == "__main__":
     unittest.main()
