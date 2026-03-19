@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from utils.ssh_adapter import run_ssh_command
@@ -105,7 +105,7 @@ class HealthChecker:
 
     @staticmethod
     def _now() -> str:
-        return datetime.utcnow().isoformat() + "Z"
+        return datetime.now(tz=None).astimezone().isoformat()
 
     @staticmethod
     def _summarize(results: List[HealthCheckResult]) -> Dict[str, int]:
@@ -158,7 +158,7 @@ class HealthChecker:
     def save_json(self, report: HealthCheckReport, output_dir: str = "output") -> str:
         health_dir = os.path.join(output_dir, "health")
         os.makedirs(health_dir, exist_ok=True)
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"health_check_{report.cluster_name}_{timestamp}.json"
         filepath = os.path.join(health_dir, filename)
         with open(filepath, "w") as f:
