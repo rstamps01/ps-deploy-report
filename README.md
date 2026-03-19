@@ -18,6 +18,7 @@ The VAST As-Built Report Generator connects to VAST Data clusters via the REST A
 - **Report Browser**: View, download, and manage previously generated reports
 - **Configuration Editor**: Edit YAML configuration directly from the GUI
 - **Hardware Device Library**: Browse built-in device definitions, add custom devices (CBox, DBox, EBox, Switch) with image upload; unknown models fall back to generic 1U/2U shapes in rack diagrams
+- **Health Check**: Cluster deployment health checks (API, node SSH, switch SSH) with real-time log streaming and optional PDF report sections
 - **CLI Preserved**: Full command-line interface available via `--cli` flag
 
 ### Enhanced Automation (80% Target Achieved)
@@ -204,6 +205,7 @@ The web server starts at `http://127.0.0.1:5173` and opens your default browser.
 - **Generate** — enter cluster IP and credentials, select options, click Generate, watch live progress; Cancel button to abort
 - **Reports** — browse, download, preview, and delete generated reports
 - **Library** — view built-in hardware device definitions (CBox, DBox, Switch, EBox); add custom devices with image upload
+- **Health** — run cluster deployment health checks (API, node SSH, switch SSH); view real-time logs; optionally include results in reports
 - **Configuration** — edit `config.yaml` settings directly in the browser
 - **Exit** button (top-right) — gracefully stops the application
 
@@ -257,7 +259,14 @@ python3 src/main.py --cluster 10.143.11.204 --output ./reports \
 
 # Verbose debugging
 python3 src/main.py --cluster 10.143.11.204 --output ./reports --verbose
+
+# Health-check-only PDF (no full report)
+python3 src/main.py --cli --cluster 10.143.11.204 --output ./reports --health-only
 ```
+
+### Health Check
+
+The Health Check module runs tiered cluster validation: Tier-1 API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.), Tier-2 node SSH checks (PANIC/ALERT logs, management ping, support tool, vnetmap), and Tier-3 switch SSH checks (MLAG status, NTP sync, config backup). Use the **Health** page in the web UI to run checks with real-time log streaming, or enable "Include Health Check" on the Generate page to add Health Check Results and Post Deployment Validation sections to the PDF report. The `--health-only` flag generates a standalone health-check PDF without the full as-built report.
 
 ### Output Files
 

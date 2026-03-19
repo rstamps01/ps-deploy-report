@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Cluster Deployment Health Check module (`src/health_checker.py`)
+  - 24 Tier-1 API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
+  - Tier-2 node SSH checks (PANIC/ALERT logs, management ping, support tool, vnetmap)
+  - Tier-3 switch SSH checks (MLAG status, NTP sync, config backup)
+  - Prometheus device health metrics parser
+  - Configurable thresholds and cancellation support
+- Health Check web UI page (`/health`) with real-time SSE log streaming
+- 5 new API handler methods: `get_alarms()`, `get_events()`, `get_snapshots()`, `get_quotas()`, `get_prometheus_metrics()`
+- "Include Health Check" option on report generation page
+- Health Check Results and Post Deployment Validation PDF report sections
+- Standalone health-check-only PDF generation via `--health-only` flag
+- 37 new unit and integration tests for health check module
+- Health check CI job in GitHub Actions workflow
+- Cursor rules: `health-check-14.mdc`, `health-check-api-15.mdc`
+
 ## [1.4.2] - 2026-03-11
 
 ### Added
