@@ -36,6 +36,11 @@ def test_endpoint_failure_returns_unavailable(self, mock_session):
 - **api_handler**: auth flows, endpoint responses, retry behavior, error mapping
 - **data_extractor**: section extraction, completeness calculation, missing data handling
 - **report_builder**: config validation, section rendering (mock ReportLab), TOC generation
+- **health_checker**: mirror in `tests/test_health_checker.py`
+  - Mock `api_handler` for all API checks
+  - Mock `ssh_adapter` for all SSH checks
+  - Test each check: pass, fail, error, 404/skip cases
+  - Test `cancel_event` interruption between checks
 
 ## Running Tests
 ```bash
