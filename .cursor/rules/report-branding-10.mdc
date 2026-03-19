@@ -30,6 +30,8 @@ alwaysApply: false
 10. Logical Network Diagram (topology visualization)
 11. Logical Configuration (tenants, views, policies)
 12. Security & Authentication
+13. Cluster Health Check Results (optional — only when health check data present)
+14. Post Deployment Validation (optional — only when health check data present)
 
 ## Adding a New Section
 1. Create `_create_<section>_section(story, data)` in `report_builder.py`

@@ -334,6 +334,31 @@ class VastReportBuilder:
         )
         story.append(PageBreak())
 
+        # Health Check Results (optional)
+        sections = processed_data.get("sections", {})
+        health_data = sections.get("health_check", {}).get("data")
+        if health_data:
+            story.extend(
+                self._create_health_check_section(
+                    health_data,
+                    page_tracker,
+                    "health_check" if is_first_pass else None,
+                )
+            )
+            story.append(PageBreak())
+
+        # Post Deployment Validation (optional)
+        validation_data = sections.get("post_deployment_validation", {}).get("data")
+        if validation_data:
+            story.extend(
+                self._create_post_deployment_validation_section(
+                    validation_data,
+                    page_tracker,
+                    "post_deploy_validation" if is_first_pass else None,
+                )
+            )
+            story.append(PageBreak())
+
         return story
 
     @staticmethod
@@ -891,6 +916,10 @@ class VastReportBuilder:
             ("Security & Authentication", 0, "security_config", True),
             ("Encryption Configuration", 1, None, False),
             ("Authentication Services", 1, None, False),
+            # Health Check Results section (optional)
+            ("Cluster Health Check Results", 0, "health_check", True),
+            # Post Deployment Validation section (optional)
+            ("Post Deployment Validation", 0, "post_deploy_validation", True),
         ]
 
         # Filter out optional sections that weren't captured
@@ -915,6 +944,8 @@ class VastReportBuilder:
             "Device Mapping",
             "Logical Network Diagram",
             "Protection Policies",
+            "Authentication Services",
+            "Cluster Health Check Results",
         ]
 
         for idx, (text, indent_level, section_key, is_bold) in enumerate(filtered_structure):
@@ -972,6 +1003,10 @@ class VastReportBuilder:
                     dot_leader_length = 4.78 * inch
                 elif text == "Logical Configuration":
                     dot_leader_length = 4.95 * inch
+                elif text == "Cluster Health Check Results":
+                    dot_leader_length = 4.55 * inch
+                elif text == "Post Deployment Validation":
+                    dot_leader_length = 4.68 * inch
                 else:
                     dot_leader_length = 4.75 * inch
 
@@ -4493,6 +4528,421 @@ class VastReportBuilder:
                 content.append(Paragraph(f"• PSNT: {psnt}", normal_style))
         else:
             content.append(Paragraph("• PSNT not available for this cluster version", normal_style))
+
+        return content
+
+    @staticmethod
+    def _safe_table_value(value: Any, default: str = "N/A") -> str:
+        """Sanitize a value for use in a PDF table cell.
+
+        Args:
+            value: Raw value from data dict.
+            default: Fallback when value is None or empty.
+
+        Returns:
+            A non-empty string safe for Paragraph rendering.
+        """
+        if value is None:
+            return default
+        text = str(value).strip()
+        if not text:
+            return default
+        # Escape XML-sensitive characters for ReportLab Paragraph rendering
+        for old, new in (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;")):
+            text = text.replace(old, new)
+        return text
+
+    # ------------------------------------------------------------------
+    # Health Check & Post-Deployment Validation sections
+    # ------------------------------------------------------------------
+
+    def _create_health_check_section(
+        self,
+        health_data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
+        """Create the Cluster Health Check Results section.
+
+        Args:
+            health_data: Health check results dict with 'summary' and 'results' keys.
+            page_tracker: Optional page tracker for TOC page capture.
+            section_key: Section key for PageMarker registration.
+
+        Returns:
+            List of flowables for the section.
+        """
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content: List[Any] = []
+        content.append(Paragraph("Cluster Health Check Results", heading_style))
+        content.append(Spacer(1, 12))
+
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
+
+        content.append(
+            Paragraph(
+                "This section presents the results of automated cluster health checks "
+                "performed against the VAST Data cluster. Each check validates a specific "
+                "aspect of cluster health including connectivity, service status, and "
+                "configuration consistency. Results are summarised below with individual "
+                "check details following the summary table.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        # Colour helpers for status cells
+        status_colors = {
+            "pass": self.brand_compliance.colors.SUCCESS_GREEN,
+            "fail": self.brand_compliance.colors.ERROR_RED,
+            "warning": self.brand_compliance.colors.WARNING_ORANGE,
+            "skipped": self.brand_compliance.colors.MEDIUM_GRAY,
+            "error": self.brand_compliance.colors.MEDIUM_GRAY,
+        }
+
+        # --- Summary table ---------------------------------------------------
+        summary = health_data.get("summary", {})
+        if summary:
+            summary_headers = ["Pass", "Fail", "Warning", "Skipped", "Error", "Total"]
+            summary_row = [
+                self._safe_table_value(summary.get("pass", 0)),
+                self._safe_table_value(summary.get("fail", 0)),
+                self._safe_table_value(summary.get("warning", 0)),
+                self._safe_table_value(summary.get("skipped", 0)),
+                self._safe_table_value(summary.get("error", 0)),
+                self._safe_table_value(summary.get("total", 0)),
+            ]
+
+            page_width = A4[0] - 1.0 * inch
+            col_width = page_width / len(summary_headers)
+            summary_table = Table(
+                [summary_headers, summary_row],
+                colWidths=[col_width] * len(summary_headers),
+                repeatRows=1,
+            )
+
+            cell_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 8),
+                # Per-column colour coding for data row
+                ("BACKGROUND", (0, 1), (0, 1), status_colors["pass"]),
+                ("TEXTCOLOR", (0, 1), (0, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (1, 1), (1, 1), status_colors["fail"]),
+                ("TEXTCOLOR", (1, 1), (1, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (2, 1), (2, 1), status_colors["warning"]),
+                ("TEXTCOLOR", (2, 1), (2, 1), self.brand_compliance.colors.DARK_GRAY),
+                ("BACKGROUND", (3, 1), (3, 1), status_colors["skipped"]),
+                ("TEXTCOLOR", (3, 1), (3, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (4, 1), (4, 1), status_colors["error"]),
+                ("TEXTCOLOR", (4, 1), (4, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (5, 1), (5, 1), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (5, 1), (5, 1), self.brand_compliance.colors.PURE_WHITE),
+            ]
+
+            summary_table.setStyle(TableStyle(cell_styles))
+            content.append(Paragraph("<b>Health Check Summary</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(summary_table)
+            content.append(Spacer(1, 16))
+
+        # --- Detailed results table -------------------------------------------
+        results = health_data.get("results", [])
+        if results:
+            detail_headers = ["Check Name", "Category", "Status", "Message", "Duration"]
+            detail_data = [detail_headers]
+
+            for r in results:
+                detail_data.append(
+                    [
+                        self._safe_table_value(r.get("check_name")),
+                        self._safe_table_value(r.get("category")),
+                        self._safe_table_value(r.get("status")),
+                        self._safe_table_value(r.get("message")),
+                        self._safe_table_value(r.get("duration")),
+                    ]
+                )
+
+            page_width = A4[0] - 1.0 * inch
+            col_widths = [
+                page_width * 0.20,
+                page_width * 0.15,
+                page_width * 0.12,
+                page_width * 0.38,
+                page_width * 0.15,
+            ]
+
+            detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
+
+            detail_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                ),
+                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+            ]
+
+            # Per-row status colour in the Status column (index 2)
+            for row_idx, r in enumerate(results, start=1):
+                status_key = str(r.get("status", "")).lower()
+                bg = status_colors.get(status_key, self.brand_compliance.colors.ALTERNATING_ROW)
+                fg = (
+                    self.brand_compliance.colors.DARK_GRAY
+                    if status_key == "warning"
+                    else self.brand_compliance.colors.PURE_WHITE
+                )
+                detail_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
+                detail_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), fg))
+
+            detail_table.setStyle(TableStyle(detail_styles))
+            content.append(Paragraph("<b>Detailed Check Results</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(detail_table)
+            content.append(Spacer(1, 12))
+        elif not summary:
+            content.append(
+                Paragraph(
+                    "No health check data available.",
+                    ParagraphStyle("Normal", parent=styles["Normal"], fontSize=self.config.font_size),
+                )
+            )
+
+        return content
+
+    def _create_post_deployment_validation_section(
+        self,
+        validation_data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+    ) -> List[Any]:
+        """Create the Post Deployment Validation section.
+
+        Args:
+            validation_data: Validation data dict with 'results' and 'manual_checklist' keys.
+            page_tracker: Optional page tracker for TOC page capture.
+            section_key: Section key for PageMarker registration.
+
+        Returns:
+            List of flowables for the section.
+        """
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content: List[Any] = []
+        content.append(Paragraph("Post Deployment Validation", heading_style))
+        content.append(Spacer(1, 12))
+
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
+
+        content.append(
+            Paragraph(
+                "This section documents the post-deployment validation checks performed "
+                "to verify correct cluster operation after installation or maintenance. "
+                "Automated SSH connectivity checks confirm reachability of cluster nodes "
+                "and network switches, while the manual checklist captures items that "
+                "require on-site or operator verification.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        status_colors = {
+            "pass": self.brand_compliance.colors.SUCCESS_GREEN,
+            "fail": self.brand_compliance.colors.ERROR_RED,
+            "warning": self.brand_compliance.colors.WARNING_ORANGE,
+            "skipped": self.brand_compliance.colors.MEDIUM_GRAY,
+            "error": self.brand_compliance.colors.MEDIUM_GRAY,
+        }
+
+        has_content = False
+
+        # --- SSH Validation Results -------------------------------------------
+        all_results = validation_data.get("results", [])
+        ssh_results = [r for r in all_results if str(r.get("category", "")).lower() in ("node_ssh", "switch_ssh")]
+
+        if ssh_results:
+            has_content = True
+            ssh_headers = ["Check Name", "Category", "Status", "Message", "Duration"]
+            ssh_data = [ssh_headers]
+
+            for r in ssh_results:
+                ssh_data.append(
+                    [
+                        self._safe_table_value(r.get("check_name")),
+                        self._safe_table_value(r.get("category")),
+                        self._safe_table_value(r.get("status")),
+                        self._safe_table_value(r.get("message")),
+                        self._safe_table_value(r.get("duration")),
+                    ]
+                )
+
+            page_width = A4[0] - 1.0 * inch
+            col_widths = [
+                page_width * 0.20,
+                page_width * 0.15,
+                page_width * 0.12,
+                page_width * 0.38,
+                page_width * 0.15,
+            ]
+
+            ssh_table = Table(ssh_data, colWidths=col_widths, repeatRows=1)
+
+            ssh_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                ),
+                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+            ]
+
+            for row_idx, r in enumerate(ssh_results, start=1):
+                status_key = str(r.get("status", "")).lower()
+                bg = status_colors.get(status_key, self.brand_compliance.colors.ALTERNATING_ROW)
+                fg = (
+                    self.brand_compliance.colors.DARK_GRAY
+                    if status_key == "warning"
+                    else self.brand_compliance.colors.PURE_WHITE
+                )
+                ssh_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
+                ssh_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), fg))
+
+            ssh_table.setStyle(TableStyle(ssh_styles))
+            content.append(Paragraph("<b>SSH Connectivity Validation</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(ssh_table)
+            content.append(Spacer(1, 16))
+
+        # --- Manual Checklist -------------------------------------------------
+        manual_checklist = validation_data.get("manual_checklist", [])
+
+        if manual_checklist:
+            has_content = True
+            checklist_headers = ["Item", "Description", "Status"]
+            checklist_data = [checklist_headers]
+
+            for item in manual_checklist:
+                checklist_data.append(
+                    [
+                        self._safe_table_value(item.get("item")),
+                        self._safe_table_value(item.get("description")),
+                        "Manual Verification Required",
+                    ]
+                )
+
+            page_width = A4[0] - 1.0 * inch
+            col_widths = [page_width * 0.25, page_width * 0.50, page_width * 0.25]
+
+            checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)
+
+            checklist_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                ),
+                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
+            ]
+
+            # Amber background for all Status cells
+            for row_idx in range(1, len(checklist_data)):
+                checklist_styles.append(
+                    ("BACKGROUND", (2, row_idx), (2, row_idx), self.brand_compliance.colors.WARNING_ORANGE)
+                )
+                checklist_styles.append(
+                    ("TEXTCOLOR", (2, row_idx), (2, row_idx), self.brand_compliance.colors.DARK_GRAY)
+                )
+
+            checklist_table.setStyle(TableStyle(checklist_styles))
+            content.append(Paragraph("<b>Manual Verification Checklist</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(checklist_table)
+            content.append(Spacer(1, 12))
+
+        if not has_content:
+            content.append(
+                Paragraph(
+                    "No post-deployment validation data available.",
+                    ParagraphStyle("Normal", parent=styles["Normal"], fontSize=self.config.font_size),
+                )
+            )
 
         return content
 

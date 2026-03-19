@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-16  
+**Last updated:** 2026-03-19  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -70,8 +70,8 @@
 | RFE-1 | Support Bundle Integration | Planned | |
 | RFE-2 | Jeff's Port Mapper Integration | Planned | |
 | RFE-3 | Render Logical Net Diagram only with Port Map option enabled | Planned | |
-| RFE-4 | Health Report Summary | Planned | |
-| RFE-5 | Integrate/Automate Post Deployment Tests | Planned | |
+| RFE-4 | Health Report Summary | Done | Health Check module, PDF sections |
+| RFE-5 | Integrate/Automate Post Deployment Tests | Done | Health Check module, tiered checks |
 | RFE-6 | Container deployment option | Planned | |
 | RFE-7 | Update deployment procedures | Planned | |
 | RFE-8 | Package as Mac.app / Win.msi | Planned | |
@@ -96,7 +96,10 @@
 
 *(Items completed this release cycle; archive or clear periodically.)*
 
-*None.*
+| ID    | Item | Notes |
+|-------|------|-------|
+| RFE-4 | Health Report Summary | Health Check module, PDF sections |
+| RFE-5 | Integrate/Automate Post Deployment Tests | Health Check module, tiered checks |
 
 ---
 

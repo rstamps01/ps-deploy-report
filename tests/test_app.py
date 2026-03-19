@@ -239,6 +239,44 @@ class TestSSEStream(unittest.TestCase):
         self.assertTrue(resp.content_type.startswith("text/event-stream"))
 
 
+class TestHealthRoutes(unittest.TestCase):
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_health_page_loads(self):
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_run_missing_ip(self):
+        resp = self.client.post("/health/run", data={"cluster_ip": ""})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("message", body)
+
+    def test_health_run_already_running(self):
+        self.app.config["HEALTH_JOB_RUNNING"] = True
+        resp = self.client.post("/health/run", data={"cluster_ip": "10.0.0.1"})
+        self.assertEqual(resp.status_code, 409)
+
+    def test_health_status_no_job(self):
+        resp = self.client.get("/health/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["running"])
+
+    def test_health_cancel_no_job(self):
+        resp = self.client.post("/health/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "no_job")
+
+    def test_health_results_no_data(self):
+        resp = self.client.get("/health/results")
+        self.assertEqual(resp.status_code, 404)
+
+
 class TestHelperFunctions(unittest.TestCase):
 
     def test_list_reports_empty_dir(self):

@@ -2355,6 +2355,93 @@ class VastApiHandler:
             self.logger.warning(f"Error fetching racks data: {e}")
             return []
 
+    # ------------------------------------------------------------------
+    # Health-check endpoints (added by WP-2)
+    # ------------------------------------------------------------------
+
+    def get_alarms(self) -> List[Dict[str, Any]]:
+        """GET /api/alarms/ -- active cluster alarms. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting active alarms")
+            data = self._make_api_request("alarms/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} active alarms")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No active alarms or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve alarms: {e}")
+            return []
+
+    def get_events(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """GET /api/events/ -- event history. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting cluster events")
+            data = self._make_api_request(f"events/?page_size={limit}")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} events")
+                return data
+            elif data and isinstance(data, dict):
+                results = data.get("results", data.get("objects", [data]))
+                if isinstance(results, list):
+                    return results
+                return [data]
+            self.logger.info("No events or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve events: {e}")
+            return []
+
+    def get_snapshots(self) -> List[Dict[str, Any]]:
+        """GET /api/snapshots/ -- snapshot inventory. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting snapshot inventory")
+            data = self._make_api_request("snapshots/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} snapshots")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No snapshots or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve snapshots: {e}")
+            return []
+
+    def get_quotas(self) -> List[Dict[str, Any]]:
+        """GET /api/quotas/ -- quota configuration. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting quota configuration")
+            data = self._make_api_request("quotas/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} quotas")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No quotas or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve quotas: {e}")
+            return []
+
+    def get_prometheus_metrics(self, metric_path: str = "devices") -> str:
+        """GET /api/prometheusmetrics/{metric_path} -- returns raw text/plain.
+        Uses requests.get directly since response is text, not JSON.
+        Returns empty string on failure."""
+        try:
+            url = f"https://{self.cluster_ip}/api/prometheusmetrics/{metric_path}"
+            self.logger.info(f"Fetching Prometheus metrics: {metric_path}")
+            response = self.session.get(url, verify=self.verify_ssl, timeout=30)
+            if response.status_code == 200:
+                return response.text
+            self.logger.warning(f"Prometheus metrics {metric_path} returned {response.status_code}")
+            return ""
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch Prometheus metrics {metric_path}: {e}")
+            return ""
+
     def get_all_data(self) -> Dict[str, Any]:
         """
         Collect all available data from the VAST cluster.
@@ -2524,6 +2611,12 @@ class VastApiHandler:
 
             # Raw switch ports data (needed for IPL/MLAG detection)
             all_data["switch_ports"] = self.get_switch_ports()
+
+            # Health-check related endpoints (WP-2)
+            all_data["alarms"] = self.get_alarms()
+            all_data["events"] = self.get_events()
+            all_data["snapshots"] = self.get_snapshots()
+            all_data["quotas"] = self.get_quotas()
 
             self.logger.info("Comprehensive data collection completed successfully")
             return all_data
