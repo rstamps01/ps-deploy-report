@@ -89,10 +89,36 @@ def fetch_swagger(cluster_ip: str, session: requests.Session) -> dict:
 def build_endpoint_catalog(cluster_ip: str, session: requests.Session, version: str) -> dict:
     """Build an endpoint catalog by probing known endpoints when Swagger is unavailable."""
     endpoints = [
-        "clusters", "vms", "cnodes", "dnodes", "cboxes", "dboxes", "eboxes", "dtrays",
-        "dns", "ntps", "vippools", "tenants", "views", "viewpolicies",
-        "activedirectory", "ldap", "nis", "snapprograms", "protectionpolicies",
-        "snmp", "syslog", "alerts", "racks", "apitokens",
+        "clusters",
+        "vms",
+        "cnodes",
+        "dnodes",
+        "cboxes",
+        "dboxes",
+        "eboxes",
+        "dtrays",
+        "dns",
+        "ntps",
+        "vippools",
+        "tenants",
+        "views",
+        "viewpolicies",
+        "activedirectory",
+        "ldap",
+        "nis",
+        "snapprograms",
+        "protectionpolicies",
+        "snmp",
+        "syslog",
+        "alerts",
+        "racks",
+        "apitokens",
+        "alarms",
+        "events",
+        "eventdefinitions",
+        "monitors",
+        "snapshots",
+        "quotas",
     ]
 
     v1_endpoints = ["switches", "ports"]
@@ -175,8 +201,8 @@ def main():
         description="Export VAST API Swagger/OpenAPI specification",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
-               "  python3 scripts/export_swagger.py --cluster 10.0.0.100 --username admin\n"
-               "  python3 scripts/export_swagger.py --cluster 10.0.0.100 --token <token> --output docs/api/\n",
+        "  python3 scripts/export_swagger.py --cluster 10.0.0.100 --username admin\n"
+        "  python3 scripts/export_swagger.py --cluster 10.0.0.100 --token <token> --output docs/api/\n",
     )
     parser.add_argument("--cluster", required=True, help="Cluster management VIP or hostname")
     parser.add_argument("--username", help="Admin username (will prompt for password)")
