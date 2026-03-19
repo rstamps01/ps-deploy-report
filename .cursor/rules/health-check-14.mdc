@@ -1,0 +1,17 @@
+---
+description: Health check module development guidelines
+globs: src/health_checker.py
+alwaysApply: false
+---
+# Health Check Module Rules
+
+- Every check method must return a HealthCheckResult (never raise exceptions to callers).
+- Every check method must be wrapped in try/except with timing (time.time() for duration).
+- Check cancel_event between every check in run_all_checks.
+- Thresholds (capacity %, handle %) must come from a config dict with sensible defaults.
+- Do NOT import report_builder or data_extractor (module boundary).
+- SSH checks must use src/utils/ssh_adapter.py (run_ssh_command / run_interactive_ssh).
+- New API calls follow the read-only policy (GET only).
+- Prometheus metrics parsing handles text/plain responses (not JSON).
+- Log check progress at INFO level; log failures at WARNING.
+- Never log credentials, tokens, or passwords.
