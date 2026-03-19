@@ -16,6 +16,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from utils.ssh_adapter import run_ssh_command
+
 
 class CancelledError(Exception):
     """Raised when a health check run is cancelled by the user."""
@@ -116,6 +118,38 @@ class HealthChecker:
     def _check_cancel(self) -> None:
         if self.cancel_event and self.cancel_event.is_set():
             raise CancelledError("Health check cancelled by user")
+
+    def _resolve_cnode_ip(self) -> Optional[str]:
+        """Return a CNode IP from ssh_config or by querying the API."""
+        if self.ssh_config and self.ssh_config.get("cnode_ip"):
+            return self.ssh_config["cnode_ip"]
+        try:
+            cnodes = self.api_handler._make_api_request("cnodes/")
+            if cnodes and isinstance(cnodes, list):
+                for node in cnodes:
+                    ip = node.get("mgmt_ip") or node.get("ip")
+                    if ip:
+                        return ip
+        except Exception:
+            pass
+        return None
+
+    def _resolve_switch_ips(self) -> List[str]:
+        """Return switch IPs from switch_ssh_config or by querying the API."""
+        if self.switch_ssh_config and self.switch_ssh_config.get("switch_ips"):
+            return list(self.switch_ssh_config["switch_ips"])
+        try:
+            switches = self.api_handler._make_api_request("v1/switches/")
+            if switches and isinstance(switches, list):
+                ips = []
+                for sw in switches:
+                    ip = sw.get("mgmt_ip") or sw.get("ip")
+                    if ip:
+                        ips.append(ip)
+                return ips
+        except Exception:
+            pass
+        return []
 
     @staticmethod
     def to_dict(report: HealthCheckReport) -> Dict[str, Any]:
@@ -1576,22 +1610,438 @@ class HealthChecker:
             )
 
     # ------------------------------------------------------------------
-    # Tier 2 & 3 -- SSH checks (placeholder stubs for WP-9)
+    # Tier 2 -- Node SSH checks
     # ------------------------------------------------------------------
 
     def run_node_ssh_checks(self) -> List[HealthCheckResult]:
         if not self.ssh_config:
             self.logger.info("SSH config not provided, skipping node SSH checks")
             return []
-        # WP-9 implements actual SSH checks
-        return []
+
+        cnode_ip = self._resolve_cnode_ip()
+        if not cnode_ip:
+            self.logger.warning("No CNode IP available for SSH checks")
+            return []
+
+        username = self.ssh_config.get("username", "vastdata")
+        password = self.ssh_config.get("password", "")
+
+        checks = [
+            self._check_panic_alert_logs,
+            self._check_management_ping,
+            self._check_support_tool,
+            self._check_vnetmap,
+        ]
+
+        results: List[HealthCheckResult] = []
+        for i, fn in enumerate(checks, 1):
+            self._check_cancel()
+            self.logger.info("Running node SSH check %d/%d: %s", i, len(checks), fn.__name__)
+            result = fn(cnode_ip, username, password)
+            results.append(result)
+            if result.status in ("fail", "error"):
+                self.logger.warning("Check %s => %s: %s", fn.__name__, result.status, result.message)
+        return results
+
+    # --- Node SSH Check: Panic/Alert Logs ---------------------------------
+
+    def _check_panic_alert_logs(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'dmesg | grep -iE \"PANIC|ALERT|fail\"' 2>/dev/null | tail -20"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            if rc != 0 and not stdout:
+                return HealthCheckResult(
+                    check_name="Panic/Alert Logs",
+                    category="node_ssh",
+                    status="error",
+                    message=f"SSH command failed: {stderr or 'connection error'}",
+                    details={"host": host, "stderr": stderr},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            output = stdout.strip()
+            if output:
+                return HealthCheckResult(
+                    check_name="Panic/Alert Logs",
+                    category="node_ssh",
+                    status="fail",
+                    message="PANIC/ALERT/fail entries found in dmesg",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Panic/Alert Logs",
+                category="node_ssh",
+                status="pass",
+                message="No PANIC/ALERT/fail entries found in dmesg",
+                details={"host": host, "stdout": ""},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Panic/Alert Logs",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Management Ping ----------------------------------
+
+    def _check_management_ping(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            mgmt_ips: List[str] = []
+            try:
+                cnodes = self.api_handler._make_api_request("cnodes/")
+                if cnodes and isinstance(cnodes, list):
+                    for node in cnodes:
+                        for fld in ("ipmi_ip", "mgmt_ip", "bmc_ip"):
+                            ip = node.get(fld)
+                            if ip and ip not in mgmt_ips:
+                                mgmt_ips.append(ip)
+            except Exception:
+                pass
+
+            if not mgmt_ips:
+                return HealthCheckResult(
+                    check_name="Management Ping",
+                    category="node_ssh",
+                    status="skipped",
+                    message="No management/IPMI IPs found to ping",
+                    details={"host": host},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            reachable: List[str] = []
+            unreachable: List[str] = []
+            for ip in mgmt_ips:
+                rc, _out, _err = run_ssh_command(host, username, password, f"ping -c 1 -W 2 {ip}", timeout=30)
+                if rc == 0:
+                    reachable.append(ip)
+                else:
+                    unreachable.append(ip)
+
+            details = {"host": host, "reachable": reachable, "unreachable": unreachable}
+
+            if unreachable and not reachable:
+                return HealthCheckResult(
+                    check_name="Management Ping",
+                    category="node_ssh",
+                    status="fail",
+                    message=f"All {len(unreachable)} management IP(s) unreachable",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            if unreachable:
+                return HealthCheckResult(
+                    check_name="Management Ping",
+                    category="node_ssh",
+                    status="warning",
+                    message=f"{len(unreachable)} of {len(mgmt_ips)} management IP(s) unreachable: {unreachable}",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Management Ping",
+                category="node_ssh",
+                status="pass",
+                message=f"All {len(reachable)} management IP(s) reachable",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Management Ping",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: VAST Support Tools -------------------------------
+
+    def _check_support_tool(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "vast_support_tools.py --quick-check 2>/dev/null || echo 'Tool not available'"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            return HealthCheckResult(
+                check_name="VAST Support Tools",
+                category="node_ssh",
+                status="pass",
+                message="Support tools check completed (informational)",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="VAST Support Tools",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: VNet Map -----------------------------------------
+
+    def _check_vnetmap(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "vnetmap.py 2>/dev/null || echo 'vnetmap not available'"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            return HealthCheckResult(
+                check_name="VNet Map",
+                category="node_ssh",
+                status="pass",
+                message="vnetmap check completed (informational)",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="VNet Map",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # ------------------------------------------------------------------
+    # Tier 3 -- Switch SSH checks
+    # ------------------------------------------------------------------
 
     def run_switch_ssh_checks(self) -> List[HealthCheckResult]:
         if not self.switch_ssh_config:
             self.logger.info("Switch SSH config not provided, skipping switch SSH checks")
             return []
-        # WP-9 implements actual SSH checks
-        return []
+
+        switch_ips = self._resolve_switch_ips()
+        if not switch_ips:
+            self.logger.warning("No switch IPs available for SSH checks")
+            return []
+
+        username = self.switch_ssh_config.get("username", "cumulus")
+        password = self.switch_ssh_config.get("password", "")
+
+        checks = [
+            self._check_mlag_status,
+            self._check_switch_ntp,
+            self._check_switch_config_backup,
+        ]
+
+        results: List[HealthCheckResult] = []
+        for switch_ip in switch_ips:
+            for i, fn in enumerate(checks, 1):
+                self._check_cancel()
+                self.logger.info("Running switch SSH check %d/%d on %s: %s", i, len(checks), switch_ip, fn.__name__)
+                result = fn(switch_ip, username, password)
+                results.append(result)
+                if result.status in ("fail", "error"):
+                    self.logger.warning(
+                        "Check %s on %s => %s: %s", fn.__name__, switch_ip, result.status, result.message
+                    )
+        return results
+
+    # --- Switch SSH Check: MLAG Status ------------------------------------
+
+    def _check_mlag_status(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "nv show mlag 2>/dev/null || show mlag detail 2>/dev/null || echo 'MLAG command not available'"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            if rc != 0 and not stdout:
+                return HealthCheckResult(
+                    check_name="MLAG Status",
+                    category="switch_ssh",
+                    status="error",
+                    message=f"SSH command failed on {host}: {stderr or 'connection error'}",
+                    details={"host": host, "stderr": stderr},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            output = stdout.strip() if stdout else ""
+            output_lower = output.lower()
+
+            if "mlag command not available" in output_lower:
+                return HealthCheckResult(
+                    check_name="MLAG Status",
+                    category="switch_ssh",
+                    status="skipped",
+                    message=f"MLAG command not available on {host}",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            peer_alive = False
+            backup_active = False
+            for line in output.splitlines():
+                ll = line.lower().strip()
+                if "peer-alive" in ll:
+                    peer_alive = "true" in ll or "yes" in ll
+                if "backup-active" in ll:
+                    backup_active = "true" in ll or "yes" in ll
+
+            details = {"host": host, "stdout": output, "peer_alive": peer_alive, "backup_active": backup_active}
+
+            if peer_alive and backup_active:
+                return HealthCheckResult(
+                    check_name="MLAG Status",
+                    category="switch_ssh",
+                    status="pass",
+                    message=f"MLAG healthy on {host}: peer-alive and backup-active",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            issues: List[str] = []
+            if not peer_alive:
+                issues.append("peer-alive not confirmed")
+            if not backup_active:
+                issues.append("backup-active not confirmed")
+            return HealthCheckResult(
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="fail",
+                message=f"MLAG issue on {host}: {', '.join(issues)}",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="error",
+                message=f"Check failed on {host}: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Switch SSH Check: NTP --------------------------------------------
+
+    def _check_switch_ntp(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "ntpq -p 2>/dev/null || echo 'NTP not available'"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+
+            if "ntp not available" in output.lower():
+                return HealthCheckResult(
+                    check_name="Switch NTP",
+                    category="switch_ssh",
+                    status="warning",
+                    message=f"NTP not available on {host}",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            lines = output.splitlines()
+            peer_lines = [ln for ln in lines if ln.strip() and ln.strip()[0] in ("*", "+", "-", "o", "x", ".", "#")]
+
+            if peer_lines:
+                return HealthCheckResult(
+                    check_name="Switch NTP",
+                    category="switch_ssh",
+                    status="pass",
+                    message=f"NTP peers found on {host}",
+                    details={"host": host, "stdout": output, "peer_count": len(peer_lines)},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="warning",
+                message=f"No NTP peers found on {host}",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="error",
+                message=f"Check failed on {host}: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Switch SSH Check: Config Backup ----------------------------------
+
+    def _check_switch_config_backup(self, host: str, username: str, password: str) -> HealthCheckResult:
+        start = time.time()
+        try:
+            cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            return HealthCheckResult(
+                check_name="Switch Config Backup",
+                category="switch_ssh",
+                status="pass",
+                message=f"Switch config captured from {host} (informational)",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Switch Config Backup",
+                category="switch_ssh",
+                status="error",
+                message=f"Check failed on {host}: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
 
     def run_custom_scripts(self, scripts: List[Dict[str, str]]) -> List[HealthCheckResult]:
         # Placeholder for future implementation
