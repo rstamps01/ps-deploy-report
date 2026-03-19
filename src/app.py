@@ -232,6 +232,7 @@ def _register_routes(app: Flask) -> None:
             "node_user": form.get("node_user", "vastdata"),
             "node_password": form.get("node_password", ""),
             "verbose": form.get("verbose") == "on",
+            "include_health_check": form.get("include_health_check") == "1",
             "switch_placement": form.get("switch_placement", "auto"),
         }
 
@@ -784,6 +785,20 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         raw_data = api_handler.get_all_data()
         if not raw_data:
             raise RuntimeError("Data collection returned empty results")
+
+        # Optional health check (Tier 1 API only for embedded mode)
+        _check_cancel(app)
+        if params.get("include_health_check"):
+            try:
+                from health_checker import HealthChecker
+
+                job_logger.info("Running pre-report health check (Tier 1 API)...")
+                checker = HealthChecker(api_handler=api_handler, cancel_event=app.config["JOB_CANCEL"])
+                health_report = checker.run_all_checks(tiers=[1])
+                raw_data["health_check_results"] = checker.to_dict(health_report)
+                job_logger.info("Health check completed — results will be included in report")
+            except Exception as hc_exc:
+                job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
 
         # Optional port mapping
         _check_cancel(app)
