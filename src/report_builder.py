@@ -4623,26 +4623,6 @@ class VastReportBuilder:
 
         return content
 
-    def _safe_table_value(value: Any, default: str = "N/A") -> str:
-        """Sanitize a value for use in a PDF table cell.
-
-        Args:
-            value: Raw value from data dict.
-            default: Fallback when value is None or empty.
-
-        Returns:
-            A non-empty string safe for Paragraph rendering.
-        """
-        if value is None:
-            return default
-        text = str(value).strip()
-        if not text:
-            return default
-        # Escape XML-sensitive characters for ReportLab Paragraph rendering
-        for old, new in (("&", "&amp;"), ("<", "&lt;"), (">", "&gt;")):
-            text = text.replace(old, new)
-        return text
-
     # ------------------------------------------------------------------
     # Health Check & Post-Deployment Validation sections
     # ------------------------------------------------------------------
@@ -5026,6 +5006,8 @@ class VastReportBuilder:
             content.append(Spacer(1, 4))
             content.append(checklist_table)
             content.append(Spacer(1, 12))
+
+        return content
 
     def _create_data_protection_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create data protection configuration section."""

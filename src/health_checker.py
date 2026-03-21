@@ -135,7 +135,7 @@ class HealthChecker:
                 for node in cnodes:
                     ip = node.get("mgmt_ip") or node.get("ip")
                     if ip:
-                        return ip
+                        return str(ip)
         except Exception:
             pass
         return None
@@ -514,8 +514,9 @@ class HealthChecker:
     def _first_item(data: Any) -> Optional[Dict[str, Any]]:
         """Return the first element when *data* is a non-empty list, else *data* itself."""
         if isinstance(data, list):
-            return data[0] if data else None
-        return data
+            result = data[0] if data else None
+            return dict(result) if isinstance(result, dict) else None
+        return dict(data) if isinstance(data, dict) else None
 
     def _get_cluster_data(self) -> Optional[Dict[str, Any]]:
         """Return cached cluster data, fetching once on first call."""
