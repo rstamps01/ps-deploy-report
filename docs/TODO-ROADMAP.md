@@ -140,6 +140,13 @@
 | EBOX-4 | Port Mapping (EBox-only) | CNode/DNode names in Notes column; standard CBox/DBox shows "Primary". |
 | EBOX-5 | Network Diagram (EBox-only) | EB# labels, Green/Blue connections to switches; standard CBox/DBox connections fixed. |
 | EBOX-6 | Hardware Library additions | msn4700-ws2rc switch and dell_genoa_ebox added as built-in devices. |
+| HC-1 | **CNode/DNode state fix:** Use `state` field instead of `status` for node status detection | health_checker.py; fixes false-positive inactive nodes |
+| HC-2 | **Network settings API fix:** Unwrap `response["data"]`, use correct field names (`dns`, `ntp`, `external_gateways`) | health_checker.py; fixes null DNS/NTP/gateway |
+| HC-3 | **SSH timeout fix:** 60s overall limit, 10s per-ping, cancellation checks between IPs | health_checker.py; fixes indefinite SSH hangs |
+| HC-4 | **Remediation report generator:** Human-readable `.txt` with numbered findings, correlation engine, actionable guidance | health_checker.py `generate_remediation_report()` |
+| HC-5 | **RAID/Leader/Upgrade fixes:** 100% rebuild = complete; UP = healthy; DONE = pass | health_checker.py check logic |
+| HC-6 | **Alarm details:** Per-alarm severity, object type, name, timestamp | health_checker.py `_check_active_alarms()` |
+| HC-7 | **Events pagination:** Time filter + pagination to prevent timeout | health_checker.py `_check_events()` |
 
 ---
 

@@ -1964,6 +1964,32 @@ class VastDataExtractor:
                 },
             }
 
+            # Health check data (optional -- only present when health check was run)
+            health_check_data = raw_data.get("health_check_results")
+            if health_check_data:
+                report_data["sections"]["health_check"] = asdict(
+                    ReportSection(
+                        name="health_check",
+                        title="Cluster Health Check Results",
+                        data=health_check_data,
+                        completeness=100.0,
+                        status="complete",
+                    )
+                )
+                has_ssh_results = any(
+                    r.get("category") in ("node_ssh", "switch_ssh", "performance")
+                    for r in health_check_data.get("results", [])
+                )
+                report_data["sections"]["post_deployment_validation"] = asdict(
+                    ReportSection(
+                        name="post_deployment_validation",
+                        title="Post Deployment Validation",
+                        data=health_check_data,
+                        completeness=100.0 if has_ssh_results else 50.0,
+                        status="complete",
+                    )
+                )
+
             self.logger.info(f"Data extraction completed (overall completeness: {overall_completeness:.1%})")
             return report_data
 

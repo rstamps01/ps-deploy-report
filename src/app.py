@@ -170,6 +170,12 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["JOB_LOCK"] = threading.Lock()
     app.config["JOB_CANCEL"] = threading.Event()
 
+    # Health check background job state (independent from report job)
+    app.config["HEALTH_JOB_RUNNING"] = False
+    app.config["HEALTH_JOB_RESULT"] = None
+    app.config["HEALTH_JOB_LOCK"] = threading.Lock()
+    app.config["HEALTH_JOB_CANCEL"] = threading.Event()
+
     _register_routes(app)
     return app
 
@@ -222,6 +228,7 @@ def _register_routes(app: Flask) -> None:
             "token": form.get("token", ""),
             "output_dir": app.config["DEFAULT_OUTPUT_DIR"],
             "enable_port_mapping": form.get("enable_port_mapping") == "on",
+            "include_health_check": form.get("include_health_check") == "1",
             "switch_user": form.get("switch_user", "cumulus"),
             "switch_password": form.get("switch_password", ""),
             "node_user": form.get("node_user", "vastdata"),
@@ -293,6 +300,69 @@ def _register_routes(app: Flask) -> None:
                     yield ": keepalive\n\n"
 
         return Response(event_stream(), mimetype="text/event-stream")
+
+    # -- Health Check -------------------------------------------------------
+
+    @app.route("/health")
+    def health_page():
+        """Health check page."""
+        return render_template("health.html", version=APP_VERSION)
+
+    @app.route("/health/run", methods=["POST"])
+    def health_run():
+        """Start a health check job."""
+        with app.config["HEALTH_JOB_LOCK"]:
+            if app.config["HEALTH_JOB_RUNNING"]:
+                return jsonify({"status": "error", "message": "Health check already running"}), 409
+            app.config["HEALTH_JOB_RUNNING"] = True
+            app.config["HEALTH_JOB_RESULT"] = None
+            app.config["HEALTH_JOB_CANCEL"].clear()
+
+        params = {
+            "cluster_ip": request.form.get("cluster_ip", "").strip(),
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "api_token": request.form.get("api_token", "").strip(),
+            "tiers": request.form.getlist("tiers", type=int) or [1],
+            "node_user": request.form.get("node_user", "").strip(),
+            "node_password": request.form.get("node_password", ""),
+            "switch_user": request.form.get("switch_user", "").strip(),
+            "switch_password": request.form.get("switch_password", ""),
+        }
+        if not params["cluster_ip"]:
+            with app.config["HEALTH_JOB_LOCK"]:
+                app.config["HEALTH_JOB_RUNNING"] = False
+            return jsonify({"status": "error", "message": "Cluster IP required"}), 400
+
+        thread = threading.Thread(target=_run_health_job, args=(app, params), daemon=True)
+        thread.start()
+        return jsonify({"status": "started"})
+
+    @app.route("/health/status")
+    def health_status():
+        """Get health check job status."""
+        return jsonify(
+            {
+                "running": app.config["HEALTH_JOB_RUNNING"],
+                "result": app.config["HEALTH_JOB_RESULT"],
+            }
+        )
+
+    @app.route("/health/cancel", methods=["POST"])
+    def health_cancel():
+        """Cancel running health check."""
+        if app.config["HEALTH_JOB_RUNNING"]:
+            app.config["HEALTH_JOB_CANCEL"].set()
+            return jsonify({"status": "cancelled"})
+        return jsonify({"status": "no_job"})
+
+    @app.route("/health/results")
+    def health_results():
+        """Get the latest health check results JSON."""
+        result = app.config.get("HEALTH_JOB_RESULT")
+        if result and result.get("success"):
+            return jsonify(result.get("report", {}))
+        return jsonify({"error": "No results available"}), 404
 
     # -- Configuration ------------------------------------------------------
 
@@ -717,6 +787,20 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not raw_data:
             raise RuntimeError("Data collection returned empty results")
 
+        # Optional health check (Tier 1 API only for embedded mode)
+        _check_cancel(app)
+        if params.get("include_health_check"):
+            try:
+                from health_checker import HealthChecker
+
+                job_logger.info("Running pre-report health check (Tier 1 API)...")
+                checker = HealthChecker(api_handler=api_handler, cancel_event=app.config["JOB_CANCEL"])
+                health_report = checker.run_all_checks(tiers=[1])
+                raw_data["health_check_results"] = checker.to_dict(health_report)
+                job_logger.info("Health check completed — results will be included in report")
+            except Exception as hc_exc:
+                job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
+
         # Optional port mapping
         _check_cancel(app)
         if params.get("enable_port_mapping"):
@@ -869,6 +953,80 @@ def _collect_port_mapping_web(
             safe_msg = str(exc).encode("ascii", errors="replace").decode("ascii")
         logger.error("Port mapping collection failed: %s", safe_msg)
         return None
+
+
+def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
+    """Execute the health check pipeline in a background thread."""
+    from api_handler import create_vast_api_handler
+    from health_checker import HealthChecker
+    from utils.logger import setup_logging
+
+    try:
+        config_path = app.config["CONFIG_PATH"]
+        config = _load_yaml(config_path)
+        setup_logging(config)
+        enable_sse_logging()
+        job_logger = get_logger("health_job")
+        job_logger.info("Starting health check for %s", params["cluster_ip"])
+
+        username = password = token = None
+        if params.get("api_token"):
+            token = params["api_token"]
+        else:
+            username = params.get("username")
+            password = params.get("password")
+
+        api_handler = create_vast_api_handler(
+            cluster_ip=params["cluster_ip"],
+            username=username,
+            password=password,
+            token=token,
+            config=config,
+        )
+
+        job_logger.info("Authenticating with VAST cluster...")
+        if not api_handler.authenticate():
+            raise RuntimeError("Authentication failed")
+        job_logger.info("Authentication successful")
+
+        ssh_config = None
+        if params.get("node_user") and params.get("node_password"):
+            ssh_config = {"username": params["node_user"], "password": params["node_password"]}
+        switch_ssh_config = None
+        if params.get("switch_user") and params.get("switch_password"):
+            switch_ssh_config = {"username": params["switch_user"], "password": params["switch_password"]}
+
+        checker = HealthChecker(
+            api_handler=api_handler,
+            ssh_config=ssh_config,
+            switch_ssh_config=switch_ssh_config,
+            cancel_event=app.config["HEALTH_JOB_CANCEL"],
+        )
+        report = checker.run_all_checks(tiers=params.get("tiers", [1]))
+        report_dict = checker.to_dict(report)
+
+        output_dir = config.get("output", {}).get("directory", "output")
+        json_path = checker.save_json(report, output_dir)
+        remediation_path = checker.generate_remediation_report(report, output_dir)
+
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RESULT"] = {
+                "success": True,
+                "report": report_dict,
+                "json_path": json_path,
+                "remediation_path": remediation_path,
+                "cluster": report.cluster_name,
+            }
+        job_logger.info("Health check completed successfully")
+
+    except Exception as exc:
+        err_logger = get_logger("health_job")
+        err_logger.error("Health check failed: %s", exc)
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RESULT"] = {"success": False, "error": str(exc)}
+    finally:
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RUNNING"] = False
 
 
 # ---------------------------------------------------------------------------

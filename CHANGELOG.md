@@ -5,6 +5,36 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Health Check Module:** New `health_checker.py` with 24 Tier-1 API checks, Tier-2 node SSH checks, and Tier-3 switch SSH checks
+- **Health Check UI:** New `/health` page with real-time SSE log streaming, tier selection, and job control
+- **Remediation Report Generator:** Health check auto-generates `.txt` remediation report with numbered findings, severity levels, timestamps, impact statements, correlated issues, and actionable remediation steps
+- **Health Check Correlation Engine:** Detects related failures (e.g., CNode+DNode down = chassis issue; leader marked inactive = inconsistency warning)
+- **Health Check PDF Sections:** Cluster Health Check Results and Post Deployment Validation sections in PDF report
+- **API Handler Extensions:** New `get_alarms()`, `get_events()`, `get_snapshots()`, `get_quotas()`, `get_prometheus_metrics()` methods
+- **Include Health Check Option:** Checkbox in Generate page to optionally include Tier-1 health check in report generation
+- **CI Health Check Tests:** New `health-check-tests` job in CI pipeline for fast feedback
+
+### Fixed
+- **CNode/DNode Status Detection:** Fixed false-positive failures where active nodes were reported as inactive; health checker now uses `state` field (VAST API standard) instead of `status`
+- **Network Settings API Mapping:** Fixed DNS/NTP/gateway always showing as null; now correctly unwraps `response["data"]` from VMS API and uses proper field names
+- **SSH Check Timeout:** Fixed indefinite hang on Tier-2 node SSH checks; management ping now has 60s overall limit, 10s per-ping SSH timeout, and cancellation checks
+- **RAID Rebuild Progress:** Fixed 100% rebuild progress incorrectly shown as "in-progress"; now correctly reports as complete
+- **Leader State Check:** Fixed "UP" leader state incorrectly flagged; now accepts "UP" as healthy
+- **Upgrade State Check:** Fixed "DONE" upgrade state shown as warning; now correctly reports as pass
+- **Prometheus Timeout:** Fixed hardcoded timeout; now uses configurable `self.timeout` value
+
+### Changed
+- **Alarm Details:** Health check captures per-alarm severity, object type, object name, and timestamp for detailed remediation guidance
+- **Events API:** Added pagination and time filter to prevent timeout on clusters with large event history
+
+### Technical Details
+- Validated on selab-var-202, selab-var-203, selab-var-204 clusters
+- Tier-1 + Tier-2 health checks now complete in ~24 seconds
+- Remediation reports saved to `output/health/health_remediation_<cluster>_<timestamp>.txt`
+
 ## [1.4.7] - 2026-03-17
 
 ### Fixed

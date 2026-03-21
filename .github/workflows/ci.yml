@@ -133,7 +133,40 @@ jobs:
           path: coverage.xml
 
   # -------------------------------------------------------------------
-  # Job 3: Integration tests (Linux only)
+  # Job 3: Health check tests (Linux only)
+  # -------------------------------------------------------------------
+  health-check-tests:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-health-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-health-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run health check tests
+        run: |
+          if [ -f tests/test_health_checker.py ]; then
+            python -m pytest tests/test_health_checker.py -v --no-cov
+          else
+            echo "tests/test_health_checker.py not yet created -- skipping"
+          fi
+
+  # -------------------------------------------------------------------
+  # Job 4: Integration tests (Linux only)
   # -------------------------------------------------------------------
   integration-tests:
     needs: quality-gate

@@ -174,6 +174,7 @@ The app listens at `http://127.0.0.1:5173` and can open the browser automaticall
 | **Generate** | Cluster IP, credentials, options; live log; **Cancel** to abort |
 | **Reports** | Browse, download, preview, delete |
 | **Library** | Built-in and custom hardware devices (CBox, DBox, Switch, EBox) |
+| **Health** | Cluster deployment health checks (API, node SSH, switch SSH); real-time logs; remediation report |
 | **Configuration** | Edit `config.yaml` in the browser |
 | **Exit** (navbar) | Shut down the application |
 
@@ -238,6 +239,10 @@ Re-build a PDF from saved JSON (no cluster access):
 python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json
 python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json output/custom.pdf
 ```
+
+### Health Check
+
+The Health Check module runs tiered cluster validation: Tier-1 API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.), Tier-2 node SSH checks, and Tier-3 switch SSH checks. Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated after each run.
 
 ---
 
