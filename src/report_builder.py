@@ -4745,7 +4745,7 @@ class VastReportBuilder:
         # --- Detailed results table -------------------------------------------
         results = health_data.get("results", [])
         if results:
-            detail_headers = ["Check Name", "Category", "Status", "Message", "Duration"]
+            detail_headers = ["Check Name", "Category", "Status", "Message"]
             detail_data = [detail_headers]
 
             for r in results:
@@ -4755,17 +4755,15 @@ class VastReportBuilder:
                         self._safe_table_value(r.get("category")),
                         self._safe_table_value(r.get("status")),
                         self._safe_table_value(r.get("message")),
-                        self._safe_table_value(r.get("duration")),
                     ]
                 )
 
             page_width = A4[0] - 1.0 * inch
             col_widths = [
-                page_width * 0.20,
-                page_width * 0.15,
-                page_width * 0.12,
-                page_width * 0.38,
-                page_width * 0.15,
+                page_width * 0.22,  # Check Name
+                page_width * 0.12,  # Category
+                page_width * 0.10,  # Status
+                page_width * 0.56,  # Message (expanded to fit text)
             ]
 
             detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
@@ -4888,7 +4886,7 @@ class VastReportBuilder:
 
         if ssh_results:
             has_content = True
-            ssh_headers = ["Check Name", "Category", "Status", "Message", "Duration"]
+            ssh_headers = ["Check Name", "Category", "Status", "Message"]
             ssh_data = [ssh_headers]
 
             for r in ssh_results:
@@ -4898,17 +4896,15 @@ class VastReportBuilder:
                         self._safe_table_value(r.get("category")),
                         self._safe_table_value(r.get("status")),
                         self._safe_table_value(r.get("message")),
-                        self._safe_table_value(r.get("duration")),
                     ]
                 )
 
             page_width = A4[0] - 1.0 * inch
             col_widths = [
-                page_width * 0.20,
-                page_width * 0.15,
-                page_width * 0.12,
-                page_width * 0.38,
-                page_width * 0.15,
+                page_width * 0.22,  # Check Name
+                page_width * 0.12,  # Category
+                page_width * 0.10,  # Status
+                page_width * 0.56,  # Message (expanded to fit text)
             ]
 
             ssh_table = Table(ssh_data, colWidths=col_widths, repeatRows=1)

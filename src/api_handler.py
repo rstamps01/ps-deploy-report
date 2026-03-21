@@ -1449,14 +1449,10 @@ class VastApiHandler:
                 self.logger.warning("DNS configuration not available")
                 network_config["dns"] = None
 
-            # NTP configuration
-            ntp_data = self._make_api_request("ntps/")
-            if ntp_data:
-                network_config["ntp"] = ntp_data
-                self.logger.debug("Retrieved NTP configuration")
-            else:
-                self.logger.warning("NTP configuration not available")
-                network_config["ntp"] = None
+            # NTP configuration - Retrieved from /api/clusters/ endpoint (see get_cluster_info)
+            # The /api/ntps/ endpoint does not exist per official VAST API documentation
+            # NTP is a cluster-level network setting, already stored in cluster_info.ntp
+            network_config["ntp"] = None  # Placeholder; actual NTP from cluster_info
 
             # VIP pools
             vippool_data = self._make_api_request("vippools/")
@@ -1737,7 +1733,7 @@ class VastApiHandler:
                 security_config["ldap"] = ldap_data
                 self.logger.debug("Retrieved LDAP configuration")
             else:
-                self.logger.warning("LDAP configuration not available")
+                self.logger.debug("LDAP not configured on this cluster (optional)")
                 security_config["ldap"] = None
 
             # NIS
@@ -1746,7 +1742,7 @@ class VastApiHandler:
                 security_config["nis"] = nis_data
                 self.logger.debug("Retrieved NIS configuration")
             else:
-                self.logger.warning("NIS configuration not available")
+                self.logger.debug("NIS not configured on this cluster (optional)")
                 security_config["nis"] = None
 
             self.logger.info("Security configuration collection completed")
@@ -1774,7 +1770,7 @@ class VastApiHandler:
                 protection_config["snapprograms"] = snapprograms_data
                 self.logger.debug("Retrieved snapshot programs configuration")
             else:
-                self.logger.warning("Snapshot programs configuration not available")
+                self.logger.debug("Snapshot programs not configured (optional)")
                 protection_config["snapprograms"] = None
 
             # Protection policies
@@ -1896,7 +1892,7 @@ class VastApiHandler:
                 monitoring_data["snmp"] = snmp_data
                 self.logger.debug("Retrieved SNMP configuration")
             else:
-                self.logger.warning("SNMP configuration not available")
+                self.logger.debug("SNMP not configured on this cluster (optional)")
                 monitoring_data["snmp"] = None
 
             # Syslog configuration (if available via API)
@@ -1905,17 +1901,12 @@ class VastApiHandler:
                 monitoring_data["syslog"] = syslog_data
                 self.logger.debug("Retrieved syslog configuration")
             else:
-                self.logger.warning("Syslog configuration not available")
+                self.logger.debug("Syslog not configured on this cluster (optional)")
                 monitoring_data["syslog"] = None
 
-            # Alert policies (if available via API)
-            alerts_data = self._make_api_request("alerts/")
-            if alerts_data:
-                monitoring_data["alerts"] = alerts_data
-                self.logger.debug("Retrieved alert policies")
-            else:
-                self.logger.warning("Alert policies not available")
-                monitoring_data["alerts"] = None
+            # Note: alerts/ endpoint is not documented in official VAST API
+            # Active alarms are retrieved via /api/alarms/ in health_checker.py
+            monitoring_data["alerts"] = None
 
             self.logger.info("Monitoring configuration collection completed")
             return monitoring_data

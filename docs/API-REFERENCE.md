@@ -5,7 +5,7 @@ It catalogs every REST API endpoint the application uses, the authentication flo
 response fields depended on, version compatibility, and fallback behavior.
 
 **Source of truth:** `src/api_handler.py`
-**Last updated:** 2026-03-03
+**Last updated:** 2026-03-21
 **Target:** VAST REST API v7 (cluster 5.3+), with v1 fallbacks
 
 ---
@@ -334,23 +334,61 @@ Data protection/retention policies.
 
 ## 11. Monitoring Endpoints
 
+> **Note:** These endpoints are optional and return 404 when the feature is not configured on the cluster. The application handles this gracefully with DEBUG-level logging.
+
 ### GET /api/\<version\>/snmp/
 
 **Function:** `get_monitoring_configuration()`
 
-SNMP configuration.
+SNMP configuration. Returns 404 if SNMP is not configured.
 
 ### GET /api/\<version\>/syslog/
 
 **Function:** `get_monitoring_configuration()`
 
-Syslog forwarding configuration.
+Syslog forwarding configuration. Returns 404 if Syslog is not configured.
 
-### GET /api/\<version\>/alerts/
+### ~~GET /api/\<version\>/alerts/~~ (Removed)
 
-**Function:** `get_monitoring_configuration()`
+**Status:** Removed in v1.4.8 — endpoint not documented in official VAST API.
 
-Alert configuration and active alerts.
+Active alarms are retrieved via `/api/alarms/` in the health checker module.
+
+---
+
+## 11.5 Health Check Endpoints
+
+These endpoints are used by the health checker module (`health_checker.py`).
+
+### GET /api/\<version\>/alarms/
+
+**Function:** `_check_active_alarms()` in health_checker.py
+
+Active cluster alarms with severity, object type, and timestamps.
+
+### GET /api/\<version\>/events/
+
+**Function:** `_check_events()` in health_checker.py
+
+Event history with pagination and time filtering.
+
+### GET /api/\<version\>/eventdefinitions/
+
+**Function:** `_check_active_alarms()` in health_checker.py
+
+Event definitions for enriching alarm descriptions. Per official VAST API documentation.
+
+### GET /api/\<version\>/snapshots/
+
+**Function:** `get_snapshots()` in api_handler.py
+
+Snapshot inventory.
+
+### GET /api/\<version\>/quotas/
+
+**Function:** `get_quotas()` in api_handler.py
+
+Quota configuration.
 
 ---
 

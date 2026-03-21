@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-17 (EBOX-4–EBOX-6 completed)  
+**Last updated:** 2026-03-21 (HC-8–HC-11 completed)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -147,6 +147,10 @@
 | HC-5 | **RAID/Leader/Upgrade fixes:** 100% rebuild = complete; UP = healthy; DONE = pass | health_checker.py check logic |
 | HC-6 | **Alarm details:** Per-alarm severity, object type, name, timestamp | health_checker.py `_check_active_alarms()` |
 | HC-7 | **Events pagination:** Time filter + pagination to prevent timeout | health_checker.py `_check_events()` |
+| HC-8 | **Dynamic health check tiers in Generate:** Tier selection based on Port Mapping toggle | app.py `_run_report_job()` |
+| HC-9 | **API endpoint cleanup:** Removed undocumented endpoints (ntps/, alerts/); changed alarmdefinitions/ to eventdefinitions/ | api_handler.py, health_checker.py |
+| HC-10 | **Reduced log noise:** WARNING→DEBUG for optional 404 endpoints (ldap, nis, snapprograms, snmp, syslog) | api_handler.py |
+| HC-11 | **Health check report table:** Removed Duration column; expanded Message column to 56% | report_builder.py |
 
 ---
 

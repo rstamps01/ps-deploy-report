@@ -169,6 +169,7 @@
                         </label>
                         <span class="toggle-label-text">Include Health Check</span>
                     </div>
+                    <small id="healthCheckHint" class="form-hint">API checks only. Enable Port Mapping with SSH credentials for full Node &amp; Switch checks.</small>
                 </div>
 
                 <div class="form-group action-row">
@@ -205,6 +206,19 @@ function toggleAuth() {
 function togglePortMapping() {
     const checked = document.getElementById('enable_port_mapping').checked;
     document.getElementById('portMappingFields').classList.toggle('hidden', !checked);
+    updateHealthCheckHint();
+}
+
+function updateHealthCheckHint() {
+    const portMappingEnabled = document.getElementById('enable_port_mapping').checked;
+    const hint = document.getElementById('healthCheckHint');
+    if (hint) {
+        if (portMappingEnabled) {
+            hint.textContent = 'Full checks enabled: API + Node SSH + Switch SSH (Tier 1-3)';
+        } else {
+            hint.textContent = 'API checks only. Enable Port Mapping with SSH credentials for full Node & Switch checks.';
+        }
+    }
 }
 
 // -- Cluster Profiles --

@@ -787,17 +787,52 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not raw_data:
             raise RuntimeError("Data collection returned empty results")
 
-        # Optional health check (Tier 1 API only for embedded mode)
+        # Optional health check - tiers depend on Port Mapping settings
         _check_cancel(app)
         if params.get("include_health_check"):
             try:
                 from health_checker import HealthChecker
 
-                job_logger.info("Running pre-report health check (Tier 1 API)...")
-                checker = HealthChecker(api_handler=api_handler, cancel_event=app.config["JOB_CANCEL"])
-                health_report = checker.run_all_checks(tiers=[1])
+                # Determine which tiers to run based on Port Mapping toggle
+                enable_ssh = params.get("enable_port_mapping", False)
+                node_pw = params.get("node_password", "")
+                switch_pw = params.get("switch_password", "")
+
+                if enable_ssh and node_pw and switch_pw:
+                    # Port Mapping enabled with credentials -> run all tiers
+                    tiers = [1, 2, 3]
+                    job_logger.info("Running health checks (Tier 1-3: API + Node SSH + Switch SSH)...")
+
+                    # Build SSH configs for Tier 2 and Tier 3
+                    ssh_config = {
+                        "username": params.get("node_user", "vastdata"),
+                        "password": node_pw,
+                    }
+                    switch_ssh_config = {
+                        "username": params.get("switch_user", "cumulus"),
+                        "password": switch_pw,
+                    }
+
+                    checker = HealthChecker(
+                        api_handler=api_handler,
+                        ssh_config=ssh_config,
+                        switch_ssh_config=switch_ssh_config,
+                        cancel_event=app.config["JOB_CANCEL"],
+                    )
+                else:
+                    # Port Mapping disabled or missing credentials -> Tier 1 only
+                    tiers = [1]
+                    job_logger.info("Running health check (Tier 1 API only)...")
+                    checker = HealthChecker(
+                        api_handler=api_handler,
+                        cancel_event=app.config["JOB_CANCEL"],
+                    )
+
+                health_report = checker.run_all_checks(tiers=tiers)
                 raw_data["health_check_results"] = checker.to_dict(health_report)
-                job_logger.info("Health check completed — results will be included in report")
+
+                tier_desc = "Tier 1-3" if len(tiers) == 3 else "Tier 1"
+                job_logger.info("Health check completed (%s) — results will be included in report", tier_desc)
             except Exception as hc_exc:
                 job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
 

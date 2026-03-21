@@ -242,7 +242,25 @@ python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json ou
 
 ### Health Check
 
-The Health Check module runs tiered cluster validation: Tier-1 API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.), Tier-2 node SSH checks, and Tier-3 switch SSH checks. Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated after each run.
+The Health Check module runs tiered cluster validation:
+- **Tier 1 (API):** 26 read-only API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
+- **Tier 2 (Node SSH):** 10 node-level checks (memory, disk, services, network interfaces, etc.)
+- **Tier 3 (Switch SSH):** 6 switch checks (MLAG status, NTP, config backup)
+
+**Standalone Health Check:** Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated.
+
+**Include in Report:** Enable the **Include Health Check** toggle on the Generate page to add health check results to the PDF report:
+- **Port Mapping disabled:** Runs Tier 1 only (26 API checks)
+- **Port Mapping enabled:** Runs Tier 1 + 2 + 3 (42 total checks)
+
+#### Health Check Report Sections
+
+When health check is included, the PDF report contains two additional sections:
+
+| Section | Content |
+|---------|---------|
+| **Cluster Health Check Results** | Summary table (Pass/Fail/Warning/Skipped counts) and detailed results table with Check Name, Category, Status, and Message |
+| **Post Deployment Validation** | Manual verification checklist (failover testing, VIP movement, password management) and SSH validation results (if Tier 2/3 enabled) |
 
 ---
 

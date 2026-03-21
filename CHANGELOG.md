@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Health Check Module:** New `health_checker.py` with 24 Tier-1 API checks, Tier-2 node SSH checks, and Tier-3 switch SSH checks
+- **Health Check Module:** New `health_checker.py` with 26 Tier-1 API checks, Tier-2 node SSH checks, and Tier-3 switch SSH checks
+- **Dynamic Health Check Tiers in Generate:** When "Include Health Check" is enabled, tiers are selected based on Port Mapping:
+  - Port Mapping disabled → Tier 1 only (26 API checks)
+  - Port Mapping enabled with SSH credentials → Tier 1+2+3 (API + Node SSH + Switch SSH)
+- **Health Check UI Hint:** Generate page shows dynamic hint explaining which tiers will run
 - **Health Check UI:** New `/health` page with real-time SSE log streaming, tier selection, and job control
 - **Remediation Report Generator:** Health check auto-generates `.txt` remediation report with numbered findings, severity levels, timestamps, impact statements, correlated issues, and actionable remediation steps
 - **Health Check Correlation Engine:** Detects related failures (e.g., CNode+DNode down = chassis issue; leader marked inactive = inconsistency warning)
@@ -19,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **CNode/DNode Status Detection:** Fixed false-positive failures where active nodes were reported as inactive; health checker now uses `state` field (VAST API standard) instead of `status`
+- **API Endpoint Cleanup:** Removed undocumented/non-functional API calls per official VAST API v7 documentation:
+  - Removed `ntps/` call (NTP retrieved from `clusters/` endpoint)
+  - Removed `alerts/` call (not documented in VAST API)
+  - Changed `alarmdefinitions/` to `eventdefinitions/` (documented endpoint)
+- **Reduced Log Noise:** Changed WARNING to DEBUG for optional endpoints that return 404 when features aren't configured (ldap/, nis/, snapprograms/, snmp/, syslog/)
 - **Network Settings API Mapping:** Fixed DNS/NTP/gateway always showing as null; now correctly unwraps `response["data"]` from VMS API and uses proper field names
 - **SSH Check Timeout:** Fixed indefinite hang on Tier-2 node SSH checks; management ping now has 60s overall limit, 10s per-ping SSH timeout, and cancellation checks
 - **RAID Rebuild Progress:** Fixed 100% rebuild progress incorrectly shown as "in-progress"; now correctly reports as complete
@@ -28,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Alarm Details:** Health check captures per-alarm severity, object type, object name, and timestamp for detailed remediation guidance
+- **Health Check Report Table:** Removed Duration column from "Detailed Check Results" table; adjusted column widths (Message column expanded to 56% for better text fit)
+- **Event Definitions:** Health checker now uses `/api/eventdefinitions/` (documented) instead of `/api/alarmdefinitions/` (undocumented) for enriching alarm descriptions
 - **Events API:** Added pagination and time filter to prevent timeout on clusters with large event history
 
 ### Technical Details

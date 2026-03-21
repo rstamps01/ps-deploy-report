@@ -141,21 +141,84 @@ class HealthChecker:
         return None
 
     def _resolve_switch_ips(self) -> List[str]:
-        """Return switch IPs from switch_ssh_config or by querying the API."""
+        """Return switch IPs from switch_ssh_config or by querying the API.
+
+        Tries multiple API endpoints and extraction methods:
+        1. User-provided switch_ips in config
+        2. switches/ endpoint (API v7)
+        3. v1/switches/ endpoint (legacy)
+        4. Extract from CNode nic_nodes relationships
+        """
+        # 1. User-provided switch IPs take priority
         if self.switch_ssh_config and self.switch_ssh_config.get("switch_ips"):
-            return list(self.switch_ssh_config["switch_ips"])
+            ips = list(self.switch_ssh_config["switch_ips"])
+            self.logger.info(f"Using {len(ips)} user-provided switch IP(s)")
+            return ips
+
+        ips: List[str] = []
+
+        # 2. Try switches/ endpoint (API v7)
+        try:
+            switches = self.api_handler._make_api_request("switches/")
+            if switches and isinstance(switches, list):
+                for sw in switches:
+                    ip = sw.get("mgmt_ip") or sw.get("ip") or sw.get("management_ip")
+                    if ip and ip not in ips:
+                        ips.append(ip)
+                if ips:
+                    self.logger.info(f"Found {len(ips)} switch IP(s) from switches/ endpoint")
+                    return ips
+        except Exception as e:
+            self.logger.debug(f"switches/ endpoint failed: {e}")
+
+        # 3. Try v1/switches/ endpoint (legacy)
         try:
             switches = self.api_handler._make_api_request("v1/switches/")
             if switches and isinstance(switches, list):
-                ips = []
                 for sw in switches:
-                    ip = sw.get("mgmt_ip") or sw.get("ip")
-                    if ip:
+                    ip = sw.get("mgmt_ip") or sw.get("ip") or sw.get("management_ip")
+                    if ip and ip not in ips:
                         ips.append(ip)
-                return ips
-        except Exception:
-            pass
-        return []
+                if ips:
+                    self.logger.info(f"Found {len(ips)} switch IP(s) from v1/switches/ endpoint")
+                    return ips
+        except Exception as e:
+            self.logger.debug(f"v1/switches/ endpoint failed: {e}")
+
+        # 4. Extract switch IPs from CNode nic_nodes relationships
+        try:
+            cnodes = self.api_handler._make_api_request("cnodes/")
+            if cnodes and isinstance(cnodes, list):
+                for cnode in cnodes:
+                    # Check nic_nodes for switch connections
+                    nic_nodes = cnode.get("nic_nodes") or []
+                    for nic in nic_nodes:
+                        switch_ip = nic.get("switch_ip") or nic.get("remote_ip")
+                        if switch_ip and switch_ip not in ips:
+                            ips.append(switch_ip)
+                if ips:
+                    self.logger.info(f"Extracted {len(ips)} switch IP(s) from CNode relationships")
+                    return ips
+        except Exception as e:
+            self.logger.debug(f"CNode switch extraction failed: {e}")
+
+        # 5. Try networkinterfaces/ for switch connections
+        try:
+            nics = self.api_handler._make_api_request("networkinterfaces/")
+            if nics and isinstance(nics, list):
+                for nic in nics:
+                    switch_ip = nic.get("switch_ip") or nic.get("connected_switch_ip")
+                    if switch_ip and switch_ip not in ips:
+                        ips.append(switch_ip)
+                if ips:
+                    self.logger.info(f"Extracted {len(ips)} switch IP(s) from network interfaces")
+                    return ips
+        except Exception as e:
+            self.logger.debug(f"Network interfaces switch extraction failed: {e}")
+
+        if not ips:
+            self.logger.warning("No switch IPs found via API - provide switch_ips in config for Tier-3 checks")
+        return ips
 
     @staticmethod
     def to_dict(report: HealthCheckReport) -> Dict[str, Any]:
@@ -592,6 +655,8 @@ class HealthChecker:
             self._check_cnode_status,
             self._check_dnode_status,
             self._check_dbox_status,
+            self._check_cbox_status,
+            self._check_ebox_status,
             self._check_firmware_consistency,
             self._check_active_alarms,
             self._check_events,
@@ -1149,6 +1214,172 @@ class HealthChecker:
                 duration_seconds=time.time() - start,
             )
 
+    # --- 9b. CBox Status ---------------------------------------------------
+
+    def _check_cbox_status(self) -> HealthCheckResult:
+        """Check CBox (combined compute/storage box) status."""
+        start = time.time()
+        try:
+            data = self.api_handler._make_api_request("cboxes/")
+            if data is None:
+                # CBox endpoint may not exist on all clusters
+                return HealthCheckResult(
+                    check_name="CBox Status",
+                    category="api",
+                    status="skipped",
+                    message="CBox endpoint not available (standard cluster)",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            if not isinstance(data, list):
+                data = [data] if data else []
+
+            if not data:
+                return HealthCheckResult(
+                    check_name="CBox Status",
+                    category="api",
+                    status="skipped",
+                    message="No CBoxes found on this cluster",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            total = len(data)
+            inactive = []
+            for cbox in data:
+                name = cbox.get("name", cbox.get("id", "unknown"))
+                state = str(cbox.get("state", cbox.get("status", ""))).upper()
+                if state not in ("ACTIVE", "ONLINE", "HEALTHY", "UNKNOWN"):
+                    inactive.append({"name": name, "state": state})
+
+            details = {"total": total, "inactive": inactive}
+
+            # Filter out UNKNOWN state (placeholder/unconfigured CBoxes)
+            real_inactive = [i for i in inactive if i.get("state") != "UNKNOWN"]
+            unknown_count = len(inactive) - len(real_inactive)
+
+            if real_inactive:
+                return HealthCheckResult(
+                    check_name="CBox Status",
+                    category="api",
+                    status="fail",
+                    message=f"{len(real_inactive)} CBox(es) not ACTIVE: {[i['name'] for i in real_inactive]}",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            msg = f"All {total} CBoxes are ACTIVE"
+            if unknown_count > 0:
+                msg = f"{total - unknown_count} CBox(es) ACTIVE ({unknown_count} placeholder entries skipped)"
+            return HealthCheckResult(
+                check_name="CBox Status",
+                category="api",
+                status="pass",
+                message=msg,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                return HealthCheckResult(
+                    check_name="CBox Status",
+                    category="api",
+                    status="skipped",
+                    message="CBox endpoint not available (standard cluster)",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="CBox Status",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- 9c. EBox Status ---------------------------------------------------
+
+    def _check_ebox_status(self) -> HealthCheckResult:
+        """Check EBox (expansion box) status for EBox-only clusters."""
+        start = time.time()
+        try:
+            data = self.api_handler._make_api_request("eboxes/")
+            if data is None:
+                return HealthCheckResult(
+                    check_name="EBox Status",
+                    category="api",
+                    status="skipped",
+                    message="EBox endpoint not available",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            if not isinstance(data, list):
+                data = [data] if data else []
+
+            if not data:
+                return HealthCheckResult(
+                    check_name="EBox Status",
+                    category="api",
+                    status="skipped",
+                    message="No EBoxes found on this cluster",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            total = len(data)
+            inactive = []
+            for ebox in data:
+                name = ebox.get("name", ebox.get("id", "unknown"))
+                state = str(ebox.get("state", ebox.get("status", ""))).upper()
+                if state not in ("ACTIVE", "ONLINE", "HEALTHY", "UNKNOWN"):
+                    inactive.append({"name": name, "state": state})
+
+            details = {"total": total, "inactive": inactive}
+
+            if inactive:
+                return HealthCheckResult(
+                    check_name="EBox Status",
+                    category="api",
+                    status="fail",
+                    message=f"{len(inactive)} EBox(es) not ACTIVE: {[i['name'] for i in inactive]}",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="EBox Status",
+                category="api",
+                status="pass",
+                message=f"All {total} EBoxes are ACTIVE",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            if "404" in str(e) or "not found" in str(e).lower():
+                return HealthCheckResult(
+                    check_name="EBox Status",
+                    category="api",
+                    status="skipped",
+                    message="EBox endpoint not available",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="EBox Status",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
     # --- 10. Firmware Consistency -----------------------------------------
 
     def _check_firmware_consistency(self) -> HealthCheckResult:
@@ -1231,19 +1462,51 @@ class HealthChecker:
             if not isinstance(data, list):
                 data = [data] if data else []
 
+            # Fetch event definitions to enrich alarm descriptions
+            # Per VAST API docs, use /api/eventdefinitions/ (alarmdefinitions/ is not documented)
+            event_defs: Dict[int, str] = {}
+            try:
+                defs = self.api_handler._make_api_request("eventdefinitions/")
+                if defs and isinstance(defs, list):
+                    for d in defs:
+                        def_id = d.get("id")
+                        # Event definitions may have different field names
+                        desc = (
+                            d.get("description")
+                            or d.get("name")
+                            or d.get("event_name")
+                            or d.get("message")
+                        )
+                        if def_id and desc:
+                            event_defs[def_id] = desc
+            except Exception:
+                pass  # Event definitions not critical
+
             critical_alarms = [
                 a for a in data if str(a.get("severity", "")).upper() in ("CRITICAL", "MAJOR") and not a.get("resolved")
             ]
 
             alarm_summaries = []
             for a in critical_alarms[:20]:
+                # Try multiple fields for description
+                desc = (
+                    a.get("description")
+                    or a.get("message")
+                    or a.get("text")
+                    or a.get("alarm_text")
+                    or event_defs.get(a.get("event_definition_id"))
+                    or event_defs.get(a.get("definition_id"))
+                    or a.get("alarm_type")
+                    or a.get("type")
+                    or f"Alarm on {a.get('object_type', 'unknown')}"
+                )
                 alarm_summaries.append(
                     {
                         "id": a.get("id"),
                         "severity": a.get("severity"),
-                        "object_type": a.get("object_type") or a.get("alarm_type"),
-                        "object_name": a.get("object_name") or a.get("object_id"),
-                        "description": a.get("description") or a.get("message") or a.get("alarm_type"),
+                        "object_type": a.get("object_type") or a.get("alarm_type") or a.get("type"),
+                        "object_name": a.get("object_name") or a.get("object_id") or a.get("name"),
+                        "description": desc,
                         "timestamp": a.get("timestamp") or a.get("raised_at") or a.get("created"),
                     }
                 )
@@ -2239,6 +2502,12 @@ class HealthChecker:
         checks = [
             self._check_panic_alert_logs,
             self._check_management_ping,
+            self._check_memory_usage,
+            self._check_disk_space,
+            self._check_time_sync,
+            self._check_core_dumps,
+            self._check_network_interfaces,
+            self._check_vast_services,
             self._check_support_tool,
             self._check_vnetmap,
         ]
@@ -2456,6 +2725,336 @@ class HealthChecker:
         except Exception as e:
             return HealthCheckResult(
                 check_name="VNet Map",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Memory Usage ---------------------------------------
+
+    def _check_memory_usage(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check memory usage across cluster nodes."""
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'free -m | grep Mem' 2>/dev/null | head -10"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            if rc != 0 and not stdout:
+                return HealthCheckResult(
+                    check_name="Memory Usage",
+                    category="node_ssh",
+                    status="error",
+                    message=f"SSH command failed: {stderr or 'connection error'}",
+                    details={"host": host, "stderr": stderr},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            output = stdout.strip() if stdout else ""
+            high_usage_nodes = []
+
+            for line in output.split("\n"):
+                if "Mem:" in line:
+                    parts = line.split()
+                    if len(parts) >= 4:
+                        try:
+                            total = int(parts[1]) if parts[1].isdigit() else int(parts[2])
+                            used = int(parts[2]) if parts[2].isdigit() else int(parts[3])
+                            pct = (used / total) * 100 if total > 0 else 0
+                            if pct > 90:
+                                high_usage_nodes.append({"line": line, "usage_pct": round(pct, 1)})
+                        except (ValueError, IndexError):
+                            pass
+
+            if high_usage_nodes:
+                return HealthCheckResult(
+                    check_name="Memory Usage",
+                    category="node_ssh",
+                    status="warning",
+                    message=f"{len(high_usage_nodes)} node(s) with >90% memory usage",
+                    details={"host": host, "high_usage_nodes": high_usage_nodes, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Memory Usage",
+                category="node_ssh",
+                status="pass",
+                message="Memory usage within normal limits",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Memory Usage",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Disk Space -----------------------------------------
+
+    def _check_disk_space(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check disk space on critical filesystems."""
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'df -h / /var /tmp 2>/dev/null | grep -v Filesystem' 2>/dev/null | head -20"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            if rc != 0 and not stdout:
+                return HealthCheckResult(
+                    check_name="Disk Space",
+                    category="node_ssh",
+                    status="error",
+                    message=f"SSH command failed: {stderr or 'connection error'}",
+                    details={"host": host, "stderr": stderr},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            output = stdout.strip() if stdout else ""
+            high_usage = []
+
+            for line in output.split("\n"):
+                if "%" in line:
+                    parts = line.split()
+                    for part in parts:
+                        if part.endswith("%"):
+                            try:
+                                pct = int(part.rstrip("%"))
+                                if pct > 85:
+                                    high_usage.append({"line": line.strip(), "usage_pct": pct})
+                                    break
+                            except ValueError:
+                                pass
+
+            if high_usage:
+                return HealthCheckResult(
+                    check_name="Disk Space",
+                    category="node_ssh",
+                    status="warning",
+                    message=f"{len(high_usage)} filesystem(s) with >85% usage",
+                    details={"host": host, "high_usage": high_usage, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Disk Space",
+                category="node_ssh",
+                status="pass",
+                message="Disk space within normal limits",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Disk Space",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Time Sync ------------------------------------------
+
+    def _check_time_sync(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check NTP/chrony time synchronization."""
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'chronyc tracking 2>/dev/null || ntpq -p 2>/dev/null || timedatectl status' 2>/dev/null | head -30"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            output_lower = output.lower()
+
+            if "not synchronized" in output_lower or "no server" in output_lower:
+                return HealthCheckResult(
+                    check_name="Time Sync",
+                    category="node_ssh",
+                    status="warning",
+                    message="Time sync issues detected",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Time Sync",
+                category="node_ssh",
+                status="pass",
+                message="Time synchronization check completed",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Time Sync",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Core Dumps -----------------------------------------
+
+    def _check_core_dumps(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check for recent core dumps."""
+        start = time.time()
+        try:
+            cmd = 'clush -g cnodes \'ls -la /var/crash/ 2>/dev/null | tail -5; coredumpctl list --since "7 days ago" 2>/dev/null | tail -5\' 2>/dev/null'
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            has_cores = False
+
+            for line in output.split("\n"):
+                if "core" in line.lower() or ".dump" in line.lower() or "coredump" in line.lower():
+                    if "No such file" not in line and "total 0" not in line:
+                        has_cores = True
+                        break
+
+            if has_cores:
+                return HealthCheckResult(
+                    check_name="Core Dumps",
+                    category="node_ssh",
+                    status="warning",
+                    message="Core dump files found - investigate recent crashes",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Core Dumps",
+                category="node_ssh",
+                status="pass",
+                message="No recent core dumps found",
+                details={"host": host, "stdout": output},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Core Dumps",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: Network Interfaces ---------------------------------
+
+    def _check_network_interfaces(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check network interface status."""
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'ip link show | grep -E \"state DOWN|NO-CARRIER\"' 2>/dev/null | head -10"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+
+            # Ignore expected down interfaces and unconfigured interfaces
+            down_interfaces = []
+            for line in output.split("\n"):
+                line = line.strip()
+                if line and ("state DOWN" in line or "NO-CARRIER" in line):
+                    # Skip virtual/expected interfaces
+                    if any(x in line.lower() for x in ["docker", "veth", "br-", "virbr", "lo:"]):
+                        continue
+                    # Skip unconfigured interfaces (qdisc noop = no driver/config loaded)
+                    if "qdisc noop" in line:
+                        continue
+                    down_interfaces.append(line)
+
+            if down_interfaces:
+                return HealthCheckResult(
+                    check_name="Network Interfaces",
+                    category="node_ssh",
+                    status="warning",
+                    message=f"{len(down_interfaces)} interface(s) DOWN or NO-CARRIER",
+                    details={"host": host, "down_interfaces": down_interfaces, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="Network Interfaces",
+                category="node_ssh",
+                status="pass",
+                message="Network interfaces operational",
+                details={"host": host, "stdout": output if output else "All interfaces UP"},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Network Interfaces",
+                category="node_ssh",
+                status="error",
+                message=f"Check failed: {e}",
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # --- Node SSH Check: VAST Services --------------------------------------
+
+    def _check_vast_services(self, host: str, username: str, password: str) -> HealthCheckResult:
+        """Check VAST service status."""
+        start = time.time()
+        try:
+            cmd = "clush -g cnodes 'systemctl list-units --state=failed vast* 2>/dev/null || systemctl status vast* 2>/dev/null | grep -E \"Active:|failed\"' 2>/dev/null | head -20"
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+
+            output = stdout.strip() if stdout else ""
+            output_lower = output.lower()
+
+            if "failed" in output_lower and "0 loaded" not in output_lower:
+                return HealthCheckResult(
+                    check_name="VAST Services",
+                    category="node_ssh",
+                    status="warning",
+                    message="Failed VAST service(s) detected",
+                    details={"host": host, "stdout": output},
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="VAST Services",
+                category="node_ssh",
+                status="pass",
+                message="VAST services check completed",
+                details={"host": host, "stdout": output if output else "No failed services"},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="VAST Services",
                 category="node_ssh",
                 status="error",
                 message=f"Check failed: {e}",
