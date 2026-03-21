@@ -1471,12 +1471,7 @@ class HealthChecker:
                     for d in defs:
                         def_id = d.get("id")
                         # Event definitions may have different field names
-                        desc = (
-                            d.get("description")
-                            or d.get("name")
-                            or d.get("event_name")
-                            or d.get("message")
-                        )
+                        desc = d.get("description") or d.get("name") or d.get("event_name") or d.get("message")
                         if def_id and desc:
                             event_defs[def_id] = desc
             except Exception:
@@ -2919,7 +2914,7 @@ class HealthChecker:
         """Check for recent core dumps."""
         start = time.time()
         try:
-            cmd = 'clush -g cnodes \'ls -la /var/crash/ 2>/dev/null | tail -5; coredumpctl list --since "7 days ago" 2>/dev/null | tail -5\' 2>/dev/null'
+            cmd = "clush -g cnodes 'ls -la /var/crash/ 2>/dev/null | tail -5; coredumpctl list --since \"7 days ago\" 2>/dev/null | tail -5' 2>/dev/null"
             rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
 
             output = stdout.strip() if stdout else ""
