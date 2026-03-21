@@ -169,7 +169,7 @@ def _paramiko_exec(
 ) -> Tuple[int, str, str]:
     """Execute a command over SSH using paramiko (pure Python, cross-platform)."""
     try:
-        import paramiko
+        import paramiko  # type: ignore[import-untyped]
     except ImportError:
         return 1, "", "paramiko not installed. Run: pip install paramiko"
 

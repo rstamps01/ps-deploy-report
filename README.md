@@ -1,133 +1,124 @@
 # VAST As-Built Report Generator
 
-A self-contained application that automatically generates professional "as-built" reports for VAST Data clusters following deployment by Professional Services. Features a browser-based GUI with live progress streaming, a hardware device library, cluster profile management, and a full CLI — packaged as a standalone macOS `.app` / `.dmg` (or Windows `.exe`) with no Python installation required.
+Generate professional as-built reports for VAST Data clusters in minutes—no Python required. Download the app, connect to your cluster, and get a customer-ready PDF plus machine-readable JSON.
 
-## Overview
+---
 
-The VAST As-Built Report Generator connects to VAST Data clusters via the REST API v7, extracts comprehensive configuration and status information, and generates both professional PDF reports and machine-readable JSON data files. It is designed to streamline the post-deployment documentation process for VAST Professional Services engineers while providing enhanced automation and professional reporting capabilities.
+## Table of contents
 
-## Key Features
+- [Quick start](#quick-start)
+- [Key features](#key-features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Output files](#output-files)
+- [Building from source](#building-from-source)
+- [Project structure](#project-structure)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Security](#security)
+- [Support](#support)
 
-### Desktop Application with Web UI
-- **Self-Contained Package**: Download the `.dmg` (macOS) or `.zip` (Windows), install, and run — no Python or pip required
-- **Browser-Based GUI**: Modern dark-themed web interface at `localhost:5173` matching the VAST Admin UI
-- **Live Progress**: Real-time log streaming via Server-Sent Events during report generation
-- **Job Cancellation**: Cancel a running report generation at any time via the Cancel button
-- **Exit Button**: Gracefully shut down the application from the navbar
-- **Cluster Profiles**: Save, load, and delete cluster connection profiles (IP, credentials, settings)
-- **Report Browser**: View, download, and manage previously generated reports
-- **Configuration Editor**: Edit YAML configuration directly from the GUI
-- **Hardware Device Library**: Browse built-in device definitions, add custom devices (CBox, DBox, EBox, Switch) with image upload; unknown models fall back to generic 1U/2U shapes in rack diagrams
-- **CLI Preserved**: Full command-line interface available via `--cli` flag
+---
 
-### Enhanced Automation (80% Target Achieved)
-- **Automated Data Collection**: Comprehensive cluster data extraction with 80% automation
-- **Enhanced API Integration**: Support for VAST REST API v7 with v1 fallback for older clusters
-- **Rack Positioning**: Automated U-number generation and physical layout visualization
-- **Auto/Manual Switch Placement**: Cascading placement logic with manual override via UI
-- **PSNT Tracking**: Cluster Product Serial Number integration for support systems
-- **Port Mapping**: Optional SSH-based switch port mapping collection with IPL detection
+## Quick start
 
-### Professional Reporting
-- **Dual Output Formats**: Professional PDF reports and machine-readable JSON files
-- **Comprehensive Sections**: Executive summary, hardware inventory, rack diagrams, network topology, security settings, and more
-- **Rack Layout Diagrams**: Visual 42U rack diagrams with hardware bezel images
-- **Network Topology Diagrams**: Logical network diagrams with port mapping connections
-- **VAST Branding**: Customer-ready PDF documents with VAST brand compliance
+**Desktop (recommended)** — three steps:
 
-### Security and Reliability
-- **Secure Authentication**: Multiple credential methods (CLI args, environment variables, interactive prompts)
-- **Fault Tolerance**: Handles network failures, API errors, and missing data gracefully
-- **Comprehensive Logging**: Detailed logging with sensitive data filtering
-- **Error Recovery**: Graceful degradation and retry mechanisms with exponential backoff
+1. **Download** the [macOS .dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest) or [Windows .zip](https://github.com/rstamps01/ps-deploy-report/releases/latest).
+2. **Install** — drag **VAST Reporter** to Applications (macOS) or extract and run `vast-reporter.exe` (Windows).
+3. **Run** — open the app; the web UI opens in your browser at `http://127.0.0.1:5173`. Enter your cluster IP and credentials, then click **Generate**.
+
+No Python, pip, or virtual environment needed. Updates: download the latest release and replace the existing app.
+
+---
+
+## Key features
+
+| Area | Features |
+|------|----------|
+| **Desktop app** | Single .dmg/.zip install, browser-based UI at localhost:5173, live progress, cancel anytime, cluster profiles, report browser, config editor, hardware device library, full CLI via `--cli` |
+| **Automation** | VAST REST API v7 (v1 fallback), rack U positioning, auto/manual switch placement, PSNT tracking, optional SSH-based port mapping and IPL detection |
+| **Reports** | PDF (VAST-branded) + JSON; executive summary, hardware inventory, rack diagrams, network topology, security, and more |
+| **Reliability** | Secure auth (args, env, or prompt), fault tolerance, sanitized logging, retries with backoff |
+
+### Report highlights
+
+- **Physical rack layout** — 42U rack diagrams with CBox, DBox, and switch positions and hardware images.
+- **Network topology** — Logical diagram with port mapping and IPL/MLAG links (PDF + PNG where supported).
+- **Dual output** — Customer-ready PDF and machine-readable JSON for automation.
+
+---
 
 ## Requirements
 
-### For Desktop Application (Recommended)
-- **Operating System**: macOS 11+ (Apple Silicon or Intel) or Windows 10+
-- **Memory**: Minimum 512MB RAM (1GB recommended)
-- **Disk Space**: 100MB for installation, additional space for output files
-- **No Python installation required** — the runtime is fully bundled
+| Context | Requirements |
+|---------|--------------|
+| **Desktop app** | macOS 11+ (Apple Silicon or Intel) or Windows 10+; 512 MB RAM (1 GB recommended); ~100 MB disk. No Python. |
+| **From source** | Python 3.10+ (3.12 tested); see `requirements.txt` and optional `requirements-dev.txt`. |
+| **Network** | HTTPS (443) to VAST Management Service (VMS). |
+| **Auth** | VAST credentials with read access (e.g. `support`). API v7 (cluster 5.3+). Optional: SSH for switch port mapping. |
 
-### For Developer Installation
-- **Python**: 3.10 or higher (tested with Python 3.12)
-- **Operating System**: Linux, macOS, or Windows
-- Runtime dependencies in `requirements.txt`; dev/test dependencies in `requirements-dev.txt`
+SSL: for self-signed certificates, set `api.verify_ssl: false` in config.
 
-### Network Requirements
-- **Network Access**: Direct access to VAST Management Service (VMS)
-- **Ports**: HTTPS (443) to VAST cluster management interface
-- **SSL/TLS**: Configurable for self-signed certificates (`api.verify_ssl: false`)
-
-### Authentication Requirements
-- **VAST Credentials**: Valid cluster credentials with elevated read access
-- **Recommended**: `support` user or equivalent with full read permissions
-- **API Access**: VAST REST API v7 (VAST cluster version 5.3+)
-- **Optional**: SSH credentials for switch port mapping collection
+---
 
 ## Installation
 
-### Desktop Application (Recommended)
+### Desktop application (recommended)
 
-Download the latest installer from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest).
+Get the latest build from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest).
 
-**macOS:**
-1. Download **[VAST-Reporter-v1.4.2-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.4.2-mac.dmg)**
-2. Open the downloaded `.dmg` file
-3. Drag **VAST Reporter** into the **Applications** folder
-4. Launch from Applications (first launch: right-click > **Open** to bypass Gatekeeper)
-5. The web UI opens automatically in your default browser at `http://127.0.0.1:5173`
+**macOS**
 
-To update, download the latest `.dmg` and repeat the steps above — the new version replaces the old one in Applications.
+1. Download **VAST-Reporter-vX.Y.Z-mac.dmg** (use [latest](https://github.com/rstamps01/ps-deploy-report/releases/latest)).
+2. Open the .dmg and drag **VAST Reporter** to **Applications**.
+3. Open **VAST Reporter** from Applications.  
+   First time: if Gatekeeper blocks it, right-click the app → **Open**.
+4. The UI opens at `http://127.0.0.1:5173`.
 
-**Windows:**
-1. Download `VAST-Reporter-vX.Y.Z-win.zip` from the releases page
-2. Extract to a folder of your choice
-3. Run `vast-reporter.exe`
+**Windows**
 
-No Python installation, virtual environment, or package management required.
+1. Download **VAST-Reporter-vX.Y.Z-win.zip** from the releases page.
+2. Extract to a folder and run **vast-reporter.exe**.
 
-### Developer Installation
+No Python or package manager is required.
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/rstamps01/ps-deploy-report.git
-   cd ps-deploy-report
-   ```
+### Developer installation
 
-2. **Create and activate a virtual environment:**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate        # macOS/Linux
-   # venv\Scripts\activate         # Windows
-   ```
+For running or building from source:
 
-3. **Install dependencies:**
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
+```bash
+git clone https://github.com/rstamps01/ps-deploy-report.git
+cd ps-deploy-report
 
-4. **Verify installation:**
-   ```bash
-   python3 src/main.py --version
-   ```
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
 
-5. **(Optional) Install dev/test dependencies:**
-   ```bash
-   pip install -r requirements-dev.txt
-   ```
+pip install --upgrade pip
+pip install -r requirements.txt
+python3 src/main.py --version
+```
 
-### Automated Installation Scripts (PS Engineers)
+Optional (tests and lint):
 
-**macOS:**
+```bash
+pip install -r requirements-dev.txt
+```
+
+### Automated install scripts
+
+**macOS**
+
 ```bash
 curl -O https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/docs/deployment/install-mac.sh
 chmod +x install-mac.sh
 ./install-mac.sh
 ```
 
-**Windows:**
+**Windows**
+
 ```powershell
 Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-report/main/docs/deployment/install-windows.ps1" -OutFile "install-windows.ps1"
 .\install-windows.ps1
@@ -135,174 +126,159 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
 
 ### Documentation
 
-- [Installation Guide](docs/deployment/INSTALLATION-GUIDE.md) — complete installation instructions
-- [Update Guide](docs/deployment/UPDATE-GUIDE.md) — update existing installations
-- [Uninstall Guide](docs/deployment/UNINSTALL-GUIDE.md) — complete removal procedures
-- [Permissions Guide](docs/deployment/PERMISSIONS-GUIDE.md) — API permissions and support user requirements
-- [Deployment Guide](docs/deployment/DEPLOYMENT.md) — production deployment and configuration
-- [Port Mapping Guide](docs/deployment/PORT-MAPPING-GUIDE.md) — SSH-based switch port mapping setup
+- [Installation Guide](docs/deployment/INSTALLATION-GUIDE.md)
+- [Update Guide](docs/deployment/UPDATE-GUIDE.md)
+- [Uninstall Guide](docs/deployment/UNINSTALL-GUIDE.md)
+- [Permissions Guide](docs/deployment/PERMISSIONS-GUIDE.md)
+- [Deployment Guide](docs/deployment/DEPLOYMENT.md)
+- [Port Mapping Guide](docs/deployment/PORT-MAPPING-GUIDE.md)
+
+---
 
 ## Configuration
 
-### Initial Setup
+**Quick setup:** copy the template and edit as needed, or use the **Configuration** page in the web UI.
 
 ```bash
 cp config/config.yaml.template config/config.yaml
 ```
 
-Or edit configuration directly in the web UI via the **Configuration** page.
-
-### Configuration Files
-
 | File | Purpose |
 |------|---------|
-| `config/config.yaml` | Runtime settings (API timeouts, logging, report options) |
-| `config/config.yaml.template` | Default template (committed, no secrets) |
-| `config/cluster_profiles.json` | Saved cluster connection profiles (auto-managed by UI) |
-| `config/device_library.json` | User-defined hardware device definitions (auto-managed by UI) |
+| `config/config.yaml` | API timeouts, logging, report options (not committed) |
+| `config/config.yaml.template` | Default template (committed) |
+| `config/cluster_profiles.json` | Saved cluster profiles (UI-managed) |
+| `config/device_library.json` | Custom hardware devices (UI-managed) |
 
-### Key Configuration Sections
+**Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping.
 
-```yaml
-api:              # timeout, max_retries, retry_delay, verify_ssl, version
-logging:          # level, format, file_path, rotation_size, console_colors
-report:           # organization, template, pdf formatting
-output:           # default_directory, filename patterns
-data_collection:  # sections, concurrent_requests, graceful_degradation
-security:         # prompt_for_credentials, session_timeout, sanitize_logs
-```
-
-### Environment Variables
-
-| Variable | Purpose |
-|----------|---------|
-| `VAST_API_TOKEN` | API token authentication |
-| `VAST_USERNAME` / `VAST_PASSWORD` | Cluster credentials |
-| `VAST_NODE_USER` / `VAST_NODE_PASSWORD` | SSH node credentials (port mapping) |
-| `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` | SSH switch credentials (port mapping) |
+---
 
 ## Usage
 
-### Web UI (Default)
+### Web UI (default)
 
-Launch the application with no arguments:
+**Desktop:** Double-click **VAST Reporter** (or run `open "/Applications/VAST Reporter.app"` on macOS).
+
+**From source:**
 
 ```bash
-# Desktop app: double-click VAST Reporter.app, or from terminal:
-open "/Applications/VAST Reporter.app"
-
-# Developer mode:
 python3 src/main.py
-
-# macOS launcher (from project root):
-./Start\ Reporter.command
 ```
 
-The web server starts at `http://127.0.0.1:5173` and opens your default browser. Pages:
+The app listens at `http://127.0.0.1:5173` and can open the browser automatically.
 
-- **Dashboard** — overview of recent reports with download/view/delete actions
-- **Generate** — enter cluster IP and credentials, select options, click Generate, watch live progress; Cancel button to abort
-- **Reports** — browse, download, preview, and delete generated reports
-- **Library** — view built-in hardware device definitions (CBox, DBox, Switch, EBox); add custom devices with image upload
-- **Configuration** — edit `config.yaml` settings directly in the browser
-- **Exit** button (top-right) — gracefully stops the application
+| Page | Purpose |
+|------|---------|
+| **Dashboard** | Recent reports; download, view, delete |
+| **Generate** | Cluster IP, credentials, options; live log; **Cancel** to abort |
+| **Reports** | Browse, download, preview, delete |
+| **Library** | Built-in and custom hardware devices (CBox, DBox, Switch, EBox) |
+| **Health** | Cluster deployment health checks (API, node SSH, switch SSH); real-time logs; remediation report |
+| **Configuration** | Edit `config.yaml` in the browser |
+| **Exit** (navbar) | Shut down the application |
 
-### Command-Line Interface
+### Command-line interface
 
-Use `--cli` or pass `--cluster` directly for scripted/headless usage:
+For scripts or headless use:
 
 ```bash
-# Explicit CLI mode
+# CLI mode (explicit)
 python3 src/main.py --cli --cluster 10.143.11.204 --output ./reports
 
-# Legacy syntax (auto-detected)
+# Legacy: cluster + output imply CLI
 python3 src/main.py --cluster 10.143.11.204 --output ./reports
 ```
 
-#### CLI Options
+**Common options**
 
 | Option | Description |
 |--------|-------------|
-| `--cluster IP` / `--cluster-ip IP` | VAST Management Service IP (required) |
-| `--output DIR` / `--output-dir DIR` | Output directory for reports (required) |
-| `--username USER` / `-u` | VAST username (prompts if omitted) |
-| `--password PASS` / `-p` | VAST password (prompts if omitted) |
-| `--token TOKEN` / `-t` | API token (alternative to user/pass) |
+| `--cluster IP` | VAST Management Service IP (required) |
+| `--output DIR` | Output directory (required) |
+| `--username` / `--password` | Credentials (prompted if omitted) |
+| `--token TOKEN` | API token instead of user/pass |
 | `--enable-port-mapping` | Collect switch port mapping via SSH |
-| `--switch-user USER` | SSH username for switches (default: `cumulus`) |
-| `--switch-password PASS` | SSH password for switches |
-| `--node-user USER` | SSH username for VAST nodes (default: `vastdata`) |
-| `--node-password PASS` | SSH password for VAST nodes |
-| `--config PATH` / `-c` | Path to configuration file |
-| `--verbose` / `-v` | Enable debug-level logging |
+| `--switch-user` / `--switch-password` | SSH for switches |
+| `--node-user` / `--node-password` | SSH for VAST nodes |
+| `--config PATH` | Config file path |
+| `--verbose` | Debug logging |
 | `--version` | Show version and exit |
 
-#### Examples
+**Examples**
 
 ```bash
-# Interactive credentials (recommended)
+# Interactive credentials
 python3 src/main.py --cluster 10.143.11.204 --output ./reports
 
-# With explicit credentials
+# With credentials
 python3 src/main.py --cluster 10.143.11.204 --username support --password SECRET --output ./reports
-
-# With API token
-python3 src/main.py --cluster 10.143.11.204 --token YOUR_TOKEN --output ./reports
 
 # With port mapping
 python3 src/main.py --cluster 10.143.11.204 --output ./reports \
-  --enable-port-mapping \
-  --node-user vastdata --node-password NODE_PASS \
+  --enable-port-mapping --node-user vastdata --node-password NODE_PASS \
   --switch-user cumulus --switch-password SWITCH_PASS
-
-# Verbose debugging
-python3 src/main.py --cluster 10.143.11.204 --output ./reports --verbose
 ```
 
-### Output Files
+---
+
+## Output files
 
 | File | Description |
 |------|-------------|
-| `vast_asbuilt_report_{cluster}_{timestamp}.pdf` | Professional customer-facing PDF with VAST branding |
-| `vast_data_{cluster}_{timestamp}.json` | Machine-readable structured data for automation |
+| `vast_asbuilt_report_{cluster}_{timestamp}.pdf` | VAST-branded PDF report |
+| `vast_data_{cluster}_{timestamp}.json` | Structured data for automation |
 
-**PDF Report Sections:**
-1. Title Page (cluster name, PSNT, date, organization)
-2. Table of Contents (dynamic, auto-generated)
-3. Executive Summary (cluster overview, hardware counts)
-4. Cluster Information (version, features, configuration)
-5. Hardware Summary (capacity metrics, storage)
-6. Hardware Inventory (CBox/DBox tables with node-level detail)
-7. Physical Rack Layout (42U rack diagrams with hardware images)
-8. Network Configuration (interfaces, VIPs, DNS, NTP)
-9. Switch Port Mapping (when enabled)
-10. Logical Network Diagram (topology visualization)
-11. Logical Configuration (tenants, views, policies)
-12. Security & Authentication
+**PDF contents:** Title; dynamic TOC; executive summary; cluster info; hardware summary and inventory; physical rack layout; network config; switch port mapping (if enabled); logical network diagram; logical config; security.
 
-### Regenerating Reports from JSON
+### Regenerating PDF from JSON
 
-Re-render PDF reports from saved JSON data without cluster access:
+Re-build a PDF from saved JSON (no cluster access):
 
 ```bash
-python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json
-python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json output/custom.pdf
-python3 scripts/regenerate_report.py output/vast_data_CLUSTER_TIMESTAMP.json --output-dir ./test_reports
+python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json
+python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json output/custom.pdf
 ```
 
-## Building from Source
+### Health Check
+
+The Health Check module runs tiered cluster validation:
+- **Tier 1 (API):** 26 read-only API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
+- **Tier 2 (Node SSH):** 10 node-level checks (memory, disk, services, network interfaces, etc.)
+- **Tier 3 (Switch SSH):** 6 switch checks (MLAG status, NTP, config backup)
+
+**Standalone Health Check:** Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated.
+
+**Include in Report:** Enable the **Include Health Check** toggle on the Generate page to add health check results to the PDF report:
+- **Port Mapping disabled:** Runs Tier 1 only (26 API checks)
+- **Port Mapping enabled:** Runs Tier 1 + 2 + 3 (42 total checks)
+
+#### Health Check Report Sections
+
+When health check is included, the PDF report contains two additional sections:
+
+| Section | Content |
+|---------|---------|
+| **Cluster Health Check Results** | Summary table (Pass/Fail/Warning/Skipped counts) and detailed results table with Check Name, Category, Status, and Message |
+| **Post Deployment Validation** | Manual verification checklist (failover testing, VIP movement, password management) and SSH validation results (if Tier 2/3 enabled) |
+
+---
+
+## Building from source
 
 ### macOS (.app and .dmg)
 
 ```bash
 # Prerequisites
 pip install pyinstaller
-brew install create-dmg
+brew install create-dmg   # optional, for .dmg
 
-# Build
+# From project root (activate venv so pyinstaller is on PATH)
+source venv/bin/activate
 bash packaging/build-mac.sh
-# Output: dist/VAST Reporter.app and dist/VAST-Reporter-vX.Y.Z-mac.dmg
 ```
+
+**Output:** `dist/VAST Reporter.app` and, if `create-dmg` is installed, `dist/VAST-Reporter-vX.Y.Z-mac.dmg`.
 
 ### Windows (.exe)
 
@@ -311,175 +287,138 @@ pip install pyinstaller
 powershell -File packaging/build-windows.ps1
 ```
 
-Build configuration is in `packaging/vast-reporter.spec`.
+Build definition: `packaging/vast-reporter.spec`.
 
-## Project Structure
+---
+
+## Project structure
 
 ```
 vast-asbuilt-reporter/
-├── README.md                        # This file
-├── CHANGELOG.md                     # Version history (Keep a Changelog format)
-├── requirements.txt                 # Runtime dependencies
-├── requirements-dev.txt             # Dev/test dependencies (pytest, flake8, etc.)
-├── Start Reporter.command           # macOS double-click launcher
-├── .github/workflows/
-│   └── build-release.yml            # CI/CD: cross-platform builds on version tags
+├── README.md                 # This file
+├── CHANGELOG.md
+├── requirements.txt          # Runtime dependencies
+├── requirements-dev.txt      # Dev/test (pytest, flake8, etc.)
+├── Start Reporter.command    # macOS double-click launcher (from source)
+├── .github/workflows/        # CI (e.g. build-release.yml)
 ├── assets/
-│   ├── diagrams/                    # VAST logos, network diagram assets
-│   └── hardware_images/             # Hardware bezel images (CBox, DBox, Switch)
+│   ├── diagrams/            # VAST logos, diagram assets
+│   └── hardware_images/      # CBox, DBox, switch images
 ├── config/
-│   ├── config.yaml                  # Runtime configuration (not committed)
-│   ├── config.yaml.template         # Default config template (committed)
-│   ├── cluster_profiles.json        # Saved cluster profiles (auto-managed)
-│   └── device_library.json          # User-defined hardware devices (auto-managed)
-├── docs/
-│   ├── confluence/                  # Internal only (not published to GitHub)
-│   └── deployment/                  # Installation, update, uninstall, permissions guides
+│   ├── config.yaml.template
+│   ├── cluster_profiles.json
+│   └── device_library.json
+├── docs/deployment/          # Install, update, uninstall, permissions, port mapping
 ├── frontend/
-│   ├── templates/                   # Jinja2 HTML templates
-│   │   ├── base.html                # Base layout (navbar, footer, favicon)
-│   │   ├── dashboard.html           # Dashboard page
-│   │   ├── generate.html            # Report generation page
-│   │   ├── reports.html             # Report browser page
-│   │   ├── library.html             # Hardware device library page
-│   │   └── config.html              # Configuration editor page
-│   └── static/
-│       ├── css/app.css              # VAST-themed dark UI stylesheet
-│       ├── js/app.js                # Frontend JS (SSE, profiles, discovery, cancel)
-│       └── img/                     # Logos, favicon, apple-touch-icon
+│   ├── templates/            # HTML (dashboard, generate, reports, library, config)
+│   └── static/               # CSS, JS, images
 ├── packaging/
-│   ├── vast-reporter.spec           # PyInstaller build spec
-│   ├── build-mac.sh                 # macOS build script (.app + .dmg)
-│   ├── build-windows.ps1            # Windows build script
-│   └── icons/                       # App icons (.icns, .ico)
+│   ├── vast-reporter.spec    # PyInstaller spec
+│   ├── build-mac.sh
+│   ├── build-windows.ps1
+│   └── icons/
 ├── scripts/
-│   └── regenerate_report.py         # Re-render PDF from saved JSON data
+│   └── regenerate_report.py  # PDF from JSON
 ├── src/
-│   ├── main.py                      # Entry point (GUI + CLI routing)
-│   ├── app.py                       # Flask web UI (routes, SSE, job management)
-│   ├── api_handler.py               # VAST API client (auth, retry, version detection)
-│   ├── data_extractor.py            # Raw API data → structured report sections
-│   ├── report_builder.py            # PDF/JSON report generation (ReportLab)
-│   ├── rack_diagram.py              # Physical rack layout diagram generator
-│   ├── network_diagram.py           # Logical network topology diagram generator
-│   ├── brand_compliance.py          # VAST brand colors, fonts, styling
-│   ├── external_port_mapper.py      # SSH-based switch port mapping collection
-│   ├── enhanced_port_mapper.py      # Port mapping enrichment and correlation
-│   ├── port_mapper.py               # Port mapping data structures
-│   ├── vnetmap_parser.py            # VNetMap output file parser
-│   └── utils/
-│       ├── __init__.py              # Bundle/data path resolution helpers
-│       ├── logger.py                # Logging, SSE handler, sensitive data filter
-│       └── ssh_adapter.py           # Cross-platform SSH (paramiko + pexpect)
-└── tests/
-    ├── test_api_handler.py          # API client tests
-    ├── test_app.py                  # Flask route and helper tests
-    ├── test_data_extractor.py       # Data processing tests
-    ├── test_report_builder.py       # Report generation tests
-    ├── test_launcher.py             # GUI/CLI mode routing tests
-    ├── test_main.py                 # CLI workflow tests
-    ├── test_logging.py              # Logging infrastructure tests
-    ├── test_sse_logger.py           # SSE log handler tests
-    ├── test_ssh_adapter.py          # SSH adapter tests
-    ├── test_rack_diagram.py          # Rack diagram generic 1U/2U fallback tests
-    ├── test_ui.py                   # Playwright browser UI tests
-    └── data/                        # Test fixtures and mock API responses
+│   ├── main.py               # Entry (GUI/CLI)
+│   ├── app.py                # Flask UI
+│   ├── api_handler.py        # VAST API client
+│   ├── data_extractor.py     # API → report sections
+│   ├── report_builder.py     # PDF/JSON generation
+│   ├── rack_diagram.py       # Physical rack layout
+│   ├── network_diagram.py    # Network topology
+│   ├── brand_compliance.py   # VAST styling
+│   ├── hardware_library.py   # Consolidated device definitions
+│   ├── external_port_mapper.py  # SSH-based port mapping
+│   └── utils/                # Logger, paths, SSH adapter
+└── tests/                    # pytest suite
 ```
+
+---
 
 ## Development
 
-### Testing
+**Tests**
 
 ```bash
-# Run all tests (e.g. 260+)
-python3 -m pytest tests/ -v
-
-# Run with coverage
-python3 -m pytest tests/ --cov=src --cov-report=html
-
-# Run a specific module
-python3 -m pytest tests/test_app.py -v
+pytest tests/ -v
+pytest tests/ --cov=src --cov-report=html
 ```
 
-### Code Quality
+**Validating Windows and diagram behavior (before pushing)**  
+Run the functional validation suite so port-mapping charmap and diagram placeholder regressions are caught before commit. CI runs it with unit tests; locally:
+
+```bash
+pytest tests/test_functional_validation.py -v
+```
+
+This checks: ASCII-safe port mapping error logging (no `charmap` encode errors on Windows), and that the network diagram uses the PDF→PNG fallback (PyMuPDF) when renderPM fails, so the report does not use the placeholder image.
+
+**Lint / format**
 
 ```bash
 flake8 src/ tests/
 black src/ tests/
-mypy src/
 ```
 
-### Git Workflow
-
-- `main` — protected, production-ready releases (tagged)
-- `develop` — primary development branch; all features merge here first
-- `feature/<name>` — feature branches off `develop`
-- `fix/<name>` — bugfix branches off `develop`
-
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/): `feat(scope): description`, `fix(scope): description`, etc.
-
-### Design Reference
-
-Project design documents are synced from Confluence into `docs/confluence/` on developer machines (not published to GitHub). Cursor workspace rules in `.cursor/rules/` enforce architecture, coding standards, and change control conventions.
-
-## Troubleshooting
-
-### Connection Issues
-
-| Symptom | Solution |
-|---------|----------|
-| `403 Forbidden` / incomplete data | Use `support` user or equivalent with full read permissions |
-| Connection timeout | Increase `api.timeout` in `config.yaml` (default: 30s) |
-| SSL certificate errors | Set `api.verify_ssl: false` in `config.yaml` for self-signed certs |
-| Port mapping fails | Check SSH credentials, verify network access to switch management IPs |
-
-### Application Issues
-
-| Symptom | Solution |
-|---------|----------|
-| "A report is already being generated" | Click **Cancel**, then retry. If stuck, restart the app. |
-| App hangs after report completes | Ensure `threaded=True` in server config (default in v1.4.0+) |
-| macOS Gatekeeper blocks app | Right-click the `.app` > Open (first launch only) |
-
-### Debug Mode
+**Pre-release checklist (quality gate)**  
+Before tagging a release or merging to `main`/`develop`, run the same checks as CI:
 
 ```bash
-# Verbose logging (CLI)
-python3 src/main.py --cluster IP --output ./reports --verbose
+# Lint and format
+flake8 src/ tests/
+black --check --line-length 120 src/ tests/
 
-# Check version
-python3 src/main.py --version
+# Type check
+mypy src/ --ignore-missing-imports --no-strict-optional
 
-# Verify environment
-python3 -c "import reportlab; print(f'ReportLab {reportlab.Version}')"
+# Unit tests with coverage (excludes UI and integration)
+python -m pytest tests/ -v --ignore=tests/test_ui.py --ignore=tests/test_integration.py \
+  --cov=src --cov-report=term-missing --cov-fail-under=46
 ```
 
-## Security
+See [docs/TODO-ROADMAP.md](docs/TODO-ROADMAP.md) for quality-gate items (QG-1, QG-2).
 
-- **Credentials are never stored** in configuration files or logs
-- **Credential flow**: CLI args → environment variables → interactive `getpass` prompt
-- **Log sanitization**: Automatic redaction of passwords, tokens, and secrets
-- **SSL/TLS**: HTTPS for all API communication (configurable for self-signed certs)
-- **Reports contain configuration data only** — no credentials in PDF or JSON output
+**Branches:** `main` (releases); `develop` (integration); `feature/*`, `fix/*`. Commits: [Conventional Commits](https://www.conventionalcommits.org/).
 
-## Support
-
-For issues, questions, or contributions, refer to the project's [GitHub repository](https://github.com/rstamps01/ps-deploy-report).
-
-1. Check the logs for error messages
-2. Review `config.yaml` for common misconfigurations
-3. Consult the troubleshooting section above
-4. Check GitHub issues for known problems
-5. Create a new issue with detailed information
-
-## License
-
-[License information to be added]
+Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (not published to GitHub).
 
 ---
 
-**Version**: 1.4.2
-**Target VAST Version**: 5.3+
-**API Version**: v7 (with v1 fallback)
-**Test Suite**: 267 tests (run `pytest tests/ -v`)
-**Last Updated**: March 2026
+## Troubleshooting
+
+| Issue | What to do |
+|-------|------------|
+| **403 / incomplete data** | Use `support` (or equivalent) with full read access. |
+| **Connection timeout** | Increase `api.timeout` in `config.yaml`. |
+| **SSL errors** | Set `api.verify_ssl: false` for self-signed certs. |
+| **Port mapping fails** | Check SSH credentials and reachability of switch management IPs. Windows uses paramiko for SSH; macOS/Linux use sshpass. Ensure credentials work via direct SSH first. |
+| **"A report is already being generated"** | Click **Cancel**, then retry; if stuck, restart the app. |
+| **macOS Gatekeeper** | Right-click the .app → **Open** on first launch. |
+| **Windows: PDF "Permission denied"** | Ensure the app can write to `%TEMP%`. If it persists, exclude the app folder from antivirus real-time scan or run from a directory with write access. |
+
+**Debug:** `python3 src/main.py --cluster IP --output ./reports --verbose` and `python3 src/main.py --version`.
+
+---
+
+## Security
+
+- Credentials are **not** stored in config or logs.
+- Order: CLI args → environment variables → interactive prompt.
+- Logs redact passwords, tokens, and secrets.
+- All API traffic over HTTPS (configurable for self-signed).
+- Reports contain configuration data only; no credentials in PDF or JSON.
+
+---
+
+## Support
+
+1. Check logs and the [Troubleshooting](#troubleshooting) section.
+2. Review [docs/deployment](docs/deployment/) and [GitHub Issues](https://github.com/rstamps01/ps-deploy-report/issues).
+3. Open an issue with version, steps, and log excerpts.
+
+**Repository:** [github.com/rstamps01/ps-deploy-report](https://github.com/rstamps01/ps-deploy-report)
+
+---
+
+**Version:** 1.4.7 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Tests:** `pytest tests/ -v`

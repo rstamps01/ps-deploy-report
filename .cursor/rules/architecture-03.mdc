@@ -13,20 +13,35 @@ The application follows a strict three-stage pipeline. Each layer only depends o
 
 `main.py` orchestrates the pipeline; it is the only module that instantiates all three layers.
 
+### Health Checker (health_checker.py)
+- Standalone module that uses API Handler and SSH Adapter to run cluster health checks
+- Produces `HealthCheckReport` containing `HealthCheckResult` items — consumed by Data Extractor for optional report injection
+- Must NOT import `report_builder` or `data_extractor` (module boundary)
+
+```
+API Handler → Data Extractor → Report Builder
+                ↑
+Health Checker → (uses API Handler, SSH Adapter)
+                ↓
+              Data Extractor (optional health data injection)
+```
+
 ### Web UI Layer (app.py)
 - Flask application with SSE log streaming and background job execution
-- Page routes: Dashboard (/), Generate (/generate), Reports (/reports), Config (/config), Library (/library)
+- Page routes: Dashboard (/), Generate (/generate), Reports (/reports), Config (/config), Library (/library), Health Check (/health)
 - API endpoints: /api/discover, /api/browse, /profiles, /stream/logs
 - Job control: /generate/start (POST), /generate/status (GET), /generate/cancel (POST)
+- Health check control: /health/run (POST), /health/status (GET), /health/cancel (POST), /health/results (GET)
 - Library endpoints: /library/devices (GET/POST), /library/devices/<key> (DELETE), /library/images/<filename> (GET)
 - Application control: /shutdown (POST) — graceful server termination via stored werkzeug server reference
-- Config keys: DEFAULT_OUTPUT_DIR, OUTPUT_DIRS, CONFIG_PATH, PROFILES_PATH, JOB_RUNNING, JOB_RESULT, JOB_LOCK, JOB_CANCEL, _SERVER
+- Config keys: DEFAULT_OUTPUT_DIR, OUTPUT_DIRS, CONFIG_PATH, PROFILES_PATH, JOB_RUNNING, JOB_RESULT, JOB_LOCK, JOB_CANCEL, HEALTH_JOB_RUNNING, HEALTH_JOB_RESULT, HEALTH_JOB_LOCK, HEALTH_JOB_CANCEL, _SERVER
 - Templates in frontend/templates/, static assets in frontend/static/
 
 ## Module Boundaries
 - `api_handler.py` must never import from `data_extractor` or `report_builder`
 - `data_extractor.py` must never import from `report_builder`
 - `report_builder.py` must never call the VAST API directly
+- `health_checker.py` must never import from `report_builder` or `data_extractor`
 - Shared utilities belong in `src/utils/`
 - Port mapping modules (`external_port_mapper.py`, `enhanced_port_mapper.py`, `port_mapper.py`, `vnetmap_parser.py`) feed data into `data_extractor`
 

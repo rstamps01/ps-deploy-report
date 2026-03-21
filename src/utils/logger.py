@@ -26,7 +26,6 @@ from typing import Dict, Optional, Any
 import yaml
 import colorlog
 
-
 # Global queue for SSE log streaming to the web UI
 _sse_log_queue: Optional[queue.Queue] = None
 
@@ -275,7 +274,7 @@ def _setup_console_handler(log_config: Dict[str, Any]) -> logging.Handler:
     console_handler.setFormatter(color_formatter)
     console_handler.setLevel(getattr(logging, log_config.get("level", "INFO")))
 
-    return console_handler
+    return console_handler  # type: ignore[no-any-return]
 
 
 def _setup_file_handler(log_config: Dict[str, Any]) -> Optional[logging.Handler]:

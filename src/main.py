@@ -26,15 +26,15 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
-# Add src directory to Python path
+# Add src directory to Python path (must run before local imports when run as script)
 sys.path.insert(0, str(Path(__file__).parent))
 
-from api_handler import create_vast_api_handler
-from data_extractor import create_data_extractor
-from report_builder import create_report_builder
-from utils.logger import get_logger, setup_logging
+from api_handler import create_vast_api_handler  # noqa: E402
+from data_extractor import create_data_extractor  # noqa: E402
+from report_builder import create_report_builder  # noqa: E402
+from utils.logger import get_logger, setup_logging  # noqa: E402
 
 
 class VastReportGenerator:
@@ -169,6 +169,9 @@ class VastReportGenerator:
                 token=token,
                 config=self.config,
             )
+            if self.api_handler is None:
+                self.logger.error("Failed to create API handler")
+                return False
 
             # Authenticate
             if not self.api_handler.authenticate():
@@ -298,6 +301,8 @@ class VastReportGenerator:
             Optional[Dict[str, Any]]: Raw cluster data or None if failed
         """
         try:
+            if self.api_handler is None:
+                return None
             self.logger.info("Collecting data from VAST cluster...")
 
             # Collect all data
@@ -325,7 +330,7 @@ class VastReportGenerator:
                 else:
                     self.logger.warning("Port mapping collection failed - continuing without port mapping")
 
-            return raw_data
+            return cast(Dict[str, Any], raw_data)
 
         except Exception as e:
             self.logger.error(f"Failed to collect data: {e}")
@@ -342,8 +347,10 @@ class VastReportGenerator:
         Returns:
             Optional[Dict[str, Any]]: Port mapping data or None if failed
         """
+        if self.api_handler is None:
+            return None
         try:
-            from external_port_mapper import ExternalPortMapper
+            from external_port_mapper import ExternalPortMapper, _safe_str
 
             # Get switch credentials
             node_password, switch_password = self._get_switch_credentials(args)
@@ -408,20 +415,24 @@ class VastReportGenerator:
                     if port_mapping_data.get("port_map"):
                         last_partial = port_mapping_data
                 except Exception as e:
-                    last_error = str(e)
-                    self.logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, e)
+                    last_error = _safe_str(e)
+                    self.logger.warning(
+                        "Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error
+                    )
 
             if last_partial and last_partial.get("port_map"):
                 self.logger.info("Using partial port mapping from last CNode attempt")
-                return last_partial
+                return cast(Optional[Dict[str, Any]], last_partial)
             self.logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown")
             return None
 
         except ImportError as e:
-            self.logger.error(f"Failed to import external_port_mapper: {e}")
+            _msg = str(e).encode("ascii", errors="replace").decode("ascii")
+            self.logger.error("Failed to import external_port_mapper: %s", _msg)
             return None
         except Exception as e:
-            self.logger.error(f"Failed to collect port mapping: {e}")
+            _msg = str(e).encode("ascii", errors="replace").decode("ascii")
+            self.logger.error("Failed to collect port mapping: %s", _msg)
             return None
 
     def _process_data(self, raw_data: Dict[str, Any], args: argparse.Namespace = None) -> Optional[Dict[str, Any]]:
@@ -436,10 +447,12 @@ class VastReportGenerator:
             Optional[Dict[str, Any]]: Processed report data or None if failed
         """
         try:
+            if self.data_extractor is None:
+                return None
             self.logger.info("Processing collected data...")
 
             # Process data with port mapping flag
-            use_external_port_mapping = args and args.enable_port_mapping and "port_mapping_external" in raw_data
+            use_external_port_mapping = bool(args and args.enable_port_mapping and "port_mapping_external" in raw_data)
             processed_data = self.data_extractor.extract_all_data(
                 raw_data, use_external_port_mapping=use_external_port_mapping
             )
@@ -451,7 +464,7 @@ class VastReportGenerator:
             metadata = processed_data.get("metadata", {})
             overall_completeness = metadata.get("overall_completeness", 0.0)
 
-            self.logger.info(f"Data processing completed")
+            self.logger.info("Data processing completed")
             self.logger.info(f"Overall data completeness: {overall_completeness:.1%}")
 
             # Log section status
@@ -461,7 +474,7 @@ class VastReportGenerator:
                 completeness = section_data.get("completeness", 0.0)
                 self.logger.info(f"  {section_name}: {status} ({completeness:.1%})")
 
-            return processed_data
+            return cast(Dict[str, Any], processed_data)
 
         except Exception as e:
             self.logger.error(f"Failed to process data: {e}")
@@ -479,6 +492,8 @@ class VastReportGenerator:
             bool: True if successful, False otherwise
         """
         try:
+            if self.data_extractor is None or self.report_builder is None:
+                return False
             self.logger.info("Generating reports...")
 
             # Ensure output directory exists
@@ -552,8 +567,8 @@ class VastReportGenerator:
 
             # Output files
             print(f"\nOutput Directory: {args.output_dir}")
-            print(f"JSON Report: Generated successfully")
-            print(f"PDF Report: Generated successfully")
+            print("JSON Report: Generated successfully")
+            print("PDF Report: Generated successfully")
 
             print("\n" + "=" * 70)
             print("REPORT GENERATION COMPLETED SUCCESSFULLY")
@@ -668,7 +683,7 @@ Examples:
         help="SSH password for VAST nodes (will prompt if not provided and port mapping enabled)",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.2")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.7")
 
     return parser
 

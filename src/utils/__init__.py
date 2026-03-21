@@ -19,7 +19,7 @@ def get_bundle_dir() -> Path:
     environment it is the project root (one level above ``src/``).
     """
     if getattr(sys, "frozen", False):
-        return Path(sys._MEIPASS)
+        return Path(getattr(sys, "_MEIPASS", ""))
     return Path(__file__).resolve().parent.parent.parent
 
 

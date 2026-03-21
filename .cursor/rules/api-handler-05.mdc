@@ -5,6 +5,16 @@ alwaysApply: false
 ---
 # API Handler Conventions
 
+## Read-Only Cluster Policy (mandatory)
+
+This app is a **report-generation tool only**. It must never change or update the VAST cluster.
+
+- **Data collection:** Use only **GET** requests. `_make_api_request()` accepts GET only; POST/PUT/DELETE raise.
+- **Authentication:** May use POST only to establish read-only access (e.g. session login, JWT, or token creation when no token provided). Do not add any VAST API calls that create, update, or delete cluster configuration or resources.
+- **Tests/validation:** Mock only read operations or auth; never trigger cluster-modifying VAST API calls.
+
+See [docs/development/READ_ONLY_VAST_API_POLICY.md](../../docs/development/READ_ONLY_VAST_API_POLICY.md).
+
 ## Authentication (strict order)
 1. API token (CLI `--token` or `VAST_API_TOKEN` env var)
 2. Existing tokens on cluster

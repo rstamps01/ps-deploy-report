@@ -82,9 +82,25 @@ class TestFullPipelineIntegration(unittest.TestCase):
                 ],
                 "cboxes": [
                     {"id": 1, "name": "cbox-1", "serial_number": "CB001", "model": "CBox", "status": "active"},
+                    {
+                        "id": 2,
+                        "name": "cbox-2",
+                        "serial_number": "SERIAL123",
+                        "model": "dell_turin_cbox",
+                        "status": "active",
+                    },
                 ],
                 "dboxes": [
                     {"id": 1, "name": "dbox-1", "serial_number": "DB001", "model": "DBox", "status": "active"},
+                ],
+                "eboxes": [
+                    {
+                        "id": 1,
+                        "name": "ebox-1",
+                        "state": "active",
+                        "rack_name": "R1",
+                        "rack_unit": "1",
+                    },
                 ],
             },
             "network": {
@@ -169,6 +185,24 @@ class TestFullPipelineIntegration(unittest.TestCase):
         with open(output_path, "rb") as f:
             magic = f.read(5)
         self.assertEqual(magic, b"%PDF-")
+
+    def test_report_content_contains_ebox_and_model_serial(self):
+        """TSE-5: EBox + dell_turin_cbox + serial in data; assert intermediate and PDF generation."""
+        processed = self.extractor.extract_all_data(self.raw_data)
+        hw = processed.get("hardware_inventory", {})
+        eboxes = hw.get("eboxes") or {}
+        cboxes = hw.get("cboxes") or {}
+        self.assertGreater(len(eboxes), 0, "Processed data should include EBox(es)")
+        self.assertGreater(len(cboxes), 0, "Processed data should include CBox(es)")
+        cbox_models = [c.get("model") or c.get("hardware_type") or "" for c in cboxes.values()]
+        self.assertIn("dell_turin_cbox", cbox_models, "Processed data should include dell_turin_cbox model")
+        serials = [c.get("serial_number", "") for c in cboxes.values()]
+        self.assertIn("SERIAL123", serials, "Processed data should include expected serial")
+        output_path = os.path.join(self.tmpdir, "tse5_report.pdf")
+        result = self.builder.generate_pdf_report(processed, output_path)
+        self.assertTrue(result, "PDF report should be generated")
+        self.assertTrue(os.path.exists(output_path))
+        self.assertGreater(os.path.getsize(output_path), 0, "Generated PDF should be non-empty")
 
     def test_save_processed_data_produces_valid_json(self):
         processed = self.extractor.extract_all_data(self.raw_data)
@@ -324,6 +358,88 @@ class TestDataConsistency(unittest.TestCase):
         completeness = processed["metadata"]["overall_completeness"]
         self.assertGreater(completeness, 0)
         self.assertLessEqual(completeness, 100)
+
+
+@pytest.mark.integration
+class TestHealthCheckIntegration(unittest.TestCase):
+    """Verify health check data flows through the extraction pipeline."""
+
+    def setUp(self):
+        self.extractor = VastDataExtractor()
+        self.tmpdir = tempfile.mkdtemp(prefix="vast_health_")
+
+    def _make_mock_health_report(self):
+        """Return a mock HealthCheckReport dict (as from HealthChecker.to_dict)."""
+        return {
+            "cluster_ip": "192.168.1.100",
+            "cluster_name": "Health-Test-Cluster",
+            "cluster_version": "5.3.0",
+            "timestamp": "2025-03-19T12:00:00",
+            "results": [
+                {
+                    "check_name": "Cluster RAID Health",
+                    "category": "api",
+                    "status": "pass",
+                    "message": "All RAID states are HEALTHY",
+                    "details": {"ssd_raid_state": "HEALTHY"},
+                    "timestamp": "2025-03-19T12:00:01",
+                    "duration_seconds": 0.5,
+                },
+                {
+                    "check_name": "Panic/Alert Logs",
+                    "category": "node_ssh",
+                    "status": "pass",
+                    "message": "No PANIC/ALERT entries found",
+                    "details": {},
+                    "timestamp": "2025-03-19T12:00:02",
+                    "duration_seconds": 1.0,
+                },
+            ],
+            "summary": {"pass": 2, "fail": 0, "warning": 0, "skipped": 0, "error": 0},
+            "manual_checklist": [{"item": "Failover Testing", "description": "VMS migration test", "status": "Manual"}],
+            "tiers_run": [1, 2],
+        }
+
+    def test_health_check_json_in_report_data(self):
+        raw = {
+            "collection_timestamp": 1695672000.0,
+            "cluster_ip": "192.168.1.100",
+            "api_version": "v7",
+            "cluster_version": "5.3.0",
+            "enhanced_features": {"rack_height_supported": False, "psnt_supported": False},
+            "cluster_info": {"name": "Health-Test", "guid": "h-001", "version": "5.3.0", "state": "active"},
+            "hardware": {"cnodes": [], "dnodes": [], "cboxes": [], "dboxes": []},
+            "logical": {"tenants": [], "views": [], "viewpolicies": []},
+            "security": {"activedirectory": {"enabled": False}, "ldap": {"enabled": False}},
+            "data_protection": {"snapprograms": [], "protectionpolicies": []},
+        }
+        raw["health_check_results"] = self._make_mock_health_report()
+        processed = self.extractor.extract_all_data(raw)
+        self.assertIn("health_check", processed["sections"])
+        self.assertIn("post_deployment_validation", processed["sections"])
+
+    def test_health_check_report_section_present(self):
+        raw = {
+            "collection_timestamp": 1695672000.0,
+            "cluster_ip": "192.168.1.100",
+            "api_version": "v7",
+            "cluster_version": "5.3.0",
+            "enhanced_features": {"rack_height_supported": False, "psnt_supported": False},
+            "cluster_info": {"name": "Health-Test", "guid": "h-001", "version": "5.3.0", "state": "active"},
+            "hardware": {"cnodes": [], "dnodes": [], "cboxes": [], "dboxes": []},
+            "logical": {"tenants": [], "views": [], "viewpolicies": []},
+            "security": {"activedirectory": {"enabled": False}, "ldap": {"enabled": False}},
+            "data_protection": {"snapprograms": [], "protectionpolicies": []},
+        }
+        raw["health_check_results"] = self._make_mock_health_report()
+        processed = self.extractor.extract_all_data(raw)
+        health_section = processed["sections"]["health_check"]
+        self.assertEqual(health_section["title"], "Cluster Health Check Results")
+        self.assertEqual(health_section["completeness"], 100.0)
+        self.assertEqual(health_section["status"], "complete")
+        pvd_section = processed["sections"]["post_deployment_validation"]
+        self.assertEqual(pvd_section["title"], "Post Deployment Validation")
+        self.assertEqual(pvd_section["completeness"], 100.0)
 
 
 if __name__ == "__main__":

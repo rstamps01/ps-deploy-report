@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Health Check Module:** New `health_checker.py` with 26 Tier-1 API checks, Tier-2 node SSH checks, and Tier-3 switch SSH checks
+- **Dynamic Health Check Tiers in Generate:** When "Include Health Check" is enabled, tiers are selected based on Port Mapping:
+  - Port Mapping disabled → Tier 1 only (26 API checks)
+  - Port Mapping enabled with SSH credentials → Tier 1+2+3 (API + Node SSH + Switch SSH)
+- **Health Check UI Hint:** Generate page shows dynamic hint explaining which tiers will run
+- **Health Check UI:** New `/health` page with real-time SSE log streaming, tier selection, and job control
+- **Remediation Report Generator:** Health check auto-generates `.txt` remediation report with numbered findings, severity levels, timestamps, impact statements, correlated issues, and actionable remediation steps
+- **Health Check Correlation Engine:** Detects related failures (e.g., CNode+DNode down = chassis issue; leader marked inactive = inconsistency warning)
+- **Health Check PDF Sections:** Cluster Health Check Results and Post Deployment Validation sections in PDF report
+- **API Handler Extensions:** New `get_alarms()`, `get_events()`, `get_snapshots()`, `get_quotas()`, `get_prometheus_metrics()` methods
+- **Include Health Check Option:** Checkbox in Generate page to optionally include Tier-1 health check in report generation
+- **CI Health Check Tests:** New `health-check-tests` job in CI pipeline for fast feedback
+
+### Fixed
+- **CNode/DNode Status Detection:** Fixed false-positive failures where active nodes were reported as inactive; health checker now uses `state` field (VAST API standard) instead of `status`
+- **API Endpoint Cleanup:** Removed undocumented/non-functional API calls per official VAST API v7 documentation:
+  - Removed `ntps/` call (NTP retrieved from `clusters/` endpoint)
+  - Removed `alerts/` call (not documented in VAST API)
+  - Changed `alarmdefinitions/` to `eventdefinitions/` (documented endpoint)
+- **Reduced Log Noise:** Changed WARNING to DEBUG for optional endpoints that return 404 when features aren't configured (ldap/, nis/, snapprograms/, snmp/, syslog/)
+- **Network Settings API Mapping:** Fixed DNS/NTP/gateway always showing as null; now correctly unwraps `response["data"]` from VMS API and uses proper field names
+- **SSH Check Timeout:** Fixed indefinite hang on Tier-2 node SSH checks; management ping now has 60s overall limit, 10s per-ping SSH timeout, and cancellation checks
+- **RAID Rebuild Progress:** Fixed 100% rebuild progress incorrectly shown as "in-progress"; now correctly reports as complete
+- **Leader State Check:** Fixed "UP" leader state incorrectly flagged; now accepts "UP" as healthy
+- **Upgrade State Check:** Fixed "DONE" upgrade state shown as warning; now correctly reports as pass
+- **Prometheus Timeout:** Fixed hardcoded timeout; now uses configurable `self.timeout` value
+
+### Changed
+- **Alarm Details:** Health check captures per-alarm severity, object type, object name, and timestamp for detailed remediation guidance
+- **Health Check Report Table:** Removed Duration column from "Detailed Check Results" table; adjusted column widths (Message column expanded to 56% for better text fit)
+- **Event Definitions:** Health checker now uses `/api/eventdefinitions/` (documented) instead of `/api/alarmdefinitions/` (undocumented) for enriching alarm descriptions
+- **Events API:** Added pagination and time filter to prevent timeout on clusters with large event history
+
+### Technical Details
+- Validated on selab-var-202, selab-var-203, selab-var-204 clusters
+- Tier-1 + Tier-2 health checks now complete in ~24 seconds
+- Remediation reports saved to `output/health/health_remediation_<cluster>_<timestamp>.txt`
+
+## [1.4.7] - 2026-03-17
+
+### Fixed
+- **PDF Generation Error:** Fixed `'str' object has no attribute 'wrapOn'` error when API returns list values (e.g., `ekm_servers`, `dns`, `ntp`) that were placed directly in ReportLab table cells
+- **Security & Authentication Table:** EKM servers, addresses, and encryption settings now properly handle list values from API by converting to comma-separated strings
+- **Network Configuration Table:** Management VIPs, external gateways, DNS servers, NTP servers, and IPMI settings now safely converted to strings before table insertion
+
+### Added
+- **Safe Table Value Helper:** New `_safe_table_value()` method in `VastReportBuilder` that converts any value type (lists, None, dicts) to safe strings for table cells
+
+### Technical Details
+- Root cause: VAST API returns `ekm_servers` as nested list (e.g., `[['hostname', port]]`) which ReportLab cannot render directly in table cells
+- Fix handles lists by joining elements with commas; handles None/empty with configurable default
+- Validated with JSON-to-PDF regeneration test on affected cluster data
+
+## [1.4.6] - 2026-03-17
+
+### Added
+- **Pre-release checklist (QG-1):** README Development section documents running flake8, black, mypy, and pytest (with coverage) before release/merge; aligns with CI quality gate.
+- **Library API tests (TSE-1):** Unit tests for GET `/library`, GET/POST/DELETE `/api/library` with mocked `_load_library`/`_save_library` in `tests/test_app.py` (TestLibraryRoutes).
+- **Generate cancel test (TSE-2):** Unit tests for POST `/generate/cancel` — no job returns `no_job`; job running accepts cancel and sets JOB_RESULT (TestGenerateCancel).
+- **Reports dirs tests (TSE-3):** Unit tests for GET `/reports/dirs` and POST `/reports/dirs` with valid path (updates config) and 400 for empty/nonexistent (TestReportsDirsRoutes).
+- **EBox Port Mapping:** EBox-specific port mapping with CNode/DNode names in Notes column; standard CBox/DBox clusters show "Primary" in Notes
+- **EBox Network Diagram:** Logical Network Diagram shows EB# labels for EBox clusters with Green (Network A) and Blue (Network B) connections to switches
+- **Built-in Hardware Library:** Added msn4700-ws2rc (Mellanox SN4700 400Gb 32pt Switch, 1U) and dell_genoa_ebox (Dell Genoa 1U EBox) as permanent built-in devices
+
+### Changed
+- **Coverage threshold:** `cov-fail-under` set to 47% in pyproject.toml and CI workflows (current suite ~47%); restoration to 49%+ tracked in docs/TODO-ROADMAP.md (QG-3, TSE-8).
+- **Port Mapping Section:** Added page break before Port Mapping heading; Switch 1 table now appears before Switch 2
+- **Switch Configuration Section:** Added page break before Switch Configuration heading
+- **Network Diagram Connections:** Fixed CNode-to-switch (top to middle) and DNode-to-switch (bottom to middle) connection line coordinates
+
+### Policy & API
+- **Read-only VAST API policy:** The app must never use VAST API calls that change or update the cluster. Data collection uses **GET only**. `_make_api_request()` in `api_handler` now accepts only GET and raises `ValueError` for POST/PUT/DELETE. Authentication may still use POST only to establish read-only access (session/token/JWT). See [docs/development/READ_ONLY_VAST_API_POLICY.md](docs/development/READ_ONLY_VAST_API_POLICY.md) and `.cursor/rules/api-handler-05.mdc`.
+
+### Added (tests)
+- **TSE-4:** Unit tests for POST `/api/discover` (400 missing cluster_ip, 401 auth failure, 200 success with mocked `create_vast_api_handler` and `RackDiagram`). All discovery flows are read-only (get_racks, get_switch_inventory).
+- **Read-only enforcement test:** `test_make_api_request_only_get_allowed` in test_api_handler verifies that POST/PUT/DELETE/PATCH raise ValueError.
+- **TSE-5:** Integration test for report content: raw data with EBox + dell_turin_cbox + serial; asserts processed hardware_inventory and successful PDF generation (test_integration.py).
+- **TSE-6:** Unit tests for Profiles API: GET/POST `/profiles` and DELETE `/profiles/<name>` with mocked `_load_profiles`/`_save_profiles` (TestProfilesRoutes in test_app.py).
+- **TSE-7:** Unit test for POST `/shutdown` (200, status `shutting_down`; `os._exit` mocked so process does not exit).
+- **TSE-8:** Coverage restored above 49%; full suite (unit + integration) now ~53% (279 tests).
+
+## [1.4.3] - 2026-03-16
+
+### Fixed
+- **CBoxes missing from Physical Rack Layout**: Rack diagram now builds one entry per CBox (not per CNode) and uses CBox `rack_unit` / `rack_name` with fallback to CNode `rack_position` (`U{n}`); single-VMS rack fallback so CBoxes are not dropped when rack name is "Unknown"
+- **Network diagram placeholder on macOS**: When reportlab renderPM fails (T1 font), use `qlmanage` to convert the generated PDF to PNG so the report embeds the real topology diagram instead of the placeholder
+- **Windows PDF "Permission denied"**: First-pass temp PDF now uses `tempfile.mkstemp()` and explicit unlink instead of `NamedTemporaryFile(delete=True)` to avoid Windows temp file locking
+- **Windows port mapping charmap error**: All SSH/subprocess output in port mapping now decoded with `encoding="utf-8", errors="replace"` so UTF-8 from switches/nodes does not trigger `'charmap' codec can't encode` on Windows
+
+### Changed
+- **README**: Table of contents, quick start, and troubleshooting (Windows PDF, port mapping charmap); project structure and docs links updated
+- **Report builder**: Per-CBox rack grouping and rack_unit from CBox or CNode; Unknown rack mapped to single VMS rack when applicable
+
 ## [1.4.2] - 2026-03-11
 
 ### Added

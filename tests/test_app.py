@@ -198,6 +198,373 @@ class TestReportsRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+class TestLibraryRoutes(unittest.TestCase):
+    """TSE-1: Library page and API (GET /library, GET/POST/DELETE /api/library) with mocked _load_library/_save_library."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["LIBRARY_PATH"] = os.path.join(self.tmpdir, "device_library.json")
+        self.app.config["USER_IMAGES_DIR"] = os.path.join(self.tmpdir, "images")
+        Path(self.app.config["USER_IMAGES_DIR"]).mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        import shutil
+
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @patch("app._load_library")
+    @patch("app._get_builtin_devices")
+    def test_library_page_returns_200(self, mock_builtin, mock_load):
+        mock_builtin.return_value = {}
+        mock_load.return_value = {}
+        resp = self.client.get("/library")
+        self.assertEqual(resp.status_code, 200)
+        mock_load.assert_called_once_with(self.app.config["LIBRARY_PATH"])
+
+    @patch("app._load_library")
+    @patch("app._get_builtin_devices")
+    def test_api_library_get_returns_merged_list(self, mock_builtin, mock_load):
+        mock_builtin.return_value = {"builtin_1": {"type": "cbox", "height_u": 1}}
+        mock_load.return_value = {"user_1": {"type": "dbox", "height_u": 2}}
+        resp = self.client.get("/api/library")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertIsInstance(data, list)
+        keys = [d["key"] for d in data]
+        self.assertIn("builtin_1", keys)
+        self.assertIn("user_1", keys)
+
+    @patch("app._validate_image")
+    @patch("app._save_library")
+    @patch("app._load_library")
+    def test_api_library_post_adds_entry(self, mock_load, mock_save, mock_validate):
+        mock_load.return_value = {}
+        mock_validate.return_value = None
+        resp = self.client.post(
+            "/api/library",
+            data={"key": "my_device", "type": "cbox", "height_u": "1", "description": "Test"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "added")
+        self.assertEqual(body["key"], "my_device")
+        mock_save.assert_called_once()
+        call_lib = mock_save.call_args[0][1]
+        self.assertIn("my_device", call_lib)
+        self.assertEqual(call_lib["my_device"]["type"], "cbox")
+        self.assertEqual(call_lib["my_device"]["height_u"], 1)
+
+    @patch("app._validate_image")
+    @patch("app._save_library")
+    @patch("app._load_library")
+    def test_api_library_post_missing_key_returns_400(self, mock_load, mock_save, mock_validate):
+        mock_load.return_value = {}
+        resp = self.client.post("/api/library", data={"type": "cbox"})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        mock_save.assert_not_called()
+
+    @patch("app._save_library")
+    @patch("app._load_library")
+    def test_api_library_delete_removes_entry(self, mock_load, mock_save):
+        mock_load.return_value = {"user_device": {"type": "cbox", "height_u": 1}}
+        resp = self.client.delete("/api/library/user_device")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "deleted")
+        self.assertEqual(body["key"], "user_device")
+        mock_save.assert_called_once()
+        call_lib = mock_save.call_args[0][1]
+        self.assertNotIn("user_device", call_lib)
+
+    @patch("app._load_library")
+    def test_api_library_delete_missing_returns_404(self, mock_load):
+        mock_load.return_value = {}
+        resp = self.client.delete("/api/library/nonexistent")
+        self.assertEqual(resp.status_code, 404)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+
+
+class TestGenerateCancel(unittest.TestCase):
+    """TSE-2: POST /generate/cancel — no job vs job running."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_generate_cancel_no_job_returns_200_no_job(self):
+        self.assertFalse(self.app.config["JOB_RUNNING"])
+        resp = self.client.post("/generate/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "no_job")
+
+    def test_generate_cancel_job_running_accepts_cancel(self):
+        self.app.config["JOB_RUNNING"] = True
+        resp = self.client.post("/generate/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "cancelled")
+        self.assertFalse(self.app.config["JOB_RUNNING"])
+        self.assertFalse(self.app.config["JOB_RESULT"]["success"])
+        self.assertIn("cancelled", self.app.config["JOB_RESULT"]["error"].lower())
+
+
+class TestReportsDirsRoutes(unittest.TestCase):
+    """TSE-3: GET /reports/dirs and POST /reports/dirs (output-dir behavior)."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["DEFAULT_OUTPUT_DIR"] = self.tmpdir
+        self.app.config["OUTPUT_DIRS"] = {self.tmpdir}
+
+    def tearDown(self):
+        import shutil
+
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_reports_dirs_get_returns_current_dir(self):
+        resp = self.client.get("/reports/dirs")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["dir"], self.tmpdir)
+
+    def test_reports_dirs_post_valid_path_updates_config(self):
+        other_dir = tempfile.mkdtemp()
+        try:
+            resp = self.client.post(
+                "/reports/dirs",
+                json={"dir": other_dir},
+                content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 200)
+            body = json.loads(resp.data)
+            self.assertEqual(body["status"], "updated")
+            self.assertEqual(body["dir"], str(Path(other_dir).resolve()))
+            self.assertEqual(self.app.config["DEFAULT_OUTPUT_DIR"], str(Path(other_dir).resolve()))
+            self.assertIn(str(Path(other_dir).resolve()), self.app.config["OUTPUT_DIRS"])
+        finally:
+            if os.path.exists(other_dir):
+                import shutil
+
+                shutil.rmtree(other_dir, ignore_errors=True)
+
+    def test_reports_dirs_post_empty_dir_returns_400(self):
+        resp = self.client.post("/reports/dirs", json={"dir": ""}, content_type="application/json")
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+
+    def test_reports_dirs_post_nonexistent_dir_returns_400(self):
+        resp = self.client.post(
+            "/reports/dirs",
+            json={"dir": "/nonexistent/path/12345"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+
+
+class TestApiDiscover(unittest.TestCase):
+    """TSE-4: POST /api/discover — mocked create_vast_api_handler + RackDiagram (read-only: auth + get_racks + get_switch_inventory)."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["CONFIG_PATH"] = os.path.join(self.tmpdir, "config.yaml")
+        Path(self.app.config["CONFIG_PATH"]).write_text("api:\n  timeout: 30\n")
+
+    def tearDown(self):
+        import shutil
+
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_api_discover_missing_cluster_ip_returns_400(self):
+        resp = self.client.post(
+            "/api/discover",
+            json={},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        self.assertIn("Cluster IP", body["error"])
+
+    @patch("rack_diagram.RackDiagram")
+    @patch("api_handler.create_vast_api_handler")
+    def test_api_discover_auth_failure_returns_401(self, mock_create_handler, mock_rack_diagram):
+        mock_handler = MagicMock()
+        mock_handler.authenticate.return_value = False
+        mock_create_handler.return_value = mock_handler
+
+        resp = self.client.post(
+            "/api/discover",
+            json={"cluster_ip": "10.0.0.1", "username": "u", "password": "p"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 401)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        mock_handler.authenticate.assert_called_once()
+        mock_handler.get_racks.assert_not_called()
+        mock_handler.close.assert_not_called()
+
+    @patch("rack_diagram.RackDiagram")
+    @patch("api_handler.create_vast_api_handler")
+    def test_api_discover_success_returns_racks_and_switches(self, mock_create_handler, mock_rack_diagram):
+        mock_handler = MagicMock()
+        mock_handler.authenticate.return_value = True
+        mock_handler.get_racks.return_value = [
+            {"id": 1, "name": "Rack-A", "number_of_units": 42},
+            {"id": 2, "name": "Rack-B", "number_of_units": 42},
+        ]
+        mock_handler.get_switch_inventory.return_value = {
+            "switches": [
+                {"name": "SW1", "model": "msn3700", "serial": "S1"},
+                {"name": "SW2", "model": "arista_7050", "serial": "S2"},
+            ],
+        }
+        mock_create_handler.return_value = mock_handler
+
+        mock_rd_instance = MagicMock()
+        mock_rd_instance._get_device_height_units.side_effect = lambda m: 1 if "msn" in m else 2
+        mock_rack_diagram.return_value = mock_rd_instance
+
+        resp = self.client.post(
+            "/api/discover",
+            json={"cluster_ip": "10.0.0.1", "username": "u", "password": "p"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("racks", body)
+        self.assertIn("switches", body)
+        self.assertEqual(len(body["racks"]), 2)
+        self.assertEqual(len(body["switches"]), 2)
+        mock_handler.get_racks.assert_called_once()
+        mock_handler.get_switch_inventory.assert_called_once()
+        mock_handler.close.assert_called_once()
+
+
+class TestProfilesRoutes(unittest.TestCase):
+    """TSE-6: GET/POST /profiles and DELETE /profiles/<name> with mocked _load_profiles/_save_profiles."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["PROFILES_PATH"] = os.path.join(self.tmpdir, "cluster_profiles.json")
+
+    def tearDown(self):
+        import shutil
+
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @patch("app._load_profiles")
+    def test_profiles_get_returns_200_and_json(self, mock_load):
+        mock_load.return_value = {}
+        resp = self.client.get("/profiles")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertIsInstance(data, dict)
+        mock_load.assert_called_once_with(self.app.config["PROFILES_PATH"])
+
+    @patch("app._load_profiles")
+    def test_profiles_get_returns_saved_profiles(self, mock_load):
+        mock_load.return_value = {"profile1": {"cluster_ip": "10.0.0.1"}}
+        resp = self.client.get("/profiles")
+        self.assertEqual(resp.status_code, 200)
+        data = json.loads(resp.data)
+        self.assertIn("profile1", data)
+        self.assertEqual(data["profile1"]["cluster_ip"], "10.0.0.1")
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_profiles_post_requires_name(self, mock_load, mock_save):
+        mock_load.return_value = {}
+        resp = self.client.post(
+            "/profiles",
+            json={"cluster_ip": "10.0.0.1"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        self.assertIn("name", body["error"].lower())
+        mock_save.assert_not_called()
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_profiles_post_success(self, mock_load, mock_save):
+        mock_load.return_value = {}
+        resp = self.client.post(
+            "/profiles",
+            json={
+                "name": "my-cluster",
+                "cluster_ip": "10.0.0.5",
+                "auth_method": "password",
+                "username": "admin",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body.get("status"), "saved")
+        self.assertEqual(body.get("name"), "my-cluster")
+        mock_save.assert_called_once()
+        call_profiles = mock_save.call_args[0][1]
+        self.assertIn("my-cluster", call_profiles)
+        self.assertEqual(call_profiles["my-cluster"]["cluster_ip"], "10.0.0.5")
+
+    @patch("app._load_profiles")
+    def test_profiles_delete_not_found_returns_404(self, mock_load):
+        mock_load.return_value = {}
+        resp = self.client.delete("/profiles/nonexistent")
+        self.assertEqual(resp.status_code, 404)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_profiles_delete_success(self, mock_load, mock_save):
+        mock_load.return_value = {"to-delete": {"cluster_ip": "10.0.0.1"}}
+        resp = self.client.delete("/profiles/to-delete")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body.get("status"), "deleted")
+        mock_save.assert_called_once()
+        call_profiles = mock_save.call_args[0][1]
+        self.assertNotIn("to-delete", call_profiles)
+
+
+class TestShutdown(unittest.TestCase):
+    """TSE-7: POST /shutdown returns 200 and status (shutdown is mocked to avoid process exit)."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    @patch("app.os._exit")
+    def test_shutdown_returns_200_and_status(self, mock_os_exit):
+        resp = self.client.post("/shutdown")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body.get("status"), "shutting_down")
+        mock_os_exit.assert_called_once_with(0)
+
+
 class TestDocsRoutes(unittest.TestCase):
     """Docs page and doc content; internal .md links are rewritten to /docs#<doc_id>."""
 
@@ -237,6 +604,44 @@ class TestSSEStream(unittest.TestCase):
     def test_stream_logs_returns_event_stream(self):
         resp = self.client.get("/stream/logs")
         self.assertTrue(resp.content_type.startswith("text/event-stream"))
+
+
+class TestHealthRoutes(unittest.TestCase):
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_health_page_loads(self):
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_run_missing_ip(self):
+        resp = self.client.post("/health/run", data={"cluster_ip": ""})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("message", body)
+
+    def test_health_run_already_running(self):
+        self.app.config["HEALTH_JOB_RUNNING"] = True
+        resp = self.client.post("/health/run", data={"cluster_ip": "10.0.0.1"})
+        self.assertEqual(resp.status_code, 409)
+
+    def test_health_status_no_job(self):
+        resp = self.client.get("/health/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["running"])
+
+    def test_health_cancel_no_job(self):
+        resp = self.client.post("/health/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "no_job")
+
+    def test_health_results_no_data(self):
+        resp = self.client.get("/health/results")
+        self.assertEqual(resp.status_code, 404)
 
 
 class TestHelperFunctions(unittest.TestCase):

@@ -5,6 +5,18 @@ alwaysApply: true
 
 # Release & Packaging Workflow
 
+## Release build requirement (mandatory)
+
+**Every new release MUST include a new build-release .dmg (and Windows artifact) generated from that release version’s code.** This is non-negotiable and applied consistently for each release.
+
+- **Trigger:** Pushing an annotated tag `vX.Y.Z` (e.g. `v1.4.2`) triggers `.github/workflows/build-release.yml`.
+- **Source of build:** The workflow checks out the **tagged commit** (the exact release version code). No other ref is used for the release build.
+- **Artifacts produced:**  
+  - **macOS:** `VAST-Reporter-vX.Y.Z-mac.dmg` (or `.zip` if create-dmg is unavailable), built via `packaging/build-mac.sh`, which reads `APP_VERSION` from `src/app.py`.  
+  - **Windows:** `VAST-Reporter-vX.Y.Z-win.zip`, built via `packaging/build-windows.ps1`.  
+- **Publishing:** The workflow creates (or updates) the GitHub Release for that tag and attaches the .dmg and .zip as release assets.
+- **Consistency:** Do not ship a release without pushing the tag; do not push a tag without ensuring version strings (e.g. `APP_VERSION`, `packaging/vast-reporter.spec`, `packaging/build-windows.ps1`) are already set to X.Y.Z in that commit. The same tagged commit is what gets built and what users get.
+
 ## When to Release
 
 A release MUST be prepared whenever changes are merged to `develop` that:
@@ -28,11 +40,23 @@ Do not batch unrelated fixes indefinitely. Ship small, frequent releases.
 | `src/main.py` | `version=` in argparse | CLI `--version` output |
 | `src/__init__.py` | `__version__` | Package metadata |
 | `packaging/vast-reporter.spec` | `CFBundleShortVersionString`, `CFBundleVersion` | macOS .app bundle |
-| `packaging/build-windows.ps1` | `$Version` | Windows ZIP naming |
+| `packaging/build-windows.ps1` | Reads version from `src/app.py` | Windows ZIP naming (no manual update) |
 | `CHANGELOG.md` | `## [X.Y.Z]` header | Release history |
 | `README.md` | Version badge/references | User-facing docs |
 
-`packaging/build-mac.sh` reads from `src/app.py` dynamically — no manual update needed.
+`packaging/build-mac.sh` reads from `src/app.py` dynamically — no manual update needed.  
+`packaging/build-windows.ps1` reads `APP_VERSION` from `src/app.py` for the Windows ZIP name — no manual update needed.
+
+### Windows build process (defined)
+
+- **Script:** `packaging/build-windows.ps1` (run from project root: `powershell -ExecutionPolicy Bypass -File packaging\build-windows.ps1`).
+- **Prerequisites:** Python 3.12, `pip install -r requirements.txt pyinstaller`.
+- **Steps:** (1) Clean `dist/` and `build/`; (2) Run `pyinstaller packaging/vast-reporter.spec --noconfirm`; (3) Verify `dist/VAST Reporter/` exists (directory with `vast-reporter.exe` and dependencies); (4) Create `VAST-Reporter-vX.Y.Z-win.zip` from that directory (version from `src/app.py`).
+- **Output:** `dist/VAST-Reporter-vX.Y.Z-win.zip`. The CI workflow uploads `dist/` and the release job copies the .zip to the GitHub Release.
+
+### macOS build process (defined)
+
+- **Script:** `packaging/build-mac.sh`. CI installs `create-dmg` via Homebrew so the workflow produces a .dmg; without it the script produces only the .app and the release step falls back to zipping `VAST Reporter.app`.
 
 ## End-to-End Release Checklist
 
@@ -71,17 +95,21 @@ grep -n 'Version\|CFBundle' packaging/vast-reporter.spec packaging/build-windows
 
 1. Create annotated tag: `git tag -a vX.Y.Z -m "Release vX.Y.Z — short description"`
 2. Push tag: `git push origin vX.Y.Z`
-3. CI/CD (`.github/workflows/build-release.yml`) automatically:
-   - Runs tests
-   - Builds macOS .app + .dmg via `packaging/build-mac.sh`
+3. **Build-release workflow (mandatory):** `.github/workflows/build-release.yml` runs on tag push. It:
+   - Checks out the **tagged commit** (the release version code)
+   - Runs quality gate and tests
+   - Builds macOS .app + .dmg via `packaging/build-mac.sh` (version from `src/app.py`)
    - Builds Windows .exe + .zip via `packaging/build-windows.ps1`
-   - Creates GitHub Release with assets attached
+   - Creates the GitHub Release for that tag and **attaches the .dmg and .zip** as release assets
+
+**Every release must produce these artifacts from the new release version code; there is no exception.**
 
 ### Phase 6: Verify Release
 
-1. Check GitHub Actions completed successfully
-2. Download and verify .dmg and .zip from the GitHub Release page
-3. Optionally create `RELEASE_NOTES_vX.Y.Z.md` in project root for detailed notes
+1. Check GitHub Actions (Build & Release workflow) completed successfully
+2. Confirm the GitHub Release for `vX.Y.Z` has `VAST-Reporter-vX.Y.Z-mac.dmg` and `VAST-Reporter-vX.Y.Z-win.zip` attached
+3. Download and verify the .dmg (and .zip) from the GitHub Release page
+4. Optionally create `RELEASE_NOTES_vX.Y.Z.md` in project root for detailed notes
 
 ## Local .dmg Build (when CI is not used)
 
@@ -115,5 +143,5 @@ git push origin main
 git tag -a v1.4.2 -m "Release v1.4.2 — fix description"
 git push origin v1.4.2
 
-# CI builds .dmg and .zip automatically
+# CI builds .dmg and .zip from the tagged release code and attaches them to the GitHub Release
 ```

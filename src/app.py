@@ -13,7 +13,7 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
@@ -28,12 +28,13 @@ from flask import (
 # Ensure src/ is on the path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils import get_bundle_dir, get_data_dir
-from utils.logger import enable_sse_logging, get_logger, get_sse_queue
+from utils import get_bundle_dir, get_data_dir  # noqa: E402
+from utils.logger import enable_sse_logging, get_logger, get_sse_queue  # noqa: E402
+from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.4.2"
+APP_VERSION = "1.4.7"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -105,17 +106,17 @@ def _rewrite_doc_links_in_html(html: str) -> str:
     def replace_href(match: re.Match) -> str:
         href = match.group(1)
         if not href or href.startswith("#") or "docs#" in href:
-            return match.group(0)
+            return str(match.group(0))
         parsed = urlparse(unquote(href))
         path = (parsed.path or "").strip().lstrip("/")
         if path.startswith("./"):
             path = path[2:]
         if not path.endswith(".md"):
-            return match.group(0)
+            return str(match.group(0))
         doc_id = _DOC_LINK_MAP.get(path) or _DOC_LINK_MAP.get(path.split("/")[-1])
         if doc_id:
             return f'<a href="/docs#{doc_id}"'
-        return match.group(0)
+        return str(match.group(0))
 
     return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
 
@@ -169,6 +170,12 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["JOB_LOCK"] = threading.Lock()
     app.config["JOB_CANCEL"] = threading.Event()
 
+    # Health check background job state (independent from report job)
+    app.config["HEALTH_JOB_RUNNING"] = False
+    app.config["HEALTH_JOB_RESULT"] = None
+    app.config["HEALTH_JOB_LOCK"] = threading.Lock()
+    app.config["HEALTH_JOB_CANCEL"] = threading.Event()
+
     _register_routes(app)
     return app
 
@@ -221,6 +228,7 @@ def _register_routes(app: Flask) -> None:
             "token": form.get("token", ""),
             "output_dir": app.config["DEFAULT_OUTPUT_DIR"],
             "enable_port_mapping": form.get("enable_port_mapping") == "on",
+            "include_health_check": form.get("include_health_check") == "1",
             "switch_user": form.get("switch_user", "cumulus"),
             "switch_password": form.get("switch_password", ""),
             "node_user": form.get("node_user", "vastdata"),
@@ -292,6 +300,69 @@ def _register_routes(app: Flask) -> None:
                     yield ": keepalive\n\n"
 
         return Response(event_stream(), mimetype="text/event-stream")
+
+    # -- Health Check -------------------------------------------------------
+
+    @app.route("/health")
+    def health_page():
+        """Health check page."""
+        return render_template("health.html", version=APP_VERSION)
+
+    @app.route("/health/run", methods=["POST"])
+    def health_run():
+        """Start a health check job."""
+        with app.config["HEALTH_JOB_LOCK"]:
+            if app.config["HEALTH_JOB_RUNNING"]:
+                return jsonify({"status": "error", "message": "Health check already running"}), 409
+            app.config["HEALTH_JOB_RUNNING"] = True
+            app.config["HEALTH_JOB_RESULT"] = None
+            app.config["HEALTH_JOB_CANCEL"].clear()
+
+        params = {
+            "cluster_ip": request.form.get("cluster_ip", "").strip(),
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "api_token": request.form.get("api_token", "").strip(),
+            "tiers": request.form.getlist("tiers", type=int) or [1],
+            "node_user": request.form.get("node_user", "").strip(),
+            "node_password": request.form.get("node_password", ""),
+            "switch_user": request.form.get("switch_user", "").strip(),
+            "switch_password": request.form.get("switch_password", ""),
+        }
+        if not params["cluster_ip"]:
+            with app.config["HEALTH_JOB_LOCK"]:
+                app.config["HEALTH_JOB_RUNNING"] = False
+            return jsonify({"status": "error", "message": "Cluster IP required"}), 400
+
+        thread = threading.Thread(target=_run_health_job, args=(app, params), daemon=True)
+        thread.start()
+        return jsonify({"status": "started"})
+
+    @app.route("/health/status")
+    def health_status():
+        """Get health check job status."""
+        return jsonify(
+            {
+                "running": app.config["HEALTH_JOB_RUNNING"],
+                "result": app.config["HEALTH_JOB_RESULT"],
+            }
+        )
+
+    @app.route("/health/cancel", methods=["POST"])
+    def health_cancel():
+        """Cancel running health check."""
+        if app.config["HEALTH_JOB_RUNNING"]:
+            app.config["HEALTH_JOB_CANCEL"].set()
+            return jsonify({"status": "cancelled"})
+        return jsonify({"status": "no_job"})
+
+    @app.route("/health/results")
+    def health_results():
+        """Get the latest health check results JSON."""
+        result = app.config.get("HEALTH_JOB_RESULT")
+        if result and result.get("success"):
+            return jsonify(result.get("report", {}))
+        return jsonify({"error": "No results available"}), 404
 
     # -- Configuration ------------------------------------------------------
 
@@ -716,6 +787,55 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not raw_data:
             raise RuntimeError("Data collection returned empty results")
 
+        # Optional health check - tiers depend on Port Mapping settings
+        _check_cancel(app)
+        if params.get("include_health_check"):
+            try:
+                from health_checker import HealthChecker
+
+                # Determine which tiers to run based on Port Mapping toggle
+                enable_ssh = params.get("enable_port_mapping", False)
+                node_pw = params.get("node_password", "")
+                switch_pw = params.get("switch_password", "")
+
+                if enable_ssh and node_pw and switch_pw:
+                    # Port Mapping enabled with credentials -> run all tiers
+                    tiers = [1, 2, 3]
+                    job_logger.info("Running health checks (Tier 1-3: API + Node SSH + Switch SSH)...")
+
+                    # Build SSH configs for Tier 2 and Tier 3
+                    ssh_config = {
+                        "username": params.get("node_user", "vastdata"),
+                        "password": node_pw,
+                    }
+                    switch_ssh_config = {
+                        "username": params.get("switch_user", "cumulus"),
+                        "password": switch_pw,
+                    }
+
+                    checker = HealthChecker(
+                        api_handler=api_handler,
+                        ssh_config=ssh_config,
+                        switch_ssh_config=switch_ssh_config,
+                        cancel_event=app.config["JOB_CANCEL"],
+                    )
+                else:
+                    # Port Mapping disabled or missing credentials -> Tier 1 only
+                    tiers = [1]
+                    job_logger.info("Running health check (Tier 1 API only)...")
+                    checker = HealthChecker(
+                        api_handler=api_handler,
+                        cancel_event=app.config["JOB_CANCEL"],
+                    )
+
+                health_report = checker.run_all_checks(tiers=tiers)
+                raw_data["health_check_results"] = checker.to_dict(health_report)
+
+                tier_desc = "Tier 1-3" if len(tiers) == 3 else "Tier 1"
+                job_logger.info("Health check completed (%s) — results will be included in report", tier_desc)
+            except Exception as hc_exc:
+                job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
+
         # Optional port mapping
         _check_cancel(app)
         if params.get("enable_port_mapping"):
@@ -725,12 +845,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 raw_data["port_mapping_external"] = port_data
                 job_logger.info("Port mapping data collected successfully")
             else:
-                job_logger.warning("Port mapping collection failed — check SSH " "credentials and network connectivity")
+                job_logger.warning("Port mapping collection failed — check SSH credentials and network connectivity")
 
         # Process data
         _check_cancel(app)
         job_logger.info("Processing collected data...")
-        use_ext = params.get("enable_port_mapping") and "port_mapping_external" in raw_data
+        use_ext = bool(params.get("enable_port_mapping") and "port_mapping_external" in raw_data)
         processed_data = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext)
         if not processed_data:
             raise RuntimeError("Data processing failed")
@@ -791,7 +911,7 @@ def _collect_port_mapping_web(
 ) -> Optional[Dict[str, Any]]:
     """Thin wrapper around ExternalPortMapper for the web UI context."""
     try:
-        from external_port_mapper import ExternalPortMapper
+        from external_port_mapper import ExternalPortMapper, _safe_str
 
         switch_inventory = raw_data.get("switch_inventory", {})
         switches = switch_inventory.get("switches", [])
@@ -800,12 +920,25 @@ def _collect_port_mapping_web(
             logger.warning("No switch management IPs found — cannot collect port mapping")
             return None
 
+        # Try cnodes_network first, then fall back to raw cnodes data (for EBox clusters)
         cnodes_network = raw_data.get("cnodes_network", [])
         cnode_ips = []
         for cn in cnodes_network:
             ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
             if ip and ip != "Unknown" and ip not in cnode_ips:
                 cnode_ips.append(ip)
+
+        # Fallback: check hardware.cnodes data (from /api/v7/cnodes/)
+        if not cnode_ips:
+            hardware = raw_data.get("hardware", {})
+            raw_cnodes = hardware.get("cnodes", [])
+            for cn in raw_cnodes:
+                ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
+                if ip and ip != "Unknown" and ip not in cnode_ips:
+                    cnode_ips.append(ip)
+            if cnode_ips:
+                logger.info(f"Found {len(cnode_ips)} CNode IPs from hardware data: {cnode_ips}")
+
         if not cnode_ips:
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
@@ -835,29 +968,105 @@ def _collect_port_mapping_web(
                         )
                     else:
                         logger.info("Port mapping collection succeeded via CNode %s", cnode_ip)
-                    return result
+                    return cast(Optional[Dict[str, Any]], result)
                 last_error = result.get("error", "unknown reason")
                 if result.get("port_map"):
                     last_partial = result
             except Exception as e:
-                last_error = str(e)
+                last_error = _safe_str(e)
                 logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
 
         if last_partial and last_partial.get("port_map"):
             logger.info("Using partial port mapping from last attempt")
-            return last_partial
+            return cast(Optional[Dict[str, Any]], last_partial)
         logger.warning("Port mapping collection failed for all CNodes: %s", last_error or "unknown reason")
         return None
     except Exception as exc:
-        logger.error("Port mapping collection failed: %s", exc)
+        try:
+            safe_msg = _safe_str(exc)
+        except NameError:
+            safe_msg = str(exc).encode("ascii", errors="replace").decode("ascii")
+        logger.error("Port mapping collection failed: %s", safe_msg)
         return None
+
+
+def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
+    """Execute the health check pipeline in a background thread."""
+    from api_handler import create_vast_api_handler
+    from health_checker import HealthChecker
+    from utils.logger import setup_logging
+
+    try:
+        config_path = app.config["CONFIG_PATH"]
+        config = _load_yaml(config_path)
+        setup_logging(config)
+        enable_sse_logging()
+        job_logger = get_logger("health_job")
+        job_logger.info("Starting health check for %s", params["cluster_ip"])
+
+        username = password = token = None
+        if params.get("api_token"):
+            token = params["api_token"]
+        else:
+            username = params.get("username")
+            password = params.get("password")
+
+        api_handler = create_vast_api_handler(
+            cluster_ip=params["cluster_ip"],
+            username=username,
+            password=password,
+            token=token,
+            config=config,
+        )
+
+        job_logger.info("Authenticating with VAST cluster...")
+        if not api_handler.authenticate():
+            raise RuntimeError("Authentication failed")
+        job_logger.info("Authentication successful")
+
+        ssh_config = None
+        if params.get("node_user") and params.get("node_password"):
+            ssh_config = {"username": params["node_user"], "password": params["node_password"]}
+        switch_ssh_config = None
+        if params.get("switch_user") and params.get("switch_password"):
+            switch_ssh_config = {"username": params["switch_user"], "password": params["switch_password"]}
+
+        checker = HealthChecker(
+            api_handler=api_handler,
+            ssh_config=ssh_config,
+            switch_ssh_config=switch_ssh_config,
+            cancel_event=app.config["HEALTH_JOB_CANCEL"],
+        )
+        report = checker.run_all_checks(tiers=params.get("tiers", [1]))
+        report_dict = checker.to_dict(report)
+
+        output_dir = config.get("output", {}).get("directory", "output")
+        json_path = checker.save_json(report, output_dir)
+        remediation_path = checker.generate_remediation_report(report, output_dir)
+
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RESULT"] = {
+                "success": True,
+                "report": report_dict,
+                "json_path": json_path,
+                "remediation_path": remediation_path,
+                "cluster": report.cluster_name,
+            }
+        job_logger.info("Health check completed successfully")
+
+    except Exception as exc:
+        err_logger = get_logger("health_job")
+        err_logger.error("Health check failed: %s", exc)
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RESULT"] = {"success": False, "error": str(exc)}
+    finally:
+        with app.config["HEALTH_JOB_LOCK"]:
+            app.config["HEALTH_JOB_RUNNING"] = False
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-import fnmatch
 
 _REPORT_PATTERNS = ("vast_asbuilt_report_*.pdf", "vast_data_*.json")
 
@@ -891,7 +1100,7 @@ def _list_reports(output_dirs) -> list:
                     )
                 except (PermissionError, OSError):
                     continue
-    files.sort(key=lambda x: x["modified"], reverse=True)
+    files.sort(key=lambda x: str(x["modified"]), reverse=True)
     return files
 
 
@@ -911,7 +1120,7 @@ def _load_yaml(path: str) -> Dict[str, Any]:
 
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+            return cast(Dict[str, Any], yaml.safe_load(f) or {})
     except (OSError, yaml.YAMLError) as exc:
         logger.debug("Failed to load YAML %s: %s", path, exc)
         return {}
@@ -919,29 +1128,29 @@ def _load_yaml(path: str) -> Dict[str, Any]:
 
 def _load_profiles(path: str) -> Dict[str, Any]:
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def _save_profiles(path: str, profiles: Dict[str, Any]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(profiles, f, indent=2)
 
 
 def _load_library(path: str) -> Dict[str, Any]:
     try:
-        with open(path, "r") as f:
-            return json.load(f)
+        with open(path, "r", encoding="utf-8") as f:
+            return cast(Dict[str, Any], json.load(f))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def _save_library(path: str, library: Dict[str, Any]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(library, f, indent=2)
 
 
@@ -965,7 +1174,7 @@ def _validate_image(file_storage) -> Optional[str]:
         from PIL import Image as PILImage
 
         img = PILImage.open(file_storage)
-        w, h = img.size
+        w, _ = img.size
         if w < 60 or w > 2000:
             return f"Width {w}px out of range (60-2000 px)"
         file_storage.seek(0)
@@ -975,174 +1184,8 @@ def _validate_image(file_storage) -> Optional[str]:
 
 
 def _get_builtin_devices() -> Dict[str, Any]:
-    """Return the built-in device map (read-only, from rack_diagram.py)."""
-    builtin = {
-        # CBoxes
-        "supermicro_gen5_cbox": {
-            "type": "cbox",
-            "height_u": 1,
-            "image_filename": "supermicro_gen5_cbox_1u.png",
-            "description": "Supermicro Gen5 CBox",
-            "source": "built-in",
-        },
-        "hpe_genoa_cbox": {
-            "type": "cbox",
-            "height_u": 1,
-            "image_filename": "hpe_genoa_cbox.png",
-            "description": "HPE Genoa CBox",
-            "source": "built-in",
-        },
-        "hpe_icelake": {
-            "type": "cbox",
-            "height_u": 2,
-            "image_filename": "hpe_il_cbox_2u.png",
-            "description": "HPE IceLake 2U CBox",
-            "source": "built-in",
-        },
-        "dell_icelake": {
-            "type": "cbox",
-            "height_u": 2,
-            "image_filename": "dell_il_cbox_2u.png",
-            "description": "Dell IceLake 2U CBox",
-            "source": "built-in",
-        },
-        "dell_turin_cbox": {
-            "type": "cbox",
-            "height_u": 1,
-            "image_filename": "dell_turin_r6715_cbox_1u.png",
-            "description": "Dell Gen6 Turin CBox (R6715)",
-            "source": "built-in",
-        },
-        "smc_turin_cbox": {
-            "type": "cbox",
-            "height_u": 1,
-            "image_filename": "smc_turin_cbox_1u.png",
-            "description": "SMC Gen6 Turin CBox",
-            "source": "built-in",
-        },
-        "broadwell": {
-            "type": "cbox",
-            "height_u": 2,
-            "image_filename": "broadwell_cbox_2u.png",
-            "description": "Broadwell 2U CBox",
-            "source": "built-in",
-        },
-        "cascadelake": {
-            "type": "cbox",
-            "height_u": 2,
-            "image_filename": "cascadelake_cbox_2u.png",
-            "description": "CascadeLake 2U CBox",
-            "source": "built-in",
-        },
-        # DBoxes
-        "ceres_v2": {
-            "type": "dbox",
-            "height_u": 1,
-            "image_filename": "ceres_v2_1u.png",
-            "description": "Ceres V2 1U DBox",
-            "source": "built-in",
-        },
-        "dbox-515": {
-            "type": "dbox",
-            "height_u": 1,
-            "image_filename": "ceres_v2_1u.png",
-            "description": "Ceres V2 1U DBox",
-            "source": "built-in",
-        },
-        "dbox-516": {
-            "type": "dbox",
-            "height_u": 1,
-            "image_filename": "ceres_v2_1u.png",
-            "description": "Ceres V2 1U DBox",
-            "source": "built-in",
-        },
-        "sanmina": {
-            "type": "dbox",
-            "height_u": 2,
-            "image_filename": "maverick_2u.png",
-            "description": "Maverick 2U DBox",
-            "source": "built-in",
-        },
-        "maverick_1.5": {
-            "type": "dbox",
-            "height_u": 2,
-            "image_filename": "maverick_2u.png",
-            "description": "Maverick/MLK 2U DBox",
-            "source": "built-in",
-        },
-        # Switches
-        "msn2100-cb2f": {
-            "type": "switch",
-            "height_u": 1,
-            "image_filename": "mellanox_msn2100_2x16p_100g_switch_1u.png",
-            "description": "Mellanox SN2100 100Gb 16pt Switch",
-            "source": "built-in",
-        },
-        "msn2700": {
-            "type": "switch",
-            "height_u": 1,
-            "image_filename": "mellanox_msn2700_1x32p_100g_switch_1u.png",
-            "description": "Mellanox SN2700 100Gb 32pt Switch",
-            "source": "built-in",
-        },
-        "msn3700-vs2fc": {
-            "type": "switch",
-            "height_u": 1,
-            "image_filename": "mellanox_msn3700_1x32p_200g_switch_1u.png",
-            "description": "Mellanox SN3700 200Gb 32pt Switch",
-            "source": "built-in",
-        },
-        "msn4600c": {
-            "type": "switch",
-            "height_u": 2,
-            "image_filename": "mellanox_msn4600C_1x64p_100g_switch_2u.png",
-            "description": "Mellanox SN4600C 100Gb 64pt Switch",
-            "source": "built-in",
-        },
-        "msn4600": {
-            "type": "switch",
-            "height_u": 2,
-            "image_filename": "mellanox_msn4600_1x64p_200g_switch_2u.png",
-            "description": "Mellanox SN4600 200Gb 64pt Switch",
-            "source": "built-in",
-        },
-        "sn5600": {
-            "type": "switch",
-            "height_u": 2,
-            "image_filename": "mellanox_sn5600_1x64p_800g_switch_2u.png",
-            "description": "Mellanox SN5600 800Gb 64pt Switch",
-            "source": "built-in",
-        },
-        "arista_7060dx5": {
-            "type": "switch",
-            "height_u": 2,
-            "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "description": "Arista 7060DX5 800Gb Switch",
-            "source": "built-in",
-        },
-        "arista_7050cx4": {
-            "type": "switch",
-            "height_u": 1,
-            "image_filename": "arista_7050cx4_24d_400g_switch_1u.png",
-            "description": "Arista 7050CX4 400Gb Switch",
-            "source": "built-in",
-        },
-        "arista_7050dx4": {
-            "type": "switch",
-            "height_u": 1,
-            "image_filename": "arista_7050dx4_32s_400g_switch_1u.png",
-            "description": "Arista 7050DX4 400Gb Switch",
-            "source": "built-in",
-        },
-        "arista": {
-            "type": "switch",
-            "height_u": 2,
-            "image_filename": "arista_7060dx5_1x64p_800g_switch_2u.jpeg",
-            "description": "Arista Switch (generic)",
-            "source": "built-in",
-        },
-    }
-    return builtin
+    """Return the built-in device map (read-only, from hardware_library.py)."""
+    return cast(Dict[str, Any], get_builtin_devices_for_ui())
 
 
 def _build_doc_categories():
@@ -1168,7 +1211,7 @@ def _render_doc_markdown(bundle_dir: str, rel_path: str) -> str:
     md_text = file_path.read_text(encoding="utf-8")
 
     try:
-        import markdown as md_lib
+        import markdown as md_lib  # type: ignore[import-untyped]
 
         html = md_lib.markdown(
             md_text,
@@ -1198,7 +1241,7 @@ def _get_saved_cluster_ip(profiles_path: str) -> str:
     """Return the first cluster IP found in saved profiles, or empty string."""
     profiles = _load_profiles(profiles_path)
     for profile in profiles.values():
-        ip = profile.get("cluster_ip", "").strip()
-        if ip:
-            return ip
+        ip = profile.get("cluster_ip", "")
+        if isinstance(ip, str) and ip.strip():
+            return ip.strip()
     return ""

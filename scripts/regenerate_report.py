@@ -144,6 +144,13 @@ Examples:
     )
 
     parser.add_argument(
+        "--health-only",
+        action="store_true",
+        default=False,
+        help="Generate a health-check-only PDF from a health_check_*.json file",
+    )
+
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -165,6 +172,10 @@ Examples:
     # Determine output path
     if args.output_file:
         output_path = Path(args.output_file).resolve()
+    elif args.health_only:
+        json_stem = json_path.stem
+        pdf_stem = json_stem.replace("health_check_", "health_report_")
+        output_path = output_dir / f"{pdf_stem}.pdf"
     else:
         # Generate output filename from JSON filename
         json_stem = json_path.stem  # e.g., "vast_data_LAMBDA-VAST-SLC-02_20251106_122547"
@@ -183,7 +194,47 @@ Examples:
     logger.info("")
 
     # Regenerate report
-    success = regenerate_report(json_path, output_path, logger)
+    if args.health_only:
+        logger.info("Health-only mode: wrapping health check data into report structure")
+        raw_health = load_json_data(json_path)
+        cluster_name = raw_health.get("cluster_name", "unknown")
+        processed_data = {
+            "metadata": {
+                "extraction_timestamp": raw_health.get("timestamp", ""),
+                "overall_completeness": 0.0,
+                "enhanced_features": {},
+            },
+            "cluster_summary": {
+                "name": cluster_name,
+                "version": raw_health.get("cluster_version", ""),
+                "state": "N/A",
+            },
+            "hardware_inventory": {},
+            "sections": {
+                "health_check": {
+                    "name": "health_check",
+                    "title": "Cluster Health Check Results",
+                    "data": raw_health,
+                    "completeness": 100.0,
+                    "status": "complete",
+                },
+                "post_deployment_validation": {
+                    "name": "post_deployment_validation",
+                    "title": "Post Deployment Validation",
+                    "data": raw_health,
+                    "completeness": 100.0,
+                    "status": "complete",
+                },
+            },
+        }
+        report_builder = create_report_builder()
+        success = report_builder.generate_pdf_report(processed_data, str(output_path))
+        if success:
+            logger.info(f"Health-only report generated: {output_path}")
+        else:
+            logger.error("Health-only report generation failed")
+    else:
+        success = regenerate_report(json_path, output_path, logger)
 
     if success:
         logger.info("")

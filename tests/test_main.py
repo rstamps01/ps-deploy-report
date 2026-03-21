@@ -247,7 +247,7 @@ class TestVastReportGenerator(unittest.TestCase):
         result = self.generator._process_data(self.mock_raw_data)
 
         self.assertEqual(result, self.mock_processed_data)
-        mock_extractor.extract_all_data.assert_called_once_with(self.mock_raw_data, use_external_port_mapping=None)
+        mock_extractor.extract_all_data.assert_called_once_with(self.mock_raw_data, use_external_port_mapping=False)
 
     def test_process_data_failure(self):
         """Test data processing failure."""

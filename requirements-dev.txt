@@ -20,6 +20,7 @@ black>=23.0.0
 mypy>=1.8.0
 types-requests>=2.31.0
 types-PyYAML>=6.0.12
+types-paramiko>=3.0.0
 
 # Security scanning
 bandit>=1.7.0

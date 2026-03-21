@@ -12,7 +12,8 @@
     <div class="card form-card">
         <form id="generateForm">
             <fieldset id="formFields">
-                <legend>Cluster Profile</legend>
+                <legend class="sr-only">Report Generation Options</legend>
+                <div class="fieldset-section">Cluster Profile</div>
                 <div class="form-group">
                     <label for="profileSelect">Saved Profiles</label>
                     <div class="profile-controls">
@@ -24,7 +25,7 @@
                     </div>
                 </div>
 
-                <legend>Cluster Connection</legend>
+                <div class="fieldset-section">Cluster Connection</div>
                 <div class="form-group">
                     <label for="cluster_ip">Cluster IP / Hostname *</label>
                     <input type="text" id="cluster_ip" name="cluster_ip" required
@@ -60,7 +61,7 @@
                     </div>
                 </div>
 
-                <legend>Advanced</legend>
+                <div class="fieldset-section">Advanced</div>
                 <div class="form-group toggle-row">
                     <label>Switch Placement Mode</label>
                     <div class="toggle-control">
@@ -159,6 +160,18 @@
                     </div>
                 </div>
 
+                <div class="form-group toggle-row toggle-option">
+                    <div class="toggle-control">
+                        <span class="toggle-spacer"></span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="include_health_check" name="include_health_check" value="1">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label-text">Include Health Check</span>
+                    </div>
+                    <small id="healthCheckHint" class="form-hint">API checks only. Enable Port Mapping with SSH credentials for full Node &amp; Switch checks.</small>
+                </div>
+
                 <div class="form-group action-row">
                     <span class="action-label">As-Built Report</span>
                     <button type="submit" class="btn btn-accent btn-action" id="btnGenerate">Generate</button>
@@ -193,6 +206,19 @@ function toggleAuth() {
 function togglePortMapping() {
     const checked = document.getElementById('enable_port_mapping').checked;
     document.getElementById('portMappingFields').classList.toggle('hidden', !checked);
+    updateHealthCheckHint();
+}
+
+function updateHealthCheckHint() {
+    const portMappingEnabled = document.getElementById('enable_port_mapping').checked;
+    const hint = document.getElementById('healthCheckHint');
+    if (hint) {
+        if (portMappingEnabled) {
+            hint.textContent = 'Full checks enabled: API + Node SSH + Switch SSH (Tier 1-3)';
+        } else {
+            hint.textContent = 'API checks only. Enable Port Mapping with SSH credentials for full Node & Switch checks.';
+        }
+    }
 }
 
 // -- Cluster Profiles --

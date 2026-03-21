@@ -9,4 +9,4 @@ This diagram shows:
 - Inter-switch links
 - Connection topology between all components
 
-The image will be displayed on Page 8 of the report under "Logical Network Diagram" section.
+The image will be displayed in the report under "Logical Network Diagram" section.

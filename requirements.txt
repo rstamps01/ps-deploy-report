@@ -13,6 +13,8 @@ reportlab>=4.0.0
 
 # Dynamic diagram generation (PNG conversion)
 rl-renderPM>=4.0.3
+# Windows PDF-to-PNG fallback when renderPM fails (T1 font); also useful on Linux
+pymupdf>=1.24.0
 
 # Image processing for diagram sizing
 Pillow>=10.0.0
