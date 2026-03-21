@@ -359,6 +359,7 @@ class TestDataConsistency(unittest.TestCase):
         self.assertGreater(completeness, 0)
         self.assertLessEqual(completeness, 100)
 
+
 @pytest.mark.integration
 class TestHealthCheckIntegration(unittest.TestCase):
     """Verify health check data flows through the extraction pipeline."""

@@ -29,6 +29,7 @@ from api_handler import (
     create_vast_api_handler,
 )
 
+
 class TestVastApiHandler(unittest.TestCase):
     """Test cases for VastApiHandler class."""
 
@@ -447,6 +448,7 @@ class TestVastApiHandler(unittest.TestCase):
         self.assertEqual(handler.cluster_ip, "192.168.1.100")
         self.assertEqual(handler.username, "admin")
 
+
 class TestVastClusterInfo(unittest.TestCase):
     """Test cases for VastClusterInfo dataclass."""
 
@@ -476,6 +478,7 @@ class TestVastClusterInfo(unittest.TestCase):
 
         self.assertEqual(cluster.name, "Test Cluster")
         self.assertIsNone(cluster.psnt)
+
 
 class TestVastHardwareInfo(unittest.TestCase):
     """Test cases for VastHardwareInfo dataclass."""
@@ -511,6 +514,7 @@ class TestVastHardwareInfo(unittest.TestCase):
         self.assertEqual(hardware.name, "dnode-1-1")
         self.assertIsNone(hardware.rack_position)
         self.assertEqual(hardware.status, "unknown")
+
 
 class TestHealthEndpoints(unittest.TestCase):
     """Tests for health-check API handler extensions (WP-2)."""

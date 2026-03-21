@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from app import create_flask_app, _list_reports, _read_config, _write_config, APP_VERSION
 
+
 class TestFlaskAppFactory(unittest.TestCase):
     """Verify the Flask app is constructed correctly."""
 
@@ -39,6 +40,7 @@ class TestFlaskAppFactory(unittest.TestCase):
         app = create_flask_app(config={"api": {"timeout": 99}})
         self.assertEqual(app.config["REPORT_CONFIG"]["api"]["timeout"], 99)
 
+
 class TestDashboardRoute(unittest.TestCase):
 
     def setUp(self):
@@ -58,6 +60,7 @@ class TestDashboardRoute(unittest.TestCase):
         self.assertIn(b"Generate", resp.data)
         self.assertIn(b"Reports", resp.data)
         self.assertIn(b"Configuration", resp.data)
+
 
 class TestGenerateRoutes(unittest.TestCase):
 
@@ -111,6 +114,7 @@ class TestGenerateRoutes(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertTrue(body["result"]["success"])
 
+
 class TestConfigRoutes(unittest.TestCase):
 
     def setUp(self):
@@ -152,6 +156,7 @@ class TestConfigRoutes(unittest.TestCase):
         saved = Path(self.config_path).read_text()
         self.assertIn("timeout: 60", saved)
 
+
 class TestReportsRoutes(unittest.TestCase):
 
     def setUp(self):
@@ -191,6 +196,7 @@ class TestReportsRoutes(unittest.TestCase):
     def test_reports_delete_missing_returns_404(self):
         resp = self.client.post("/reports/delete/nonexistent.pdf")
         self.assertEqual(resp.status_code, 404)
+
 
 class TestLibraryRoutes(unittest.TestCase):
     """TSE-1: Library page and API (GET /library, GET/POST/DELETE /api/library) with mocked _load_library/_save_library."""
@@ -283,6 +289,7 @@ class TestLibraryRoutes(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertIn("error", body)
 
+
 class TestGenerateCancel(unittest.TestCase):
     """TSE-2: POST /generate/cancel — no job vs job running."""
 
@@ -306,6 +313,7 @@ class TestGenerateCancel(unittest.TestCase):
         self.assertFalse(self.app.config["JOB_RUNNING"])
         self.assertFalse(self.app.config["JOB_RESULT"]["success"])
         self.assertIn("cancelled", self.app.config["JOB_RESULT"]["error"].lower())
+
 
 class TestReportsDirsRoutes(unittest.TestCase):
     """TSE-3: GET /reports/dirs and POST /reports/dirs (output-dir behavior)."""
@@ -364,6 +372,7 @@ class TestReportsDirsRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         body = json.loads(resp.data)
         self.assertIn("error", body)
+
 
 class TestApiDiscover(unittest.TestCase):
     """TSE-4: POST /api/discover — mocked create_vast_api_handler + RackDiagram (read-only: auth + get_racks + get_switch_inventory)."""
@@ -446,6 +455,7 @@ class TestApiDiscover(unittest.TestCase):
         mock_handler.get_racks.assert_called_once()
         mock_handler.get_switch_inventory.assert_called_once()
         mock_handler.close.assert_called_once()
+
 
 class TestProfilesRoutes(unittest.TestCase):
     """TSE-6: GET/POST /profiles and DELETE /profiles/<name> with mocked _load_profiles/_save_profiles."""
@@ -538,6 +548,7 @@ class TestProfilesRoutes(unittest.TestCase):
         call_profiles = mock_save.call_args[0][1]
         self.assertNotIn("to-delete", call_profiles)
 
+
 class TestShutdown(unittest.TestCase):
     """TSE-7: POST /shutdown returns 200 and status (shutdown is mocked to avoid process exit)."""
 
@@ -552,6 +563,7 @@ class TestShutdown(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertEqual(body.get("status"), "shutting_down")
         mock_os_exit.assert_called_once_with(0)
+
 
 class TestDocsRoutes(unittest.TestCase):
     """Docs page and doc content; internal .md links are rewritten to /docs#<doc_id>."""
@@ -582,6 +594,7 @@ class TestDocsRoutes(unittest.TestCase):
         # Should not contain raw .md path as href
         self.assertNotIn(b'href="INSTALLATION-GUIDE.md"', resp.data)
 
+
 class TestSSEStream(unittest.TestCase):
 
     def setUp(self):
@@ -591,6 +604,7 @@ class TestSSEStream(unittest.TestCase):
     def test_stream_logs_returns_event_stream(self):
         resp = self.client.get("/stream/logs")
         self.assertTrue(resp.content_type.startswith("text/event-stream"))
+
 
 class TestHealthRoutes(unittest.TestCase):
 
@@ -628,6 +642,7 @@ class TestHealthRoutes(unittest.TestCase):
     def test_health_results_no_data(self):
         resp = self.client.get("/health/results")
         self.assertEqual(resp.status_code, 404)
+
 
 class TestHelperFunctions(unittest.TestCase):
 

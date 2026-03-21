@@ -5027,7 +5027,6 @@ class VastReportBuilder:
             content.append(checklist_table)
             content.append(Spacer(1, 12))
 
-
     def _create_data_protection_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create data protection configuration section."""
         styles = getSampleStyleSheet()
