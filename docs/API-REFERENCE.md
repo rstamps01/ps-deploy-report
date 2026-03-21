@@ -247,11 +247,11 @@ Provides additional DNode-to-DTray mapping for certain hardware configurations.
 
 DNS server configuration and search domains.
 
-### GET /api/\<version\>/ntps/
+### ~~GET /api/\<version\>/ntps/~~ (Removed)
 
-**Function:** `get_network_configuration()`
+**Status:** Removed in v1.4.8 — endpoint not documented in official VAST API.
 
-NTP server configuration.
+NTP configuration is retrieved from the `clusters/` endpoint (`ntp` field).
 
 ### GET /api/\<version\>/vippools/
 
@@ -389,6 +389,25 @@ Snapshot inventory.
 **Function:** `get_quotas()` in api_handler.py
 
 Quota configuration.
+
+### GET /api/\<version\>/monitors/
+
+**Function:** `_check_drive_status()` in health_checker.py
+
+Drive/monitor metrics including NVMe health, write endurance, and status.
+
+### GET /api/\<version\>/networkinterfaces/
+
+**Function:** `_resolve_switch_ips()` in health_checker.py
+
+Network interface configuration. Used for switch discovery when primary endpoints unavailable.
+
+### GET /api/\<version\>/switches/
+
+**Function:** `_resolve_switch_ips()` in health_checker.py
+
+Switch inventory with management IPs. Available on clusters with managed switches (API v7).
+Falls back to v1 endpoint or CNode relationship extraction when unavailable.
 
 ---
 
