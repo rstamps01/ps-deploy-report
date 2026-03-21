@@ -151,9 +151,9 @@ class HealthChecker:
         """
         # 1. User-provided switch IPs take priority
         if self.switch_ssh_config and self.switch_ssh_config.get("switch_ips"):
-            ips = list(self.switch_ssh_config["switch_ips"])
-            self.logger.info(f"Using {len(ips)} user-provided switch IP(s)")
-            return ips
+            user_ips = list(self.switch_ssh_config["switch_ips"])
+            self.logger.info(f"Using {len(user_ips)} user-provided switch IP(s)")
+            return user_ips
 
         ips: List[str] = []
 
