@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-21 (HC-8–HC-11 completed)  
+**Last updated:** 2026-03-22 (Test Coverage Phase A-C: +98 tests, 503 total, 56% coverage, cov-fail-under=55)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -32,8 +32,8 @@
 | TSE-6 | **Profiles API:** Unit tests GET/POST/DELETE `/profiles` and `/profiles/<name>` (mock _load_profiles/_save_profiles) | Medium | Done | test_app.py |
 | TSE-7 | **Shutdown:** Optional unit test POST `/shutdown` (200, no crash) or document as manual check | Lower | Done | test_app.py |
 | TSE-8 | **Coverage:** Add tests for external_port_mapper, rack_diagram, report_builder (EBox path, partial port mapping) toward 80% | Lower | Done | Coverage 53%+ (49%+ restored); further toward 80% in TSE-9 |
-| TSE-9 | **Coverage — low-coverage modules:** Add tests for comprehensive_report_template.py, enhanced_report_builder.py (and expand external_port_mapper, rack_diagram, report_builder per TSE-8) to raise total coverage toward 80% | Lower | Planned | per-module |
-| TSE-10 | **Coverage — omit config:** Optionally configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Planned | pyproject.toml / .coveragerc |
+| TSE-9 | **Coverage — low-coverage modules:** Add tests for comprehensive_report_template.py, enhanced_report_builder.py (and expand external_port_mapper, rack_diagram, report_builder per TSE-8) to raise total coverage toward 80% | Lower | In progress | Phase A-C complete: +98 tests across 8 work streams; coverage 53%→56%; dead-code modules omitted; external_port_mapper, rack_diagram, health_checker, tool_manager, script_runner, workflows augmented |
+| TSE-10 | **Coverage — omit config:** Optionally configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Done | pyproject.toml `[tool.coverage.run]` omit: comprehensive_report_template.py, enhanced_report_builder.py, session_manager.py |
 
 ---
 
@@ -43,7 +43,7 @@
 |------|------|----------|--------|
 | QG-1 | Run flake8 + black (and optionally mypy) as part of documented pre-release run | Done | README Development § Pre-release checklist |
 | QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Done | Followed [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md): types-paramiko, _MEIPASS, var annotations, return casts, api_handler session/optional, network_diagram Path/float, report_builder tuple/int/float; mypy passes. |
-| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=47; total coverage 53%+ (49%+ restored); track TSE-9 for 80% |
+| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=55 (raised from 45); total coverage 56%+ (503 tests); Phase A-C complete; track TSE-9 for 80% |
 
 ---
 
@@ -86,6 +86,30 @@
 
 ---
 
+## Done — Advanced Operations (Post-Install Validation)
+
+*Source: Confluence Post-Install Validation procedures + Health Check Module Implementation Guide.*
+
+| ID    | Item | Status | Notes |
+|-------|------|--------|-------|
+| AO-0 | Developer Mode gating for Advanced Operations page | Done | `--dev-mode` flag required; routes/UI hidden otherwise |
+| AO-1 | Advanced Operations UI page | Done | Step-by-step workflow runner with persistent output pane |
+| AO-2 | Script framework (security, compatibility) | Done | `script_runner.py` with SSH/SCP operations |
+| AO-3 | Workflow registry pattern + vnetmap workflow | Done | `src/workflows/__init__.py` with 7-step vnetmap |
+| AO-4 | vast_support_tools workflow | Done | 5-step workflow for cluster diagnostics |
+| AO-5 | vperfsanity workflow | Done | 7-step performance testing workflow (deploy, extract, prepare, run tests, collect, upload, cleanup) |
+| AO-6 | VMS log bundle workflow | Done | 5-step workflow with size discovery |
+| AO-7 | Status checks and reminders | Done | Call Home, License, Rack/U-Height, Switches |
+| AO-8 | Switch configuration extraction | Done | 3-step workflow for backup/replacement |
+| AO-9 | Network configuration extraction | Done | 4-step workflow for configure_network.py commands |
+| AO-10 | Result bundler | Done | ZIP archive with all validation outputs |
+| AO-11 | Testing suite (80% coverage) | Done | test_advanced_ops.py, test_script_runner.py, test_workflows.py, test_result_bundler.py |
+| AO-12 | CI integration | Done | `advanced-ops-tests` job in CI pipeline |
+| AO-13 | WP-13 documentation verification | Done | CHANGELOG, README, TODO-ROADMAP updates |
+| AO-14 | Advanced Operations documentation | Done | ADVANCED-OPERATIONS.md, POST-INSTALL-VALIDATION.md |
+
+---
+
 ## Planned — Requests for Enhancement (from Confluence)
 
 *Source: [VAST As-Built Report Generator - v1.3.0](https://vastdata.atlassian.net/wiki/spaces/~7120200e1c43a9b6f741eca536d39491156fa8/pages/6664028496/VAST+As-Built+Report+Generator+-+v1.3.0) — Requests for Enhancement table.*
@@ -95,8 +119,8 @@
 | RFE-1 | Support Bundle Integration | Planned | |
 | RFE-2 | Jeff's Port Mapper Integration | Planned | |
 | RFE-3 | Render Logical Net Diagram only with Port Map option enabled | Planned | |
-| RFE-4 | Health Report Summary | Planned | |
-| RFE-5 | Integrate/Automate Post Deployment Tests | Planned | |
+| RFE-4 | Health Report Summary | Done | Health Check Module with Tiers 1-3, PDF sections, remediation reports |
+| RFE-5 | Integrate/Automate Post Deployment Tests | Done | Advanced Operations with 6 workflows (vnetmap, support tools, vperfsanity, log bundle, switch config, network config) |
 | RFE-6 | Container deployment option | Planned | |
 | RFE-7 | Update deployment procedures | Planned | |
 | RFE-8 | Package as Mac.app / Win.msi | Planned | |
@@ -113,7 +137,9 @@
 
 *(Move items here when work starts; move to Done when complete.)*
 
-*None.*
+| ID | Item | Notes |
+|------|------|--------|
+| AO-15 | **Advanced Ops hardening:** Cross-tenant vperfsanity cleanup, unified profile management, SSH adapter stability, UI refinements | vperfsanity_workflow.py, app.py, ssh_adapter.py, advanced_ops.html |
 
 ---
 

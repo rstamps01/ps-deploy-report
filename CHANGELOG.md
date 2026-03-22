@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+### Added (Test Coverage Phase A-C)
+- **Test Coverage Phase A-C:** Implemented 8-stream test coverage plan adding ~98 new tests across all modules
+  - **WS-1 Config:** Fixed stale vperfsanity step count test (6→7); added `[tool.coverage.run]` omit for 3 dead-code modules; raised `cov-fail-under` from 45 to 55
+  - **WS-2 ToolManager Tests:** New `tests/test_tool_manager.py` with 12 tests for initialization, local cache operations, and CNode deployment (internet-first, SCP fallback)
+  - **WS-3 Workflow Execution Tests:** 18 tests added to `tests/test_workflows.py` for cross-tenant cleanup, vperfsanity step execution, switch type detection, network config clush, support tool container paths, log bundle discovery
+  - **WS-4 App Route Tests:** 15 tests added to `tests/test_app.py` for profile merge-save (field preservation, api_token→token normalization, defaults), advanced ops routes, and tool management routes
+  - **WS-5 ScriptRunner Tests:** 10 tests added to `tests/test_script_runner.py` for output line classification, copy_to_remote, and download_from_remote
+  - **WS-6 Health Checker Tests:** 15 tests added to `tests/test_health_checker.py` for remediation report generation, correlation engine (chassis-level, leader-inactive), SSH tier-2 (management ping, memory), and SSH tier-3 (MLAG, NTP, switch checks)
+  - **WS-7 Rack Diagram Tests:** 14 tests added to `tests/test_rack_diagram.py` for device boundaries, center/above/below switch placement strategies, and diagram generation
+  - **WS-8 External Port Mapper Tests:** New `tests/test_external_port_mapper.py` with 12 tests for switch OS detection, MAC table parsing (Cumulus/Onyx), clush output parsing, and cross-connection detection
+- **Coverage Omit Config:** Added `[tool.coverage.run]` section to `pyproject.toml` excluding dead-code modules (`comprehensive_report_template.py`, `enhanced_report_builder.py`, `session_manager.py`) from coverage measurement
+
+- **Advanced Operations Module (Developer Mode):** New `/advanced-ops` page for complex script-based validations with step-by-step execution
+  - **vnetmap Workflow (7 steps):** Download and run vnetmap.py for network topology validation
+  - **VAST Support Tools Workflow (5 steps):** Run vast_support_tools.py for cluster diagnostics
+  - **vperfsanity Workflow (7 steps):** Deploy, extract, prepare infrastructure (with cross-tenant cleanup), run tests, collect results, upload, and cleanup
+  - **VMS Log Bundle Workflow (5 steps):** Discover log sizes, confirm collection, create and download bundle
+  - **Switch Configuration Workflow (3 steps):** Extract switch config for backup/replacement; auto-detects Cumulus NVUE/NCLU and Mellanox switch types
+  - **Network Configuration Workflow (4 steps):** Extract configure_network.py commands via gateway-proxied clush execution
+- **Result Bundler:** Create downloadable ZIP packages containing all validation outputs
+- **Workflow Registry Pattern:** Centralized workflow registration and discovery via `src/workflows/__init__.py`
+- **Script Runner Framework:** Core infrastructure for secure script download, remote execution, and intelligent output classification
+- **Tool Manager:** Centralized deployment tool management with internet-first download strategy and local cache fallback; "Update Tools" button in UI
+- **Cross-Tenant View Cleanup:** vperfsanity Step 3 now queries the VAST API for stale `vperfsanity` views across ALL tenants and deletes them before running the prepare script, preventing HTTP 400 "bucket name already in use" errors
+- **Unified Profile Management:** Profiles saved in Advanced Ops are accessible in Health Check and Generate Report (and vice versa) via merge-save pattern in backend; handles `api_token`/`token` field name aliases
+- **Default Credentials Toggle:** Toggleable feature on Advanced Ops page (default ON) auto-populates standard credentials (admin/123456 for API, vastdata/vastdata for nodes, cumulus/Vastdata1! for switches)
+- **Connection Settings Redesign:** Collapsible credential section, profile icon buttons (save/add/delete), green Add button toggles expand/collapse, VIP Pool Name field for vperfsanity
+- **Developer Mode Gating:** Advanced Operations page only accessible when app started with `--dev-mode` flag
+- **CI Advanced Ops Tests:** New `advanced-ops-tests` job in CI pipeline for workflow testing
 - **Health Check Module:** New `health_checker.py` with 26 Tier-1 API checks, Tier-2 node SSH checks, and Tier-3 switch SSH checks
 - **Dynamic Health Check Tiers in Generate:** When "Include Health Check" is enabled, tiers are selected based on Port Mapping:
   - Port Mapping disabled → Tier 1 only (26 API checks)
@@ -34,6 +63,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Leader State Check:** Fixed "UP" leader state incorrectly flagged; now accepts "UP" as healthy
 - **Upgrade State Check:** Fixed "DONE" upgrade state shown as warning; now correctly reports as pass
 - **Prometheus Timeout:** Fixed hardcoded timeout; now uses configurable `self.timeout` value
+- **vperfsanity Cross-Tenant Bucket Conflict:** Fixed HTTP 400 "bucket name already in use by another tenant" by adding API-level cross-tenant view cleanup before running `vperfsanity_prepare.sh`
+- **vperfsanity Missing VAST_VMS:** Fixed prepare/run/cleanup commands not passing `VAST_VMS` environment variable to remote scripts, causing API calls to target wrong endpoint
+- **vperfsanity SSH Credentials:** Fixed workflow incorrectly using API credentials for SSH connections; now correctly uses node SSH credentials (vastdata) for all SSH operations
+- **vnetmap Resilience:** Workflow continues through partial failures (e.g., CNode down) with warnings and recommendations instead of hard-failing
+- **vnetmap SSH Retry Noise:** Intelligent output classification (`_classify_output_line`) suppresses SSH key retry messages from vnetmap.py stderr
+- **Switch Config Detection:** Auto-detects Cumulus NVUE vs NCLU vs Mellanox switch types; uses appropriate commands (`nv` vs `net`); removed `sudo` commands that require password
+- **Network Config clush:** Rewrote to use gateway-proxied clush execution with proper single-quote escaping for inner commands; fixed "Binary file matches" error with `-a` grep flag
+- **VAST Support Tools Container Path:** Fixed script execution path to use `/vast/data/` inside VAST container instead of `/tmp/vast_scripts/`
+- **SSH Adapter Stability:** Enhanced paramiko connections with `banner_timeout=30`, `look_for_keys=False`, `allow_agent=False`; added `force_tty`, `login_shell`, `agent_forward` parameters
+- **App Stability:** Resolved frequent app shutdowns from port conflicts and stale processes
 
 ### Changed
 - **Alarm Details:** Health check captures per-alarm severity, object type, object name, and timestamp for detailed remediation guidance
@@ -41,10 +80,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Event Definitions:** Health checker now uses `/api/eventdefinitions/` (documented) instead of `/api/alarmdefinitions/` (undocumented) for enriching alarm descriptions
 - **Events API:** Added pagination and time filter to prevent timeout on clusters with large event history
 
+### Changed (Advanced Operations)
+- **vperfsanity Workflow:** Expanded from 6 to 7 steps (added Upload Results); pre-cleanup step runs before prepare; admin credentials passed via `ADMIN_USER`/`ADMIN_PASSWORD` environment variables
+- **Advanced Ops UI:** Redesigned Connection Settings with collapsible section, icon-based profile controls, Default Credentials toggle switch, and increased output pane height (+200px)
+- **Profile Controls:** Reverted dropdown to standard form-group style with icon buttons for consistency across Generate, Health Check, and Advanced Ops pages
+- **Script Runner:** Added `_classify_output_line` method for intelligent SSH output noise filtering
+
 ### Technical Details
 - Validated on selab-var-202, selab-var-203, selab-var-204 clusters
 - Tier-1 + Tier-2 health checks now complete in ~24 seconds
 - Remediation reports saved to `output/health/health_remediation_<cluster>_<timestamp>.txt`
+- `src/workflows/vperfsanity_workflow.py`: `_api_cleanup_cross_tenant_views()` queries `GET /api/views/`, finds stale views by alias/bucket/path, deletes via `DELETE /api/views/<id>/`
+- `src/tool_manager.py`: Internet-first download with local cache fallback; `deploy_tool_to_cnode()` for secure remote deployment
+- `src/app.py`: Merge-save profile pattern preserves fields across pages; `ALL_FIELDS` dict with defaults; `api_token`/`token` normalization
+- `src/script_runner.py`: `_classify_output_line()` demotes SSH retry noise to DEBUG level
+- `src/utils/ssh_adapter.py`: `force_tty`, `login_shell`, `agent_forward` parameters; `sshpass` security; paramiko hardening
 
 ## [1.4.7] - 2026-03-17
 

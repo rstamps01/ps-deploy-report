@@ -22,6 +22,7 @@ from flask import (
     jsonify,
     render_template,
     request,
+    send_file,
     send_from_directory,
 )
 
@@ -176,6 +177,14 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["HEALTH_JOB_LOCK"] = threading.Lock()
     app.config["HEALTH_JOB_CANCEL"] = threading.Event()
 
+    # Developer Mode - enables Advanced Operations page
+    # Set via --dev-mode flag or VAST_DEV_MODE environment variable
+    app.config["DEVELOPER_MODE"] = (
+        config.get("DEVELOPER_MODE", False)
+        if config
+        else os.environ.get("VAST_DEV_MODE", "").lower() in ("1", "true", "yes")
+    )
+
     _register_routes(app)
     return app
 
@@ -186,6 +195,26 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
 
 
 def _register_routes(app: Flask) -> None:
+
+    # -- Context processor to pass developer_mode to all templates ----------
+    @app.context_processor
+    def inject_developer_mode():
+        return {"developer_mode": app.config.get("DEVELOPER_MODE", False)}
+
+    # -- Route guard for Advanced Operations (Developer Mode required) ------
+    @app.before_request
+    def check_advanced_ops_access():
+        if request.path.startswith("/advanced-ops"):
+            if not app.config.get("DEVELOPER_MODE", False):
+                return (
+                    jsonify(
+                        {
+                            "error": "Developer Mode required",
+                            "message": "Start the application with --dev-mode flag to access Advanced Operations",
+                        }
+                    ),
+                    403,
+                )
 
     # -- Dashboard ----------------------------------------------------------
 
@@ -364,7 +393,277 @@ def _register_routes(app: Flask) -> None:
             return jsonify(result.get("report", {}))
         return jsonify({"error": "No results available"}), 404
 
-    # -- Configuration ------------------------------------------------------
+    # -- Advanced Operations (Developer Mode) --------------------------------
+
+    @app.route("/advanced-ops")
+    def advanced_ops_page():
+        """Advanced Operations page for step-by-step script workflows.
+
+        This page is only accessible when Developer Mode is enabled (--dev-mode flag).
+        The before_request guard will return 403 if Developer Mode is not enabled.
+        """
+        return render_template("advanced_ops.html", version=APP_VERSION)
+
+    @app.route("/advanced-ops/workflows")
+    def advanced_ops_workflows():
+        """Get list of available workflows."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        return jsonify({"workflows": manager.get_workflows()})
+
+    @app.route("/advanced-ops/workflows/<workflow_id>")
+    def advanced_ops_workflow_detail(workflow_id: str):
+        """Get workflow details including steps."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        workflow = manager.get_workflow(workflow_id)
+        if not workflow:
+            return jsonify({"error": "Workflow not found"}), 404
+        # Remove non-serializable _instance before returning
+        serializable = {k: v for k, v in workflow.items() if k != "_instance"}
+        return jsonify(serializable)
+
+    @app.route("/advanced-ops/start", methods=["POST"])
+    def advanced_ops_start():
+        """Start a workflow."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        if manager.is_running():
+            return jsonify({"error": "A workflow is already running"}), 409
+
+        workflow_id = request.form.get("workflow_id", "").strip()
+        if not workflow_id:
+            return jsonify({"error": "workflow_id required"}), 400
+
+        credentials = {
+            "cluster_ip": request.form.get("cluster_ip", "").strip(),
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "api_token": request.form.get("api_token", "").strip(),
+            "node_user": request.form.get("node_user", "").strip(),
+            "node_password": request.form.get("node_password", ""),
+            "switch_user": request.form.get("switch_user", "").strip(),
+            "switch_password": request.form.get("switch_password", ""),
+        }
+
+        if not manager.start_workflow(workflow_id, credentials):
+            return jsonify({"error": "Failed to start workflow"}), 500
+
+        return jsonify({"status": "started", "workflow_id": workflow_id})
+
+    @app.route("/advanced-ops/run-step", methods=["POST"])
+    def advanced_ops_run_step():
+        """Run a specific step."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        step_id = request.form.get("step_id", type=int)
+        if not step_id:
+            return jsonify({"error": "step_id required"}), 400
+
+        credentials = {
+            "cluster_ip": request.form.get("cluster_ip", "").strip(),
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "node_user": request.form.get("node_user", "").strip(),
+            "node_password": request.form.get("node_password", ""),
+            "switch_user": request.form.get("switch_user", "").strip(),
+            "switch_password": request.form.get("switch_password", ""),
+            "vip_pool": request.form.get("vip_pool", "main").strip(),
+        }
+
+        result = manager.run_step(step_id, credentials)
+        return jsonify(
+            {
+                "status": result.status.value,
+                "message": result.message,
+                "details": result.details,
+                "duration_ms": result.duration_ms,
+            }
+        )
+
+    @app.route("/advanced-ops/run-all", methods=["POST"])
+    def advanced_ops_run_all():
+        """Run all steps in the current workflow."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        credentials = {
+            "cluster_ip": request.form.get("cluster_ip", "").strip(),
+            "username": request.form.get("username", "").strip(),
+            "password": request.form.get("password", ""),
+            "node_user": request.form.get("node_user", "").strip(),
+            "node_password": request.form.get("node_password", ""),
+            "switch_user": request.form.get("switch_user", "").strip(),
+            "switch_password": request.form.get("switch_password", ""),
+            "vip_pool": request.form.get("vip_pool", "main").strip(),
+        }
+
+        # Run in background thread
+        thread = threading.Thread(target=manager.run_all_steps, args=(credentials,), daemon=True)
+        thread.start()
+        return jsonify({"status": "started"})
+
+    @app.route("/advanced-ops/status")
+    def advanced_ops_status():
+        """Get current workflow status."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        state = manager.get_current_state()
+        return jsonify({"state": state, "running": manager.is_running()})
+
+    @app.route("/advanced-ops/cancel", methods=["POST"])
+    def advanced_ops_cancel():
+        """Cancel the current workflow."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        if manager.cancel():
+            return jsonify({"status": "cancelled"})
+        return jsonify({"status": "no_workflow"})
+
+    @app.route("/advanced-ops/reset", methods=["POST"])
+    def advanced_ops_reset():
+        """Reset the workflow state."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        manager.reset()
+        return jsonify({"status": "reset"})
+
+    @app.route("/advanced-ops/output")
+    def advanced_ops_output():
+        """Get output buffer entries."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        since = request.args.get("since", 0, type=int)
+        entries = manager.get_output(since)
+        return jsonify({"entries": entries, "count": len(entries)})
+
+    # -- Tool Management -----------------------------------------------------
+
+    @app.route("/advanced-ops/tools")
+    def advanced_ops_tools():
+        """Get information about all deployment tools."""
+        from tool_manager import ToolManager
+        
+        manager = ToolManager()
+        tools = manager.get_all_tools_info()
+        return jsonify({"tools": tools})
+
+    @app.route("/advanced-ops/tools/update", methods=["POST"])
+    def advanced_ops_tools_update():
+        """Update all deployment tools in local cache."""
+        from tool_manager import ToolManager
+        from advanced_ops import get_advanced_ops_manager
+        
+        ops_manager = get_advanced_ops_manager()
+        tool_manager = ToolManager(output_callback=ops_manager._emit_output)
+        
+        results = tool_manager.update_all_tools()
+        return jsonify(results)
+
+    @app.route("/advanced-ops/tools/deploy", methods=["POST"])
+    def advanced_ops_tools_deploy():
+        """Deploy tools to CNode."""
+        from tool_manager import ToolManager
+        from advanced_ops import get_advanced_ops_manager
+        
+        data = request.get_json(silent=True) or {}
+        host = data.get("host")
+        username = data.get("username", "vastdata")
+        password = data.get("password")
+        tools = data.get("tools")  # Optional list of specific tools
+        
+        if not host or not password:
+            return jsonify({"success": False, "message": "Missing host or password"}), 400
+        
+        ops_manager = get_advanced_ops_manager()
+        tool_manager = ToolManager(output_callback=ops_manager._emit_output)
+        
+        results = tool_manager.deploy_all_tools_to_cnode(host, username, password, tools)
+        return jsonify(results)
+
+    # -- Result Bundling -----------------------------------------------------
+
+    @app.route("/advanced-ops/bundle/collect", methods=["POST"])
+    def advanced_ops_bundle_collect():
+        """Collect results for bundling."""
+        from result_bundler import get_result_bundler
+
+        data = request.get_json(silent=True) or {}
+        bundler = get_result_bundler()
+        bundler.set_metadata(
+            cluster_name=data.get("cluster_name", "Unknown"),
+            cluster_ip=data.get("cluster_ip", "Unknown"),
+            cluster_version=data.get("cluster_version", "Unknown"),
+        )
+        collected = bundler.collect_results()
+        return jsonify(
+            {
+                "status": "collected",
+                "files": {k: str(v) for k, v in collected.items()},
+                "count": len(collected),
+            }
+        )
+
+    @app.route("/advanced-ops/bundle/create", methods=["POST"])
+    def advanced_ops_bundle_create():
+        """Create a downloadable bundle."""
+        from result_bundler import get_result_bundler
+
+        data = request.get_json(silent=True) or {}
+        bundler = get_result_bundler()
+        bundler.set_metadata(
+            cluster_name=data.get("cluster_name", "Unknown"),
+            cluster_ip=data.get("cluster_ip", "Unknown"),
+            cluster_version=data.get("cluster_version", "Unknown"),
+        )
+        bundler.collect_results()
+        try:
+            bundle_path = bundler.create_bundle(data.get("bundle_name"))
+            return jsonify(
+                {
+                    "status": "created",
+                    "path": str(bundle_path),
+                    "name": bundle_path.name,
+                    "size": bundler._format_size(bundle_path.stat().st_size),
+                }
+            )
+        except ValueError as e:
+            return jsonify({"status": "error", "message": str(e)}), 400
+
+    @app.route("/advanced-ops/bundle/download/<path:filename>")
+    def advanced_ops_bundle_download(filename: str):
+        """Download a bundle file."""
+        from pathlib import Path
+
+        bundle_dir = Path("output/bundles")
+        file_path = bundle_dir / filename
+        if not file_path.exists() or not file_path.is_file():
+            return jsonify({"error": "Bundle not found"}), 404
+        return send_file(
+            file_path,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    @app.route("/advanced-ops/bundles")
+    def advanced_ops_bundles_list():
+        """List available bundles."""
+        from result_bundler import get_result_bundler
+
+        bundler = get_result_bundler()
+        bundles = bundler.list_bundles()
+        return jsonify({"bundles": bundles})
+
+        # -- Configuration ------------------------------------------------------
 
     @app.route("/config", methods=["GET"])
     def config_page():
@@ -402,24 +701,46 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/profiles", methods=["POST"])
     def profiles_save():
+        """Save a cluster profile using merge-save: only overwrite fields the
+        calling page actually sent so that fields from other pages are preserved.
+        This lets Generate, Health Check, and Advanced Ops share one profile store.
+        """
         data = request.get_json(silent=True) or {}
         name = data.get("name", "").strip()
         if not name:
             return jsonify({"error": "Profile name is required"}), 400
+
         profiles = _load_profiles(app.config["PROFILES_PATH"])
-        profiles[name] = {
-            "cluster_ip": data.get("cluster_ip", ""),
-            "auth_method": data.get("auth_method", "password"),
-            "username": data.get("username", ""),
-            "password": data.get("password", ""),
-            "token": data.get("token", ""),
-            "output_dir": data.get("output_dir", ""),
-            "enable_port_mapping": data.get("enable_port_mapping", False),
-            "switch_user": data.get("switch_user", "cumulus"),
-            "switch_password": data.get("switch_password", ""),
-            "node_user": data.get("node_user", "vastdata"),
-            "node_password": data.get("node_password", ""),
+        existing = profiles.get(name, {})
+
+        ALL_FIELDS = {
+            "cluster_ip": "",
+            "auth_method": "password",
+            "username": "",
+            "password": "",
+            "token": "",
+            "output_dir": "",
+            "enable_port_mapping": False,
+            "switch_user": "cumulus",
+            "switch_password": "",
+            "node_user": "vastdata",
+            "node_password": "",
+            "vip_pool": "main",
+            "switch_placement": "auto",
+            "use_default_creds": True,
         }
+
+        merged = {field: existing.get(field, default) for field, default in ALL_FIELDS.items()}
+
+        for field in ALL_FIELDS:
+            if field in data:
+                merged[field] = data[field]
+
+        # health.html sends "api_token"; normalize to "token"
+        if "api_token" in data and data["api_token"]:
+            merged["token"] = data["api_token"]
+
+        profiles[name] = merged
         _save_profiles(app.config["PROFILES_PATH"], profiles)
         return jsonify({"status": "saved", "name": name})
 

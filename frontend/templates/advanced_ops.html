@@ -1,0 +1,675 @@
+{% extends "base.html" %}
+{% block title %}Advanced Operations - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28" style="margin-right:8px;vertical-align:middle;">
+            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+        Advanced Operations
+        <span class="badge badge-dev">Developer Mode</span>
+    </h1>
+    <p class="page-subtitle">Run complex script-based validations with step-by-step execution</p>
+</div>
+
+<!-- Connection Settings Card -->
+<div class="card">
+    <div class="card-header">
+        <h3>Connection Settings</h3>
+    </div>
+    <div class="card-body">
+        <form id="credentialsForm">
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="profileSelect">Saved Profiles</label>
+                <div class="profile-controls">
+                    <select id="profileSelect" onchange="loadProfile()">
+                        <option value="">-- Select a profile --</option>
+                    </select>
+                    <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                    <button type="button" class="btn-icon-add" onclick="addProfile()" title="Add / Edit cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    <div class="default-creds-widget">
+                        <span class="default-creds-label">Default</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="default-creds-label">PW</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Credential fields: collapsible, hidden by default -->
+            <div id="credentialFields" class="credential-fields" style="display: none;">
+                <div class="form-row creds-row-3">
+                    <div class="form-group">
+                        <label for="clusterIp">Cluster IP / VMS</label>
+                        <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+                    </div>
+                    <div class="form-group">
+                        <label for="username">API Username</label>
+                        <input type="text" id="username" name="username" class="form-control" placeholder="admin">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">API Password</label>
+                        <input type="password" id="password" name="password" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row creds-row-5">
+                    <div class="form-group">
+                        <label for="nodeUser">Node SSH User</label>
+                        <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
+                    </div>
+                    <div class="form-group">
+                        <label for="nodePassword">Node SSH Password</label>
+                        <input type="password" id="nodePassword" name="node_password" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="switchUser">Switch SSH User</label>
+                        <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
+                    </div>
+                    <div class="form-group">
+                        <label for="switchPassword">Switch SSH Password</label>
+                        <input type="password" id="switchPassword" name="switch_password" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
+                        <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Workflow Selection Card -->
+<div class="card">
+    <div class="card-header">
+        <h3>Select Operation</h3>
+    </div>
+    <div class="card-body">
+        <div class="form-group">
+            <label for="operationSelect">Operation:</label>
+            <select id="operationSelect" class="form-control" style="max-width: 400px;">
+                <option value="" disabled selected>Select an operation...</option>
+            </select>
+        </div>
+
+        <div id="workflowSteps" class="workflow-steps" style="display: none;"></div>
+
+        <div class="btn-group" style="margin-top: 20px;">
+            <button type="button" class="btn btn-primary" id="btnStart" disabled>Start Workflow</button>
+            <button type="button" class="btn btn-primary" id="btnRunAll" disabled style="display:none;">Run All Steps</button>
+            <button type="button" class="btn btn-danger" id="btnCancel" disabled style="display:none;">Cancel</button>
+            <button type="button" class="btn btn-secondary" id="btnReset" disabled>Reset</button>
+            <button type="button" class="btn btn-secondary" id="btnDownload" disabled>Download Results</button>
+            <button type="button" class="btn btn-secondary" id="btnUpdateTools" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+                Update Tools
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="btnToolsInfo" onclick="showToolsStatus()" title="View deployment tools status">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="16" x2="12" y2="12"/>
+                    <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+            </button>
+        </div>
+        <!-- Tools Status Panel -->
+        <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
+            </div>
+            <div id="toolsStatusContent" style="font-size: 12px;">
+                <span style="color: #888;">Loading...</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Output Results Pane -->
+<div class="output-section">
+    <div class="output-header">
+        <span class="output-title">OUTPUT RESULTS</span>
+        <div class="output-menu">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnOutputMenu">Menu &#x25BE;</button>
+            <div class="output-dropdown" id="outputDropdown" style="display: none;">
+                <a href="#" id="menuCopy">Copy to Clipboard</a>
+                <a href="#" id="menuExpand">Expand / Minimize</a>
+                <a href="#" id="menuAutoScroll">Toggle Auto-scroll</a>
+                <div class="dropdown-divider"></div>
+                <a href="#" id="menuClear" class="text-danger">Clear Output</a>
+            </div>
+        </div>
+    </div>
+    <div class="output-pane" id="outputPane">
+        <div class="output-placeholder">
+            <p>Output will appear here when you run operations.</p>
+            <p class="text-muted">Results persist when navigating to other pages.</p>
+        </div>
+    </div>
+</div>
+
+<style>
+.badge-dev { background: #ff9800; color: #000; font-size: 11px; padding: 3px 8px; border-radius: 4px; margin-left: 10px; }
+
+/* --- Default credentials widget (far right of profile row) --- */
+.default-creds-widget { margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 1px; flex-shrink: 0; align-self: center; }
+.default-creds-label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); text-align: center; line-height: 1; }
+
+/* --- Credential fields (collapsible) --- */
+.credential-fields { padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.creds-row-3 .form-group { flex: 1 1 0; min-width: 0; }
+.creds-row-5 .form-group { flex: 1 1 0; min-width: 0; }
+
+/* --- Workflow & steps --- */
+.workflow-steps { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); }
+.workflow-step { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+.workflow-step:last-child { border-bottom: none; }
+.step-number { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-secondary); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; flex-shrink: 0; }
+.step-name { flex: 1; }
+.step-desc { color: var(--text-secondary); font-size: 12px; }
+.step-status { margin-left: 12px; padding: 4px 12px; border-radius: 4px; font-size: 12px; min-width: 80px; text-align: center; }
+.step-status.pending { background: var(--bg-secondary); color: var(--text-secondary); }
+.step-status.running { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.step-status.done { background: #4caf50; color: white; }
+.step-status.error { background: #f44336; color: white; }
+.step-status.skipped { background: #9e9e9e; color: white; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.step-run-btn { margin-left: 8px; }
+
+/* --- Output pane --- */
+.output-section { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; }
+.output-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.output-title { font-weight: bold; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.output-menu { position: relative; }
+.output-dropdown { position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; }
+.output-dropdown a { display: block; padding: 8px 12px; color: var(--text-primary); text-decoration: none; }
+.output-dropdown a:hover { background: var(--bg-secondary); }
+.dropdown-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+.output-pane { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; padding: 12px; overflow-y: auto; overflow-x: auto; width: 100%; min-height: 450px; max-height: calc(100vh - 260px); box-sizing: border-box; transition: max-height 0.3s ease; }
+.output-pane.creds-expanded { max-height: calc(100vh - 640px); }
+.output-pane.expanded { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; width: 100vw; max-height: calc(100vh - 60px); border-radius: 0; z-index: 999; }
+.output-placeholder { color: var(--text-secondary); text-align: center; padding: 40px; }
+.output-line { margin: 2px 0; white-space: pre-wrap; }
+.output-line .timestamp { color: #888; margin-right: 8px; }
+.output-line.info { color: #e0e0e0; }
+.output-line.warn { color: #ffc107; }
+.output-line.error, .output-line.fail { color: #ff5252; }
+.output-line.success { color: #4caf50; }
+.text-danger { color: #ff5252 !important; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+
+<script>
+var OUTPUT_STORAGE_KEY = 'advanced_ops_output';
+var outputPane, pollInterval = null;
+
+// --- Default credentials ---
+var DEFAULT_CREDENTIALS = {
+    username: 'admin',       password: '123456',
+    node_user: 'vastdata',   node_password: 'vastdata',
+    switch_user: 'cumulus',  switch_password: 'Vastdata1!'
+};
+var SWITCH_PASSWORD_MAP = {
+    'cumulus': 'Vastdata1!',
+    'admin': 'admin'
+};
+
+// --- Profile field mapping (profile key -> form element ID) ---
+var profileFieldMap = {
+    'cluster_ip': 'clusterIp',
+    'username': 'username',
+    'password': 'password',
+    'node_user': 'nodeUser',
+    'node_password': 'nodePassword',
+    'switch_user': 'switchUser',
+    'switch_password': 'switchPassword',
+    'vip_pool': 'vipPool'
+};
+
+// --- Collapse / Expand ---
+function expandCredentials() {
+    document.getElementById('credentialFields').style.display = 'block';
+    document.getElementById('outputPane').classList.add('creds-expanded');
+}
+
+function collapseCredentials() {
+    document.getElementById('credentialFields').style.display = 'none';
+    document.getElementById('outputPane').classList.remove('creds-expanded');
+}
+
+function isCredentialsExpanded() {
+    return document.getElementById('credentialFields').style.display !== 'none';
+}
+
+// --- Default credentials toggle ---
+function toggleDefaultCredentials() {
+    var on = document.getElementById('useDefaultCreds').checked;
+    if (on) {
+        for (var key in DEFAULT_CREDENTIALS) {
+            var elId = profileFieldMap[key] || key;
+            var el = document.getElementById(elId);
+            if (el) el.value = DEFAULT_CREDENTIALS[key];
+        }
+    } else {
+        document.getElementById('username').value = '';
+        ['password', 'node_password', 'switch_password'].forEach(function(k) {
+            var el = document.getElementById(profileFieldMap[k] || k);
+            if (el) el.value = '';
+        });
+    }
+}
+
+// --- OutputPane ---
+function OutputPaneCtor(containerId) {
+    this.container = document.getElementById(containerId);
+    this.autoScroll = true;
+    this.entries = [];
+    this._restore();
+}
+OutputPaneCtor.prototype.append = function(level, message, details) {
+    details = details || null;
+    var timestamp = new Date().toISOString().slice(11, 19);
+    var entry = { timestamp: timestamp, level: level, message: message, details: details };
+    this.entries.push(entry);
+    this._renderEntry(entry);
+    this._persist();
+    if (this.autoScroll) this.container.scrollTop = this.container.scrollHeight;
+};
+OutputPaneCtor.prototype._renderEntry = function(entry) {
+    var placeholder = this.container.querySelector('.output-placeholder');
+    if (placeholder) placeholder.remove();
+    var line = document.createElement('div');
+    line.className = 'output-line ' + entry.level;
+    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
+    if (entry.details) {
+        var d = document.createElement('div');
+        d.style.marginLeft = '20px';
+        d.style.color = '#aaa';
+        d.textContent = '> ' + entry.details;
+        line.appendChild(d);
+    }
+    this.container.appendChild(line);
+};
+OutputPaneCtor.prototype._escapeHtml = function(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
+OutputPaneCtor.prototype._persist = function() { try { sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(this.entries)); } catch(e) {} };
+OutputPaneCtor.prototype._restore = function() { try { var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY); if (s) { this.entries = JSON.parse(s); var self = this; this.entries.forEach(function(e) { self._renderEntry(e); }); } } catch(e) {} };
+OutputPaneCtor.prototype.clear = function() { if (confirm('Clear all output?')) { this.entries = []; this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>'; sessionStorage.removeItem(OUTPUT_STORAGE_KEY); } };
+OutputPaneCtor.prototype.copyToClipboard = function() { var t = this.entries.map(function(e) { return e.timestamp + ' [' + e.level.toUpperCase() + '] ' + e.message; }).join('\n'); navigator.clipboard.writeText(t).then(function() { alert('Copied!'); }); };
+OutputPaneCtor.prototype.toggleExpand = function() { this.container.classList.toggle('expanded'); };
+
+// --- Profile management ---
+async function fetchProfiles() {
+    try {
+        var resp = await fetch('/profiles');
+        var profiles = await resp.json();
+        var sel = document.getElementById('profileSelect');
+        var current = sel.value;
+        sel.innerHTML = '<option value="">-- Select a profile --</option>';
+        for (var name of Object.keys(profiles).sort()) {
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+        return profiles;
+    } catch (e) { return {}; }
+}
+
+async function loadProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) return;
+    var profiles = await fetchProfiles();
+    var p = profiles[name];
+    if (!p) return;
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        if (el) el.value = p[profileKey] || '';
+    }
+    var toggle = document.getElementById('useDefaultCreds');
+    toggle.checked = p.use_default_creds !== false;
+    toggleDefaultCredentials();
+}
+
+async function saveProfile() {
+    var name = document.getElementById('profileSelect').value;
+    if (!name) {
+        name = prompt('Profile name (e.g. "selab-var-202"):');
+        if (!name) return;
+    }
+    var data = { name: name, use_default_creds: document.getElementById('useDefaultCreds').checked };
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        data[profileKey] = el ? el.value : '';
+    }
+    try {
+        var resp = await fetch('/profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        await resp.json();
+        await fetchProfiles();
+        document.getElementById('profileSelect').value = name;
+    } catch (e) {
+        alert('Failed to save profile: ' + e.message);
+    }
+}
+
+function addProfile() {
+    if (isCredentialsExpanded()) {
+        collapseCredentials();
+    } else {
+        document.getElementById('profileSelect').value = '';
+        document.getElementById('clusterIp').value = '';
+        toggleDefaultCredentials();
+        document.getElementById('vipPool').value = 'main';
+        expandCredentials();
+    }
+}
+
+async function deleteProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) { alert('Select a profile to delete.'); return; }
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+        await fetch('/profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+        await fetchProfiles();
+    } catch (e) {
+        alert('Failed to delete profile: ' + e.message);
+    }
+}
+
+function getCredentials() {
+    return {
+        cluster_ip: document.getElementById('clusterIp').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        node_user: document.getElementById('nodeUser').value,
+        node_password: document.getElementById('nodePassword').value,
+        switch_user: document.getElementById('switchUser').value,
+        switch_password: document.getElementById('switchPassword').value,
+        vip_pool: document.getElementById('vipPool').value || 'main',
+    };
+}
+
+// --- Workflow operations ---
+async function loadWorkflows() {
+    try {
+        var resp = await fetch('/advanced-ops/workflows');
+        var data = await resp.json();
+        var select = document.getElementById('operationSelect');
+        select.innerHTML = '<option value="" disabled selected>Select an operation...</option>';
+        data.workflows.forEach(function(wf) {
+            if (wf.enabled) {
+                var opt = document.createElement('option');
+                opt.value = wf.id;
+                opt.textContent = wf.name + ' (' + wf.step_count + ' steps)';
+                select.appendChild(opt);
+            }
+        });
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflows: ' + e.message);
+    }
+}
+
+async function loadWorkflowSteps(workflowId) {
+    try {
+        var resp = await fetch('/advanced-ops/workflows/' + workflowId);
+        var wf = await resp.json();
+        var container = document.getElementById('workflowSteps');
+        container.innerHTML = wf.steps.map(function(s) {
+            return '<div class="workflow-step" data-step="' + s.id + '">' +
+            '<span class="step-number">' + s.id + '</span>' +
+            '<div class="step-name">' + s.name + '<div class="step-desc">' + (s.description || '') + '</div></div>' +
+            '<span class="step-status pending">Pending</span>' +
+            '<button type="button" class="btn btn-sm btn-primary step-run-btn" onclick="runStep(' + s.id + ')">Run</button>' +
+            '</div>';
+        }).join('');
+        container.style.display = 'block';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnReset').disabled = false;
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflow: ' + e.message);
+    }
+}
+
+function updateStepStatus(stepId, status) {
+    var step = document.querySelector('.workflow-step[data-step="' + stepId + '"]');
+    if (step) {
+        var statusEl = step.querySelector('.step-status');
+        statusEl.className = 'step-status ' + status;
+        statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
+}
+
+async function startWorkflow() {
+    var workflowId = document.getElementById('operationSelect').value;
+    if (!workflowId) return;
+    var creds = getCredentials();
+    var formData = new FormData();
+    formData.append('workflow_id', workflowId);
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        var resp = await fetch('/advanced-ops/start', { method: 'POST', body: formData });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', data.error); return; }
+        outputPane.append('info', 'Workflow started: ' + workflowId);
+        document.getElementById('btnStart').style.display = 'none';
+        document.getElementById('btnRunAll').style.display = '';
+        document.getElementById('btnRunAll').disabled = false;
+        document.getElementById('btnCancel').style.display = '';
+        document.getElementById('btnCancel').disabled = false;
+        startPolling();
+    } catch (e) { outputPane.append('error', 'Failed to start workflow: ' + e.message); }
+}
+
+async function runStep(stepId) {
+    updateStepStatus(stepId, 'running');
+    var creds = getCredentials();
+    var formData = new FormData();
+    formData.append('step_id', stepId);
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        var resp = await fetch('/advanced-ops/run-step', { method: 'POST', body: formData });
+        var data = await resp.json();
+        updateStepStatus(stepId, data.status);
+        outputPane.append(data.status === 'done' ? 'success' : data.status === 'error' ? 'error' : 'warn', data.message, data.details);
+    } catch (e) {
+        updateStepStatus(stepId, 'error');
+        outputPane.append('error', 'Step ' + stepId + ' failed: ' + e.message);
+    }
+}
+
+async function runAllSteps() {
+    var creds = getCredentials();
+    var formData = new FormData();
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        await fetch('/advanced-ops/run-all', { method: 'POST', body: formData });
+        outputPane.append('info', 'Running all steps...');
+    } catch (e) { outputPane.append('error', 'Failed to run all steps: ' + e.message); }
+}
+
+async function cancelWorkflow() {
+    try { await fetch('/advanced-ops/cancel', { method: 'POST' }); outputPane.append('warn', 'Cancellation requested'); }
+    catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
+}
+
+async function resetWorkflow() {
+    try {
+        await fetch('/advanced-ops/reset', { method: 'POST' });
+        document.querySelectorAll('.step-status').forEach(function(el) { el.className = 'step-status pending'; el.textContent = 'Pending'; });
+        document.getElementById('btnStart').style.display = '';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnRunAll').style.display = 'none';
+        document.getElementById('btnCancel').style.display = 'none';
+        stopPolling();
+        outputPane.append('info', 'Workflow reset');
+    } catch (e) { outputPane.append('error', 'Failed to reset: ' + e.message); }
+}
+
+function startPolling() {
+    if (pollInterval) return;
+    var lastCount = 0;
+    pollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([fetch('/advanced-ops/status'), fetch('/advanced-ops/output?since=' + lastCount)]);
+            var status = await results[0].json();
+            var output = await results[1].json();
+            if (status.state && status.state.steps) { status.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); }); }
+            output.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details); });
+            lastCount += output.count;
+            if (!status.running && status.state && status.state.status !== 'running') {
+                stopPolling();
+                document.getElementById('btnCancel').disabled = true;
+                document.getElementById('btnDownload').disabled = false;
+            }
+        } catch (e) { console.error('Poll error:', e); }
+    }, 1000);
+}
+
+function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+
+async function downloadResults() {
+    var creds = getCredentials();
+    outputPane.append('info', 'Collecting results for download...');
+    try {
+        var collectResp = await fetch('/advanced-ops/bundle/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var collectData = await collectResp.json();
+        if (collectData.count === 0) { outputPane.append('warn', 'No results found to bundle'); return; }
+        outputPane.append('success', 'Found ' + collectData.count + ' files to bundle');
+        var createResp = await fetch('/advanced-ops/bundle/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var createData = await createResp.json();
+        if (createData.status === 'error') { outputPane.append('error', createData.message); return; }
+        outputPane.append('success', 'Bundle created: ' + createData.name + ' (' + createData.size + ')');
+        var a = document.createElement('a'); a.href = '/advanced-ops/bundle/download/' + createData.name; a.download = createData.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        outputPane.append('success', 'Download started: ' + createData.name);
+    } catch (e) { outputPane.append('error', 'Failed to create bundle: ' + e.message); }
+}
+
+// --- Initialization ---
+document.addEventListener('DOMContentLoaded', function() {
+    outputPane = new OutputPaneCtor('outputPane');
+    loadWorkflows();
+    fetchProfiles();
+    toggleDefaultCredentials();
+
+    // Switch user change: auto-update password when defaults toggle is ON
+    document.getElementById('switchUser').addEventListener('input', function() {
+        if (document.getElementById('useDefaultCreds').checked) {
+            var pw = SWITCH_PASSWORD_MAP[this.value] || '';
+            document.getElementById('switchPassword').value = pw;
+        }
+    });
+
+    // Menu toggle
+    document.getElementById('btnOutputMenu').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var d = document.getElementById('outputDropdown');
+        d.style.display = d.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
+
+    // Menu actions
+    document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
+    document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
+    document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
+    document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
+
+    // Operation selection
+    document.getElementById('operationSelect').addEventListener('change', function() {
+        if (this.value) loadWorkflowSteps(this.value);
+    });
+
+    // Update Deployment Tools helpers
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function formatDate(isoDate) {
+        if (!isoDate) return 'Never';
+        var d = new Date(isoDate);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+
+    function _showToolsStatus() {
+        var panel = document.getElementById('toolsStatusPanel');
+        var content = document.getElementById('toolsStatusContent');
+        panel.style.display = 'block';
+        content.innerHTML = '<span style="color: #888;">Loading...</span>';
+        fetch('/advanced-ops/tools')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                var html = '<table style="width: 100%; border-collapse: collapse; color: #ccc;">';
+                html += '<tr style="border-bottom: 1px solid #444;"><th style="text-align: left; padding: 4px 8px;">Tool</th><th style="text-align: left; padding: 4px 8px;">Status</th><th style="text-align: left; padding: 4px 8px;">Size</th><th style="text-align: left; padding: 4px 8px;">Last Updated</th></tr>';
+                data.tools.forEach(function(tool) {
+                    var st = tool.cached ? '<span style="color: #4ade80;">Cached</span>' : '<span style="color: #f87171;">Not Downloaded</span>';
+                    var sz = tool.cached ? formatFileSize(tool.cached_size) : '-';
+                    var dt = tool.cached ? formatDate(tool.cached_date) : '-';
+                    html += '<tr style="border-bottom: 1px solid #333;"><td style="padding: 6px 8px;"><strong>' + tool.name + '</strong><br><small style="color: #888;">' + tool.description + '</small></td><td style="padding: 6px 8px;">' + st + '</td><td style="padding: 6px 8px;">' + sz + '</td><td style="padding: 6px 8px;">' + dt + '</td></tr>';
+                });
+                html += '</table>';
+                content.innerHTML = html;
+            })
+            .catch(function(err) { content.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
+    }
+
+    function _hideToolsStatus() { document.getElementById('toolsStatusPanel').style.display = 'none'; }
+
+    function _updateDeploymentTools() {
+        var btn = document.getElementById('btnUpdateTools');
+        var originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
+        outputPane.append('info', 'Updating Deployment Tools');
+        fetch('/advanced-ops/tools/update', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            if (data.success) {
+                outputPane.append('success', 'All ' + data.updated + ' tools updated successfully!');
+                outputPane.append('info', 'Tools cached locally: output/tools/');
+                Object.keys(data.tools).forEach(function(toolName) {
+                    var tool = data.tools[toolName];
+                    if (tool.success) { outputPane.append('success', '  ' + tool.message); }
+                    else { outputPane.append('error', '  ' + toolName + ': ' + tool.message); }
+                });
+            } else {
+                outputPane.append('warn', 'Some tools failed to update (' + data.updated + '/' + (data.updated + data.failed) + ' succeeded)');
+            }
+            var panel = document.getElementById('toolsStatusPanel');
+            if (panel.style.display !== 'none') { _showToolsStatus(); }
+        })
+        .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
+    }
+
+    // Expose functions used by inline onclick handlers
+    window.showToolsStatus = _showToolsStatus;
+    window.hideToolsStatus = _hideToolsStatus;
+    window.updateDeploymentTools = _updateDeploymentTools;
+
+    // Button handlers
+    document.getElementById('btnStart').addEventListener('click', startWorkflow);
+    document.getElementById('btnRunAll').addEventListener('click', runAllSteps);
+    document.getElementById('btnCancel').addEventListener('click', cancelWorkflow);
+    document.getElementById('btnReset').addEventListener('click', resetWorkflow);
+    document.getElementById('btnDownload').addEventListener('click', downloadResults);
+});
+</script>
+{% endblock %}

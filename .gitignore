@@ -195,3 +195,16 @@ run-vast-asbuilt-reporter.ps1
 
 # VNetMap tool (contains AWS credentials - keep local only)
 src/vnetmap.py
+vnetmap.py
+
+# Imported health check results (cluster-specific data)
+import/
+
+# Generated script and tool output (not tracked in git)
+output/scripts/
+output/tools/
+output/health/
+src/output/
+
+# Rotated log files
+logs/*.log.[0-9]*

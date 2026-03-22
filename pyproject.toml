@@ -3,12 +3,19 @@ line-length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# cov-fail-under=45: adjusted for health_checker.py (1298 lines); restore to 49%+ per TSE-8
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=45"
+# cov-fail-under=55: raised after omitting dead-code modules (TSE-10); target 75%+ per TSE-9
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=55"
 markers = [
     "integration: full pipeline integration tests",
     "ui: browser-based UI tests (require Playwright)",
     "slow: tests that take more than 5 seconds",
+]
+
+[tool.coverage.run]
+omit = [
+    "src/comprehensive_report_template.py",
+    "src/enhanced_report_builder.py",
+    "src/session_manager.py",
 ]
 
 [tool.mypy]

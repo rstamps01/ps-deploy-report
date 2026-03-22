@@ -672,6 +672,10 @@ class HealthChecker:
             self._check_data_protection,
             self._check_monitoring_config,
             self._check_device_health,
+            # Post-install validation checks
+            self._check_call_home_status,
+            self._check_rack_uheight_config,
+            self._check_switches_registered,
         ]
         results: List[HealthCheckResult] = []
         self._apply_health_check_timeouts()
@@ -2470,6 +2474,192 @@ class HealthChecker:
         except Exception as e:
             return HealthCheckResult(
                 check_name="Device Health (Prometheus)",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    # ------------------------------------------------------------------
+    # Post-Install Validation Checks
+    # ------------------------------------------------------------------
+
+    def _check_call_home_status(self) -> HealthCheckResult:
+        """Check Call Home / Support Contact configuration status."""
+        start = time.time()
+        try:
+            # Try to get support/contact or cluster settings for call home
+            cluster_data = self._get_cluster_data()
+            if not cluster_data:
+                return HealthCheckResult(
+                    check_name="Call Home Status",
+                    category="api",
+                    status="skipped",
+                    message="Unable to retrieve cluster configuration",
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            # Check for support contact info
+            support_email = cluster_data.get("support_email") or cluster_data.get("contact_email")
+            support_phone = cluster_data.get("support_phone") or cluster_data.get("contact_phone")
+            call_home_enabled = cluster_data.get("call_home_enabled", False)
+
+            details = {
+                "call_home_enabled": call_home_enabled,
+                "support_email": support_email or "Not configured",
+                "support_phone": support_phone or "Not configured",
+            }
+
+            if not call_home_enabled:
+                return HealthCheckResult(
+                    check_name="Call Home Status",
+                    category="api",
+                    status="warning",
+                    message="Call Home is not enabled. Consider enabling for proactive support.",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            return HealthCheckResult(
+                check_name="Call Home Status",
+                category="api",
+                status="pass",
+                message="Call Home is enabled",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Call Home Status",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    def _check_rack_uheight_config(self) -> HealthCheckResult:
+        """Check if rack and U-height settings are configured for CBoxes/DBoxes."""
+        start = time.time()
+        try:
+            # Get racks
+            racks = self.api_handler._make_api_request("racks/")
+            rack_count = len(racks) if isinstance(racks, list) else 0
+
+            # Check CBoxes for rack assignments
+            cboxes = self.api_handler._make_api_request("cboxes/")
+            dboxes = self.api_handler._make_api_request("dboxes/")
+
+            cboxes_missing_rack = []
+            dboxes_missing_rack = []
+
+            if isinstance(cboxes, list):
+                for cb in cboxes:
+                    if not cb.get("rack") and not cb.get("rack_id"):
+                        cboxes_missing_rack.append(cb.get("name", cb.get("id", "Unknown")))
+
+            if isinstance(dboxes, list):
+                for db in dboxes:
+                    if not db.get("rack") and not db.get("rack_id"):
+                        dboxes_missing_rack.append(db.get("name", db.get("id", "Unknown")))
+
+            details = {
+                "rack_count": rack_count,
+                "cboxes_missing_rack": cboxes_missing_rack,
+                "dboxes_missing_rack": dboxes_missing_rack,
+            }
+
+            missing_total = len(cboxes_missing_rack) + len(dboxes_missing_rack)
+
+            if rack_count == 0:
+                return HealthCheckResult(
+                    check_name="Rack/U-Height Configuration",
+                    category="api",
+                    status="warning",
+                    message="No racks defined. Create racks and assign U-height for accurate diagrams.",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            if missing_total > 0:
+                return HealthCheckResult(
+                    check_name="Rack/U-Height Configuration",
+                    category="api",
+                    status="warning",
+                    message=f"{missing_total} device(s) missing rack assignment. Assign U-height for rack layout diagram.",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            return HealthCheckResult(
+                check_name="Rack/U-Height Configuration",
+                category="api",
+                status="pass",
+                message=f"All devices assigned to {rack_count} rack(s)",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Rack/U-Height Configuration",
+                category="api",
+                status="error",
+                message=f"Check failed: {e}",
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+
+    def _check_switches_registered(self) -> HealthCheckResult:
+        """Check if switches are registered in VMS for port mapping."""
+        start = time.time()
+        try:
+            switches = self.api_handler._make_api_request("switches/")
+            switch_count = len(switches) if isinstance(switches, list) else 0
+
+            details = {
+                "switch_count": switch_count,
+                "switches": [
+                    {"name": sw.get("name"), "ip": sw.get("mgmt_ip")}
+                    for sw in (switches if isinstance(switches, list) else [])
+                ],
+            }
+
+            if switch_count == 0:
+                return HealthCheckResult(
+                    check_name="Switches in VMS",
+                    category="api",
+                    status="warning",
+                    message="No switches registered. Add switches in VMS for port mapping functionality.",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            return HealthCheckResult(
+                check_name="Switches in VMS",
+                category="api",
+                status="pass",
+                message=f"{switch_count} switch(es) registered in VMS",
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
+            )
+        except CancelledError:
+            raise
+        except Exception as e:
+            return HealthCheckResult(
+                check_name="Switches in VMS",
                 category="api",
                 status="error",
                 message=f"Check failed: {e}",

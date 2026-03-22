@@ -767,8 +767,14 @@ def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
-    """Launch the Flask web UI and open the default browser."""
+def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -> int:
+    """Launch the Flask web UI and open the default browser.
+
+    Args:
+        host: Host address to bind to
+        port: Port number to listen on
+        dev_mode: Enable Developer Mode for advanced operations
+    """
     from werkzeug.serving import make_server
 
     from app import create_flask_app
@@ -777,6 +783,9 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     config = load_configuration()
     setup_logging(config)
     enable_sse_logging()
+
+    # Pass developer mode to Flask app
+    config["DEVELOPER_MODE"] = dev_mode
 
     flask_app = create_flask_app(config)
 
@@ -792,6 +801,8 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     url = f"http://{host}:{port}"
     print("\n  VAST As-Built Reporter — Web UI")
     print(f"  Running at {url}")
+    if dev_mode:
+        print("  Developer Mode: ENABLED")
     print("  Press Ctrl+C to stop\n")
 
     webbrowser.open(url)
@@ -812,10 +823,16 @@ def main() -> int:
 
     Default (no args or --gui): launches the web UI.
     --cli: runs the original command-line workflow.
+    --dev-mode: enables Developer Mode for advanced operations.
     """
+    # Check for developer mode flag
+    dev_mode = "--dev-mode" in sys.argv
+    if dev_mode:
+        sys.argv.remove("--dev-mode")
+
     if len(sys.argv) > 1 and sys.argv[1] == "--gui":
         sys.argv.pop(1)
-        return run_gui()
+        return run_gui(dev_mode=dev_mode)
 
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         sys.argv.pop(1)
@@ -823,7 +840,7 @@ def main() -> int:
 
     # If no recognised subcommand and no --cluster flag, default to GUI
     if len(sys.argv) == 1 or not any(a.startswith("--cluster") for a in sys.argv[1:]):
-        return run_gui()
+        return run_gui(dev_mode=dev_mode)
 
     # Legacy usage: direct CLI args like --cluster ... --output ...
     return run_cli()

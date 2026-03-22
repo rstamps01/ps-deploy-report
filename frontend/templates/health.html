@@ -12,7 +12,19 @@
     <div class="card form-card">
         <form id="healthForm">
             <fieldset id="formFields">
-                <legend>Cluster Connection</legend>
+                <div class="fieldset-section">Cluster Profile</div>
+                <div class="form-group">
+                    <label for="profileSelect">Saved Profiles</label>
+                    <div class="profile-controls">
+                        <select id="profileSelect" onchange="loadProfile()">
+                            <option value="">-- Select a profile --</option>
+                        </select>
+                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    </div>
+                </div>
+
+                <div class="fieldset-section">Cluster Connection</div>
                 <div class="form-group">
                     <label for="cluster_ip">Cluster IP / Hostname *</label>
                     <input type="text" id="cluster_ip" name="cluster_ip" required
@@ -160,6 +172,98 @@
     document.getElementById("switch_password").addEventListener("input", updateTierCheckboxes);
     updateTierCheckboxes();
     toggleAuth();
+
+    // Profile management
+    const profileFields = [
+        'cluster_ip', 'auth_method', 'username', 'password', 'api_token',
+        'node_user', 'node_password', 'switch_user', 'switch_password'
+    ];
+
+    async function fetchProfiles() {
+        try {
+            const resp = await fetch('/profiles');
+            const profiles = await resp.json();
+            const sel = document.getElementById('profileSelect');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Select a profile --</option>';
+            for (const name of Object.keys(profiles).sort()) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            }
+            if (current) sel.value = current;
+            return profiles;
+        } catch (e) { return {}; }
+    }
+
+    async function loadProfile() {
+        const sel = document.getElementById('profileSelect');
+        const name = sel.value;
+        if (!name) return;
+        const profiles = await fetchProfiles();
+        const p = profiles[name];
+        if (!p) return;
+        for (const field of profileFields) {
+            const el = document.getElementById(field);
+            if (el) {
+                if (field === 'api_token') {
+                    el.value = p['api_token'] || p['token'] || '';
+                } else {
+                    el.value = p[field] || '';
+                }
+            }
+        }
+        toggleAuth();
+        updateTierCheckboxes();
+    }
+
+    async function saveProfile() {
+        let name = document.getElementById('profileSelect').value;
+        if (!name) {
+            name = prompt('Profile name (e.g. "selab-var-202"):');
+            if (!name) return;
+        }
+        const data = {name: name};
+        for (const field of profileFields) {
+            const el = document.getElementById(field);
+            data[field] = el ? el.value : '';
+        }
+        if (data.api_token) data.token = data.api_token;
+        try {
+            const resp = await fetch('/profiles', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            await resp.json();
+            await fetchProfiles();
+            document.getElementById('profileSelect').value = name;
+        } catch (e) {
+            alert('Failed to save profile: ' + e.message);
+        }
+    }
+
+    async function deleteProfile() {
+        const sel = document.getElementById('profileSelect');
+        const name = sel.value;
+        if (!name) { alert('Select a profile to delete.'); return; }
+        if (!confirm('Delete profile "' + name + '"?')) return;
+        try {
+            await fetch('/profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+            await fetchProfiles();
+        } catch (e) {
+            alert('Failed to delete profile: ' + e.message);
+        }
+    }
+
+    // Expose functions globally for onclick handlers
+    window.loadProfile = loadProfile;
+    window.saveProfile = saveProfile;
+    window.deleteProfile = deleteProfile;
+
+    // Load profiles on page load
+    fetchProfiles();
 
     const form = document.getElementById("healthForm");
     const logOutput = document.getElementById("logOutput");

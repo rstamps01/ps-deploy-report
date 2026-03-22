@@ -9,7 +9,7 @@ import json
 import sys
 import threading
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -347,4 +347,271 @@ class TestPrometheusParser:
 
     def test_parse_empty_input(self, parser):
         results = parser._parse_prometheus_metrics("")
+        assert results == []
+
+
+# ===================================================================
+# TestRemediationReport
+# ===================================================================
+
+
+class TestRemediationReport:
+    @pytest.fixture
+    def checker_with_handler(self, mock_api_handler):
+        return HealthChecker(api_handler=mock_api_handler)
+
+    def _make_report(self, results, summary=None):
+        if summary is None:
+            summary = {"pass": 0, "fail": 0, "warning": 0, "skipped": 0, "error": 0}
+            for r in results:
+                summary[r.status] = summary.get(r.status, 0) + 1
+        return HealthCheckReport(
+            cluster_ip="10.0.0.1",
+            cluster_name="test-cluster",
+            cluster_version="5.3.0",
+            timestamp="2026-03-19T00:00:00Z",
+            results=results,
+            summary=summary,
+            manual_checklist=list(HealthChecker.MANUAL_CHECKLIST),
+            tiers_run=[1],
+        )
+
+    def test_generate_remediation_report_with_failures(self, checker_with_handler, tmp_path):
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE: cnode-2",
+                details={"inactive": ["cnode-2"]},
+                timestamp="2026-03-19T00:00:00Z",
+            ),
+        ]
+        report = self._make_report(results)
+        filepath = checker_with_handler.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "CRITICAL FINDINGS" in text
+        assert "CNode Status" in text
+        assert "cnode-2" in text
+
+    def test_generate_remediation_report_all_pass(self, checker_with_handler, tmp_path):
+        results = [
+            HealthCheckResult(
+                check_name="Cluster RAID Health",
+                category="api",
+                status="pass",
+                message="All RAID arrays HEALTHY",
+                timestamp="2026-03-19T00:00:00Z",
+            ),
+        ]
+        report = self._make_report(results)
+        filepath = checker_with_handler.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "PASSING CHECKS" in text
+        assert "END OF REPORT" in text
+
+    def test_remediation_report_includes_severity(self, checker_with_handler, tmp_path):
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE",
+                timestamp="2026-03-19T00:00:00Z",
+            ),
+            HealthCheckResult(
+                check_name="Capacity",
+                category="api",
+                status="warning",
+                message="Capacity at 92%",
+                timestamp="2026-03-19T00:00:00Z",
+            ),
+        ]
+        report = self._make_report(results)
+        filepath = checker_with_handler.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "CRITICAL" in text
+        assert "Severity:" in text
+
+    def test_remediation_report_includes_timestamps(self, checker_with_handler, tmp_path):
+        ts = "2026-03-19T12:34:56Z"
+        results = [
+            HealthCheckResult(
+                check_name="VIP Pools",
+                category="api",
+                status="fail",
+                message="No VIP pools configured",
+                timestamp=ts,
+            ),
+        ]
+        report = self._make_report(results)
+        filepath = checker_with_handler.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert ts in text
+        assert "Timestamp:" in text
+
+
+# ===================================================================
+# TestCorrelationEngine
+# ===================================================================
+
+
+class TestCorrelationEngine:
+    @pytest.fixture
+    def checker_with_handler(self, mock_api_handler):
+        return HealthChecker(api_handler=mock_api_handler)
+
+    def test_correlate_cnode_dnode_down(self, checker_with_handler):
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE",
+                details={"inactive": ["cnode-2"]},
+            ),
+            HealthCheckResult(
+                check_name="DNode Status",
+                category="api",
+                status="fail",
+                message="1 DNode INACTIVE",
+                details={"inactive": ["dnode-3"]},
+            ),
+        ]
+        correlations = checker_with_handler._correlate_findings(results)
+        assert "CNode Status" in correlations
+        assert "DNode Status" in correlations
+        assert any("chassis" in c.lower() for c in correlations["CNode Status"])
+
+    def test_correlate_no_findings(self, checker_with_handler):
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status", category="api", status="pass", message="All CNodes ACTIVE"
+            ),
+            HealthCheckResult(
+                check_name="DNode Status", category="api", status="pass", message="All DNodes ACTIVE"
+            ),
+        ]
+        correlations = checker_with_handler._correlate_findings(results)
+        assert correlations == {}
+
+    def test_correlate_leader_inactive(self, checker_with_handler):
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE",
+                details={"inactive": ["cnode-1"]},
+            ),
+            HealthCheckResult(
+                check_name="Leader State",
+                category="api",
+                status="fail",
+                message="Leader cnode-1 is INACTIVE",
+                details={"leader_cnode": "cnode-1"},
+            ),
+        ]
+        correlations = checker_with_handler._correlate_findings(results)
+        assert "Leader State" in correlations
+        assert any("leader" in c.lower() for c in correlations["Leader State"])
+
+
+# ===================================================================
+# TestSSHTier2Checks
+# ===================================================================
+
+
+class TestSSHTier2Checks:
+    @pytest.fixture
+    def ssh_checker(self, mock_api_handler):
+        ssh_config = {"username": "vastdata", "password": "secret", "cnode_ip": "10.0.0.10"}
+        return HealthChecker(api_handler=mock_api_handler, ssh_config=ssh_config)
+
+    @patch("health_checker.run_ssh_command")
+    def test_management_ping_success(self, mock_ssh, ssh_checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
+        ]
+        mock_ssh.return_value = (0, "PING 10.0.0.50 ... 0% packet loss", "")
+        result = ssh_checker._check_management_ping("10.0.0.10", "vastdata", "secret")
+        assert result.status == "pass"
+        assert result.check_name == "Management Ping"
+
+    @patch("health_checker.run_ssh_command")
+    def test_management_ping_timeout(self, mock_ssh, ssh_checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
+        ]
+        mock_ssh.side_effect = Exception("timed out")
+        result = ssh_checker._check_management_ping("10.0.0.10", "vastdata", "secret")
+        assert result.status == "error"
+        assert "timed out" in result.message
+
+    def test_management_ping_respects_cancel(self, ssh_checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
+        ]
+        ssh_checker.cancel_event = threading.Event()
+        ssh_checker.cancel_event.set()
+        with pytest.raises(CancelledError):
+            ssh_checker.run_node_ssh_checks()
+
+    @patch("health_checker.run_ssh_command")
+    def test_node_memory_check_pass(self, mock_ssh, ssh_checker):
+        mock_ssh.return_value = (0, "Mem:          32000       8000      20000        500       4000      23000", "")
+        result = ssh_checker._check_memory_usage("10.0.0.10", "vastdata", "secret")
+        assert result.status == "pass"
+        assert result.check_name == "Memory Usage"
+
+
+# ===================================================================
+# TestSSHTier3Checks
+# ===================================================================
+
+
+class TestSSHTier3Checks:
+    @pytest.fixture
+    def switch_checker(self, mock_api_handler):
+        switch_config = {"username": "cumulus", "password": "secret", "switch_ips": ["10.0.1.1"]}
+        return HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+
+    @patch("health_checker.run_ssh_command")
+    def test_mlag_status_pass(self, mock_ssh, switch_checker):
+        mlag_output = (
+            "peer-alive          : true\n"
+            "backup-active       : true\n"
+            "mlag-id             : 1\n"
+        )
+        mock_ssh.return_value = (0, mlag_output, "")
+        result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        assert result.status == "pass"
+        assert "peer-alive" in result.message
+
+    @patch("health_checker.run_ssh_command")
+    def test_mlag_status_fail(self, mock_ssh, switch_checker):
+        mlag_output = (
+            "peer-alive          : false\n"
+            "backup-active       : false\n"
+        )
+        mock_ssh.return_value = (0, mlag_output, "")
+        result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        assert result.status == "fail"
+        assert "peer-alive" in result.message
+
+    @patch("health_checker.run_ssh_command")
+    def test_switch_ntp_pass(self, mock_ssh, switch_checker):
+        ntp_output = (
+            "     remote           refid      st t when poll reach   delay   offset  jitter\n"
+            "==============================================================================\n"
+            "*ntp.ubuntu.com  17.253.34.123    2 u  532 1024  377   12.345   -0.678   1.234\n"
+        )
+        mock_ssh.return_value = (0, ntp_output, "")
+        result = switch_checker._check_switch_ntp("10.0.1.1", "cumulus", "secret")
+        assert result.status == "pass"
+        assert "NTP peers found" in result.message
+
+    def test_run_switch_checks_no_config(self, mock_api_handler):
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=None)
+        results = checker.run_switch_ssh_checks()
         assert results == []
