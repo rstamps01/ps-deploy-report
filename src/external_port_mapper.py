@@ -374,6 +374,29 @@ class ExternalPortMapper:
 
                 self.vlog.log(f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
 
+                stderr_lower = (stderr or "").lower()
+                if any(
+                    indicator in stderr_lower
+                    for indicator in (
+                        "connection failed",
+                        "cannot reach",
+                        "timed out",
+                        "connection refused",
+                        "no route to host",
+                        "network is unreachable",
+                    )
+                ):
+                    connectivity_error = (
+                        f"Cannot reach switch {switch_ip} — network connectivity issue. "
+                        + (
+                            "Enable 'Proxy through CNode' to tunnel SSH via the CNode."
+                            if not self.proxy_jump
+                            else "Check that the CNode can reach this switch IP."
+                        )
+                    )
+                    self.vlog.log_error(connectivity_error)
+                    raise Exception(connectivity_error)
+
                 # Check both stdout and stderr for OS identification
                 output_lower = (stdout + stderr).lower()
 
@@ -406,11 +429,24 @@ class ExternalPortMapper:
                         return ("onyx", user, password)
 
             except Exception as e:
+                if str(e).startswith("Cannot reach switch"):
+                    raise
                 self.vlog.log_warning(f"Error testing {expected_os} on {switch_ip}: {e}")
                 continue
 
         # If we get here, neither credential set worked
-        error_msg = f"Could not detect OS type for switch {switch_ip} - authentication failed with both credential sets"
+        if not self.proxy_jump:
+            error_msg = (
+                f"Could not detect OS type for switch {switch_ip} — "
+                "authentication failed with both credential sets. "
+                "If the switch is not directly reachable, enable 'Proxy through CNode'."
+            )
+        else:
+            error_msg = (
+                f"Could not detect OS type for switch {switch_ip} — "
+                "authentication failed with both credential sets via CNode proxy. "
+                "Verify switch credentials are correct."
+            )
         self.vlog.log_error(error_msg)
         raise Exception(error_msg)
 

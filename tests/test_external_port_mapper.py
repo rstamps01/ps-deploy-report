@@ -79,7 +79,8 @@ class TestSwitchDetection:
         with patch("external_port_mapper.run_ssh_command") as mock_ssh, patch(
             "external_port_mapper.run_interactive_ssh"
         ) as mock_issh:
-            mock_ssh.return_value = (1, "", "Connection refused")
+            # Auth-style failure so detection continues to Onyx (not connectivity abort)
+            mock_ssh.return_value = (1, "", "Authentication failed for user cumulus")
             mock_issh.return_value = (0, "Product name: Mellanox Onyx", "")
             os_type, user, pw = mapper._detect_switch_os("10.0.0.10")
         assert os_type == "onyx"
@@ -94,6 +95,23 @@ class TestSwitchDetection:
             mock_issh.return_value = (1, "", "error")
             with pytest.raises(Exception, match="Could not detect OS type"):
                 mapper._detect_switch_os("10.0.0.10")
+
+    def test_detect_connectivity_failure_raises_without_second_credential_try(self, mapper):
+        with patch("external_port_mapper.run_ssh_command") as mock_ssh, patch(
+            "external_port_mapper.run_interactive_ssh"
+        ) as mock_issh:
+            mock_ssh.return_value = (1, "", "Connection failed for 10.0.0.10: timed out")
+            with pytest.raises(Exception, match="Cannot reach switch"):
+                mapper._detect_switch_os("10.0.0.10")
+            mock_issh.assert_not_called()
+
+    def test_detect_connectivity_message_when_proxy_enabled(self, mapper_with_proxy):
+        with patch("external_port_mapper.run_ssh_command") as mock_ssh, patch(
+            "external_port_mapper.run_interactive_ssh"
+        ):
+            mock_ssh.return_value = (1, "", "Cannot reach jump host")
+            with pytest.raises(Exception, match="CNode can reach"):
+                mapper_with_proxy._detect_switch_os("10.0.0.10")
 
 
 class TestMacCollection:
