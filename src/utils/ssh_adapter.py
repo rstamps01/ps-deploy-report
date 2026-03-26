@@ -65,6 +65,9 @@ def run_ssh_command(
     force_tty: bool = False,
     login_shell: bool = False,
     agent_forward: bool = False,
+    jump_host: Optional[str] = None,
+    jump_user: Optional[str] = None,
+    jump_password: Optional[str] = None,
 ) -> Tuple[int, str, str]:
     """Execute a single command over SSH and return (returncode, stdout, stderr).
 
@@ -86,17 +89,48 @@ def run_ssh_command(
         agent_forward:    Enable SSH agent forwarding (``-A``).  Allows
                           commands on the remote host to use the caller's
                           SSH agent for nested SSH connections.
+        jump_host:        Intermediate host to tunnel through (e.g. a CNode
+                          tech-port IP).  When provided, paramiko's
+                          ``direct-tcpip`` channel is used regardless of
+                          platform.
+        jump_user:        Username for the jump host.
+        jump_password:    Password for the jump host.
     """
     effective_cmd = _wrap_login_shell(command) if login_shell else command
 
+    if jump_host:
+        return _paramiko_exec(
+            host,
+            username,
+            password,
+            effective_cmd,
+            timeout,
+            force_tty=force_tty,
+            agent_forward=agent_forward,
+            jump_host=jump_host,
+            jump_user=jump_user,
+            jump_password=jump_password,
+        )
+
     if IS_WINDOWS:
         return _paramiko_exec(
-            host, username, password, effective_cmd, timeout,
-            force_tty=force_tty, agent_forward=agent_forward,
+            host,
+            username,
+            password,
+            effective_cmd,
+            timeout,
+            force_tty=force_tty,
+            agent_forward=agent_forward,
         )
     return _subprocess_ssh(
-        host, username, password, effective_cmd, timeout,
-        known_hosts_file, force_tty=force_tty, agent_forward=agent_forward,
+        host,
+        username,
+        password,
+        effective_cmd,
+        timeout,
+        known_hosts_file,
+        force_tty=force_tty,
+        agent_forward=agent_forward,
     )
 
 
@@ -107,12 +141,26 @@ def run_interactive_ssh(
     command: str,
     timeout: int = 30,
     known_hosts_file: str = "/dev/null",
+    jump_host: Optional[str] = None,
+    jump_user: Optional[str] = None,
+    jump_password: Optional[str] = None,
 ) -> Tuple[int, str, str]:
     """Interactive SSH session (required for Mellanox Onyx admin user).
 
     Uses *pexpect* on macOS/Linux to drive the password prompt and the
     switch CLI interactively.  Falls back to paramiko on Windows.
+
+    When *jump_host* is provided, paramiko's ``direct-tcpip`` channel is
+    used regardless of platform (pexpect cannot drive a tunnelled session).
     """
+    if jump_host:
+        return _paramiko_exec(
+            host, username, password, command, timeout,
+            force_tty=True,
+            jump_host=jump_host,
+            jump_user=jump_user,
+            jump_password=jump_password,
+        )
     if IS_WINDOWS:
         return _paramiko_exec(host, username, password, command, timeout, force_tty=True)
     return _pexpect_interactive(host, username, password, command, timeout, known_hosts_file)
@@ -183,19 +231,29 @@ def _subprocess_ssh(
             cmd.append("-A")
 
         connect_timeout = min(timeout, 30)
-        cmd.extend([
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=" + known_hosts_file,
-            "-o", "ConnectTimeout=" + str(connect_timeout),
-            "-o", "ServerAliveInterval=15",
-            "-o", "ServerAliveCountMax=3",
-            username + "@" + host,
-            command,
-        ])
+        cmd.extend(
+            [
+                "-o",
+                "StrictHostKeyChecking=no",
+                "-o",
+                "UserKnownHostsFile=" + known_hosts_file,
+                "-o",
+                "ConnectTimeout=" + str(connect_timeout),
+                "-o",
+                "ServerAliveInterval=15",
+                "-o",
+                "ServerAliveCountMax=3",
+                username + "@" + host,
+                command,
+            ]
+        )
         try:
             result = subprocess.run(
-                cmd, capture_output=True, text=True,
-                timeout=timeout, env=env,
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
             )
             return result.returncode, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
@@ -207,8 +265,13 @@ def _subprocess_ssh(
 
     logger.debug("sshpass not found, falling back to paramiko for %s", host)
     return _paramiko_exec(
-        host, username, password, command, timeout,
-        force_tty=force_tty, agent_forward=agent_forward,
+        host,
+        username,
+        password,
+        command,
+        timeout,
+        force_tty=force_tty,
+        agent_forward=agent_forward,
     )
 
 
@@ -232,8 +295,7 @@ def _pexpect_interactive(
         ssh_cmd = (
             "ssh -o StrictHostKeyChecking=no "
             "-o UserKnownHostsFile=" + known_hosts_file + " "
-            "-o ConnectTimeout=" + str(connect_timeout) + " "
-            + username + "@" + host
+            "-o ConnectTimeout=" + str(connect_timeout) + " " + username + "@" + host
         )
         child = pexpect.spawn(ssh_cmd, timeout=timeout, encoding="utf-8")
 
@@ -280,18 +342,81 @@ def _paramiko_exec(
     timeout: int,
     force_tty: bool = False,
     agent_forward: bool = False,
+    jump_host: Optional[str] = None,
+    jump_user: Optional[str] = None,
+    jump_password: Optional[str] = None,
 ) -> Tuple[int, str, str]:
-    """Execute a command over SSH using paramiko (pure Python, cross-platform)."""
+    """Execute a command over SSH using paramiko (pure Python, cross-platform).
+
+    When *jump_host*, *jump_user*, and *jump_password* are all provided the
+    connection is tunnelled through the jump host using a ``direct-tcpip``
+    channel.  This is the only reliable cross-platform approach for reaching
+    hosts (e.g. switches) that are only accessible from inside a cluster
+    network.
+    """
     try:
         import paramiko  # type: ignore[import-untyped]
     except ImportError:
         return 1, "", "paramiko not installed. Run: pip install paramiko"
 
+    jump_params = [jump_host, jump_user, jump_password]
+    if any(jump_params) and not all(jump_params):
+        return (
+            1, "",
+            "Incomplete jump host config: jump_host, jump_user, "
+            "and jump_password must all be provided",
+        )
+
+    use_jump = jump_host and jump_user and jump_password
+    jump_client: Optional[paramiko.SSHClient] = None
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     try:
         connect_timeout = min(timeout, 30)
+        sock = None
+
+        if use_jump:
+            logger.debug(
+                "Opening SSH tunnel via jump host %s to reach %s",
+                jump_host, host,
+            )
+            jump_client = paramiko.SSHClient()
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            try:
+                jump_client.connect(
+                    jump_host,
+                    username=jump_user,
+                    password=jump_password,
+                    timeout=connect_timeout,
+                    banner_timeout=connect_timeout,
+                    look_for_keys=False,
+                    allow_agent=False,
+                )
+            except paramiko.AuthenticationException:
+                return (
+                    1, "",
+                    "Jump host authentication failed for "
+                    + jump_user + "@" + jump_host,
+                )
+            except (paramiko.SSHException, OSError) as exc:
+                return (
+                    1, "",
+                    "Jump host connection failed for "
+                    + jump_host + ": " + str(exc),
+                )
+
+            jump_transport = jump_client.get_transport()
+            if jump_transport is None:
+                return 1, "", "Jump host transport unavailable for " + jump_host
+            sock = jump_transport.open_channel(
+                "direct-tcpip", (host, 22), ("127.0.0.1", 0),
+            )
+            logger.debug(
+                "SSH tunnel established: %s -> %s:22 via %s",
+                jump_host, host, jump_host,
+            )
+
         client.connect(
             host,
             username=username,
@@ -300,6 +425,7 @@ def _paramiko_exec(
             banner_timeout=connect_timeout,
             look_for_keys=False,
             allow_agent=agent_forward,
+            sock=sock,
         )
 
         transport = client.get_transport()
@@ -307,7 +433,9 @@ def _paramiko_exec(
             transport.set_keepalive(15)
 
         _stdin, stdout, stderr = client.exec_command(
-            command, timeout=timeout, get_pty=force_tty,
+            command,
+            timeout=timeout,
+            get_pty=force_tty,
         )
         rc = stdout.channel.recv_exit_status()
         out = stdout.read().decode("utf-8", errors="replace")
@@ -323,3 +451,5 @@ def _paramiko_exec(
         return 1, "", str(exc)
     finally:
         client.close()
+        if jump_client is not None:
+            jump_client.close()
