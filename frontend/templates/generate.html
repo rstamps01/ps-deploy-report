@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Generate Report</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>Generate Report</h1>
     <p class="subtitle">Connect to a VAST cluster and generate an as-built report</p>
 </div>
 
@@ -147,6 +147,13 @@
                             <input type="password" id="switch_password" name="switch_password">
                         </div>
                     </div>
+                    <div class="form-group" style="margin-top:12px;">
+                        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" checked style="width:auto;">
+                            <span>Proxy switch SSH through CNode</span>
+                            <span class="info-icon" title="Enable when switches are not directly reachable from this machine (e.g., field deployments via tech port). SSH to switches will tunnel through the CNode using node credentials.">&#9432;</span>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="form-group toggle-row toggle-option">
@@ -262,6 +269,8 @@ async function loadProfile() {
         pm.checked = !!p.enable_port_mapping;
         togglePortMapping();
     }
+    const pj = document.getElementById('proxyJumpToggle');
+    if (pj) pj.checked = p.proxy_jump !== false;
     toggleAuth();
 }
 
@@ -278,6 +287,8 @@ async function saveProfile() {
     }
     const pm = document.getElementById('enable_port_mapping');
     data.enable_port_mapping = pm ? pm.checked : false;
+    const pj = document.getElementById('proxyJumpToggle');
+    data.proxy_jump = pj ? pj.checked : true;
     try {
         const resp = await fetch('/profiles', {
             method: 'POST',
