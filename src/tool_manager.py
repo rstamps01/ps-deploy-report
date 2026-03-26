@@ -24,7 +24,7 @@ class ToolManager:
     """Manages deployment tools with local caching and smart deployment."""
 
     # Tool definitions with download URLs
-    TOOLS = {
+    TOOLS: Dict[str, Dict[str, Any]] = {
         "vnetmap.py": {
             "url": "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/vnetmap.py",
             "description": "Network topology validation tool",
@@ -129,7 +129,7 @@ class ToolManager:
 
     def update_all_tools(self) -> Dict[str, Any]:
         """Update all tools in local cache."""
-        results = {"success": True, "tools": {}, "updated": 0, "failed": 0}
+        results: Dict[str, Any] = {"success": True, "tools": {}, "updated": 0, "failed": 0}
 
         self._emit("info", "═" * 60)
         self._emit("info", "Updating Deployment Tools")
@@ -159,12 +159,12 @@ class ToolManager:
         """Ensure the remote directory exists on the CNode."""
         mkdir_cmd = f"mkdir -p {self.REMOTE_DIR}"
         self._emit("info", f"Ensuring remote directory exists: {self.REMOTE_DIR}")
-        
+
         rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=30)
         if rc != 0:
             error_msg = stderr or stdout or "SSH command failed"
             return False, f"Failed to create directory: {error_msg}"
-        
+
         self._emit("success", f"Remote directory ready: {self.REMOTE_DIR}")
         return True, "Directory ready"
 
@@ -178,7 +178,7 @@ class ToolManager:
     ) -> Tuple[bool, str]:
         """
         Deploy a tool to CNode.
-        
+
         Strategy:
         1. Ensure remote directory exists (once)
         2. Try to download directly to CNode from internet
@@ -202,14 +202,14 @@ class ToolManager:
         # Step 2: Try to download directly to CNode
         self._emit("info", f"  Attempting direct download to CNode...")
         wget_cmd = f'wget -q "{url}" -O {remote_path} 2>&1'
-        
+
         rc, stdout, stderr = run_ssh_command(host, username, password, wget_cmd, timeout=60)
 
         if rc == 0:
             # Verify file exists and has content
             check_cmd = f"test -s {remote_path} && echo 'ok'"
             rc2, stdout2, _ = run_ssh_command(host, username, password, check_cmd, timeout=10)
-            
+
             if "ok" in stdout2:
                 self._emit("success", f"  Downloaded directly to CNode: {remote_path}")
                 # Set executable
@@ -234,9 +234,13 @@ class ToolManager:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(
-                host, username=username, password=password,
-                timeout=30, banner_timeout=30,
-                look_for_keys=False, allow_agent=False,
+                host,
+                username=username,
+                password=password,
+                timeout=30,
+                banner_timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
             )
 
             with SCPClient(ssh.get_transport()) as scp:
@@ -265,7 +269,7 @@ class ToolManager:
         if tools is None:
             tools = list(self.TOOLS.keys())
 
-        results = {"success": True, "tools": {}, "deployed": 0, "failed": 0}
+        results: Dict[str, Any] = {"success": True, "tools": {}, "deployed": 0, "failed": 0}
 
         self._emit("info", f"Deploying {len(tools)} tools to {username}@{host}:{self.REMOTE_DIR}")
         self._emit("info", "")

@@ -391,6 +391,7 @@ class RackDiagram:
         u_height: int,
         model: str = "",
         status: str = "ACTIVE",
+        annotation: str = "",
     ) -> None:
         """
         Create a visual representation of a device in the rack.
@@ -404,6 +405,7 @@ class RackDiagram:
             u_height: Height of device in rack units (1U or 2U)
             model: Hardware model name for image lookup
             status: Device status (ACTIVE, OFFLINE, etc.)
+            annotation: Optional text rendered below the label (e.g. placement note)
         """
         # Calculate position
         start_x = (self.page_width - self.rack_width) / 2
@@ -500,6 +502,17 @@ class RackDiagram:
             textAnchor="start",
         )
         drawing.add(label)
+
+        if annotation:
+            ann_label = String(
+                label_x,
+                label_y - self.LABEL_FONT_SIZE,
+                annotation,
+                fontSize=self.LABEL_FONT_SIZE - 2,
+                fillColor=colors.HexColor("#B85C00"),
+                textAnchor="start",
+            )
+            drawing.add(ann_label)
 
     def _draw_fallback_device(
         self,
@@ -921,14 +934,12 @@ class RackDiagram:
                 model = switch.get("model", "switch")
                 status = switch.get("state", "ACTIVE")
 
-                # Check if switch has explicit rack_unit position
+                # Check if switch has explicit rack_unit position (manual placement)
                 explicit_position = switch.get("rack_unit", "")
 
                 if explicit_position:
-                    # Use explicit position for switch
                     u_position = self._parse_rack_position(explicit_position)
                     if u_position > 0:
-                        # Get switch height from model
                         switch_height = self._get_device_height_units(model)
                         logger.info(
                             f"Placing switch {switch_num} at explicit position U{u_position} (model: {model}, height: {switch_height}U)"
@@ -937,16 +948,21 @@ class RackDiagram:
                             drawing, "switch", switch_num, u_position, switch_height, model, status
                         )
                 elif switch_positions_map and switch_num in switch_positions_map:
-                    # Use calculated position
                     u_position = switch_positions_map[switch_num]
-                    # Get switch height from model
                     switch_height = self._get_device_height_units(model)
                     logger.info(
                         f"Placing switch {switch_num} (model: {model}) at calculated position U{u_position} "
                         f"(height: {switch_height}U, occupies U{u_position - switch_height + 1}-U{u_position})"
                     )
                     self._create_device_representation(
-                        drawing, "switch", switch_num, u_position, switch_height, model, status
+                        drawing,
+                        "switch",
+                        switch_num,
+                        u_position,
+                        switch_height,
+                        model,
+                        status,
+                        annotation="Unverified - Auto Switch Placement",
                     )
                 else:
                     logger.warning(

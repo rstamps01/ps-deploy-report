@@ -1,5 +1,7 @@
 # Release Workflow Log Review (run 60715772501)
 
+**Note:** This review was generated for a previous release cycle. Version references below are historical.
+
 **Date:** 2026-03-16  
 **Source:** `logs_60715772501.zip`
 

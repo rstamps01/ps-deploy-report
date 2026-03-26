@@ -2,8 +2,8 @@
 # These are the packages bundled into the self-contained application.
 
 # Core HTTP and API libraries
-requests>=2.31.0
-urllib3>=2.0.0
+requests>=2.33.0
+urllib3>=2.6.3
 
 # Configuration management
 PyYAML>=6.0.1
@@ -17,7 +17,7 @@ rl-renderPM>=4.0.3
 pymupdf>=1.24.0
 
 # Image processing for diagram sizing
-Pillow>=10.0.0
+Pillow>=12.1.1
 
 # CLI argument parsing
 click>=8.1.0

@@ -29,7 +29,9 @@ class SupportToolWorkflow:
     enabled = True
     min_vast_version = "5.0"
 
-    SCRIPT_URL = "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/upgrade_checks/vast_support_tools.py"
+    SCRIPT_URL = (
+        "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/upgrade_checks/vast_support_tools.py"
+    )
     # REMOTE_SCRIPT_PATH now managed by ToolManager (/tmp/vast_scripts/)
     VMS_PATH = "/vast/data/vms.sh"
     CONTAINER_SCRIPT_PATH = "/vast/data/vast_support_tools.py"
@@ -116,7 +118,7 @@ class SupportToolWorkflow:
 
     def _step_download_script(self) -> Dict[str, Any]:
         from tool_manager import ToolManager
-        
+
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
@@ -136,16 +138,16 @@ class SupportToolWorkflow:
         self.emit("info", "")
 
         tool_manager = ToolManager(output_callback=self._output_callback)
-        
+
         success, message = tool_manager.deploy_tool_to_cnode("vast_support_tools.py", host, user, password)
-        
+
         if not success:
             self.emit("error", f"Deployment failed: {message}")
             return {"success": False, "message": message}
 
         # Store the remote path for later steps
         self._step_data["remote_script_path"] = f"{ToolManager.REMOTE_DIR}/vast_support_tools.py"
-        
+
         self.emit("success", f"Script deployed to {ToolManager.REMOTE_DIR}/vast_support_tools.py")
         return {"success": True, "message": "Script deployed successfully"}
 
@@ -199,7 +201,7 @@ class SupportToolWorkflow:
 
         # Run inside VAST container using vms.sh with container-accessible path
         run_cmd = f"{self.VMS_PATH} {self.CONTAINER_SCRIPT_PATH} inspect"
-        
+
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {run_cmd}")
         self.emit("info", "")
@@ -228,7 +230,7 @@ class SupportToolWorkflow:
         if rc != 0:
             self.emit("warn", f"Command exited with code {rc}")
             # Don't fail - the tool may return non-zero for warnings
-        
+
         self.emit("success", "Support tools inspection completed")
         return {"success": True, "message": "Support tools completed", "details": output}
 
@@ -242,10 +244,10 @@ class SupportToolWorkflow:
         # Get hostname for archive name
         rc, hostname, _ = run_ssh_command(host, user, password, "hostname", timeout=10)
         hostname = hostname.strip() if rc == 0 else "cnode"
-        
+
         archive_name = f"{hostname}-support_tool_logs.tgz"
         archive_path = f"/userdata/{archive_name}"
-        
+
         self._step_data["archive_name"] = archive_name
         self._step_data["archive_path"] = archive_path
         self._step_data["hostname"] = hostname
@@ -258,7 +260,7 @@ class SupportToolWorkflow:
             "/vast/data/support_checks",
             "/userdata/support-checks",
         ]
-        
+
         output_dir = None
         for dir_path in possible_dirs:
             check_cmd = f"test -d {dir_path} && echo 'exists'"
@@ -267,25 +269,25 @@ class SupportToolWorkflow:
                 output_dir = dir_path
                 self.emit("info", f"Found output directory: {output_dir}")
                 break
-        
+
         # If not found, look for recent directories created by the tool
         if not output_dir:
             self.emit("info", "Searching for support tool output...")
             find_cmd = "find /vast/data /tmp /userdata -maxdepth 2 -type d -name '*support*' 2>/dev/null | head -5"
             rc, stdout, _ = run_ssh_command(host, user, password, find_cmd, timeout=30)
-            
+
             if stdout.strip():
                 for line in stdout.strip().split("\n"):
                     if line.strip():
                         self.emit("info", f"  Found: {line.strip()}")
                 # Use the first found directory
                 output_dir = stdout.strip().split("\n")[0].strip()
-        
+
         if not output_dir:
             # If still not found, check if the tool created any output
             self.emit("warn", "No support-checks directory found")
             self.emit("info", "Looking for any output from vast_support_tools.py...")
-            
+
             # List what's in /vast/data
             list_cmd = "ls -la /vast/data/ 2>/dev/null | head -20"
             rc, stdout, _ = run_ssh_command(host, user, password, list_cmd, timeout=10)
@@ -293,12 +295,12 @@ class SupportToolWorkflow:
                 self.emit("info", "/vast/data/ contents:")
                 for line in stdout.strip().split("\n"):
                     self.emit("info", f"  {line}")
-            
+
             return {"success": False, "message": "Support tools output directory not found. Check Step 3 output."}
 
         # Create tarball from the found directory
         tar_cmd = f"sudo tar cvfz {archive_path} {output_dir}/"
-        
+
         self.emit("info", "")
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {tar_cmd}")
@@ -325,7 +327,7 @@ class SupportToolWorkflow:
         # Verify archive exists and get size
         verify_cmd = f"ls -lh {archive_path}"
         rc, stdout, _ = run_ssh_command(host, user, password, verify_cmd, timeout=10)
-        
+
         if rc == 0 and stdout:
             self.emit("info", "")
             self.emit("info", stdout.strip())
@@ -364,7 +366,7 @@ class SupportToolWorkflow:
 
             # SCP download
             self.emit("info", f"$ scp {user}@{host}:{archive_path} {local_path}")
-            
+
             with SCPClient(ssh.get_transport()) as scp:
                 scp.get(archive_path, str(local_path))
 
@@ -375,7 +377,20 @@ class SupportToolWorkflow:
                 size = local_path.stat().st_size
                 self.emit("success", f"Downloaded: {local_path}")
                 self.emit("info", f"Size: {size:,} bytes ({size/1024/1024:.2f} MB)")
-                
+
+                meta_path = local_path.parent / f"{archive_name}.meta.json"
+                meta_path.write_text(
+                    json.dumps(
+                        {
+                            "cluster_ip": host,
+                            "timestamp": datetime.now().isoformat(),
+                            "hostname": self._step_data.get("hostname", ""),
+                            "archive_name": archive_name,
+                        },
+                        indent=2,
+                    )
+                )
+
                 self._step_data["local_archive"] = str(local_path)
                 return {
                     "success": True,

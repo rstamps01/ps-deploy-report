@@ -35,15 +35,15 @@
                 <div id="credentialFields" class="credential-fields">
                     <div class="form-row creds-row-3">
                         <div class="form-group">
-                            <label for="clusterIp">Cluster IP / VMS</label>
+                            <label for="clusterIp">Cluster IP / VMS <span class="info-icon" title="When connecting through the Tech Port, set this IP to 192.168.2.2">&#9432;</span></label>
                             <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
                         </div>
                         <div class="form-group">
-                            <label for="username">API Username</label>
+                            <label for="username">VMS Username <span class="info-icon" title="The VAST Data API requires &quot;support&quot; level authorization to gather certain cluster metrics. Enter &quot;support&quot; user and credentials.">&#9432;</span></label>
                             <input type="text" id="username" name="username" class="form-control" placeholder="admin">
                         </div>
                         <div class="form-group">
-                            <label for="password">API Password</label>
+                            <label for="password">VMS Password <span class="info-icon" title="Default support password: 654321">&#9432;</span></label>
                             <input type="password" id="password" name="password" class="form-control">
                         </div>
                     </div>
@@ -53,15 +53,15 @@
                             <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
                         </div>
                         <div class="form-group">
-                            <label for="nodePassword">Node SSH Password</label>
+                            <label for="nodePassword">Node SSH Password <span class="info-icon" title="Default vastdata password: vastdata">&#9432;</span></label>
                             <input type="password" id="nodePassword" name="node_password" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label for="switchUser">Switch SSH User</label>
+                            <label for="switchUser">Switch SSH User <span class="info-icon" title="Mellanox switches running Cumulus: cumulus&#10;Mellanox switches running Onyx: admin&#10;All other switches: admin">&#9432;</span></label>
                             <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
                         </div>
                         <div class="form-group">
-                            <label for="switchPassword">Switch SSH Password</label>
+                            <label for="switchPassword">Switch SSH Password <span class="info-icon" title="Default cumulus: Vastdata1!&#10;Alt for cumulus: VastData1! / cumulus&#10;Alt for cumulus: Cumu1usLinux! / CumulusLinux! / vastdata&#10;Default onyx: admin&#10;Default Cisco &amp; Arista: admin">&#9432;</span></label>
                             <input type="password" id="switchPassword" name="switch_password" class="form-control">
                         </div>
                         <div class="form-group">
@@ -82,6 +82,7 @@
                 <div class="conn-settings-toolbar">
                     <div class="conn-settings-toolbar-left">
                         <span class="default-creds-heading">Global Setting — Autofill Default Passwords</span>
+                        <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH: cumulus / Vastdata1!&#10;Switch SSH (alt): admin / admin">&#9432;</span>
                         <div class="default-creds-widget">
                             <span class="default-creds-label">Disable</span>
                             <label class="toggle-switch">
@@ -117,6 +118,8 @@
     <div class="card-body">
         <!-- Reporter Mode (default) -->
         <div id="stepByStepPanel">
+          <div class="panel-flex">
+          <div class="panel-flex-left">
 
             <!-- Section A: Switch Placement Mode -->
             <div class="rpt-section">
@@ -141,8 +144,52 @@
                         <button type="button" class="btn btn-accent btn-action" onclick="rptDiscoverSwitches()">Discovery</button>
                     </div>
 
+                    <!-- Add Switches Manually button (shown after discovery finds switches) -->
+                    <div id="rptAddManualBtn" class="hidden" style="margin-top:8px; text-align:right;">
+                        <button type="button" class="btn btn-accent btn-sm" onclick="rptShowManualEntry()">Add Switches Manually</button>
+                    </div>
+
+                    <!-- No switches fallback panel -->
+                    <div id="rptNoSwitchesPanel" class="hidden" style="margin-top:10px; text-align:center; padding:12px; border:1px dashed var(--border-color); border-radius:6px;">
+                        <p style="margin:0 0 10px; font-size:13px; color:var(--text-secondary);">No switches were discovered on this cluster.</p>
+                        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                            <button type="button" class="btn btn-accent btn-sm" onclick="rptShowManualEntry()">Add Switches Manually</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="rptOpenVmsSwitch()">Add in VMS</button>
+                        </div>
+                        <div id="rptVmsRerunRow" class="hidden" style="margin-top:10px;">
+                            <button type="button" class="btn btn-accent btn-sm" onclick="rptDiscoverSwitches()">Re-run Discovery</button>
+                        </div>
+                    </div>
+
                     <div id="rptAssignmentControls" class="hidden">
-                        <div class="form-row placement-controls">
+                        <!-- Manual Switch IP row (above rack/switch/height) -->
+                        <div id="rptManualIpRow" class="form-row placement-controls" style="display:none;">
+                            <div class="form-group third">
+                                <label for="rptManualSwitchIpInput">Switch IP</label>
+                                <input type="text" id="rptManualSwitchIpInput" placeholder="e.g. 10.143.10.50">
+                            </div>
+                            <div class="form-group third">
+                                <label for="rptManualSwitchIpModel">Switch Model</label>
+                                <select id="rptManualSwitchIpModel">
+                                    <option value="">-- Select model --</option>
+                                </select>
+                            </div>
+                            <div class="form-group sixth" style="align-self:flex-end">
+                                <button type="button" class="btn-icon-add" onclick="rptAddManualSwitchIp()" title="Add manual switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                            </div>
+                        </div>
+
+                        <!-- Manual switch IP table (placed-switches style) -->
+                        <div id="rptManualSwitchIpTableContainer" class="hidden">
+                            <label class="placed-title">Manual Switches</label>
+                            <table class="placed-switches-table">
+                                <thead><tr><th>IP Address</th><th>Switch Model</th><th>Height</th><th></th></tr></thead>
+                                <tbody id="rptManualSwitchIpBody"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- Rack / Switch / Height placement row (shown after Discovery) -->
+                        <div id="rptRackSwitchHeightRow" class="form-row placement-controls" style="display:none;">
                             <div class="form-group third">
                                 <label for="rptRackSelect">Rack</label>
                                 <select id="rptRackSelect"></select>
@@ -170,50 +217,34 @@
                     </div>
 
                     <input type="hidden" id="rptManualPlacements" value="[]">
-
-                    <!-- Manual Switch IP Entry -->
-                    <div class="rpt-manual-ip-section" style="margin-top: 14px;">
-                        <label class="rpt-sub-label">Manual Switch IPs</label>
-                        <div class="rpt-manual-ip-row">
-                            <input type="text" id="rptManualSwitchIpInput" class="form-control" placeholder="e.g. 10.143.10.50" style="flex:1; max-width: 220px;">
-                            <input type="text" id="rptManualSwitchIpName" class="form-control" placeholder="Name (optional)" style="flex:1; max-width: 180px;">
-                            <button type="button" class="btn btn-accent btn-sm" onclick="rptAddManualSwitchIp()">Add</button>
-                        </div>
-                        <div id="rptManualSwitchIpTableContainer" class="hidden" style="margin-top: 8px;">
-                            <table class="rpt-manual-ip-table">
-                                <thead><tr><th>IP Address</th><th>Name</th><th></th></tr></thead>
-                                <tbody id="rptManualSwitchIpBody"></tbody>
-                            </table>
-                        </div>
-                        <input type="hidden" id="rptManualSwitchIps" value="[]">
-                    </div>
+                    <input type="hidden" id="rptManualSwitchIps" value="[]">
                 </div>
             </div>
 
             <!-- Section B: Reporter Checklist -->
-            <div class="rpt-section" style="margin-top: 16px;">
+            <div class="rpt-section" id="rptChecklistSection" style="margin-top: 16px;">
                 <div class="rpt-section-title">Reporter Checklist</div>
                 <div class="oneshot-checklist" id="reporterChecklist">
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptPreValidation">
+                        <span class="oneshot-item-badge badge-recommended">Recommended</span>
                         <span class="oneshot-item-name">Pre-Validation</span>
-                        <span class="oneshot-item-badge badge-optional">Optional</span>
                     </label>
                     <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptPreValidationDetail">
                         <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);">Verify credentials, VMS access, rack config, switch config, SSH access</span>
                     </label>
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptRunReporter" checked>
+                        <span class="oneshot-item-badge badge-required">Required</span>
                         <span class="oneshot-item-name">Run Reporter</span>
-                        <span class="oneshot-item-badge badge-health">Required</span>
                     </label>
                     <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptRunReporterDetail">
                         <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);">Generate as-built report with current connection and placement settings</span>
                     </label>
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptHealthCheck">
-                        <span class="oneshot-item-name">Health Check</span>
                         <span class="oneshot-item-badge badge-optional">Optional</span>
+                        <span class="oneshot-item-name">Health Check</span>
                     </label>
                     <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptHealthCheckDetail">
                         <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);" id="rptHealthTierHint">Tier 1 (API) always; +Tier 2 if node credentials; +Tier 3 if switch credentials</span>
@@ -273,23 +304,33 @@
                     <span style="color: #888;">Loading...</span>
                 </div>
             </div>
+          </div><!-- /.panel-flex-left -->
+          <div id="reporterProgress" class="vast-progress-container rpt-progress-overlay hidden"></div>
+          </div><!-- /.panel-flex -->
         </div>
 
         <!-- One-Shot Mode (hidden by default) -->
         <div id="oneShotPanel" style="display: none;">
+          <div class="panel-flex">
+          <div class="panel-flex-left">
             <p class="text-muted" style="margin-bottom: 12px;">Select operations to run sequentially.</p>
 
             <div class="oneshot-checklist" id="oneShotChecklist">
+                <label class="oneshot-item">
+                    <input type="checkbox" id="oneShotPreValidation" checked>
+                    <span class="oneshot-item-badge badge-recommended">Recommended</span>
+                    <span class="oneshot-item-name">Pre-Validation</span>
+                </label>
                 <div id="oneShotOpsContainer"></div>
                 <label class="oneshot-item">
                     <input type="checkbox" id="oneShotIncludeReport">
+                    <span class="oneshot-item-badge badge-recommended">Recommended</span>
                     <span class="oneshot-item-name">Generate As-Built Report</span>
-                    <span class="oneshot-item-badge badge-optional">Optional</span>
                 </label>
                 <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
                     <input type="checkbox" id="oneShotIncludeHealth" checked>
+                    <span class="oneshot-item-badge badge-optional">Optional</span>
                     <span class="oneshot-item-name">Include Health Checks (Tiers 1-3)</span>
-                    <span class="oneshot-item-badge badge-health">Recommended</span>
                 </label>
             </div>
 
@@ -319,8 +360,7 @@
             </div>
 
             <div class="btn-group" style="margin-top: 20px;">
-                <button type="button" class="btn btn-secondary" id="btnOneShotValidate" onclick="runOneShotValidation()">Run Pre-Validation</button>
-                <button type="button" class="btn btn-primary" id="btnOneShotStart" disabled onclick="startOneShot()">Start One-Shot</button>
+                <button type="button" class="btn btn-primary" id="btnOneShotStart" onclick="startOneShot()">Run</button>
                 <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
                 <button type="button" class="btn btn-secondary" id="btnOneShotDownload" style="display: none;" onclick="downloadResults()">Download Bundle</button>
                 <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
@@ -329,7 +369,19 @@
                     </svg>
                     Update Tools
                 </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatus()" title="View deployment tools status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
             </div>
+          </div><!-- /.panel-flex-left -->
+          <div class="panel-flex-right">
+            <div id="oneShotProgressVast" class="vast-progress-container hidden"></div>
+          </div>
+          </div><!-- /.panel-flex -->
         </div>
     </div>
 </div>
@@ -367,17 +419,20 @@
 .rpt-section { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); padding: 14px 16px; }
 .rpt-section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
 .rpt-sub-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px; }
-.rpt-manual-ip-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.rpt-manual-ip-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.rpt-manual-ip-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-weight: 600; font-size: 11px; text-transform: uppercase; }
-.rpt-manual-ip-table td { padding: 5px 8px; border-bottom: 1px solid var(--border-color); }
 .rpt-result-panel { margin-top: 16px; padding: 14px 16px; background: rgba(34, 197, 94, 0.08); border: 1px solid var(--success); border-radius: 6px; }
 .rpt-result-title { font-weight: 600; color: var(--success); margin-bottom: 4px; }
+
+/* Hide number input spinners on Height field */
+#rptUPositionInput::-webkit-inner-spin-button,
+#rptUPositionInput::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#rptUPositionInput { -moz-appearance: textfield; }
 
 /* --- Connection Settings bottom toolbar --- */
 .conn-settings-toolbar { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
 .conn-settings-toolbar-left { display: flex; flex-direction: column; gap: 4px; }
 .conn-settings-toolbar-right { display: flex; align-items: center; gap: 6px; }
+.info-icon { cursor: help; color: var(--text-secondary); font-size: 14px; opacity: 0.7; transition: opacity 0.15s; }
+.info-icon:hover { opacity: 1; color: var(--accent); }
 .default-creds-heading { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
 .default-creds-widget { display: flex; align-items: center; gap: 6px; }
 .default-creds-label { font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); line-height: 1; }
@@ -443,6 +498,7 @@
 
 /* --- Mode toggle --- */
 .mode-toggle-widget { display: flex; align-items: center; gap: 8px; }
+.mode-toggle-widget .toggle-slider { background: var(--accent); }
 .mode-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
 .mode-label.active { color: var(--text-primary); font-weight: 700; }
 
@@ -453,9 +509,11 @@
 .oneshot-item:hover { background: var(--bg-secondary); }
 .oneshot-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2196f3; flex-shrink: 0; }
 .oneshot-item-name { flex: 1; font-size: 14px; }
-.oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
-.badge-health { background: #2196f3; color: white; }
-.badge-optional { background: var(--bg-secondary); color: var(--text-secondary); }
+.oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.badge-required { background: #ff9800; color: #000; }
+.badge-recommended { background: #ff9800; color: #000; }
+.badge-optional { background: #2196f3; color: white; }
+.badge-automated { background: #4caf50; color: white; }
 .oneshot-sub-item { padding-left: 44px; background: var(--bg-secondary); }
 .oneshot-sub-item.hidden { display: none; }
 
@@ -477,6 +535,53 @@
 .phase-item.skipped { background: var(--bg-secondary); color: var(--text-secondary); opacity: 0.5; text-decoration: line-through; }
 .phase-arrow { color: var(--text-secondary); font-size: 14px; }
 .progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+/* --- VAST Logo Progress Indicator --- */
+.panel-flex { position: relative; }
+.panel-flex-left { /* no change — full width content */ }
+.panel-flex-right {
+    position: absolute; bottom: 33%; right: 10%;
+    pointer-events: none; z-index: 1;
+}
+.vast-progress-container { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.vast-progress-container.hidden { display: none; }
+.rpt-progress-overlay {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none; z-index: 1;
+}
+.rpt-progress-inflow {
+    position: static; transform: none;
+    margin-top: 16px; pointer-events: none;
+}
+.vast-progress-logo-wrap { position: relative; width: 320px; height: 274px; }
+.vast-progress-logo {
+    width: 100%; height: 100%;
+    -webkit-mask-image: url('/static/img/vast-icon-mask.png');
+    mask-image: url('/static/img/vast-icon-mask.png');
+    -webkit-mask-size: contain; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    background: rgba(100,100,100,0.15);
+    transition: background 0.5s ease;
+}
+.vast-progress-logo.pulse { animation: vastPulse 1.8s ease-in-out infinite; }
+@keyframes vastPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.vast-progress-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; padding-top: 28%;
+    pointer-events: none;
+}
+.vast-progress-timer { font-size: 16px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; line-height: 1; }
+.vast-progress-pct { font-size: 34px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-top: 4px; }
+.vast-progress-check { font-size: 36px; color: var(--accent, #00d4ff); line-height: 1; margin-top: 4px; }
+.vast-progress-label { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 6px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
+.vast-progress-sub { font-size: 11px; color: var(--text-secondary); text-align: center; max-width: 320px; }
+@media (max-width: 600px) {
+    .panel-flex-right { position: static; display: flex; justify-content: center; margin-top: 16px; }
+    .vast-progress-logo-wrap { width: 200px; height: 171px; }
+}
 </style>
 
 <script>
@@ -590,7 +695,8 @@ function saveUIState() {
             manualSwitchIps: rptManualSwitchIps,
             rptPreValidation: document.getElementById('rptPreValidation').checked,
             rptRunReporter: document.getElementById('rptRunReporter').checked,
-            rptHealthCheck: document.getElementById('rptHealthCheck').checked
+            rptHealthCheck: document.getElementById('rptHealthCheck').checked,
+            oneShotPreValidation: document.getElementById('oneShotPreValidation').checked
         };
         var proxyJump = document.getElementById('proxyJumpToggle');
         if (proxyJump) state.proxy_jump = proxyJump.checked;
@@ -665,13 +771,18 @@ async function applySavedUIState(saved) {
         document.getElementById('rptSwitchPlacementToggle').checked = false;
         toggleRptSwitchPlacement();
     }
-    if (saved.manualSwitchIps && Array.isArray(saved.manualSwitchIps)) {
+    if (saved.manualSwitchIps && Array.isArray(saved.manualSwitchIps) && saved.manualSwitchIps.length > 0) {
         rptManualSwitchIps = saved.manualSwitchIps;
+        document.getElementById('rptManualIpRow').style.display = '';
+        document.getElementById('rptAssignmentControls').classList.remove('hidden');
+        rptFetchLibrarySwitches();
         rptRenderManualSwitchIps();
+        rptRenderSwitchDropdown();
     }
     if (saved.rptPreValidation !== undefined) document.getElementById('rptPreValidation').checked = saved.rptPreValidation;
     if (saved.rptRunReporter !== undefined) document.getElementById('rptRunReporter').checked = saved.rptRunReporter;
     if (saved.rptHealthCheck !== undefined) document.getElementById('rptHealthCheck').checked = saved.rptHealthCheck;
+    if (saved.oneShotPreValidation !== undefined) document.getElementById('oneShotPreValidation').checked = saved.oneShotPreValidation;
     var proxyJump = document.getElementById('proxyJumpToggle');
     if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
 }
@@ -818,6 +929,24 @@ async function loadProfile() {
     toggleDefaultCredentials();
     var pj = document.getElementById('proxyJumpToggle');
     if (pj) pj.checked = p.proxy_jump !== false;
+
+    // Reset Select Operation tile state before applying profile data
+    rptDiscoveredRacks = [];
+    rptDiscoveredSwitches = [];
+    rptPlacedSwitches = [];
+    rptManualSwitchIps = [];
+    document.getElementById('rptDiscoverStatus').textContent = '';
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
+    document.getElementById('rptAssignmentControls').classList.add('hidden');
+    document.getElementById('rptRackSwitchHeightRow').style.display = 'none';
+    document.getElementById('rptManualIpRow').style.display = 'none';
+    document.getElementById('rptManualPlacements').value = '[]';
+    document.getElementById('rptManualSwitchIps').value = '[]';
+    document.getElementById('rptPlacedSwitchesContainer').classList.add('hidden');
+    document.getElementById('rptManualSwitchIpTableContainer').classList.add('hidden');
+    document.getElementById('reporterResultPanel').style.display = 'none';
+
     if (p.switch_placement === 'auto') {
         document.getElementById('rptSwitchPlacementToggle').checked = false;
         toggleRptSwitchPlacement();
@@ -825,15 +954,32 @@ async function loadProfile() {
         document.getElementById('rptSwitchPlacementToggle').checked = true;
         toggleRptSwitchPlacement();
     }
+
+    // Restore reporter checklist options
+    var preVal = document.getElementById('rptPreValidation');
+    if (preVal) preVal.checked = p.rpt_pre_validation !== false;
+    var runRpt = document.getElementById('rptRunReporter');
+    if (runRpt) runRpt.checked = p.rpt_run_reporter !== false;
+    var healthChk = document.getElementById('rptHealthCheck');
+    if (healthChk) healthChk.checked = p.rpt_health_check !== undefined ? p.rpt_health_check : true;
+
+    // Restore saved placements
     if (p.manual_placements && Array.isArray(p.manual_placements) && p.manual_placements.length > 0) {
         rptPlacedSwitches = p.manual_placements;
         document.getElementById('rptManualPlacements').value = JSON.stringify(rptPlacedSwitches);
         rptRenderPlacedTable();
         document.getElementById('rptAssignmentControls').classList.remove('hidden');
     }
-    if (p.manual_switch_ips && Array.isArray(p.manual_switch_ips)) {
+
+    // Restore saved manual switch IPs
+    if (p.manual_switch_ips && Array.isArray(p.manual_switch_ips) && p.manual_switch_ips.length > 0) {
         rptManualSwitchIps = p.manual_switch_ips;
+        document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+        document.getElementById('rptManualIpRow').style.display = '';
+        document.getElementById('rptAssignmentControls').classList.remove('hidden');
+        rptFetchLibrarySwitches();
         rptRenderManualSwitchIps();
+        rptRenderSwitchDropdown();
     }
 }
 
@@ -921,11 +1067,177 @@ async function loadWorkflows() {
 }
 
 // =====================================================================
+// VAST LOGO PROGRESS COMPONENT
+// =====================================================================
+var VAST_LOGO_HEIGHT = 274;
+var VAST_COLORS = { running: '#00d4ff', complete: '#4caf50', error: '#f44336', cancel: '#ffc107', dim: 'rgba(100,100,100,0.15)' };
+
+function VastProgress(containerId) {
+    this.container = document.getElementById(containerId);
+    this._timerInterval = null;
+    this._startTime = null;
+    this._elapsed = 0;
+    this._percent = 0;
+    this._state = 'idle';
+    this._fillColor = VAST_COLORS.running;
+    this._render();
+}
+
+VastProgress.prototype._render = function() {
+    this.container.innerHTML =
+        '<div class="vast-progress-logo-wrap">' +
+            '<div class="vast-progress-logo" id="' + this.container.id + '_logo"></div>' +
+            '<div class="vast-progress-overlay">' +
+                '<span class="vast-progress-timer" id="' + this.container.id + '_timer">00:00</span>' +
+                '<span class="vast-progress-pct" id="' + this.container.id + '_pct">0%</span>' +
+                '<span class="vast-progress-check-el" id="' + this.container.id + '_check" style="display:none;"></span>' +
+            '</div>' +
+        '</div>' +
+        '<div class="vast-progress-label" id="' + this.container.id + '_label"></div>' +
+        '<div class="vast-progress-sub" id="' + this.container.id + '_sub"></div>';
+    this._logoEl = document.getElementById(this.container.id + '_logo');
+    this._pctEl = document.getElementById(this.container.id + '_pct');
+    this._timerEl = document.getElementById(this.container.id + '_timer');
+    this._checkEl = document.getElementById(this.container.id + '_check');
+    this._labelEl = document.getElementById(this.container.id + '_label');
+    this._subEl = document.getElementById(this.container.id + '_sub');
+};
+
+VastProgress.prototype.show = function() { this.container.classList.remove('hidden'); };
+VastProgress.prototype.hide = function() { this.container.classList.add('hidden'); };
+
+VastProgress.prototype._setFill = function(pct) {
+    var fillPx = Math.round((pct / 100) * VAST_LOGO_HEIGHT);
+    this._logoEl.style.background =
+        'linear-gradient(to top, ' + this._fillColor + ' ' + fillPx + 'px, ' + VAST_COLORS.dim + ' ' + fillPx + 'px)';
+};
+
+VastProgress.prototype.start = function() {
+    this._state = 'running';
+    this._startTime = Date.now();
+    this._elapsed = 0;
+    this._percent = 0;
+    this._fillColor = VAST_COLORS.running;
+    this._logoEl.classList.add('pulse');
+    this._setFill(0);
+    this._pctEl.textContent = '0%';
+    this._pctEl.className = 'vast-progress-pct';
+    this._pctEl.style.display = '';
+    this._timerEl.textContent = '00:00';
+    this._checkEl.style.display = 'none';
+    this._labelEl.textContent = '';
+    this._subEl.textContent = '';
+    this.show();
+    var self = this;
+    this._timerInterval = setInterval(function() { self._tickTimer(); }, 1000);
+};
+
+VastProgress.prototype._tickTimer = function() {
+    if (this._state !== 'running') return;
+    this._elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+    var m = Math.floor(this._elapsed / 60);
+    var s = this._elapsed % 60;
+    this._timerEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+};
+
+VastProgress.prototype._freezeTimer = function() {
+    if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
+    if (this._startTime) {
+        this._elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+        var m = Math.floor(this._elapsed / 60);
+        var s = this._elapsed % 60;
+        this._timerEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
+};
+
+VastProgress.prototype.update = function(percent, label, sub) {
+    this._percent = Math.min(100, Math.max(0, percent));
+    this._setFill(this._percent);
+    this._pctEl.textContent = Math.round(this._percent) + '%';
+    if (label !== undefined) this._labelEl.textContent = label;
+    if (sub !== undefined) this._subEl.textContent = sub;
+};
+
+VastProgress.prototype.complete = function(label) {
+    this._state = 'completed';
+    this._freezeTimer();
+    this._logoEl.classList.remove('pulse');
+    this._setFill(100);
+    this._pctEl.style.display = 'none';
+    this._checkEl.textContent = '\u2713';
+    this._checkEl.className = 'vast-progress-check';
+    this._checkEl.style.display = '';
+    this._labelEl.textContent = label || 'Completed';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.error = function(label) {
+    this._state = 'error';
+    this._freezeTimer();
+    this._logoEl.classList.remove('pulse');
+    this._fillColor = VAST_COLORS.error;
+    this._setFill(this._percent);
+    this._pctEl.style.color = VAST_COLORS.error;
+    this._labelEl.textContent = label || 'Error';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.cancel = function() {
+    this._state = 'cancelled';
+    this._freezeTimer();
+    this._logoEl.classList.remove('pulse');
+    this._fillColor = VAST_COLORS.cancel;
+    this._setFill(this._percent);
+    this._labelEl.textContent = 'Cancelled';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.reset = function() {
+    this._state = 'idle';
+    if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
+    this._percent = 0;
+    this._elapsed = 0;
+    this._fillColor = VAST_COLORS.running;
+    this._logoEl.classList.remove('pulse');
+    this._logoEl.style.background = VAST_COLORS.dim;
+    this._pctEl.style.color = '';
+    this._pctEl.style.display = '';
+    this._pctEl.className = 'vast-progress-pct';
+    this._pctEl.textContent = '0%';
+    this._timerEl.textContent = '00:00';
+    this._checkEl.style.display = 'none';
+    this._checkEl.textContent = '';
+    this._labelEl.textContent = '';
+    this._subEl.textContent = '';
+    this.hide();
+};
+
+function positionReporterProgress() {
+    var el = document.getElementById('reporterProgress');
+    var table = document.getElementById('rptPlacedSwitchesContainer');
+    var tableVisible = table && !table.classList.contains('hidden');
+    if (tableVisible) {
+        el.classList.remove('rpt-progress-overlay');
+        el.classList.add('rpt-progress-inflow');
+        table.parentElement.insertBefore(el, table.nextSibling);
+    } else {
+        el.classList.remove('rpt-progress-inflow');
+        el.classList.add('rpt-progress-overlay');
+        var panelFlex = document.querySelector('#stepByStepPanel .panel-flex');
+        panelFlex.appendChild(el);
+    }
+}
+
+var rptRing = null;
+var osRing = null;
+
+// =====================================================================
 // REPORTER MODE: Switch Placement
 // =====================================================================
 var rptDiscoveredRacks = [];
 var rptDiscoveredSwitches = [];
 var rptPlacedSwitches = [];
+var rptLibrarySwitches = [];
 
 function toggleRptSwitchPlacement() {
     var isManual = document.getElementById('rptSwitchPlacementToggle').checked;
@@ -935,9 +1247,37 @@ function toggleRptSwitchPlacement() {
     saveUIState();
 }
 
+async function rptFetchLibrarySwitches() {
+    if (rptLibrarySwitches.length > 0) return;
+    try {
+        var resp = await fetch('/api/library');
+        var all = await resp.json();
+        rptLibrarySwitches = all.filter(function(d) { return d.type === 'switch'; });
+        rptPopulateModelDropdown();
+    } catch (e) { /* silent — dropdown stays empty */ }
+}
+
+function rptPopulateModelDropdown() {
+    var sel = document.getElementById('rptManualSwitchIpModel');
+    if (!sel) return;
+    var existing = sel.value;
+    sel.innerHTML = '<option value="">-- Select model --</option>';
+    rptLibrarySwitches.forEach(function(sw) {
+        var opt = document.createElement('option');
+        opt.value = sw.key;
+        opt.textContent = sw.description + ' (' + sw.height_u + 'U)';
+        opt.dataset.heightU = sw.height_u;
+        opt.dataset.description = sw.description;
+        sel.appendChild(opt);
+    });
+    if (existing) sel.value = existing;
+}
+
 async function rptDiscoverSwitches() {
     var statusEl = document.getElementById('rptDiscoverStatus');
     statusEl.textContent = 'Discovering...';
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
     var ip = document.getElementById('clusterIp').value.trim();
     if (!ip) { statusEl.textContent = 'Enter Cluster IP first'; return; }
 
@@ -961,13 +1301,39 @@ async function rptDiscoverSwitches() {
         rptDiscoveredSwitches = data.switches || [];
         rptPlacedSwitches = [];
         rptRenderPlacementUI();
-        statusEl.textContent = rptDiscoveredRacks.length + ' rack(s), ' + rptDiscoveredSwitches.length + ' switch(es) found';
-        document.getElementById('rptAssignmentControls').classList.remove('hidden');
-        outputPane.append('success', 'Discovery complete: ' + rptDiscoveredRacks.length + ' racks, ' + rptDiscoveredSwitches.length + ' switches');
+
+        if (rptDiscoveredSwitches.length === 0) {
+            statusEl.textContent = rptDiscoveredRacks.length + ' rack(s), 0 switches found';
+            document.getElementById('rptNoSwitchesPanel').classList.remove('hidden');
+            document.getElementById('rptAssignmentControls').classList.add('hidden');
+            outputPane.append('warning', 'Discovery found ' + rptDiscoveredRacks.length + ' racks but no switches');
+        } else {
+            statusEl.textContent = rptDiscoveredRacks.length + ' rack(s), ' + rptDiscoveredSwitches.length + ' switch(es) found';
+            document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+            document.getElementById('rptAssignmentControls').classList.remove('hidden');
+            document.getElementById('rptRackSwitchHeightRow').style.display = '';
+            document.getElementById('rptAddManualBtn').classList.remove('hidden');
+            outputPane.append('success', 'Discovery complete: ' + rptDiscoveredRacks.length + ' racks, ' + rptDiscoveredSwitches.length + ' switches');
+        }
     } catch (e) {
         statusEl.textContent = 'Network error: ' + e.message;
         outputPane.append('error', 'Discovery failed: ' + e.message);
     }
+}
+
+function rptShowManualEntry() {
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
+    document.getElementById('rptAssignmentControls').classList.remove('hidden');
+    document.getElementById('rptRackSwitchHeightRow').style.display = '';
+    document.getElementById('rptManualIpRow').style.display = '';
+    rptFetchLibrarySwitches();
+}
+
+function rptOpenVmsSwitch() {
+    var ip = document.getElementById('clusterIp').value.trim();
+    if (ip) window.open('https://' + ip + '/#/crud/physical/switches', '_blank');
+    document.getElementById('rptVmsRerunRow').classList.remove('hidden');
 }
 
 function rptRenderPlacementUI() {
@@ -991,31 +1357,45 @@ function rptRenderSwitchDropdown() {
     rptPlacedSwitches.forEach(function(p) { placedNames[p.switch_name] = true; });
     var allSw = rptDiscoveredSwitches.concat(
         rptManualSwitchIps.filter(function(m) { return !rptDiscoveredSwitches.some(function(s) { return s.name === m.ip; }); })
-            .map(function(m) { return { name: m.ip, model: m.name || 'Manual', height_u: 1 }; })
+            .map(function(m) {
+                return {
+                    name: m.ip,
+                    model: m.model_description || 'Manual',
+                    model_key: m.model_key || '',
+                    height_u: m.height_u || 1
+                };
+            })
     );
     allSw.forEach(function(s) {
         if (placedNames[s.name]) return;
         var opt = document.createElement('option');
         opt.value = s.name;
         opt.textContent = s.name + ' (' + s.model + ', ' + s.height_u + 'U)';
+        opt.dataset.modelKey = s.model_key || '';
+        opt.dataset.heightU = s.height_u || 1;
         swSel.appendChild(opt);
     });
 }
 
 function rptAddSwitchPlacement() {
     var rackName = document.getElementById('rptRackSelect').value;
-    var swName = document.getElementById('rptSwitchSelect').value;
+    var swSel = document.getElementById('rptSwitchSelect');
+    var swName = swSel.value;
     var uPos = parseInt(document.getElementById('rptUPositionInput').value, 10);
     if (!rackName || !swName) return;
     if (!uPos || uPos < 1) { alert('Enter a valid U position'); return; }
 
     var sw = rptDiscoveredSwitches.find(function(s) { return s.name === swName; });
+    var selOpt = swSel.options[swSel.selectedIndex];
+    var modelKey = (sw ? (sw.model_key || sw.model || '') : (selOpt ? selOpt.dataset.modelKey : '')) || '';
+    var heightU = sw ? sw.height_u : parseInt(selOpt ? selOpt.dataset.heightU : '1', 10) || 1;
     rptPlacedSwitches.push({
         switch_name: swName,
         rack_name: rackName,
         u_position: uPos,
-        model: sw ? sw.model : 'Manual',
-        height_u: sw ? sw.height_u : 1
+        model: sw ? sw.model : (modelKey || 'Manual'),
+        model_key: modelKey,
+        height_u: heightU
     });
     document.getElementById('rptUPositionInput').value = '';
     rptRenderSwitchDropdown();
@@ -1053,7 +1433,14 @@ function rptRenderPlacedTable() {
 
 function rptSyncManualPlacements() {
     var arr = rptPlacedSwitches.map(function(p) {
-        return { switch_name: p.switch_name, rack_name: p.rack_name, u_position: p.u_position };
+        return {
+            switch_name: p.switch_name,
+            rack_name: p.rack_name,
+            u_position: p.u_position,
+            model_key: p.model_key || '',
+            model: p.model || '',
+            height_u: p.height_u || 1
+        };
     });
     document.getElementById('rptManualPlacements').value = JSON.stringify(arr);
     saveUIState();
@@ -1066,15 +1453,26 @@ var rptManualSwitchIps = [];
 
 function rptAddManualSwitchIp() {
     var ipInput = document.getElementById('rptManualSwitchIpInput');
-    var nameInput = document.getElementById('rptManualSwitchIpName');
+    var modelSel = document.getElementById('rptManualSwitchIpModel');
     var ip = ipInput.value.trim();
     if (!ip) { alert('Enter a switch IP address'); return; }
     if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { alert('Enter a valid IPv4 address'); return; }
     if (rptManualSwitchIps.some(function(m) { return m.ip === ip; })) { alert('IP already added'); return; }
 
-    rptManualSwitchIps.push({ ip: ip, name: nameInput.value.trim() || '' });
+    var modelKey = modelSel.value || '';
+    var selOpt = modelSel.options[modelSel.selectedIndex];
+    var modelDesc = (selOpt && modelKey) ? selOpt.dataset.description : '';
+    var heightU = (selOpt && modelKey) ? parseInt(selOpt.dataset.heightU, 10) || 1 : 1;
+
+    rptManualSwitchIps.push({
+        ip: ip,
+        name: modelDesc || '',
+        model_key: modelKey,
+        model_description: modelDesc,
+        height_u: heightU
+    });
     ipInput.value = '';
-    nameInput.value = '';
+    modelSel.value = '';
     rptRenderManualSwitchIps();
     rptRenderSwitchDropdown();
     document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
@@ -1099,7 +1497,8 @@ function rptRenderManualSwitchIps() {
         var m = rptManualSwitchIps[i];
         var tr = document.createElement('tr');
         tr.innerHTML = '<td>' + m.ip + '</td>'
-            + '<td>' + (m.name || '<span style="color:#666;">—</span>') + '</td>'
+            + '<td>' + (m.model_description || m.name || '<span style="color:#666;">\u2014</span>') + '</td>'
+            + '<td>' + (m.height_u || 1) + 'U</td>'
             + '<td><button type="button" class="btn-icon-delete" onclick="rptRemoveManualSwitchIp(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
         tbody.appendChild(tr);
     }
@@ -1125,40 +1524,64 @@ async function runReporterChecklist() {
         return;
     }
 
+    var rptSteps = [];
+    if (doPreValidation) rptSteps.push('Pre-Validation');
+    if (doReport) rptSteps.push('Report Generation');
+    if (doHealth && !doReport) rptSteps.push('Health Check');
+    var rptStepIdx = 0;
+    var rptTotal = rptSteps.length;
+
     reporterRunning = true;
     document.getElementById('btnReporterRun').disabled = true;
     document.getElementById('btnReporterRun').textContent = 'Running...';
     document.getElementById('btnReporterCancel').style.display = '';
     document.getElementById('reporterResultPanel').style.display = 'none';
 
+    rptRing.reset();
+    positionReporterProgress();
+    rptRing.start();
+    rptRing.update(0, rptSteps[0] || '', 'Step 1 of ' + rptTotal);
+
     try {
         if (doPreValidation) {
+            rptRing.update((rptStepIdx / rptTotal) * 100, 'Pre-Validation', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Starting pre-validation checks...');
             var preValOk = await runReporterPreValidation(creds);
             if (!preValOk && !rptValidated) {
+                rptRing.error('Pre-Validation failed');
                 resetReporterUI();
                 return;
             }
+            rptStepIdx++;
+            rptRing.update((rptStepIdx / rptTotal) * 100, rptSteps[rptStepIdx] || 'Pre-Validation complete', rptStepIdx < rptTotal ? 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal : '');
         }
 
         if (doReport) {
+            rptRing.update((rptStepIdx / rptTotal) * 100, 'Report Generation', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Starting report generation...');
             var reportOk = await runReporterGenerate(creds, doHealth);
             if (!reportOk) {
                 outputPane.append('error', 'Report generation failed');
+                rptRing.error('Report generation failed');
                 resetReporterUI();
                 return;
             }
+            rptStepIdx++;
+            rptRing.update((rptStepIdx / rptTotal) * 100, rptSteps[rptStepIdx] || 'Report complete', rptStepIdx < rptTotal ? 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal : '');
         }
 
         if (doHealth && !doReport) {
+            rptRing.update((rptStepIdx / rptTotal) * 100, 'Health Check', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Running standalone health check...');
             await runReporterHealthCheck(creds);
+            rptStepIdx++;
         }
 
+        rptRing.complete('All steps completed');
         outputPane.append('success', 'Reporter checklist completed');
     } catch (e) {
         outputPane.append('error', 'Reporter error: ' + e.message);
+        rptRing.error('Error: ' + e.message);
     }
 
     resetReporterUI();
@@ -1261,7 +1684,7 @@ async function runReporterGenerate(creds, includeHealth) {
         manual_placements: JSON.stringify(manualPlacements),
         manual_switch_ips: JSON.stringify(rptManualSwitchIps),
         include_health_check: includeHealth ? '1' : '',
-        enable_port_mapping: (creds.switch_password && creds.node_password) ? true : false,
+        enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
         proxy_jump: creds.proxy_jump ? 'on' : ''
     });
 
@@ -1353,6 +1776,7 @@ function cancelReporterRun() {
     reporterRunning = false;
     fetch('/generate/cancel', { method: 'POST' }).catch(function() {});
     outputPane.append('warn', 'Cancellation requested');
+    rptRing.cancel();
     resetReporterUI();
 }
 
@@ -1368,8 +1792,6 @@ function resetReporterUI() {
 // =====================================================================
 var oneShotMode = false;
 var oneShotPollInterval = null;
-var oneShotValidated = false;
-
 function toggleOneShotMode() {
     oneShotMode = document.getElementById('modeToggle').checked;
     document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
@@ -1380,6 +1802,15 @@ function toggleOneShotMode() {
     saveUIState();
 }
 
+var WORKFLOW_BADGE_MAP = {
+    'vnetmap': 'Net Test',
+    'support_tool': 'Sys Test',
+    'vperfsanity': 'Perf Test',
+    'log_bundle': 'Pull Logs',
+    'switch_config': 'Pull Config',
+    'network_config': 'Pull Config'
+};
+
 async function populateOneShotChecklist() {
     try {
         var resp = await fetch('/advanced-ops/workflows');
@@ -1389,9 +1820,11 @@ async function populateOneShotChecklist() {
         data.workflows.forEach(function(wf) {
             if (!wf.enabled) return;
             var isChecked = (wf.id !== 'vperfsanity');
+            var badgeText = WORKFLOW_BADGE_MAP[wf.id] || 'Automated Test';
             var label = document.createElement('label');
             label.className = 'oneshot-item';
             label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (isChecked ? ' checked' : '') + '>' +
+                '<span class="oneshot-item-badge badge-automated">' + badgeText + '</span>' +
                 '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
             container.appendChild(label);
         });
@@ -1408,75 +1841,118 @@ function getSelectedOneShotOps() {
     return Array.from(boxes).map(function(cb) { return cb.value; });
 }
 
-var validationPollInterval = null;
+var oneShotValidated = false;
 
-async function runOneShotValidation() {
-    var creds = getCredentials();
-    var selectedOps = getSelectedOneShotOps();
-    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
-
-    document.getElementById('btnOneShotValidate').disabled = true;
-    document.getElementById('btnOneShotValidate').textContent = 'Validating...';
-    document.getElementById('btnOneShotCancel').style.display = '';
-    document.getElementById('oneShotValidationPanel').style.display = '';
-    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #888;">Running checks... (this may take a moment)</span>';
+function proceedOneShot() {
+    oneShotValidated = true;
     document.getElementById('oneShotValidationActions').style.display = 'none';
-
-    try {
-        var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
-        var payload = Object.assign({}, creds, { selected_ops: selectedOps, include_health: includeHealth, use_default_creds: document.getElementById('useDefaultCreds').checked });
-        var resp = await fetch('/advanced-ops/oneshot/validate', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-        var data = await resp.json();
-        if (data.error) {
-            document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
-            resetOneShotValidationUI();
-            return;
-        }
-        startOneShotValidationPolling();
-    } catch (e) {
-        document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Validation failed: ' + e.message + '</span>';
-        resetOneShotValidationUI();
-    }
+    outputPane.append('info', 'User acknowledged warnings, proceeding with one-shot execution.');
+    _continueOneShotExecution();
 }
 
-function startOneShotValidationPolling() {
-    if (validationPollInterval) return;
-    var lastOutputCount = 0;
-    validationPollInterval = setInterval(async function() {
+function stopAndFix() {
+    oneShotValidated = false;
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+    osRing.cancel();
+    outputPane.append('info', 'Fix the identified issues, then re-run.');
+}
+
+var _pendingOneShotPayload = null;
+
+async function startOneShot() {
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    var includeReport = document.getElementById('oneShotIncludeReport').checked;
+    var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+    var doPreValidation = document.getElementById('oneShotPreValidation').checked;
+
+    if (selectedOps.length === 0 && !includeReport) {
+        outputPane.append('warn', 'Select at least one operation or include the report.');
+        return;
+    }
+
+    var manualPlacements = [];
+    try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
+    var switchPlacement = document.getElementById('rptSwitchPlacement').value;
+    _pendingOneShotPayload = Object.assign({}, creds, {
+        selected_ops: selectedOps,
+        include_report: includeReport,
+        include_health: includeHealth,
+        use_default_creds: document.getElementById('useDefaultCreds').checked,
+        switch_placement: switchPlacement,
+        manual_placements: manualPlacements,
+        manual_switch_ips: rptManualSwitchIps
+    });
+
+    document.getElementById('btnOneShotStart').disabled = true;
+    document.getElementById('btnOneShotCancel').style.display = '';
+
+    if (doPreValidation) {
+        document.getElementById('oneShotProgress').style.display = '';
+        osRing.reset();
+        osRing.start();
+        osRing.update(0, 'Pre-Validation', 'Verifying credentials and connectivity...');
+        outputPane.append('info', 'Starting pre-validation checks...');
+        document.getElementById('oneShotValidationPanel').style.display = '';
+        document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #888;">Running checks...</span>';
+        document.getElementById('oneShotValidationActions').style.display = 'none';
+
+        try {
+            var valPayload = Object.assign({}, creds, {
+                selected_ops: selectedOps,
+                include_health: includeHealth,
+                use_default_creds: document.getElementById('useDefaultCreds').checked
+            });
+            var resp = await fetch('/advanced-ops/oneshot/validate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valPayload)
+            });
+            var data = await resp.json();
+            if (data.error) {
+                document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
+                osRing.error('Pre-Validation error');
+                resetOneShotUI();
+                return;
+            }
+            var result = await pollOneShotValidationResult();
+            if (result && result.validation) {
+                renderOneShotValidationResults(result.validation);
+                var hasIssues = result.validation.some(function(c) { return c.status === 'warn' || c.status === 'fail'; });
+                if (hasIssues) {
+                    oneShotValidated = false;
+                    osRing.update(5, 'Pre-Validation', 'Warnings detected \u2014 review results');
+                    return;
+                }
+            }
+            osRing.update(5, 'Pre-Validation passed', 'Starting execution...');
+        } catch (e) {
+            document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Validation error: ' + e.message + '</span>';
+            osRing.error('Pre-Validation error');
+            resetOneShotUI();
+            return;
+        }
+    }
+
+    oneShotValidated = true;
+    await _continueOneShotExecution();
+}
+
+async function pollOneShotValidationResult() {
+    for (var i = 0; i < 120; i++) {
+        await new Promise(function(r) { setTimeout(r, 1000); });
         try {
             var results = await Promise.all([
                 fetch('/advanced-ops/oneshot/status'),
-                fetch('/advanced-ops/output?since=' + lastOutputCount)
+                fetch('/advanced-ops/output?since=0')
             ]);
-            var statusData = await results[0].json();
+            var data = await results[0].json();
             var outputData = await results[1].json();
-
-            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details); });
-            lastOutputCount += outputData.count;
-
-            if (!statusData.running && statusData.result && statusData.result.validation) {
-                stopOneShotValidationPolling();
-                renderOneShotValidationResults(statusData.result.validation);
-                resetOneShotValidationUI();
-            } else if (!statusData.running) {
-                stopOneShotValidationPolling();
-                if (statusData.state && statusData.state.status === 'cancelled') {
-                    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #ffc107;">Pre-validation cancelled.</span>';
-                }
-                resetOneShotValidationUI();
-            }
-        } catch (e) { console.error('Validation poll error:', e); }
-    }, 1000);
-}
-
-function stopOneShotValidationPolling() { if (validationPollInterval) { clearInterval(validationPollInterval); validationPollInterval = null; } }
-
-function resetOneShotValidationUI() {
-    document.getElementById('btnOneShotValidate').disabled = false;
-    document.getElementById('btnOneShotValidate').textContent = 'Run Pre-Validation';
-    document.getElementById('btnOneShotCancel').style.display = 'none';
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            if (!data.running && data.result) return data.result;
+            if (!data.running) return null;
+        } catch(e) { /* retry */ }
+    }
+    return null;
 }
 
 function renderOneShotValidationResults(checks) {
@@ -1492,63 +1968,41 @@ function renderOneShotValidationResults(checks) {
         container.appendChild(div);
         if (c.status === 'warn' || c.status === 'fail') hasIssues = true;
     });
-
     if (hasIssues) {
         document.getElementById('oneShotValidationActions').style.display = '';
-        document.getElementById('btnOneShotStart').disabled = true;
-        oneShotValidated = false;
     } else {
         document.getElementById('oneShotValidationActions').style.display = 'none';
-        document.getElementById('btnOneShotStart').disabled = false;
-        oneShotValidated = true;
     }
 }
 
-function proceedOneShot() {
-    oneShotValidated = true;
-    document.getElementById('btnOneShotStart').disabled = false;
+async function _continueOneShotExecution() {
+    if (!_pendingOneShotPayload) return;
+    var payload = _pendingOneShotPayload;
+    var selectedOps = payload.selected_ops || [];
+
     document.getElementById('oneShotValidationActions').style.display = 'none';
-    outputPane.append('info', 'User acknowledged warnings, proceeding with one-shot execution.');
-}
-
-function stopAndFix() {
-    oneShotValidated = false;
     document.getElementById('btnOneShotStart').disabled = true;
-    outputPane.append('info', 'Fix the identified issues, then re-run pre-validation.');
-}
-
-async function startOneShot() {
-    if (!oneShotValidated) { outputPane.append('warn', 'Run pre-validation first.'); return; }
-    var creds = getCredentials();
-    var selectedOps = getSelectedOneShotOps();
-    var includeReport = document.getElementById('oneShotIncludeReport').checked;
-
-    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
-
-    var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
-    var payload = Object.assign({}, creds, {
-        selected_ops: selectedOps,
-        include_report: includeReport,
-        include_health: includeHealth,
-        use_default_creds: document.getElementById('useDefaultCreds').checked
-    });
-
-    document.getElementById('btnOneShotStart').disabled = true;
-    document.getElementById('btnOneShotValidate').disabled = true;
     document.getElementById('btnOneShotCancel').style.display = '';
     document.getElementById('oneShotProgress').style.display = '';
     resetOneShotPhases();
+
+    if (osRing._state !== 'running') {
+        osRing.reset();
+        osRing.start();
+    }
+    osRing.update(5, 'Starting...', selectedOps.length + ' operations queued');
 
     try {
         var resp = await fetch('/advanced-ops/oneshot/start', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
         });
         var data = await resp.json();
-        if (data.error) { outputPane.append('error', data.error); resetOneShotUI(); return; }
+        if (data.error) { outputPane.append('error', data.error); osRing.error(data.error); resetOneShotUI(); return; }
         outputPane.append('info', 'One-shot execution started with ' + selectedOps.length + ' operations');
         startOneShotPolling();
     } catch (e) {
         outputPane.append('error', 'Failed to start one-shot: ' + e.message);
+        osRing.error('Failed to start');
         resetOneShotUI();
     }
 }
@@ -1557,7 +2011,7 @@ async function cancelOneShot() {
     try {
         await fetch('/advanced-ops/oneshot/cancel', { method: 'POST' });
         outputPane.append('warn', 'Cancellation requested');
-        stopOneShotValidationPolling();
+        osRing.cancel();
     } catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
 }
 
@@ -1573,16 +2027,21 @@ function startOneShotPolling() {
             var statusData = await results[0].json();
             var outputData = await results[1].json();
 
-            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details); });
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
             lastOutputCount += outputData.count;
 
             if (statusData.state) {
                 updateOneShotPhases(statusData.state.phase);
-                var detail = statusData.state.current_operation || '';
-                if (statusData.state.operation_index && statusData.state.total_operations) {
-                    detail += ' (' + statusData.state.operation_index + '/' + statusData.state.total_operations + ')';
+                var opName = statusData.state.current_operation || '';
+                var opIdx = statusData.state.operation_index || 0;
+                var opTotal = statusData.state.total_operations || 1;
+                var detail = opName;
+                if (opIdx && opTotal) {
+                    detail += ' (' + opIdx + '/' + opTotal + ')';
                 }
                 document.getElementById('oneShotProgressDetail').textContent = detail;
+                var pct = opTotal > 0 ? Math.round((opIdx / opTotal) * 100) : 0;
+                osRing.update(pct, opName || statusData.state.phase, 'Operation ' + opIdx + ' of ' + opTotal);
             }
 
             if (!statusData.running) {
@@ -1590,13 +2049,16 @@ function startOneShotPolling() {
                 var finalPhase = statusData.state ? statusData.state.phase : 'completed';
                 updateOneShotPhases(finalPhase);
                 document.getElementById('btnOneShotCancel').style.display = 'none';
-                document.getElementById('btnOneShotValidate').disabled = false;
                 if (finalPhase === 'completed') {
                     document.getElementById('btnOneShotDownload').style.display = '';
                     document.getElementById('btnOneShotDownload').disabled = false;
-                } else {
-                    document.getElementById('btnOneShotStart').disabled = false;
+                    osRing.complete('All operations completed');
+                } else if (finalPhase === 'cancelled') {
+                    osRing.cancel();
+                } else if (finalPhase === 'error') {
+                    osRing.error('Execution failed');
                 }
+                document.getElementById('btnOneShotStart').disabled = false;
             }
         } catch (e) { console.error('One-shot poll error:', e); }
     }, 1500);
@@ -1637,9 +2099,11 @@ function updateOneShotPhases(currentPhase) {
 
 function resetOneShotUI() {
     document.getElementById('btnOneShotStart').disabled = false;
-    document.getElementById('btnOneShotValidate').disabled = false;
     document.getElementById('btnOneShotCancel').style.display = 'none';
-    document.getElementById('oneShotProgress').style.display = 'none';
+    if (osRing._state === 'idle') {
+        document.getElementById('oneShotProgress').style.display = 'none';
+    }
+    _pendingOneShotPayload = null;
     stopOneShotPolling();
 }
 
@@ -1665,6 +2129,8 @@ async function downloadResults() {
 // =====================================================================
 document.addEventListener('DOMContentLoaded', async function() {
     outputPane = new OutputPaneCtor('outputPane');
+    rptRing = new VastProgress('reporterProgress');
+    osRing = new VastProgress('oneShotProgressVast');
     await loadWorkflows();
     await fetchProfiles();
     toggleDefaultCredentials();
@@ -1693,6 +2159,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('rptHealthCheck').addEventListener('change', function() {
         document.getElementById('rptHealthCheckDetail').style.display = this.checked ? '' : 'none';
         rptUpdateHealthTierHint();
+        saveUIState();
+    });
+    document.getElementById('oneShotPreValidation').addEventListener('change', function() {
         saveUIState();
     });
 

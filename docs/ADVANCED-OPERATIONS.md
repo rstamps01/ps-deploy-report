@@ -2,6 +2,18 @@
 
 The Advanced Operations module provides step-by-step execution of complex validation workflows that require script downloads, remote SSH execution, and multi-stage processing. This is a developer/testing feature designed for post-install validation and troubleshooting.
 
+## Reporter Page (Standard Mode)
+
+The **Reporter** page (`/reporter`) is the primary user-facing interface for post-install validation workflows. It is accessible to all users without `--dev-mode` and combines:
+
+- **Switch Placement Mode:** Auto/Manual toggle with rack and switch discovery, manual switch IP entry, and placed switches table
+- **Reporter Checklist:** Pre-Validation (recommended), Run Reporter (as-built report generation), and optional Health Check with tier-based logic
+- **One-Shot Mode:** Toggle to select multiple validation operations (vnetmap, support tools, vperfsanity, log bundle, switch config, network config) to run sequentially with auto-bundling
+- **VAST Logo Progress Indicator:** Visual progress with fill animation, percentage, and stopwatch timer
+- **Operation Badges:** Color-coded badges (Net Test, Sys Test, Perf Test, Pull Logs, Pull Config, Recommended, Optional) on each operation
+
+The Advanced Operations page described below provides the same workflows in a step-by-step developer interface, accessible only with `--dev-mode`.
+
 ## Prerequisites
 
 ### Developer Mode
@@ -16,19 +28,23 @@ open "VAST Reporter.app" --args --dev-mode
 python3 -m src.main --dev-mode
 ```
 
-When enabled, an **Advanced Ops** link (with gear icon) appears in the navigation bar.
+When enabled, the following links appear in the navigation bar:
+- **Health Check** — Cluster health checks with tier selection
+- **Advanced Ops** (gear icon) — Step-by-step and one-shot workflow runner
+- **Validation Results** (checkmark icon) — Browse all operation results by cluster
+- **Configuration** — Application settings
 
 ### Credentials
 
 | Credential | Required For | Default (when toggle ON) | Description |
 |------------|--------------|--------------------------|-------------|
 | **Cluster IP** | All workflows | — | VMS IP address or hostname |
-| **API Username/Password** | All workflows | `admin` / `123456` | VAST API credentials with admin access |
+| **API Username/Password** | All workflows | `support` / `654321` | VAST API credentials (support account) |
 | **Node SSH User/Password** | Most workflows | `vastdata` / `vastdata` | SSH credentials for CNodes |
 | **Switch SSH User/Password** | Switch workflows | `cumulus` / `Vastdata1!` | SSH credentials for switches |
 | **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing |
 
-**Default Credentials Toggle:** A toggle switch in Connection Settings auto-populates standard credentials when enabled (default: ON). Disable to enter custom credentials for non-standard configurations.
+**Global Setting — Autofill Default Passwords:** A toggle in the Connection Settings bottom toolbar auto-populates standard credentials when set to Enable (default). Set to Disable to enter custom credentials for non-standard configurations. When default passwords are enabled, `support`/`654321` is used for all operations except vperfsanity, which is automatically overridden to `admin`/`123456` (the only operation requiring admin access). If the admin password has been changed on the cluster, disable the toggle and enter the current admin credentials manually.
 
 ---
 
@@ -117,14 +133,20 @@ Extracts network configuration commands for new node provisioning.
 
 ### Connection Settings
 
-The Connection Settings section provides:
+The Connection Settings tile opens in a compact collapsed view and expands to reveal all options.
 
-- **Saved Profiles:** Dropdown with save/add/delete icon buttons; profiles are shared across Advanced Ops, Health Check, and Generate Report pages
-- **Upper fields (always visible):** Cluster IP / VMS, API Username, API Password
-- **Lower fields (collapsible):** Node SSH User/Password, Switch SSH User/Password, VIP Pool Name
-- **Add button (green +):** Toggles the lower credential fields open/closed; clears fields when expanding for a new profile
-- **Default Credentials toggle:** Located at the far right; auto-populates standard credentials when enabled
-- **Update Tools button:** Downloads latest versions of deployment tools (vnetmap.py, mlnx_switch_api.py, vast_support_tools.py)
+**Collapsed (default):**
+- **Saved Profiles dropdown** with a **Create Cluster Profile** button (green +) — always visible
+- **Collapse/Expand arrow** in the card header — click to expand or collapse the tile
+
+**Expanded (arrow click or Create Cluster Profile):**
+- All credential fields: Cluster IP / VMS, API Username/Password, Node SSH User/Password, Switch SSH User/Password, VIP Pool Name
+- **Global Setting — Autofill Default Passwords** toggle at the bottom-left with Disable/Enable labels
+- **Save** (checkmark) and **Delete** (trash) profile icons at the bottom-right
+
+**Create Cluster Profile button:** Expands the tile, switches dropdown to "-- Create a profile --", clears Cluster IP, resets default credentials, and opens the form for entry.
+
+**Profiles** are shared across Advanced Ops, Health Check, and Generate Report pages. The tile collapse/expand state is persisted across page navigation.
 
 ### Starting a Workflow
 
@@ -136,12 +158,45 @@ The Connection Settings section provides:
 
 ### Execution Modes
 
-| Mode | Description |
-|------|-------------|
+The Select Operation card has a **Step-by-Step / One-Shot** toggle at the top right.
+
+#### Step-by-Step Mode (default)
+
+| Action | Description |
+|--------|-------------|
 | **Step-by-Step** | Click individual **Run** buttons to execute each step |
 | **Run All** | Click **Run All Steps** to execute all steps sequentially |
 | **Cancel** | Click **Cancel** to stop the current workflow |
 | **Reset** | Click **Reset** to clear state and start over |
+
+#### One-Shot Mode
+
+Run multiple operations sequentially in a single pass with automated pre-validation.
+
+1. Toggle the switch to **One-Shot**
+2. Check/uncheck operations to include. **Health Checks** are checked by default ("Recommended") but can be unchecked if not needed.
+3. Optionally check **Generate As-Built Report** to auto-generate a report after all operations complete
+4. Click **Run Pre-Validation** to check environment readiness. Validation runs asynchronously; a **Cancel** button is available to stop it at any point.
+5. Review validation results; if warnings appear, choose **Proceed Anyway** or **Stop & Fix**
+6. Click **Start One-Shot** to begin sequential execution
+7. Monitor progress via the phase indicator: Operations -> Report -> Bundling.
+8. On completion, click **Download Bundle** to get the cluster-scoped ZIP of all results
+
+**Execution Order:**
+- Selected operations run in checklist order
+- As-Built report generation (if selected) runs after all operations; health checks (Tiers 1-3) run within the report phase when the Health Checks checkbox is selected
+- Results are automatically bundled into a cluster-scoped ZIP
+
+**Pre-Validation Checks:**
+- Credential completeness (cluster IP, API credentials, SSH credentials for selected operations)
+- Cluster API reachability
+- Node SSH connectivity (warn with proceed/stop option on failure)
+- Switch SSH connectivity (warn with proceed/stop option on failure)
+- Cluster outbound internet access (required when vnetmap, support tools, or vperfsanity is selected)
+- Tool freshness (warn if any cached tools are >10 days old)
+- vperfsanity duration notice (~30 minutes)
+
+**Cancellation:** Cancel at any point between phases. The current phase completes its in-progress step before stopping.
 
 ### Output Pane
 
@@ -168,14 +223,104 @@ After completing workflows, click **Download Results** to:
 2. Create a timestamped ZIP bundle
 3. Download to your local system
 
-The bundle contains:
-- Health check JSON results
-- Network configurations
-- Switch configurations
-- vnetmap output
-- Performance results
-- Support tool archives
-- Summary markdown
+The bundle is **cluster-scoped**: only files matching the selected cluster's IP are included. For each operation category, the most recent matching file is selected. If an operation hasn't been run for the cluster, the bundle includes a placeholder note.
+
+The bundle contains (when available):
+- Health check JSON results and remediation reports
+- Network configuration summaries and text backups
+- Switch configuration JSON and all per-switch text backups
+- vnetmap results and raw output
+- vperfsanity performance results
+- Support tool archives (matched via sidecar `.meta.json`)
+- Log bundles (matched via verification JSON)
+- As-Built report PDF (matched via sidecar `.meta.json` cluster_ip)
+- As-Built report JSON data file (matched via `cluster_ip` field)
+- SUMMARY.md and manifest.json
+
+---
+
+## Validation Results Page
+
+The **Validation Results** page (`/validation-results`) provides a browser for all operation results across clusters. Like Advanced Ops, it is only visible in Developer Mode.
+
+### Features
+
+- **Operation Tabs:** 9 tabs for each operation type (As-Built Reports, Health Checks, Network Config, Switch Config, vnetmap, vperfsanity, Support Tools, Log Bundles, Bundles)
+- **Profile Filter Dropdown:** Filter all tabs by a saved cluster profile, view all clusters at once, or view only "Unsaved Cluster Results"
+- **Per-Tab Tables:** Each tab shows file name, type, size, cluster IP, generation date, and View/Download/Delete actions
+- **Tab Badges:** Each tab shows the count of results for the active filter
+
+### Cluster Identification
+
+Results are tagged with a cluster IP using multiple strategies:
+- **JSON files:** `cluster_ip` field in the JSON content
+- **Text files:** IP address in the first 10 lines of the file header
+- **Filenames:** IP address embedded in the filename (with dots or underscores)
+- **Sidecar files:** `.meta.json` (support tools, As-Built PDFs) or `.verification.json` (log bundles) alongside the file
+- **As-Built reports:** Matched by sidecar `.meta.json` cluster_ip first, then filename IP, then cluster name in filename as fallback
+- **Cluster name resolution:** When only the IP is known, the bundler scans existing `vast_data_*.json` files to resolve the real API cluster name for manifest metadata
+
+---
+
+## Output Pane Log Levels
+
+The output pane includes a **log level selector** (Status / Live / Debug) that controls the verbosity of displayed messages:
+
+| Level | Content |
+|-------|---------|
+| **Status** (default) | Operation start/complete banners, progress counters (e.g., "API check 5/28"), phase results summary with pass/fail/warn counts |
+| **Live** | Everything in Status plus all internal logger output (info/warning/error) from HealthChecker, report pipeline, and workflows |
+| **Debug** | Everything in Live plus debug-level messages for deep troubleshooting |
+
+All messages are always captured in the backend buffer regardless of the selected level. Switching levels filters the display instantly without re-fetching.
+
+### Health Check Progress
+
+During health checks, each individual check result is reported in the output:
+
+```
+  [PASS] Cluster RAID Health (1/28)
+  [PASS] Leader State (2/28)
+  [FAIL] Active Alarms (5/28)
+        3 critical alarms detected
+  ...
+  Health checks complete: 25 pass, 2 fail, 1 warning
+```
+
+### Report Generation Progress
+
+Report generation shows step-by-step status:
+
+```
+Authenticating with cluster API...
+Collecting cluster data...
+Data collected: 42 sections
+Processing and extracting report data...
+Generating PDF report...
+```
+
+---
+
+## Persistent Operation Logs
+
+One-Shot operation logs are automatically saved to disk on completion (success, failure, or cancellation). Logs are stored as JSON Lines files under `logs/operations/`.
+
+### Capacity Management
+
+- **Default limit:** 1 GB total log storage
+- **Auto-purge:** When the limit is exceeded, the oldest 25% of log files are automatically deleted with a user warning
+- **Manual purge:** Available via `POST /advanced-ops/logs/purge`
+- **Capacity check:** `GET /advanced-ops/logs/capacity` returns storage stats
+
+---
+
+## Window State Persistence
+
+The Advanced Operations page preserves its state across navigation and browser close/reopen:
+
+- **Running operations:** If a One-Shot or step-by-step workflow is running in the background, the page automatically detects this on reload and resumes the progress UI and polling
+- **UI preferences:** Mode toggle, selected profile, workflow selection, checklist selections, default credentials toggle, and log tier are saved in browser `localStorage`
+- **Output buffer:** Output entries are preserved across tab switches via `sessionStorage`, with delta-sync from the server on page reload to avoid gaps
 
 ---
 
@@ -214,9 +359,10 @@ The bundle contains:
 
 ```
 src/
-├── advanced_ops.py       # Workflow orchestration and state management
+├── advanced_ops.py       # Workflow orchestration and state management (step-by-step mode)
+├── oneshot_runner.py     # One-shot orchestrator: pre-validation, sequential multi-op execution, auto-bundling
 ├── script_runner.py      # Script download, copy, execution, and output classification
-├── result_bundler.py     # Result collection and ZIP creation
+├── result_bundler.py     # Cluster-scoped result collection and ZIP creation
 ├── tool_manager.py       # Centralized tool download, local caching, and CNode deployment
 ├── session_manager.py    # SSH session lifecycle management
 └── workflows/
@@ -229,7 +375,7 @@ src/
     └── network_config_workflow.py
 
 frontend/templates/
-└── advanced_ops.html     # UI page with step runner, output pane, and connection settings
+└── advanced_ops.html     # UI page with step-by-step/one-shot toggle, output pane, and connection settings
 ```
 
 ### Workflow Registry Pattern
@@ -252,6 +398,17 @@ vnetmap = WorkflowRegistry.get("vnetmap")
 2. Implement required methods: `get_steps()`, `run_step()`, `validate_prerequisites()`
 3. Register in `src/workflows/__init__.py`
 4. Add tests in `tests/test_workflows.py`
+
+---
+
+## SSH Proxy Hop
+
+Switch SSH connections tunnel through the CNode via paramiko nested transport (`direct-tcpip` channel) by default. This enables port mapping and Tier 3 health checks when switches are only reachable from inside the cluster network.
+
+- **Default:** ON — switch SSH goes through the CNode
+- **UI Toggle:** "Proxy through CNode" toggle on Generate and Reporter pages; persists in profiles
+- **CLI:** `--no-proxy-jump` flag disables proxy hop for direct-connection environments
+- **Profile Persistence:** Proxy hop setting saved with cluster profiles
 
 ---
 

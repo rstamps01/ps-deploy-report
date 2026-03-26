@@ -208,3 +208,6 @@ src/output/
 
 # Rotated log files
 logs/*.log.[0-9]*
+
+# External code reviews (not part of this project)
+docs/JeffsPortMapperReview/

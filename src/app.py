@@ -70,6 +70,18 @@ _DOC_REGISTRY = [
         "category": "Maintenance",
         "path": "docs/deployment/UNINSTALL-GUIDE.md",
     },
+    {
+        "id": "advanced-operations",
+        "title": "Advanced Operations Guide",
+        "category": "Using the Tool",
+        "path": "docs/ADVANCED-OPERATIONS.md",
+    },
+    {
+        "id": "post-install-validation",
+        "title": "Post-Install Validation",
+        "category": "Using the Tool",
+        "path": "docs/POST-INSTALL-VALIDATION.md",
+    },
     {"id": "api-reference", "title": "API Reference", "category": "Reference", "path": "docs/API-REFERENCE.md"},
     {
         "id": "ebox-api-discovery",
@@ -1314,6 +1326,9 @@ def _extract_oneshot_credentials(data: Dict[str, Any]) -> Dict[str, Any]:
         "cluster_name": data.get("cluster_name", ""),
         "cluster_version": data.get("cluster_version", ""),
         "proxy_jump": data.get("proxy_jump", True),
+        "switch_placement": data.get("switch_placement", "auto"),
+        "manual_placements": data.get("manual_placements", []),
+        "manual_switch_ips": data.get("manual_switch_ips", []),
     }
 
 
@@ -1322,7 +1337,7 @@ def _get_oneshot_output_callback() -> Callable[[str, str, Optional[str]], None]:
     from advanced_ops import get_advanced_ops_manager
 
     manager = get_advanced_ops_manager()
-    return manager._emit_output
+    return cast(Callable[[str, str, Optional[str]], None], manager._emit_output)
 
 
 # ---------------------------------------------------------------------------
@@ -1434,13 +1449,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         "password": switch_pw,
                     }
                     if params.get("proxy_jump", True):
-                        ssh_config_host = ssh_config.get("host") if ssh_config else None
-                        if ssh_config_host:
-                            switch_ssh_config["proxy_jump"] = {
-                                "host": ssh_config_host,
-                                "username": params.get("node_user", "vastdata"),
-                                "password": node_pw,
-                            }
+                        switch_ssh_config["proxy_jump"] = {
+                            "host": params["cluster_ip"],
+                            "username": params.get("node_user", "vastdata"),
+                            "password": node_pw,
+                        }
 
                     checker = HealthChecker(
                         api_handler=api_handler,

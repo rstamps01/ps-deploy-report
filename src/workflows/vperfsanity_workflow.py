@@ -35,7 +35,7 @@ class VperfsanityWorkflow:
     REMOTE_DIR = "/tmp/vast_scripts"
     VPERF_DIR = "/tmp/vast_scripts/vperfsanity"
     DEFAULT_VIP_POOL = "main"
-    
+
     # vperfsanity uses admin credentials
     VPERF_USER = "admin"
     VPERF_PASSWORD = "123456"
@@ -129,9 +129,7 @@ class VperfsanityWorkflow:
         tool_manager = ToolManager(output_callback=self._output_callback)
 
         # Deploy the package
-        success, message = tool_manager.deploy_tool_to_cnode(
-            self.PACKAGE_NAME, host, user, password
-        )
+        success, message = tool_manager.deploy_tool_to_cnode(self.PACKAGE_NAME, host, user, password)
 
         if not success:
             self.emit("error", f"Deployment failed: {message}")
@@ -151,7 +149,7 @@ class VperfsanityWorkflow:
 
         self.emit("info", "Extracting vperfsanity package...")
         self.emit("info", f"$ ssh {user}@{host}")
-        
+
         # Extract to the scripts directory
         extract_cmd = f"cd {self.REMOTE_DIR} && tar xf {self.PACKAGE_NAME}"
         self.emit("info", f"$ {extract_cmd}")
@@ -181,8 +179,12 @@ class VperfsanityWorkflow:
         return {"success": True, "message": "Package extracted successfully", "details": stdout}
 
     def _api_cleanup_cross_tenant_views(
-        self, host: str, user: str, password: str,
-        admin_user: str, admin_pass: str,
+        self,
+        host: str,
+        user: str,
+        password: str,
+        admin_user: str,
+        admin_pass: str,
     ) -> None:
         """Delete any 'vperfsanity' views that exist in OTHER tenants.
 
@@ -197,10 +199,7 @@ class VperfsanityWorkflow:
         """
         self.emit("info", "Checking for stale vperfsanity views across all tenants...")
 
-        find_cmd = (
-            f"curl -s -k -u \'{admin_user}:{admin_pass}\' "
-            f"\'https://{host}/api/views/\' 2>/dev/null"
-        )
+        find_cmd = f"curl -s -k -u '{admin_user}:{admin_pass}' " f"'https://{host}/api/views/' 2>/dev/null"
         rc, stdout, _ = run_ssh_command(host, user, password, find_cmd, timeout=30)
 
         if rc != 0 or not stdout.strip():
@@ -208,6 +207,7 @@ class VperfsanityWorkflow:
             return
 
         import json as _json
+
         try:
             data = _json.loads(stdout)
             if isinstance(data, dict):
@@ -231,8 +231,7 @@ class VperfsanityWorkflow:
         for vid in stale_ids:
             self.emit("warn", f"  Deleting stale view ID {vid} (cross-tenant)")
             del_cmd = (
-                f"curl -s -k -u \'{admin_user}:{admin_pass}\' "
-                f"-X DELETE \'https://{host}/api/views/{vid}/\' 2>/dev/null"
+                f"curl -s -k -u '{admin_user}:{admin_pass}' " f"-X DELETE 'https://{host}/api/views/{vid}/' 2>/dev/null"
             )
             rc_d, out_d, err_d = run_ssh_command(host, user, password, del_cmd, timeout=30)
             if rc_d == 0:
@@ -278,15 +277,20 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         cleanup_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS=\'{host}\' && "
-            f" export ADMIN_USER=\'{admin_user}\' && "
-            f" export ADMIN_PASSWORD=\'{admin_pass}\' && "
+            f" export VAST_VMS='{host}' && "
+            f" export ADMIN_USER='{admin_user}' && "
+            f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh -c {vip_pool}"
         )
         self.emit("info", f"$ cd {vperf_dir} && ./vperfsanity_prepare.sh -c {vip_pool}")
 
         rc_clean, stdout_clean, stderr_clean = run_ssh_command(
-            host, user, password, cleanup_cmd, timeout=120, force_tty=True,
+            host,
+            user,
+            password,
+            cleanup_cmd,
+            timeout=120,
+            force_tty=True,
         )
         clean_out = stdout_clean + stderr_clean
         for line in clean_out.strip().split("\n"):
@@ -303,9 +307,9 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         prepare_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS=\'{host}\' && "
-            f" export ADMIN_USER=\'{admin_user}\' && "
-            f" export ADMIN_PASSWORD=\'{admin_pass}\' && "
+            f" export VAST_VMS='{host}' && "
+            f" export ADMIN_USER='{admin_user}' && "
+            f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh {vip_pool}"
         )
         self.emit("info", f"$ cd {vperf_dir} && ./vperfsanity_prepare.sh {vip_pool}")
@@ -313,7 +317,12 @@ class VperfsanityWorkflow:
         self.emit("info", "This may take several minutes...")
 
         rc, stdout, stderr = run_ssh_command(
-            host, user, password, prepare_cmd, timeout=600, force_tty=True,
+            host,
+            user,
+            password,
+            prepare_cmd,
+            timeout=600,
+            force_tty=True,
         )
 
         output = stdout + stderr
@@ -334,11 +343,15 @@ class VperfsanityWorkflow:
             hint = ""
             ol = output.lower()
             if "403" in output:
-                hint = "Admin credentials may be invalid (HTTP 403). Verify API user/password."
+                hint = (
+                    "Admin credentials rejected (HTTP 403). If the default admin password "
+                    "has been changed, disable 'Autofill Default Passwords', enter the current "
+                    "admin credentials, and retry."
+                )
             elif "bucket name already in use" in ol or "400" in output:
-                hint = "A \'vperfsanity\' view/bucket may exist in another tenant."
+                hint = "A 'vperfsanity' view/bucket may exist in another tenant."
             elif "vip" in ol and ("not found" in ol or "error" in ol):
-                hint = f"VIP pool \'{vip_pool}\' may not exist. Create it before running."
+                hint = f"VIP pool '{vip_pool}' may not exist. Create it before running."
             if hint:
                 self.emit("warn", f"Hint: {hint}")
             return {"success": False, "message": f"Prepare failed (rc={rc})", "details": output[:1000]}
@@ -351,7 +364,7 @@ class VperfsanityWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
-        
+
         vip_pool = self._step_data.get("vip_pool", self.DEFAULT_VIP_POOL)
         vperf_dir = self._step_data.get("vperf_dir", self.VPERF_DIR)
 
@@ -368,9 +381,7 @@ class VperfsanityWorkflow:
         self.emit("info", "")
 
         # Long timeout for performance tests, force_tty for interactive output
-        rc, stdout, stderr = run_ssh_command(
-            host, user, password, run_cmd, timeout=3600, force_tty=True
-        )
+        rc, stdout, stderr = run_ssh_command(host, user, password, run_cmd, timeout=3600, force_tty=True)
 
         output = stdout + stderr
         for line in output.strip().split("\n"):
@@ -393,9 +404,11 @@ class VperfsanityWorkflow:
             hint = ""
             ol = output.lower()
             if "no such file or directory" in ol and "elbencho" in ol:
-                hint = ("elbencho was not installed on the CNodes. "
-                        "This usually means Step 3 (Prepare Infrastructure) "
-                        "did not complete successfully. Re-run from Step 3.")
+                hint = (
+                    "elbencho was not installed on the CNodes. "
+                    "This usually means Step 3 (Prepare Infrastructure) "
+                    "did not complete successfully. Re-run from Step 3."
+                )
             if hint:
                 self.emit("warn", f"Hint: {hint}")
             return {"success": False, "message": f"Tests failed (rc={rc})", "details": output[-1000:]}
@@ -408,7 +421,7 @@ class VperfsanityWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
-        
+
         vperf_dir = self._step_data.get("vperf_dir", self.VPERF_DIR)
 
         self.emit("info", "Collecting vperfsanity results...")
@@ -418,9 +431,7 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {results_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(
-            host, user, password, results_cmd, timeout=120, force_tty=True
-        )
+        rc, stdout, stderr = run_ssh_command(host, user, password, results_cmd, timeout=120, force_tty=True)
 
         output = stdout + stderr
 
@@ -433,7 +444,7 @@ class VperfsanityWorkflow:
         # Save results locally
         local_dir = Path(__file__).parent.parent.parent / "output" / "scripts"
         local_dir.mkdir(parents=True, exist_ok=True)
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         results_file = local_dir / f"vperfsanity_results_{host}_{timestamp}.txt"
         results_file.write_text(output)
@@ -449,7 +460,7 @@ class VperfsanityWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
-        
+
         vperf_dir = self._step_data.get("vperf_dir", self.VPERF_DIR)
 
         self.emit("info", "Attempting to upload results...")
@@ -461,9 +472,7 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {upload_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(
-            host, user, password, upload_cmd, timeout=120, force_tty=True
-        )
+        rc, stdout, stderr = run_ssh_command(host, user, password, upload_cmd, timeout=120, force_tty=True)
 
         output = stdout + stderr
 
@@ -499,7 +508,12 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {cleanup_run_cmd}")
 
         rc1, stdout1, stderr1 = run_ssh_command(
-            host, user, password, cleanup_run_cmd, timeout=300, force_tty=True,
+            host,
+            user,
+            password,
+            cleanup_run_cmd,
+            timeout=300,
+            force_tty=True,
         )
 
         output1 = stdout1 + stderr1
@@ -512,15 +526,20 @@ class VperfsanityWorkflow:
         # Delete infrastructure (user, view, policy) -- needs admin creds
         cleanup_prep_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS=\'{host}\' && "
-            f" export ADMIN_USER=\'{admin_user}\' && "
-            f" export ADMIN_PASSWORD=\'{admin_pass}\' && "
+            f" export VAST_VMS='{host}' && "
+            f" export ADMIN_USER='{admin_user}' && "
+            f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh -c {vip_pool}"
         )
         self.emit("info", f"$ cd {vperf_dir} && ./vperfsanity_prepare.sh -c {vip_pool}")
 
         rc2, stdout2, stderr2 = run_ssh_command(
-            host, user, password, cleanup_prep_cmd, timeout=300, force_tty=True,
+            host,
+            user,
+            password,
+            cleanup_prep_cmd,
+            timeout=300,
+            force_tty=True,
         )
 
         output2 = stdout2 + stderr2

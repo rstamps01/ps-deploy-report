@@ -351,14 +351,14 @@ class VastReportBuilder:
             )
             story.append(PageBreak())
 
-        # Post Deployment Validation (optional)
-        validation_data = sections.get("post_deployment_validation", {}).get("data")
-        if validation_data:
+        # Post Deployment Activities (next steps checklist)
+        activities_data = sections.get("post_deployment_activities", {}).get("data")
+        if activities_data:
             story.extend(
-                self._create_post_deployment_validation_section(
-                    validation_data,
+                self._create_post_deployment_activities_section(
+                    activities_data,
                     page_tracker,
-                    "post_deploy_validation" if is_first_pass else None,
+                    "post_deploy_activities" if is_first_pass else None,
                 )
             )
             story.append(PageBreak())
@@ -934,8 +934,8 @@ class VastReportBuilder:
             ("Authentication Services", 1, None, False),
             # Health Check section (optional)
             ("Cluster Health Check Results", 0, "health_check", True),
-            # Post Deployment Validation section (optional)
-            ("Post Deployment Validation", 0, "post_deploy_validation", True),
+            # Post Deployment Activities section
+            ("Post Deployment Activities", 0, "post_deploy_activities", True),
         ]
 
         # Filter out optional sections that weren't captured
@@ -2137,16 +2137,22 @@ class VastReportBuilder:
             self.manual_rack_placements: Dict[str, list] = {}
 
             manual_placements = data.get("manual_switch_placements")
-            if manual_placements and switches:
-                # --- Manual placement: user-specified rack + U position ---
-                sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches}
+            if manual_placements:
+                sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches} if switches else {}
                 for idx, mp in enumerate(manual_placements, start=1):
                     rn = mp.get("rack_name", "Unknown")
                     u_pos = int(mp.get("u_position", 0))
                     self.switch_positions[idx] = u_pos
-                    self.manual_rack_placements.setdefault(rn, []).append(
-                        {**sw_by_name.get(mp.get("switch_name"), {}), "u_position": u_pos}
-                    )
+                    sw_data = dict(sw_by_name.get(mp.get("switch_name"), {}))
+                    sw_data["u_position"] = u_pos
+                    sw_data.setdefault("name", mp.get("switch_name", ""))
+                    if mp.get("model_key"):
+                        sw_data["model"] = mp["model_key"]
+                    elif mp.get("model") and "model" not in sw_data:
+                        sw_data["model"] = mp["model"]
+                    if mp.get("height_u"):
+                        sw_data["height_u"] = mp["height_u"]
+                    self.manual_rack_placements.setdefault(rn, []).append(sw_data)
                 self.switch_rack_name = sorted(self.manual_rack_placements.keys())[0]
                 self.logger.info("Manual switch placement: %s", self.switch_positions)
             elif switches and len(switches) == 2:
@@ -2462,28 +2468,6 @@ class VastReportBuilder:
                         rack_dboxes = rack_hw["dboxes"]
                         rack_eboxes = rack_hw.get("eboxes") or []
                         rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
-
-                        # Add placeholder Arista switches only when the cluster
-                        # has NO discovered switches at all (e.g., pre-deployment).
-                        # When real switches exist they are assigned to a single rack;
-                        # other racks intentionally have no switches.
-                        has_real_switches = bool(hardware.get("switches"))
-                        if not rack_switches and not has_real_switches and (rack_cboxes or rack_dboxes):
-                            rack_switches = [
-                                {
-                                    "id": "SWA",
-                                    "name": "SWA",
-                                    "model": "arista_7060dx5",
-                                    "state": "ACTIVE",
-                                },
-                                {
-                                    "id": "SWB",
-                                    "name": "SWB",
-                                    "model": "arista_7060dx5",
-                                    "state": "ACTIVE",
-                                },
-                            ]
-                            self.logger.info(f"Added 2 placeholder Arista switches to rack {rack_name}")
 
                         # Only generate diagram if rack has hardware (cboxes, dboxes, or eboxes)
                         if rack_cboxes or rack_dboxes or rack_eboxes:
@@ -4815,16 +4799,16 @@ class VastReportBuilder:
 
         return content
 
-    def _create_post_deployment_validation_section(
+    def _create_post_deployment_activities_section(
         self,
-        validation_data: Dict[str, Any],
+        activities_data: Dict[str, Any],
         page_tracker: Optional[Dict[str, int]] = None,
         section_key: Optional[str] = None,
     ) -> List[Any]:
-        """Create the Post Deployment Validation section.
+        """Create the Post Deployment Activities section with next-steps checklist.
 
         Args:
-            validation_data: Validation data dict with 'results' and 'manual_checklist' keys.
+            activities_data: Dict with 'next_steps' list of {item, description} dicts.
             page_tracker: Optional page tracker for TOC page capture.
             section_key: Section key for PageMarker registration.
 
@@ -4852,7 +4836,7 @@ class VastReportBuilder:
         )
 
         content: List[Any] = []
-        content.append(Paragraph("Post Deployment Validation", heading_style))
+        content.append(Paragraph("Post Deployment Activities", heading_style))
         content.append(Spacer(1, 12))
 
         if page_tracker is not None and section_key:
@@ -4860,135 +4844,83 @@ class VastReportBuilder:
 
         content.append(
             Paragraph(
-                "This section documents the post-deployment validation checks performed "
-                "to verify correct cluster operation after installation or maintenance. "
-                "Automated SSH connectivity checks confirm reachability of cluster nodes "
-                "and network switches, while the manual checklist captures items that "
-                "require on-site or operator verification.",
+                "This section outlines the recommended next steps to complete after "
+                "cluster installation and validation. Each item should be addressed "
+                "before handing the cluster over to the customer for production use. "
+                "Refer to the VAST Installation Template for detailed procedures.",
                 overview_style,
             )
         )
         content.append(Spacer(1, 8))
 
-        status_colors = {
-            "pass": self.brand_compliance.colors.SUCCESS_GREEN,
-            "fail": self.brand_compliance.colors.ERROR_RED,
-            "warning": self.brand_compliance.colors.WARNING_ORANGE,
-            "skipped": self.brand_compliance.colors.MEDIUM_GRAY,
-            "error": self.brand_compliance.colors.MEDIUM_GRAY,
-        }
+        next_steps = activities_data.get("next_steps", [])
 
-        has_content = False
+        if next_steps:
+            cell_font_size = self.config.font_size - 1
 
-        # --- SSH Validation Results -------------------------------------------
-        all_results = validation_data.get("results", [])
-        ssh_results = [r for r in all_results if str(r.get("category", "")).lower() in ("node_ssh", "switch_ssh")]
+            cell_style = ParagraphStyle(
+                "ChecklistCell",
+                parent=styles["Normal"],
+                fontSize=cell_font_size,
+                leading=cell_font_size + 2,
+                wordWrap="CJK",
+            )
+            cell_style_bold = ParagraphStyle(
+                "ChecklistCellBold",
+                parent=cell_style,
+                fontName="Helvetica-Bold",
+            )
+            cell_style_center = ParagraphStyle(
+                "ChecklistCellCenter",
+                parent=cell_style,
+                alignment=1,
+            )
+            header_style_cell = ParagraphStyle(
+                "ChecklistHeader",
+                parent=cell_style,
+                fontName="Helvetica-Bold",
+                textColor=self.brand_compliance.colors.PURE_WHITE,
+            )
 
-        if ssh_results:
-            has_content = True
-            ssh_headers = ["Check Name", "Category", "Status", "Message"]
-            ssh_data = [ssh_headers]
-
-            for r in ssh_results:
-                ssh_data.append(
-                    [
-                        self._safe_table_value(r.get("check_name")),
-                        self._safe_table_value(r.get("category")),
-                        self._safe_table_value(r.get("status")),
-                        self._safe_table_value(r.get("message")),
-                    ]
-                )
-
-            page_width = A4[0] - 1.0 * inch
-            col_widths = [
-                page_width * 0.22,  # Check Name
-                page_width * 0.12,  # Category
-                page_width * 0.10,  # Status
-                page_width * 0.56,  # Message (expanded to fit text)
+            checklist_data = [
+                [
+                    Paragraph("Item", header_style_cell),
+                    Paragraph("Description", header_style_cell),
+                    Paragraph("Status", header_style_cell),
+                ]
             ]
 
-            ssh_table = Table(ssh_data, colWidths=col_widths, repeatRows=1)
-
-            ssh_styles = [
-                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
-                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
-                ("PADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                (
-                    "ROWBACKGROUNDS",
-                    (0, 1),
-                    (-1, -1),
-                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
-                ),
-                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
-            ]
-
-            for row_idx, r in enumerate(ssh_results, start=1):
-                status_key = str(r.get("status", "")).lower()
-                bg = status_colors.get(status_key, self.brand_compliance.colors.ALTERNATING_ROW)
-                fg = (
-                    self.brand_compliance.colors.DARK_GRAY
-                    if status_key == "warning"
-                    else self.brand_compliance.colors.PURE_WHITE
-                )
-                ssh_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
-                ssh_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), fg))
-
-            ssh_table.setStyle(TableStyle(ssh_styles))
-            content.append(Paragraph("<b>SSH Connectivity Validation</b>", styles["Normal"]))
-            content.append(Spacer(1, 4))
-            content.append(ssh_table)
-            content.append(Spacer(1, 16))
-
-        # --- Manual Checklist -------------------------------------------------
-        manual_checklist = validation_data.get("manual_checklist", [])
-
-        if manual_checklist:
-            has_content = True
-            checklist_headers = ["Item", "Description", "Status"]
-            checklist_data = [checklist_headers]
-
-            for item in manual_checklist:
+            for step in next_steps:
                 checklist_data.append(
                     [
-                        self._safe_table_value(item.get("item")),
-                        self._safe_table_value(item.get("description")),
-                        "Manual Verification Required",
+                        Paragraph(self._safe_table_value(step.get("item")), cell_style_bold),
+                        Paragraph(self._safe_table_value(step.get("description")), cell_style),
+                        Paragraph("Pending", cell_style_center),
                     ]
                 )
 
             page_width = A4[0] - 1.0 * inch
-            col_widths = [page_width * 0.25, page_width * 0.50, page_width * 0.25]
+            col_widths = [page_width * 0.25, page_width * 0.55, page_width * 0.20]
 
             checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)
 
             checklist_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
-                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
-                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
                 ("PADDING", (0, 0), (-1, -1), 6),
                 ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 1), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
                 (
                     "ROWBACKGROUNDS",
                     (0, 1),
                     (-1, -1),
                     [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
                 ),
-                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
 
-            # Amber background for all Status cells
             for row_idx in range(1, len(checklist_data)):
                 checklist_styles.append(
                     ("BACKGROUND", (2, row_idx), (2, row_idx), self.brand_compliance.colors.WARNING_ORANGE)
@@ -4998,10 +4930,17 @@ class VastReportBuilder:
                 )
 
             checklist_table.setStyle(TableStyle(checklist_styles))
-            content.append(Paragraph("<b>Manual Verification Checklist</b>", styles["Normal"]))
+            content.append(Paragraph("<b>Next Steps — Get Started Using VAST Data</b>", styles["Normal"]))
             content.append(Spacer(1, 4))
             content.append(checklist_table)
             content.append(Spacer(1, 12))
+        else:
+            content.append(
+                Paragraph(
+                    "No post-deployment activity items available.",
+                    ParagraphStyle("Normal", parent=styles["Normal"], fontSize=self.config.font_size),
+                )
+            )
 
         return content
 

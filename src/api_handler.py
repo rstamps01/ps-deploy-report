@@ -2347,9 +2347,10 @@ class VastApiHandler:
         try:
             self.logger.info("Fetching rack inventory information")
             response = self._make_api_request("racks/")
-            if response and isinstance(response, list):
-                self.logger.info(f"Retrieved {len(response)} racks")
-                return response
+            racks = self._normalize_list_response(response)
+            if racks:
+                self.logger.info(f"Retrieved {len(racks)} racks")
+                return racks
             else:
                 self.logger.warning("No rack data returned or unexpected format")
                 return []

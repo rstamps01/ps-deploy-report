@@ -109,7 +109,7 @@ class LogBundleWorkflow:
 
         # Get sizes of log directories
         sizes = {}
-        total_size = 0
+        total_size: float = 0
         size_details = []
 
         for log_dir in self.LOG_DIRS:
@@ -284,6 +284,7 @@ class LogBundleWorkflow:
                 "file_count": file_count,
                 "archive_size": self._step_data.get("archive_size", 0),
                 "sample_files": files[:10],
+                "cluster_ip": self._credentials.get("cluster_ip", ""),
             }
 
             verification_file = Path(local_path).with_suffix(".verification.json")

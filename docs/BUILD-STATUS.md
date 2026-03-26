@@ -1,5 +1,7 @@
 # Build & CI Status (Post–Unreleased Changes)
 
+**Note:** This document was generated for a previous release cycle. Version references below are historical examples.
+
 **Date:** 2026-03-10  
 **Scope:** All changes since last tagged build (EBox integration, Library EBox, docs, tests).
 

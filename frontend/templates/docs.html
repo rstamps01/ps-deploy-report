@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Documentation</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>Documentation</h1>
     <p class="subtitle">Guides, reference material, and API documentation</p>
 </div>
 
@@ -25,19 +25,23 @@
         </div>
         {% endfor %}
 
+        {% if developer_mode %}
         <div class="docs-category">
             <h4 class="docs-category-title">Live API Explorer</h4>
             <div class="docs-swagger-panel">
                 <p class="docs-swagger-hint">Open the interactive API browser on your VAST cluster.</p>
-                <div class="docs-swagger-input">
+                <div class="docs-swagger-ip-row">
                     <input type="text" id="swaggerIp" placeholder="Management VIP" value="{{ cluster_ip }}">
+                </div>
+                <span class="form-hint" style="display:block; text-align:center;">https://&lt;management-vip&gt;/api</span>
+                <p class="docs-swagger-tip">If you see <strong>Fetch error 500</strong> when the page loads, the cluster's OpenAPI spec endpoint may be failing. Try the <strong>Open (v7)</strong> link, or log in to the cluster Web UI first, then open the API link in the same browser.</p>
+                <div class="docs-swagger-buttons">
                     <a id="swaggerBtn" class="btn btn-sm btn-primary" href="#" target="_blank" rel="noopener noreferrer">Open</a>
                     <a id="swaggerBtnV7" class="btn btn-sm btn-secondary" href="#" target="_blank" rel="noopener noreferrer">Open (v7)</a>
                 </div>
-                <span class="form-hint">https://&lt;management-vip&gt;/api</span>
-                <p class="docs-swagger-tip">If you see <strong>Fetch error 500</strong> when the page loads, the cluster's OpenAPI spec endpoint may be failing. Try the <strong>Open (v7)</strong> link, or log in to the cluster Web UI first, then open the API link in the same browser.</p>
             </div>
         </div>
+        {% endif %}
     </aside>
 
     <div class="docs-content-area">
@@ -72,26 +76,28 @@
     var swaggerIp = document.getElementById('swaggerIp');
     var swaggerBtn = document.getElementById('swaggerBtn');
     var swaggerBtnV7 = document.getElementById('swaggerBtnV7');
-    function updateSwaggerLink() {
-        var ip = swaggerIp.value.trim();
-        if (ip) {
-            swaggerBtn.href = 'https://' + ip + '/api';
-            swaggerBtn.style.opacity = '1';
-            swaggerBtn.style.pointerEvents = 'auto';
-            swaggerBtnV7.href = 'https://' + ip + '/api/v7/';
-            swaggerBtnV7.style.opacity = '1';
-            swaggerBtnV7.style.pointerEvents = 'auto';
-        } else {
-            swaggerBtn.href = '#';
-            swaggerBtn.style.opacity = '0.5';
-            swaggerBtn.style.pointerEvents = 'none';
-            swaggerBtnV7.href = '#';
-            swaggerBtnV7.style.opacity = '0.5';
-            swaggerBtnV7.style.pointerEvents = 'none';
+    if (swaggerIp && swaggerBtn && swaggerBtnV7) {
+        function updateSwaggerLink() {
+            var ip = swaggerIp.value.trim();
+            if (ip) {
+                swaggerBtn.href = 'https://' + ip + '/api';
+                swaggerBtn.style.opacity = '1';
+                swaggerBtn.style.pointerEvents = 'auto';
+                swaggerBtnV7.href = 'https://' + ip + '/api/v7/';
+                swaggerBtnV7.style.opacity = '1';
+                swaggerBtnV7.style.pointerEvents = 'auto';
+            } else {
+                swaggerBtn.href = '#';
+                swaggerBtn.style.opacity = '0.5';
+                swaggerBtn.style.pointerEvents = 'none';
+                swaggerBtnV7.href = '#';
+                swaggerBtnV7.style.opacity = '0.5';
+                swaggerBtnV7.style.pointerEvents = 'none';
+            }
         }
+        swaggerIp.addEventListener('input', updateSwaggerLink);
+        updateSwaggerLink();
     }
-    swaggerIp.addEventListener('input', updateSwaggerLink);
-    updateSwaggerLink();
 
     function loadDocByHash() {
         var hash = window.location.hash.substring(1);

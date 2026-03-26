@@ -116,44 +116,32 @@ class TestSwitchPlacement(unittest.TestCase):
         self.rack = RackDiagram(rack_height_u=42, library_path=None)
 
     def test_center_placement_success(self):
-        positions = self.rack._try_center_placement(
-            lowest_cbox_bottom=25, highest_dbox_top=13, switch_height=1
-        )
+        positions = self.rack._try_center_placement(lowest_cbox_bottom=25, highest_dbox_top=13, switch_height=1)
         self.assertEqual(len(positions), 2)
         self.assertTrue(all(13 < p < 25 for p in positions))
 
     def test_center_placement_no_gap(self):
-        positions = self.rack._try_center_placement(
-            lowest_cbox_bottom=10, highest_dbox_top=9, switch_height=1
-        )
+        positions = self.rack._try_center_placement(lowest_cbox_bottom=10, highest_dbox_top=9, switch_height=1)
         self.assertEqual(positions, [])
 
     def test_above_placement_success(self):
-        positions = self.rack._try_above_placement(
-            highest_cbox_top=30, switch_height=1, rack_height=42
-        )
+        positions = self.rack._try_above_placement(highest_cbox_top=30, switch_height=1, rack_height=42)
         self.assertEqual(len(positions), 2)
         self.assertTrue(all(p > 30 for p in positions))
         self.assertTrue(all(p <= 42 for p in positions))
 
     def test_above_placement_at_rack_top(self):
-        positions = self.rack._try_above_placement(
-            highest_cbox_top=40, switch_height=1, rack_height=42
-        )
+        positions = self.rack._try_above_placement(highest_cbox_top=40, switch_height=1, rack_height=42)
         self.assertEqual(positions, [])
 
     def test_below_placement_success(self):
-        positions = self.rack._try_below_placement(
-            lowest_dbox_bottom=10, switch_height=1
-        )
+        positions = self.rack._try_below_placement(lowest_dbox_bottom=10, switch_height=1)
         self.assertEqual(len(positions), 2)
         self.assertTrue(all(p < 10 for p in positions))
         self.assertTrue(all(p >= 1 for p in positions))
 
     def test_below_placement_at_rack_bottom(self):
-        positions = self.rack._try_below_placement(
-            lowest_dbox_bottom=3, switch_height=1
-        )
+        positions = self.rack._try_below_placement(lowest_dbox_bottom=3, switch_height=1)
         self.assertEqual(positions, [])
 
     def test_calculate_switch_positions_cascading(self):

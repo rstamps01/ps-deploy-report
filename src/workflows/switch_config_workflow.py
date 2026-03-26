@@ -8,6 +8,7 @@ Switch Configuration Extraction Workflow
 """
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -91,7 +92,11 @@ class SwitchConfigWorkflow:
     def get_steps(self) -> List[Dict[str, Any]]:
         return [
             {"id": 1, "name": "Discover Switches", "description": "Fetch switch IPs from VAST API and connect"},
-            {"id": 2, "name": "Extract Configuration", "description": "Retrieve running configuration and interface info"},
+            {
+                "id": 2,
+                "name": "Extract Configuration",
+                "description": "Retrieve running configuration and interface info",
+            },
             {"id": 3, "name": "Save Configuration", "description": "Save configuration to local files"},
         ]
 
@@ -124,7 +129,7 @@ class SwitchConfigWorkflow:
 
     def _get_switch_ips_from_api(self) -> tuple[List[str], Dict[str, str]]:
         """Fetch switch management IPs and models from VAST API GET /api/switches/.
-        
+
         Returns:
             Tuple of (list of IPs, dict mapping IP to model string)
         """
@@ -192,9 +197,12 @@ class SwitchConfigWorkflow:
         # Check for Cumulus Linux (standard SSH works, check for net/nv commands)
         # Use login_shell=True to ensure PATH is fully loaded on the switch
         rc, stdout, stderr = run_ssh_command(
-            ip, user, password,
+            ip,
+            user,
+            password,
             "which nv 2>/dev/null && echo HAS_NV; which net 2>/dev/null && echo HAS_NET; cat /etc/lsb-release 2>/dev/null || true",
-            timeout=10, login_shell=True,
+            timeout=10,
+            login_shell=True,
         )
         if rc == 0 and stdout:
             probe = stdout.upper()
@@ -281,12 +289,14 @@ class SwitchConfigWorkflow:
                 # Detect switch type from API model + SSH probes
                 switch_type = self._detect_switch_type(ip, switch_user, switch_password, model, stdout)
 
-                connected_switches.append({
-                    "ip": ip,
-                    "type": switch_type,
-                    "hostname": hostname,
-                    "model": model,
-                })
+                connected_switches.append(
+                    {
+                        "ip": ip,
+                        "type": switch_type,
+                        "hostname": hostname,
+                        "model": model,
+                    }
+                )
                 self.emit("success", f"  Connected: {ip} ({switch_type}) - {hostname}")
             else:
                 error_msg = stderr.strip().split("\n")[-1] if stderr else "Connection failed"
@@ -375,6 +385,131 @@ class SwitchConfigWorkflow:
             "details": "\n".join([f"{ip}: {len(cfg['commands'])} command outputs" for ip, cfg in configs.items()]),
         }
 
+    # ------------------------------------------------------------------
+    # JSON output formatting — parse raw command output into structured data
+    # ------------------------------------------------------------------
+
+    def _parse_command_output(self, cmd: str, raw_output: str) -> Any:
+        """Parse a single command's raw output into structured data for JSON export.
+
+        Returns the parsed structure, or the original string if parsing is
+        not applicable or fails.
+        """
+        stripped = raw_output.strip()
+
+        if cmd.endswith("-o json") or cmd.endswith("-o json\n"):
+            return self._try_parse_json(stripped)
+
+        if cmd in ("ip -br link show", "ip -br addr show"):
+            return self._parse_ip_brief(stripped, addr_mode="addr" in cmd)
+
+        if cmd == "cat /etc/network/interfaces":
+            return self._parse_network_interfaces(stripped)
+
+        if cmd == "nv config show":
+            return self._try_parse_yaml(stripped)
+
+        return raw_output
+
+    @staticmethod
+    def _try_parse_json(text: str) -> Any:
+        try:
+            return json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return text
+
+    @staticmethod
+    def _try_parse_yaml(text: str) -> Any:
+        try:
+            import yaml
+
+            result = yaml.safe_load(text)
+            if isinstance(result, (dict, list)):
+                return result
+        except Exception:
+            pass
+        return text
+
+    @staticmethod
+    def _parse_ip_brief(text: str, addr_mode: bool = False) -> List[Dict[str, Any]]:
+        """Parse ``ip -br link show`` or ``ip -br addr show`` into per-interface records."""
+        interfaces: List[Dict[str, Any]] = []
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            name = parts[0].rstrip("@" + parts[0].split("@")[-1]) if "@" in parts[0] else parts[0]
+            parent = parts[0].split("@")[1] if "@" in parts[0] else None
+            state = parts[1]
+            record: Dict[str, Any] = {"name": name, "state": state}
+            if parent:
+                record["parent"] = parent
+            if addr_mode:
+                record["addresses"] = parts[2:]
+            else:
+                mac = parts[2] if len(parts) > 2 else None
+                flags_match = re.search(r"<([^>]+)>", line)
+                if mac:
+                    record["mac"] = mac
+                if flags_match:
+                    record["flags"] = flags_match.group(1).split(",")
+            interfaces.append(record)
+        return interfaces
+
+    @staticmethod
+    def _parse_network_interfaces(text: str) -> Dict[str, Any]:
+        """Parse /etc/network/interfaces into structured stanzas."""
+        result: Dict[str, Any] = {"_comments": [], "interfaces": {}}
+        current_iface: Optional[str] = None
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith("source "):
+                if stripped.startswith("#"):
+                    result["_comments"].append(stripped)
+                continue
+            if stripped.startswith("auto "):
+                iface_name = stripped.split()[1]
+                result["interfaces"].setdefault(iface_name, {"auto": True, "config": {}})
+                continue
+            if stripped.startswith("iface "):
+                parts = stripped.split()
+                iface_name = parts[1]
+                method = parts[3] if len(parts) > 3 else "manual"
+                family = parts[2] if len(parts) > 2 else "inet"
+                current_iface = iface_name
+                entry = result["interfaces"].setdefault(iface_name, {"auto": False, "config": {}})
+                entry["family"] = family
+                entry["method"] = method
+                continue
+            if current_iface and line.startswith(("    ", "\t")):
+                key_val = stripped.split(None, 1)
+                key = key_val[0]
+                value = key_val[1] if len(key_val) > 1 else True
+                result["interfaces"][current_iface]["config"][key] = value
+
+        if not result["_comments"]:
+            del result["_comments"]
+        return result
+
+    def _build_structured_configs(self, configs: Dict[str, Any]) -> Dict[str, Any]:
+        """Transform raw command outputs into structured data for JSON export."""
+        structured: Dict[str, Any] = {}
+        for ip, switch_data in configs.items():
+            entry: Dict[str, Any] = {
+                "type": switch_data.get("type", "unknown"),
+                "hostname": switch_data.get("hostname", ip),
+                "commands": {},
+            }
+            for cmd, raw_output in switch_data.get("commands", {}).items():
+                entry["commands"][cmd] = self._parse_command_output(cmd, raw_output)
+            structured[ip] = entry
+        return structured
+
+    # ------------------------------------------------------------------
+
     def _step_save_config(self) -> Dict[str, Any]:
         """Step 3: Save configuration to local files."""
         configs = self._step_data.get("configs", {})
@@ -390,13 +525,16 @@ class SwitchConfigWorkflow:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         saved_files = []
 
+        # Save raw text backup files (preserves original SSH output)
         for ip, config in configs.items():
             hostname = config.get("hostname", ip)
             filename = f"switch_{hostname}_{ip.replace('.', '_')}_{timestamp}.txt"
             filepath = local_dir / filename
 
+            cluster_ip = self._credentials.get("cluster_ip", "unknown")
             with open(filepath, "w") as f:
                 f.write(f"# Switch Configuration Backup\n")
+                f.write(f"# Cluster: {cluster_ip}\n")
                 f.write(f"# Hostname: {hostname}\n")
                 f.write(f"# IP: {ip}\n")
                 f.write(f"# Type: {config['type']}\n")
@@ -412,12 +550,16 @@ class SwitchConfigWorkflow:
             saved_files.append(str(filepath))
             self.emit("success", f"Saved: {filename}")
 
-        # Also save as JSON
+        # Save structured JSON (parsed command outputs)
+        structured = self._build_structured_configs(configs)
+        cluster_ip = self._credentials.get("cluster_ip", "unknown")
         json_file = local_dir / f"switch_configs_{timestamp}.json"
-        json_file.write_text(json.dumps({
-            "timestamp": timestamp,
-            "switches": configs,
-        }, indent=2))
+        json_file.write_text(
+            json.dumps(
+                {"timestamp": timestamp, "cluster_ip": cluster_ip, "switches": structured},
+                indent=2,
+            )
+        )
         saved_files.append(str(json_file))
         self.emit("success", f"Saved: {json_file.name}")
 

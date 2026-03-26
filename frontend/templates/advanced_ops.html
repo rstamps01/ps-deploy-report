@@ -15,9 +15,10 @@
 </div>
 
 <!-- Connection Settings Card -->
-<div class="card">
-    <div class="card-header">
+<div class="card" id="connectionSettingsCard">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Connection Settings</h3>
+        <button type="button" class="btn-icon-collapse collapsed" onclick="toggleConnectionSettings()" id="btnCollapseConn" title="Expand settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
     </div>
     <div class="card-body">
         <form id="credentialsForm">
@@ -27,56 +28,67 @@
                     <select id="profileSelect" onchange="loadProfile()">
                         <option value="">-- Select a profile --</option>
                     </select>
-                    <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
-                    <button type="button" class="btn-icon-add" onclick="addProfile()" title="Add / Edit cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
-                    <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
-                    <div class="default-creds-widget">
-                        <span class="default-creds-label">Default</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="default-creds-label">PW</span>
-                    </div>
+                    <button type="button" class="btn-icon-add" onclick="createProfile()" title="Create cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
                 </div>
             </div>
 
-            <!-- Credential fields: collapsible, hidden by default -->
-            <div id="credentialFields" class="credential-fields" style="display: none;">
-                <div class="form-row creds-row-3">
-                    <div class="form-group">
-                        <label for="clusterIp">Cluster IP / VMS</label>
-                        <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+            <!-- Collapsible section: credential fields + bottom toolbar (collapsed on initial render) -->
+            <div id="connSettingsDetails" class="collapsed-section">
+                <div id="credentialFields" class="credential-fields">
+                    <div class="form-row creds-row-3">
+                        <div class="form-group">
+                            <label for="clusterIp">Cluster IP / VMS</label>
+                            <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+                        </div>
+                        <div class="form-group">
+                            <label for="username">API Username</label>
+                            <input type="text" id="username" name="username" class="form-control" placeholder="admin">
+                        </div>
+                        <div class="form-group">
+                            <label for="password">API Password</label>
+                            <input type="password" id="password" name="password" class="form-control">
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="username">API Username</label>
-                        <input type="text" id="username" name="username" class="form-control" placeholder="admin">
-                    </div>
-                    <div class="form-group">
-                        <label for="password">API Password</label>
-                        <input type="password" id="password" name="password" class="form-control">
+                    <div class="form-row creds-row-5">
+                        <div class="form-group">
+                            <label for="nodeUser">Node SSH User</label>
+                            <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
+                        </div>
+                        <div class="form-group">
+                            <label for="nodePassword">Node SSH Password</label>
+                            <input type="password" id="nodePassword" name="node_password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchUser">Switch SSH User</label>
+                            <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchPassword">Switch SSH Password</label>
+                            <input type="password" id="switchPassword" name="switch_password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
+                            <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
+                        </div>
                     </div>
                 </div>
-                <div class="form-row creds-row-5">
-                    <div class="form-group">
-                        <label for="nodeUser">Node SSH User</label>
-                        <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
+
+                <!-- Bottom toolbar: default-creds left, profile actions right -->
+                <div class="conn-settings-toolbar">
+                    <div class="conn-settings-toolbar-left">
+                        <span class="default-creds-heading">Global Setting — Autofill Default Passwords</span>
+                        <div class="default-creds-widget">
+                            <span class="default-creds-label">Disable</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="default-creds-label">Enable</span>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label for="nodePassword">Node SSH Password</label>
-                        <input type="password" id="nodePassword" name="node_password" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label for="switchUser">Switch SSH User</label>
-                        <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
-                    </div>
-                    <div class="form-group">
-                        <label for="switchPassword">Switch SSH Password</label>
-                        <input type="password" id="switchPassword" name="switch_password" class="form-control">
-                    </div>
-                    <div class="form-group">
-                        <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
-                        <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
+                    <div class="conn-settings-toolbar-right">
+                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
                     </div>
                 </div>
             </div>
@@ -86,47 +98,115 @@
 
 <!-- Workflow Selection Card -->
 <div class="card">
-    <div class="card-header">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Select Operation</h3>
+        <div class="mode-toggle-widget">
+            <span class="mode-label" id="labelStepByStep">Step-by-Step</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="modeToggle" onchange="toggleOneShotMode()">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="mode-label" id="labelOneShot">One-Shot</span>
+        </div>
     </div>
     <div class="card-body">
-        <div class="form-group">
-            <label for="operationSelect">Operation:</label>
-            <select id="operationSelect" class="form-control" style="max-width: 400px;">
-                <option value="" disabled selected>Select an operation...</option>
-            </select>
-        </div>
-
-        <div id="workflowSteps" class="workflow-steps" style="display: none;"></div>
-
-        <div class="btn-group" style="margin-top: 20px;">
-            <button type="button" class="btn btn-primary" id="btnStart" disabled>Start Workflow</button>
-            <button type="button" class="btn btn-primary" id="btnRunAll" disabled style="display:none;">Run All Steps</button>
-            <button type="button" class="btn btn-danger" id="btnCancel" disabled style="display:none;">Cancel</button>
-            <button type="button" class="btn btn-secondary" id="btnReset" disabled>Reset</button>
-            <button type="button" class="btn btn-secondary" id="btnDownload" disabled>Download Results</button>
-            <button type="button" class="btn btn-secondary" id="btnUpdateTools" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                </svg>
-                Update Tools
-            </button>
-            <button type="button" class="btn btn-outline-secondary" id="btnToolsInfo" onclick="showToolsStatus()" title="View deployment tools status">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="16" x2="12" y2="12"/>
-                    <line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-            </button>
-        </div>
-        <!-- Tools Status Panel -->
-        <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong style="color: #00d4ff;">Deployment Tools Status</strong>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
+        <!-- Step-by-Step Mode (default) -->
+        <div id="stepByStepPanel">
+            <div class="form-group">
+                <label for="operationSelect">Operation:</label>
+                <select id="operationSelect" class="form-control" style="max-width: 400px;">
+                    <option value="" disabled selected>Select an operation...</option>
+                </select>
             </div>
-            <div id="toolsStatusContent" style="font-size: 12px;">
-                <span style="color: #888;">Loading...</span>
+
+            <div id="workflowSteps" class="workflow-steps" style="display: none;"></div>
+
+            <div class="btn-group" style="margin-top: 20px;">
+                <button type="button" class="btn btn-primary" id="btnStart" disabled>Start Workflow</button>
+                <button type="button" class="btn btn-primary" id="btnRunAll" disabled style="display:none;">Run All Steps</button>
+                <button type="button" class="btn btn-danger" id="btnCancel" disabled style="display:none;">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="btnReset" disabled>Reset</button>
+                <button type="button" class="btn btn-secondary" id="btnDownload" disabled>Download Results</button>
+                <button type="button" class="btn btn-secondary" id="btnUpdateTools" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Update Tools
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfo" onclick="showToolsStatus()" title="View deployment tools status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
+            </div>
+            <!-- Tools Status Panel -->
+            <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
+                </div>
+                <div id="toolsStatusContent" style="font-size: 12px;">
+                    <span style="color: #888;">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- One-Shot Mode (hidden by default) -->
+        <div id="oneShotPanel" style="display: none;">
+            <p class="text-muted" style="margin-bottom: 12px;">Select operations to run sequentially.</p>
+
+            <div class="oneshot-checklist" id="oneShotChecklist">
+                <div id="oneShotOpsContainer"></div>
+                <label class="oneshot-item">
+                    <input type="checkbox" id="oneShotIncludeReport">
+                    <span class="oneshot-item-name">Generate As-Built Report</span>
+                    <span class="oneshot-item-badge badge-optional">Optional</span>
+                </label>
+                <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
+                    <input type="checkbox" id="oneShotIncludeHealth" checked>
+                    <span class="oneshot-item-name">Include Health Checks (Tiers 1-3)</span>
+                    <span class="oneshot-item-badge badge-health">Recommended</span>
+                </label>
+            </div>
+
+            <!-- Pre-validation Results Panel -->
+            <div id="oneShotValidationPanel" style="display: none; margin-top: 16px;">
+                <div class="validation-header">Pre-Validation Results</div>
+                <div id="oneShotValidationResults"></div>
+                <div id="oneShotValidationActions" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,193,7,0.1); border: 1px solid #ffc107; border-radius: 6px;">
+                    <span style="color: #ffc107;">Warnings detected.</span>
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button type="button" class="btn btn-warning btn-sm" id="btnProceedAnyway" onclick="proceedOneShot()">Proceed Anyway</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnStopFix" onclick="stopAndFix()">Stop &amp; Fix</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- One-Shot Progress Tracking -->
+            <div id="oneShotProgress" style="display: none; margin-top: 16px;">
+                <div class="progress-phases" id="oneShotPhases">
+                    <span class="phase-item" data-phase="operations">Operations</span>
+                    <span class="phase-arrow">&rarr;</span>
+                    <span class="phase-item" data-phase="report">Report</span>
+                    <span class="phase-arrow">&rarr;</span>
+                    <span class="phase-item" data-phase="bundling">Bundling</span>
+                </div>
+                <div class="progress-detail" id="oneShotProgressDetail"></div>
+            </div>
+
+            <div class="btn-group" style="margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" id="btnOneShotValidate" onclick="runOneShotValidation()">Run Pre-Validation</button>
+                <button type="button" class="btn btn-primary" id="btnOneShotStart" disabled onclick="startOneShot()">Start One-Shot</button>
+                <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="btnOneShotDownload" style="display: none;" onclick="downloadResults()">Download Bundle</button>
+                <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Update Tools
+                </button>
             </div>
         </div>
     </div>
@@ -136,6 +216,11 @@
 <div class="output-section">
     <div class="output-header">
         <span class="output-title">OUTPUT RESULTS</span>
+        <div class="log-level-selector">
+            <button class="log-level-btn active" data-tier="status" onclick="setLogTier('status')">Status</button>
+            <button class="log-level-btn" data-tier="live" onclick="setLogTier('live')">Live</button>
+            <button class="log-level-btn" data-tier="debug" onclick="setLogTier('debug')">Debug</button>
+        </div>
         <div class="output-menu">
             <button type="button" class="btn btn-sm btn-secondary" id="btnOutputMenu">Menu &#x25BE;</button>
             <div class="output-dropdown" id="outputDropdown" style="display: none;">
@@ -158,9 +243,18 @@
 <style>
 .badge-dev { background: #ff9800; color: #000; font-size: 11px; padding: 3px 8px; border-radius: 4px; margin-left: 10px; }
 
-/* --- Default credentials widget (far right of profile row) --- */
-.default-creds-widget { margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 1px; flex-shrink: 0; align-self: center; }
-.default-creds-label { font-size: 0.8125rem; font-weight: 500; color: var(--text-secondary); text-align: center; line-height: 1; }
+/* --- Connection Settings bottom toolbar --- */
+.conn-settings-toolbar { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+.conn-settings-toolbar-left { display: flex; flex-direction: column; gap: 4px; }
+.conn-settings-toolbar-right { display: flex; align-items: center; gap: 6px; }
+.default-creds-heading { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+.default-creds-widget { display: flex; align-items: center; gap: 6px; }
+.default-creds-label { font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); line-height: 1; }
+.btn-icon-collapse { background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-secondary); transition: color 0.15s, transform 0.2s; vertical-align: middle; line-height: 0; }
+.btn-icon-collapse:hover { color: var(--text-primary); }
+.btn-icon-collapse svg { width: 20px; height: 20px; }
+.btn-icon-collapse.collapsed { transform: rotate(180deg); }
+#connSettingsDetails.collapsed-section { display: none; }
 
 /* --- Credential fields (collapsible) --- */
 .credential-fields { padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
@@ -203,17 +297,68 @@
 .output-line.warn { color: #ffc107; }
 .output-line.error, .output-line.fail { color: #ff5252; }
 .output-line.success { color: #4caf50; }
+.output-line[data-tier="debug"] { color: #777; font-style: italic; }
+.output-line[data-tier="live"] { color: #b0bec5; }
+.output-line.tier-hidden { display: none !important; }
+.log-level-selector { display: flex; gap: 0; margin: 0 12px; }
+.log-level-btn { background: transparent; color: #888; border: 1px solid #444; padding: 3px 12px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+.log-level-btn:first-child { border-radius: 4px 0 0 4px; }
+.log-level-btn:last-child { border-radius: 0 4px 4px 0; }
+.log-level-btn:not(:first-child) { border-left: none; }
+.log-level-btn.active { background: var(--accent, #1a6fb5); color: #fff; border-color: var(--accent, #1a6fb5); }
+.log-level-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: #ccc; }
 .text-danger { color: #ff5252 !important; }
 .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- Mode toggle --- */
+.mode-toggle-widget { display: flex; align-items: center; gap: 8px; }
+.mode-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.mode-label.active { color: var(--text-primary); font-weight: 700; }
+
+/* --- One-Shot checklist --- */
+.oneshot-checklist { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); overflow: hidden; }
+.oneshot-item { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; gap: 10px; margin: 0; }
+.oneshot-item:last-child { border-bottom: none; }
+.oneshot-item:hover { background: var(--bg-secondary); }
+.oneshot-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2196f3; flex-shrink: 0; }
+.oneshot-item-name { flex: 1; font-size: 14px; }
+.oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+.badge-health { background: #2196f3; color: white; }
+.badge-optional { background: var(--bg-secondary); color: var(--text-secondary); }
+.oneshot-sub-item { padding-left: 44px; background: var(--bg-secondary); }
+.oneshot-sub-item.hidden { display: none; }
+
+/* --- Validation results --- */
+.validation-header { font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+.validation-check { display: flex; align-items: center; padding: 6px 0; gap: 8px; font-size: 13px; }
+.validation-icon { width: 20px; text-align: center; font-weight: bold; flex-shrink: 0; }
+.validation-icon.pass { color: #4caf50; }
+.validation-icon.warn { color: #ffc107; }
+.validation-icon.fail { color: #f44336; }
+.validation-icon.info { color: #2196f3; }
+
+/* --- Progress phases --- */
+.progress-phases { display: flex; align-items: center; gap: 8px; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; flex-wrap: wrap; }
+.phase-item { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); }
+.phase-item.active { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.phase-item.completed { background: #4caf50; color: white; }
+.phase-item.error { background: #f44336; color: white; }
+.phase-item.skipped { background: var(--bg-secondary); color: var(--text-secondary); opacity: 0.5; text-decoration: line-through; }
+.phase-arrow { color: var(--text-secondary); font-size: 14px; }
+.progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
 </style>
 
 <script>
 var OUTPUT_STORAGE_KEY = 'advanced_ops_output';
+var UI_STATE_KEY = 'advanced_ops_ui_state';
+var LOG_TIER_KEY = 'advanced_ops_log_tier';
+var SYNC_CURSOR_KEY = 'advanced_ops_sync_cursor';
 var outputPane, pollInterval = null;
+var currentLogTier = 'status';
 
 // --- Default credentials ---
 var DEFAULT_CREDENTIALS = {
-    username: 'admin',       password: '123456',
+    username: 'support',     password: '654321',
     node_user: 'vastdata',   node_password: 'vastdata',
     switch_user: 'cumulus',  switch_password: 'Vastdata1!'
 };
@@ -234,19 +379,37 @@ var profileFieldMap = {
     'vip_pool': 'vipPool'
 };
 
-// --- Collapse / Expand ---
+// --- Connection Settings tile collapse / expand ---
+function toggleConnectionSettings() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    var isCollapsed = details.classList.toggle('collapsed-section');
+    btn.classList.toggle('collapsed', isCollapsed);
+    btn.title = isCollapsed ? 'Expand settings' : 'Collapse settings';
+    document.getElementById('outputPane').classList.toggle('creds-expanded', !isCollapsed);
+    saveUIState();
+}
+
 function expandCredentials() {
-    document.getElementById('credentialFields').style.display = 'block';
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.remove('collapsed-section');
+    btn.classList.remove('collapsed');
+    btn.title = 'Collapse settings';
     document.getElementById('outputPane').classList.add('creds-expanded');
 }
 
 function collapseCredentials() {
-    document.getElementById('credentialFields').style.display = 'none';
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.add('collapsed-section');
+    btn.classList.add('collapsed');
+    btn.title = 'Expand settings';
     document.getElementById('outputPane').classList.remove('creds-expanded');
 }
 
 function isCredentialsExpanded() {
-    return document.getElementById('credentialFields').style.display !== 'none';
+    return !document.getElementById('connSettingsDetails').classList.contains('collapsed-section');
 }
 
 // --- Default credentials toggle ---
@@ -267,6 +430,173 @@ function toggleDefaultCredentials() {
     }
 }
 
+// --- Log Tier ---
+var TIER_HIERARCHY = { status: ['status'], live: ['status', 'live'], debug: ['status', 'live', 'debug'] };
+
+function setLogTier(tier) {
+    currentLogTier = tier;
+    document.querySelectorAll('.log-level-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tier === tier); });
+    var visible = TIER_HIERARCHY[tier] || ['status'];
+    document.querySelectorAll('.output-line[data-tier]').forEach(function(el) {
+        el.classList.toggle('tier-hidden', visible.indexOf(el.dataset.tier) === -1);
+    });
+    try { localStorage.setItem(LOG_TIER_KEY, tier); } catch(e) {}
+    saveUIState();
+    if (outputPane && outputPane.autoScroll) outputPane.container.scrollTop = outputPane.container.scrollHeight;
+}
+
+function restoreLogTier() {
+    try { var t = localStorage.getItem(LOG_TIER_KEY); if (t && TIER_HIERARCHY[t]) { setLogTier(t); } } catch(e) {}
+}
+
+// --- UI State Persistence ---
+function saveUIState() {
+    try {
+        var state = {
+            mode: oneShotMode ? 'oneshot' : 'step-by-step',
+            selectedProfile: document.getElementById('profileSelect').value,
+            selectedWorkflow: document.getElementById('operationSelect').value,
+            useDefaultCreds: document.getElementById('useDefaultCreds').checked,
+            logTier: currentLogTier,
+            connSettingsCollapsed: document.getElementById('connSettingsDetails').classList.contains('collapsed-section')
+        };
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl) state.includeHealth = healthEl.checked;
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl) state.includeReport = reportEl.checked;
+        var checks = [];
+        document.querySelectorAll('.oneshot-op-checkbox:checked').forEach(function(cb) { checks.push(cb.value); });
+        if (checks.length > 0) state.oneShotChecklist = checks;
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
+    } catch(e) {}
+}
+
+function restoreUIState() {
+    try {
+        var s = localStorage.getItem(UI_STATE_KEY);
+        if (!s) return null;
+        return JSON.parse(s);
+    } catch(e) { return null; }
+}
+
+async function applySavedUIState(saved) {
+    if (!saved) return;
+    if (saved.mode === 'oneshot' && !oneShotMode) {
+        document.getElementById('modeToggle').checked = true;
+        oneShotMode = true;
+        document.getElementById('stepByStepPanel').style.display = 'none';
+        document.getElementById('oneShotPanel').style.display = '';
+        document.getElementById('labelStepByStep').classList.toggle('active', false);
+        document.getElementById('labelOneShot').classList.toggle('active', true);
+        await populateOneShotChecklist();
+    } else if (saved.mode === 'step-by-step' && oneShotMode) {
+        document.getElementById('modeToggle').checked = false;
+        oneShotMode = false;
+        document.getElementById('stepByStepPanel').style.display = '';
+        document.getElementById('oneShotPanel').style.display = 'none';
+        document.getElementById('labelStepByStep').classList.toggle('active', true);
+        document.getElementById('labelOneShot').classList.toggle('active', false);
+    }
+    if (saved.selectedProfile) {
+        var sel = document.getElementById('profileSelect');
+        if (sel) { sel.value = saved.selectedProfile; if (sel.value === saved.selectedProfile) loadProfile(saved.selectedProfile); }
+    }
+    if (saved.selectedWorkflow) {
+        var op = document.getElementById('operationSelect');
+        if (op) op.value = saved.selectedWorkflow;
+    }
+    if (saved.useDefaultCreds !== undefined) {
+        document.getElementById('useDefaultCreds').checked = saved.useDefaultCreds;
+        toggleDefaultCredentials();
+    }
+    if (saved.includeHealth !== undefined) {
+        var h = document.getElementById('oneShotIncludeHealth');
+        if (h) h.checked = saved.includeHealth;
+    }
+    if (saved.includeReport !== undefined) {
+        var r = document.getElementById('oneShotIncludeReport');
+        if (r) {
+            r.checked = saved.includeReport;
+            var healthRow = document.getElementById('oneShotHealthRow');
+            if (saved.includeReport) healthRow.classList.remove('hidden');
+            else healthRow.classList.add('hidden');
+        }
+    }
+    if (saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
+        document.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.checked = saved.oneShotChecklist.indexOf(cb.value) !== -1;
+        });
+    }
+    if (saved.connSettingsCollapsed === false) {
+        expandCredentials();
+    }
+}
+
+// --- State Snapshot Hydration ---
+async function hydrateFromBackend() {
+    try {
+        var resp = await fetch('/advanced-ops/state-snapshot');
+        var snap = await resp.json();
+
+        var localCount = outputPane ? outputPane.entries.length : 0;
+        var syncCursor = 0;
+        try { syncCursor = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); } catch(e) {}
+
+        if (snap.output_count > syncCursor) {
+            var outResp = await fetch('/advanced-ops/output?since=' + syncCursor);
+            var outData = await outResp.json();
+            if (outData.entries && outData.entries.length > 0) {
+                outData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            }
+            try { sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count)); } catch(e) {}
+        }
+
+        if (snap.oneshot && snap.oneshot.running) {
+            if (!oneShotMode) { document.getElementById('modeToggle').checked = true; toggleOneShotMode(); }
+            showOneShotProgress(snap.oneshot.state);
+            startOneShotPolling();
+            return true;
+        }
+
+        if (snap.workflow && snap.workflow.running && snap.workflow.workflow_id) {
+            if (oneShotMode) { document.getElementById('modeToggle').checked = false; toggleOneShotMode(); }
+            var op = document.getElementById('operationSelect');
+            if (op) { op.value = snap.workflow.workflow_id; await loadWorkflowSteps(snap.workflow.workflow_id); }
+            if (snap.workflow.state && snap.workflow.state.steps) {
+                snap.workflow.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); });
+            }
+            startPolling();
+            return true;
+        }
+
+        return false;
+    } catch(e) {
+        return false;
+    }
+}
+
+function showOneShotProgress(state) {
+    if (!state) return;
+    var phaseOrder = ['operations', 'report', 'bundling'];
+    var phases = document.querySelectorAll('.phase-item');
+    var currentIdx = phaseOrder.indexOf(state.phase);
+    phases.forEach(function(p, i) {
+        var pName = p.dataset.phase;
+        var pIdx = phaseOrder.indexOf(pName);
+        if (pIdx < currentIdx) { p.classList.add('completed'); p.classList.remove('active'); }
+        else if (pIdx === currentIdx) { p.classList.add('active'); p.classList.remove('completed'); }
+        else { p.classList.remove('active', 'completed'); }
+    });
+    var progressEl = document.getElementById('oneShotProgress');
+    if (progressEl) progressEl.style.display = '';
+    var statusEl = document.getElementById('oneShotStatusText');
+    if (statusEl && state.current_operation) statusEl.textContent = state.current_operation;
+    var counterEl = document.getElementById('oneShotCounter');
+    if (counterEl && state.operation_index && state.total_operations) {
+        counterEl.textContent = state.operation_index + ' / ' + state.total_operations;
+    }
+}
+
 // --- OutputPane ---
 function OutputPaneCtor(containerId) {
     this.container = document.getElementById(containerId);
@@ -274,20 +604,26 @@ function OutputPaneCtor(containerId) {
     this.entries = [];
     this._restore();
 }
-OutputPaneCtor.prototype.append = function(level, message, details) {
+OutputPaneCtor.prototype.append = function(level, message, details, log_tier) {
     details = details || null;
+    log_tier = log_tier || 'status';
     var timestamp = new Date().toISOString().slice(11, 19);
-    var entry = { timestamp: timestamp, level: level, message: message, details: details };
+    var entry = { timestamp: timestamp, level: level, message: message, details: details, log_tier: log_tier };
     this.entries.push(entry);
     this._renderEntry(entry);
     this._persist();
+    try { var c = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); sessionStorage.setItem(SYNC_CURSOR_KEY, String(c + 1)); } catch(e) {}
     if (this.autoScroll) this.container.scrollTop = this.container.scrollHeight;
 };
 OutputPaneCtor.prototype._renderEntry = function(entry) {
     var placeholder = this.container.querySelector('.output-placeholder');
     if (placeholder) placeholder.remove();
+    var tier = entry.log_tier || 'status';
+    var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
     var line = document.createElement('div');
     line.className = 'output-line ' + entry.level;
+    line.setAttribute('data-tier', tier);
+    if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
     line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
     if (entry.details) {
         var d = document.createElement('div');
@@ -301,7 +637,16 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
 OutputPaneCtor.prototype._escapeHtml = function(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
 OutputPaneCtor.prototype._persist = function() { try { sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(this.entries)); } catch(e) {} };
 OutputPaneCtor.prototype._restore = function() { try { var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY); if (s) { this.entries = JSON.parse(s); var self = this; this.entries.forEach(function(e) { self._renderEntry(e); }); } } catch(e) {} };
-OutputPaneCtor.prototype.clear = function() { if (confirm('Clear all output?')) { this.entries = []; this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>'; sessionStorage.removeItem(OUTPUT_STORAGE_KEY); } };
+OutputPaneCtor.prototype.clear = function() {
+    if (confirm('Clear all output?')) {
+        this.entries = [];
+        this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>';
+        sessionStorage.removeItem(OUTPUT_STORAGE_KEY);
+        fetch('/advanced-ops/state-snapshot').then(function(r) { return r.json(); }).then(function(snap) {
+            sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count || 0));
+        }).catch(function() { sessionStorage.removeItem(SYNC_CURSOR_KEY); });
+    }
+};
 OutputPaneCtor.prototype.copyToClipboard = function() { var t = this.entries.map(function(e) { return e.timestamp + ' [' + e.level.toUpperCase() + '] ' + e.message; }).join('\n'); navigator.clipboard.writeText(t).then(function() { alert('Copied!'); }); };
 OutputPaneCtor.prototype.toggleExpand = function() { this.container.classList.toggle('expanded'); };
 
@@ -367,16 +712,15 @@ async function saveProfile() {
     }
 }
 
-function addProfile() {
-    if (isCredentialsExpanded()) {
-        collapseCredentials();
-    } else {
-        document.getElementById('profileSelect').value = '';
-        document.getElementById('clusterIp').value = '';
-        toggleDefaultCredentials();
-        document.getElementById('vipPool').value = 'main';
-        expandCredentials();
-    }
+function createProfile() {
+    var sel = document.getElementById('profileSelect');
+    sel.value = '';
+    if (sel.options[0]) sel.options[0].text = '-- Create a profile --';
+    document.getElementById('clusterIp').value = '';
+    toggleDefaultCredentials();
+    document.getElementById('vipPool').value = 'main';
+    expandCredentials();
+    saveUIState();
 }
 
 async function deleteProfile() {
@@ -530,7 +874,7 @@ function startPolling() {
             var status = await results[0].json();
             var output = await results[1].json();
             if (status.state && status.state.steps) { status.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); }); }
-            output.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details); });
+            output.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
             lastCount += output.count;
             if (!status.running && status.state && status.state.status !== 'running') {
                 stopPolling();
@@ -560,12 +904,298 @@ async function downloadResults() {
     } catch (e) { outputPane.append('error', 'Failed to create bundle: ' + e.message); }
 }
 
+// --- One-Shot Mode ---
+var oneShotMode = false;
+var oneShotPollInterval = null;
+var oneShotValidated = false;
+
+function toggleOneShotMode() {
+    oneShotMode = document.getElementById('modeToggle').checked;
+    document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
+    document.getElementById('oneShotPanel').style.display = oneShotMode ? '' : 'none';
+    document.getElementById('labelStepByStep').classList.toggle('active', !oneShotMode);
+    document.getElementById('labelOneShot').classList.toggle('active', oneShotMode);
+    if (oneShotMode) populateOneShotChecklist();
+    saveUIState();
+}
+
+async function populateOneShotChecklist() {
+    try {
+        var resp = await fetch('/advanced-ops/workflows');
+        var data = await resp.json();
+        var container = document.getElementById('oneShotOpsContainer');
+        container.innerHTML = '';
+        data.workflows.forEach(function(wf) {
+            if (!wf.enabled) return;
+            var label = document.createElement('label');
+            label.className = 'oneshot-item';
+            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '" checked>' +
+                '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
+            container.appendChild(label);
+        });
+        container.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.addEventListener('change', function() { saveUIState(); });
+        });
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflows: ' + e.message);
+    }
+}
+
+function getSelectedOneShotOps() {
+    var boxes = document.querySelectorAll('.oneshot-op-checkbox:checked');
+    return Array.from(boxes).map(function(cb) { return cb.value; });
+}
+
+var validationPollInterval = null;
+
+async function runOneShotValidation() {
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
+
+    document.getElementById('btnOneShotValidate').disabled = true;
+    document.getElementById('btnOneShotValidate').textContent = 'Validating...';
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotValidationPanel').style.display = '';
+    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #888;">Running checks... (this may take a moment)</span>';
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+
+    try {
+        var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+        var payload = Object.assign({}, creds, { selected_ops: selectedOps, include_health: includeHealth, use_default_creds: document.getElementById('useDefaultCreds').checked });
+        var resp = await fetch('/advanced-ops/oneshot/validate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) {
+            document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
+            resetValidationUI();
+            return;
+        }
+        startValidationPolling();
+    } catch (e) {
+        document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Validation failed: ' + e.message + '</span>';
+        resetValidationUI();
+    }
+}
+
+function startValidationPolling() {
+    if (validationPollInterval) return;
+    var lastOutputCount = 0;
+    validationPollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + lastOutputCount)
+            ]);
+            var statusData = await results[0].json();
+            var outputData = await results[1].json();
+
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastOutputCount += outputData.count;
+
+            if (!statusData.running && statusData.result && statusData.result.validation) {
+                stopValidationPolling();
+                renderValidationResults(statusData.result.validation);
+                resetValidationUI();
+            } else if (!statusData.running) {
+                stopValidationPolling();
+                if (statusData.state && statusData.state.status === 'cancelled') {
+                    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #ffc107;">Pre-validation cancelled.</span>';
+                }
+                resetValidationUI();
+            }
+        } catch (e) { console.error('Validation poll error:', e); }
+    }, 1000);
+}
+
+function stopValidationPolling() { if (validationPollInterval) { clearInterval(validationPollInterval); validationPollInterval = null; } }
+
+function resetValidationUI() {
+    document.getElementById('btnOneShotValidate').disabled = false;
+    document.getElementById('btnOneShotValidate').textContent = 'Run Pre-Validation';
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+}
+
+function renderValidationResults(checks) {
+    var container = document.getElementById('oneShotValidationResults');
+    var hasIssues = false;
+    var hasFail = false;
+    container.innerHTML = '';
+    checks.forEach(function(c) {
+        var iconMap = { pass: '\u2713', warn: '\u26A0', fail: '\u2717', info: '\u2139' };
+        var div = document.createElement('div');
+        div.className = 'validation-check';
+        div.innerHTML = '<span class="validation-icon ' + c.status + '">' + (iconMap[c.status] || '?') + '</span>' +
+            '<span>' + c.name + ': ' + c.message + '</span>';
+        container.appendChild(div);
+        if (c.status === 'warn' || c.status === 'fail') hasIssues = true;
+        if (c.status === 'fail') hasFail = true;
+    });
+
+    if (hasIssues) {
+        document.getElementById('oneShotValidationActions').style.display = '';
+        document.getElementById('btnOneShotStart').disabled = true;
+        oneShotValidated = false;
+    } else {
+        document.getElementById('oneShotValidationActions').style.display = 'none';
+        document.getElementById('btnOneShotStart').disabled = false;
+        oneShotValidated = true;
+    }
+}
+
+function proceedOneShot() {
+    oneShotValidated = true;
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+    outputPane.append('info', 'User acknowledged warnings, proceeding with one-shot execution.');
+}
+
+function stopAndFix() {
+    oneShotValidated = false;
+    document.getElementById('btnOneShotStart').disabled = true;
+    outputPane.append('info', 'Fix the identified issues, then re-run pre-validation.');
+}
+
+async function startOneShot() {
+    if (!oneShotValidated) { outputPane.append('warn', 'Run pre-validation first.'); return; }
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    var includeReport = document.getElementById('oneShotIncludeReport').checked;
+
+    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
+
+    var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+    var payload = Object.assign({}, creds, {
+        selected_ops: selectedOps,
+        include_report: includeReport,
+        include_health: includeHealth,
+        use_default_creds: document.getElementById('useDefaultCreds').checked
+    });
+
+    document.getElementById('btnOneShotStart').disabled = true;
+    document.getElementById('btnOneShotValidate').disabled = true;
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotProgress').style.display = '';
+    resetOneShotPhases();
+
+    try {
+        var resp = await fetch('/advanced-ops/oneshot/start', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', data.error); resetOneShotUI(); return; }
+        outputPane.append('info', 'One-shot execution started with ' + selectedOps.length + ' operations');
+        startOneShotPolling();
+    } catch (e) {
+        outputPane.append('error', 'Failed to start one-shot: ' + e.message);
+        resetOneShotUI();
+    }
+}
+
+async function cancelOneShot() {
+    try {
+        await fetch('/advanced-ops/oneshot/cancel', { method: 'POST' });
+        outputPane.append('warn', 'Cancellation requested');
+        stopValidationPolling();
+    } catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
+}
+
+function startOneShotPolling() {
+    if (oneShotPollInterval) return;
+    var lastOutputCount = 0;
+    oneShotPollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + lastOutputCount)
+            ]);
+            var statusData = await results[0].json();
+            var outputData = await results[1].json();
+
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastOutputCount += outputData.count;
+
+            if (statusData.state) {
+                updateOneShotPhases(statusData.state.phase);
+                var detail = statusData.state.current_operation || '';
+                if (statusData.state.operation_index && statusData.state.total_operations) {
+                    detail += ' (' + statusData.state.operation_index + '/' + statusData.state.total_operations + ')';
+                }
+                document.getElementById('oneShotProgressDetail').textContent = detail;
+            }
+
+            if (!statusData.running) {
+                stopOneShotPolling();
+                var finalPhase = statusData.state ? statusData.state.phase : 'completed';
+                updateOneShotPhases(finalPhase);
+                document.getElementById('btnOneShotCancel').style.display = 'none';
+                document.getElementById('btnOneShotValidate').disabled = false;
+                if (finalPhase === 'completed') {
+                    document.getElementById('btnOneShotDownload').style.display = '';
+                    document.getElementById('btnOneShotDownload').disabled = false;
+                } else {
+                    document.getElementById('btnOneShotStart').disabled = false;
+                }
+            }
+        } catch (e) { console.error('One-shot poll error:', e); }
+    }, 1500);
+}
+
+function stopOneShotPolling() { if (oneShotPollInterval) { clearInterval(oneShotPollInterval); oneShotPollInterval = null; } }
+
+function resetOneShotPhases() {
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        el.classList.remove('active', 'completed', 'error', 'skipped');
+    });
+    var reportIncluded = document.getElementById('oneShotIncludeReport').checked;
+    if (!reportIncluded) {
+        var reportPhase = document.querySelector('.phase-item[data-phase="report"]');
+        if (reportPhase) reportPhase.classList.add('skipped');
+    }
+    document.getElementById('oneShotProgressDetail').textContent = '';
+}
+
+function updateOneShotPhases(currentPhase) {
+    var phases = ['operations', 'report', 'bundling'];
+    var currentIdx = phases.indexOf(currentPhase);
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        var phase = el.getAttribute('data-phase');
+        var idx = phases.indexOf(phase);
+        el.classList.remove('active', 'completed', 'error');
+        if (currentPhase === 'completed') {
+            el.classList.add('completed');
+        } else if (currentPhase === 'error' || currentPhase === 'cancelled') {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('error');
+        } else {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('active');
+        }
+    });
+}
+
+function resetOneShotUI() {
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('btnOneShotValidate').disabled = false;
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+    document.getElementById('oneShotProgress').style.display = 'none';
+    stopOneShotPolling();
+}
+
 // --- Initialization ---
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     outputPane = new OutputPaneCtor('outputPane');
-    loadWorkflows();
-    fetchProfiles();
+    await loadWorkflows();
+    await fetchProfiles();
     toggleDefaultCredentials();
+    restoreLogTier();
+
+    var backendActive = await hydrateFromBackend();
+    if (!backendActive) {
+        var saved = restoreUIState();
+        if (saved) await applySavedUIState(saved);
+    }
 
     // Switch user change: auto-update password when defaults toggle is ON
     document.getElementById('switchUser').addEventListener('input', function() {
@@ -592,7 +1222,34 @@ document.addEventListener('DOMContentLoaded', function() {
     // Operation selection
     document.getElementById('operationSelect').addEventListener('change', function() {
         if (this.value) loadWorkflowSteps(this.value);
+        saveUIState();
     });
+
+    // Report checkbox toggles Health Check sub-item visibility
+    document.getElementById('oneShotIncludeReport').addEventListener('change', function() {
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (this.checked) { healthRow.classList.remove('hidden'); }
+        else { healthRow.classList.add('hidden'); }
+        saveUIState();
+    });
+    // Initialise health row visibility
+    (function() {
+        var reportChecked = document.getElementById('oneShotIncludeReport').checked;
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (!reportChecked) healthRow.classList.add('hidden');
+    })();
+
+    // Health checkbox change
+    document.getElementById('oneShotIncludeHealth').addEventListener('change', function() { saveUIState(); });
+
+    // Profile change listener
+    document.getElementById('profileSelect').addEventListener('change', function() { saveUIState(); });
+
+    // Default creds change listener
+    document.getElementById('useDefaultCreds').addEventListener('change', function() { saveUIState(); });
+
+    // Save state on page unload
+    window.addEventListener('beforeunload', function() { saveUIState(); });
 
     // Update Deployment Tools helpers
     function formatFileSize(bytes) {

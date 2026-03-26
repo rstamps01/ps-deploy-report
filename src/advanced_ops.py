@@ -176,7 +176,11 @@ class AdvancedOpsManager:
                 "enabled": True,
                 "steps": [
                     {"id": 1, "name": "Discover Switches", "description": "Fetch switch IPs from VAST API and connect"},
-                    {"id": 2, "name": "Extract Configuration", "description": "Retrieve running configuration and interface info"},
+                    {
+                        "id": 2,
+                        "name": "Extract Configuration",
+                        "description": "Retrieve running configuration and interface info",
+                    },
                     {"id": 3, "name": "Save Configuration", "description": "Save configuration to local files"},
                 ],
             },
@@ -187,9 +191,21 @@ class AdvancedOpsManager:
                 "min_vast_version": "5.0",
                 "enabled": True,
                 "steps": [
-                    {"id": 1, "name": "Connect & Discover Nodes", "description": "SSH to CNode and discover all node IPs"},
-                    {"id": 2, "name": "Collect configure_network", "description": "Collect configure_network commands from all nodes"},
-                    {"id": 3, "name": "Extract Network Config", "description": "Collect interface, routing, and bond config from all nodes"},
+                    {
+                        "id": 1,
+                        "name": "Connect & Discover Nodes",
+                        "description": "SSH to CNode and discover all node IPs",
+                    },
+                    {
+                        "id": 2,
+                        "name": "Collect configure_network",
+                        "description": "Collect configure_network commands from all nodes",
+                    },
+                    {
+                        "id": 3,
+                        "name": "Extract Network Config",
+                        "description": "Collect interface, routing, and bond config from all nodes",
+                    },
                     {"id": 4, "name": "Save Output", "description": "Save extracted configuration"},
                 ],
             },
@@ -217,7 +233,8 @@ class AdvancedOpsManager:
         workflow = self._workflows.get(workflow_id)
         if not workflow:
             return []
-        return workflow["steps"]
+        steps: List[Dict[str, Any]] = workflow["steps"]
+        return steps
 
     def get_current_state(self) -> Optional[Dict[str, Any]]:
         """Get the current workflow state."""
@@ -242,6 +259,16 @@ class AdvancedOpsManager:
         """Check if a workflow is currently running."""
         with self._lock:
             return self._current_state is not None and self._current_state.status == "running"
+
+    @property
+    def current_workflow_id(self) -> Optional[str]:
+        """Return the ID of the currently active workflow, or None."""
+        with self._lock:
+            return self._current_state.workflow_id if self._current_state else None
+
+    def get_state(self) -> Optional[Dict[str, Any]]:
+        """Return the current workflow state dict (alias for get_current_state)."""
+        return self.get_current_state()
 
     def start_workflow(self, workflow_id: str, credentials: Dict[str, Any]) -> bool:
         """Start a workflow execution."""
@@ -427,13 +454,14 @@ class AdvancedOpsManager:
         status = "with errors" if error else "successfully"
         self._emit_output("info" if not error else "error", f"Workflow completed {status}")
 
-    def _emit_output(self, level: str, message: str, details: Optional[str] = None) -> None:
+    def _emit_output(self, level: str, message: str, details: Optional[str] = None, log_tier: str = "status") -> None:
         """Emit output to the buffer and callbacks."""
         entry = {
             "timestamp": datetime.now().isoformat(),
             "level": level,
             "message": message,
             "details": details,
+            "log_tier": log_tier,
         }
         self._output_buffer.append(entry)
 

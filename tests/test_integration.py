@@ -416,7 +416,7 @@ class TestHealthCheckIntegration(unittest.TestCase):
         raw["health_check_results"] = self._make_mock_health_report()
         processed = self.extractor.extract_all_data(raw)
         self.assertIn("health_check", processed["sections"])
-        self.assertIn("post_deployment_validation", processed["sections"])
+        self.assertIn("post_deployment_activities", processed["sections"])
 
     def test_health_check_report_section_present(self):
         raw = {
@@ -437,9 +437,9 @@ class TestHealthCheckIntegration(unittest.TestCase):
         self.assertEqual(health_section["title"], "Cluster Health Check Results")
         self.assertEqual(health_section["completeness"], 100.0)
         self.assertEqual(health_section["status"], "complete")
-        pvd_section = processed["sections"]["post_deployment_validation"]
-        self.assertEqual(pvd_section["title"], "Post Deployment Validation")
-        self.assertEqual(pvd_section["completeness"], 100.0)
+        pda_section = processed["sections"]["post_deployment_activities"]
+        self.assertEqual(pda_section["title"], "Post Deployment Activities")
+        self.assertIn("next_steps", pda_section["data"])
 
 
 if __name__ == "__main__":

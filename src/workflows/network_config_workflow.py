@@ -58,8 +58,16 @@ class NetworkConfigWorkflow:
     def get_steps(self) -> List[Dict[str, Any]]:
         return [
             {"id": 1, "name": "Connect & Discover Nodes", "description": "SSH to CNode and discover all node IPs"},
-            {"id": 2, "name": "Collect configure_network", "description": "Collect configure_network commands from all nodes"},
-            {"id": 3, "name": "Extract Network Config", "description": "Collect interface, routing, and bond config from all nodes"},
+            {
+                "id": 2,
+                "name": "Collect configure_network",
+                "description": "Collect configure_network commands from all nodes",
+            },
+            {
+                "id": 3,
+                "name": "Extract Network Config",
+                "description": "Collect interface, routing, and bond config from all nodes",
+            },
             {"id": 4, "name": "Save Output", "description": "Save extracted configuration to local files"},
         ]
 
@@ -98,7 +106,8 @@ class NetworkConfigWorkflow:
         host = self._step_data.get("host", self._credentials.get("cluster_ip"))
         user = self._step_data.get("user", self._credentials.get("node_user", "vastdata"))
         password = self._step_data.get("password", self._credentials.get("node_password"))
-        return run_ssh_command(host, user, password, cmd, timeout=timeout)
+        result = run_ssh_command(host, user, password, cmd, timeout=timeout)
+        return (int(result[0]), str(result[1]), str(result[2]))
 
     def _parse_local_cfg(self, cfg_text: str) -> Dict[str, List[str]]:
         """Parse /etc/clustershell/groups.d/local.cfg to extract node IPs."""
@@ -140,8 +149,7 @@ class NetworkConfigWorkflow:
 
         return result
 
-    def _run_on_all_nodes(self, description: str, cmd: str,
-                          timeout: int = 30) -> Dict[str, str]:
+    def _run_on_all_nodes(self, description: str, cmd: str, timeout: int = 30) -> Dict[str, str]:
         """Run a command on every discovered node via clush on the gateway.
 
         Internal cluster IPs (172.16.x.x) are only reachable from within
@@ -169,11 +177,15 @@ class NetworkConfigWorkflow:
             clush_cmd = f"clush -w {node_ips} '{escaped}'"
 
             self.emit("info", f"  $ ssh {user}@{gateway_ip}")
-            self.emit("info", f"    clush -w {node_ips} \"{cmd}\"")
+            self.emit("info", f'    clush -w {node_ips} "{cmd}"')
 
             rc, stdout, stderr = run_ssh_command(
-                gateway_ip, user, password, clush_cmd,
-                timeout=max(timeout, 60), login_shell=True,
+                gateway_ip,
+                user,
+                password,
+                clush_cmd,
+                timeout=max(timeout, 60),
+                login_shell=True,
             )
 
             # Parse clush output: each line is "<ip>: <content>"
@@ -190,7 +202,7 @@ class NetworkConfigWorkflow:
                 for ip in internal_nodes.values():
                     prefix = f"{ip}: "
                     if line.startswith(prefix):
-                        content = line[len(prefix):]
+                        content = line[len(prefix) :]
                         ip_lines.setdefault(ip, []).append(content)
                         break
 
@@ -210,7 +222,11 @@ class NetworkConfigWorkflow:
         if gateway_name:
             self.emit("info", f"  $ ssh {user}@{gateway_ip} '{cmd}'")
             rc, stdout, stderr = run_ssh_command(
-                gateway_ip, user, password, cmd, timeout=timeout,
+                gateway_ip,
+                user,
+                password,
+                cmd,
+                timeout=timeout,
             )
             if rc == 0 and stdout and stdout.strip():
                 results[gateway_name] = stdout.strip()
@@ -263,7 +279,9 @@ class NetworkConfigWorkflow:
         self.emit("info", f"$ ssh {user}@{host} 'cat /etc/clustershell/groups.d/local.cfg'")
 
         rc, stdout, stderr = run_ssh_command(
-            host, user, password,
+            host,
+            user,
+            password,
             "cat /etc/clustershell/groups.d/local.cfg 2>/dev/null",
             timeout=15,
         )
@@ -378,7 +396,7 @@ class NetworkConfigWorkflow:
 
         self._step_data["all_node_configs"] = all_node_configs
 
-        total_nodes = set()
+        total_nodes: set[str] = set()
         for nd in all_node_configs.values():
             total_nodes.update(nd.keys())
 
@@ -452,15 +470,20 @@ class NetworkConfigWorkflow:
             self.emit("success", f"Saved: {filename} ({len(node_data)} nodes)")
 
         summary_file = local_dir / f"network_summary_{hostname}_{timestamp}.json"
-        summary_file.write_text(json.dumps({
-            "timestamp": timestamp,
-            "cluster_hostname": hostname,
-            "cluster_ip": host,
-            "nodes_discovered": all_nodes,
-            "commands_found": len(history_commands),
-            "config_types": list(all_node_configs.keys()),
-            "files_saved": [Path(f).name for f in saved_files],
-        }, indent=2))
+        summary_file.write_text(
+            json.dumps(
+                {
+                    "timestamp": timestamp,
+                    "cluster_hostname": hostname,
+                    "cluster_ip": host,
+                    "nodes_discovered": all_nodes,
+                    "commands_found": len(history_commands),
+                    "config_types": list(all_node_configs.keys()),
+                    "files_saved": [Path(f).name for f in saved_files],
+                },
+                indent=2,
+            )
+        )
         saved_files.append(str(summary_file))
         self.emit("success", f"Saved: {summary_file.name}")
 

@@ -96,11 +96,11 @@ class VnetmapWorkflow:
 
     def _step_deploy_scripts(self) -> Dict[str, Any]:
         from tool_manager import ToolManager
-        
+
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
-        
+
         # Validate credentials
         if not host:
             self.emit("error", "Cluster IP is required. Please fill in Connection Settings.")
@@ -108,23 +108,23 @@ class VnetmapWorkflow:
         if not password:
             self.emit("error", "Node SSH Password is required. Please fill in Connection Settings.")
             return {"success": False, "message": "Node SSH Password is required"}
-        
+
         self.emit("info", "Deploying required scripts to CNode...")
         self.emit("info", f"Required scripts: {', '.join(self.REQUIRED_SCRIPTS)}")
         self.emit("info", f"Target: {user}@{host}:{ToolManager.REMOTE_DIR}")
         self.emit("info", "")
         self.emit("info", "Strategy: Internet download first, local cache fallback")
         self.emit("info", "")
-        
+
         tool_manager = ToolManager(output_callback=self._output_callback)
-        
+
         # Create remote directory first (before any downloads)
         dir_success, dir_msg = tool_manager._ensure_remote_dir(host, user, password)
         if not dir_success:
             self.emit("error", f"Failed to create remote directory: {dir_msg}")
             return {"success": False, "message": f"Failed to create remote directory: {dir_msg}"}
         self.emit("info", "")
-        
+
         deployed = []
         for script in self.REQUIRED_SCRIPTS:
             self.emit("info", f"─── Deploying: {script} ───")
@@ -134,12 +134,16 @@ class VnetmapWorkflow:
                 return {"success": False, "message": f"Failed to deploy {script}: {message}"}
             deployed.append(f"{ToolManager.REMOTE_DIR}/{script}")
             self.emit("info", "")
-        
+
         self._step_data["remote_scripts"] = deployed
         self._step_data["remote_dir"] = ToolManager.REMOTE_DIR
         self._remote_dir_created = True  # Directory created by ToolManager
-        
-        return {"success": True, "message": f"Deployed {len(deployed)} scripts to CNode", "details": "\n".join(deployed)}
+
+        return {
+            "success": True,
+            "message": f"Deployed {len(deployed)} scripts to CNode",
+            "details": "\n".join(deployed),
+        }
 
     def _step_copy_to_cnode(self) -> Dict[str, Any]:
         host = self._credentials.get("cluster_ip")
@@ -375,7 +379,7 @@ class VnetmapWorkflow:
             self.emit("success", f"[API] Found {len(switch_ips)} switch(es): {', '.join(switch_ips)}")
             mlx_ips = ",".join(switch_ips)
             network_type = "ETH"  # Ethernet with switches
-            
+
             # Validate switch credentials for ETH mode
             if not switch_password:
                 self.emit("error", "Switch SSH Password is required for ETH networks.")
@@ -420,10 +424,7 @@ class VnetmapWorkflow:
 
             # Note: Not passing -k flag - vnetmap will auto-discover the correct SSH key
             vnetmap_cmd = (
-                f"python3 vnetmap.py -s $MLX_IPS "
-                f"-i {node_ips} "
-                f"-u {switch_user} "
-                f"-p '{switch_password}'"
+                f"python3 vnetmap.py -s $MLX_IPS " f"-i {node_ips} " f"-u {switch_user} " f"-p '{switch_password}'"
             )
         else:
             # InfiniBand command
@@ -540,7 +541,7 @@ class VnetmapWorkflow:
         self.emit("info", "Parsing vnetmap output for validation results...")
         self.emit("info", f"Output length: {len(output)} characters")
 
-        results = {
+        results: Dict[str, Any] = {
             "errors": [],
             "warnings": [],
             "failed_nodes": [],
@@ -589,10 +590,12 @@ class VnetmapWorkflow:
             if in_failed_section:
                 node_match = re.match(r"(\d+\.\d+\.\d+\.\d+):\s*(.+)", line.strip())
                 if node_match:
-                    results["failed_nodes"].append({
-                        "ip": node_match.group(1),
-                        "reason": node_match.group(2).strip(),
-                    })
+                    results["failed_nodes"].append(
+                        {
+                            "ip": node_match.group(1),
+                            "reason": node_match.group(2).strip(),
+                        }
+                    )
                 elif line.strip() and not line.strip().startswith("["):
                     continue
                 else:
@@ -613,9 +616,7 @@ class VnetmapWorkflow:
                     f"on the gateway CNode is authorized for this node."
                 )
             else:
-                results["recommendations"].append(
-                    f"Node {ip}: {reason}"
-                )
+                results["recommendations"].append(f"Node {ip}: {reason}")
 
         if results.get("ssh_key_used") and "deploy" in results["ssh_key_used"]:
             results["recommendations"].append(
@@ -649,16 +650,13 @@ class VnetmapWorkflow:
         total_ports = results["ports_passed"] + results["ports_failed"]
         details_parts = [f"Passed: {results['ports_passed']}, Failed: {results['ports_failed']}"]
         if results["failed_nodes"]:
-            details_parts.append(
-                "Failed nodes: " + ", ".join(n["ip"] for n in results["failed_nodes"])
-            )
+            details_parts.append("Failed nodes: " + ", ".join(n["ip"] for n in results["failed_nodes"]))
         if results["recommendations"]:
             details_parts.extend(results["recommendations"])
         details = "\n".join(details_parts)
 
         if results["ports_failed"] > 0 and results["ports_passed"] > 0:
-            self.emit("warn",
-                f"Partial success: {results['ports_passed']}/{total_ports} ports validated")
+            self.emit("warn", f"Partial success: {results['ports_passed']}/{total_ports} ports validated")
             return {
                 "success": True,
                 "message": (
@@ -686,31 +684,30 @@ class VnetmapWorkflow:
 
         return {"success": True, "message": "Validation completed \u2013 check output for details"}
 
-
     def _filter_vnetmap_output(self, raw_output: str) -> str:
         """
         Filter vnetmap output to remove SSH retry noise and keep meaningful content.
-        
+
         Removes:
         - SSH key retry error tracebacks
         - CalledProcessError tracebacks
-        
+
         Keeps:
         - Switch discovery progress
-        - Port validation progress  
+        - Port validation progress
         - Topology output
         - Final status messages
         """
         lines = raw_output.split("\n")
         filtered_lines = []
         skip_until_empty = False
-        
+
         for i, line in enumerate(lines):
             # Skip traceback blocks (start with "Traceback" or indented "File")
             if line.strip().startswith("Traceback (most recent call last):"):
                 skip_until_empty = True
                 continue
-            
+
             # Skip indented traceback lines
             if skip_until_empty:
                 if line.strip() == "" or (not line.startswith(" ") and not line.startswith("\t")):
@@ -720,21 +717,21 @@ class VnetmapWorkflow:
                         continue
                 else:
                     continue
-            
+
             # Skip SSH retry error lines (they're informational, not real errors)
             if "{ERROR}" in line and "ssh" in line.lower() and "sudo /bin/true" in line:
                 continue
-            
+
             # Skip CalledProcessError lines
             if "subprocess.CalledProcessError" in line:
                 continue
-                
+
             # Skip SSH retry info that just shows the key dict
             if line.strip().startswith("{'SSH_KEY"):
                 continue
-            
+
             filtered_lines.append(line)
-        
+
         return "\n".join(filtered_lines)
 
     def _step_save_output(self) -> Dict[str, Any]:
@@ -744,10 +741,10 @@ class VnetmapWorkflow:
         cluster_ip = self._credentials.get("cluster_ip", "unknown")
 
         raw_output = self._step_data.get("vnetmap_output", "")
-        
+
         # Filter output to remove SSH retry noise
         clean_output = self._filter_vnetmap_output(raw_output)
-        
+
         # Save filtered output
         output_file = local_dir / f"vnetmap_output_{cluster_ip}_{timestamp}.txt"
         output_file.write_text(clean_output)

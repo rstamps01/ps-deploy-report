@@ -295,10 +295,13 @@ class TestVastDataExtractor(unittest.TestCase):
         self.assertIn("hardware_inventory", result)
         self.assertIn("sections", result)
 
-        # All sections should have error, partial, or missing status due to invalid data
-        # (graceful degradation may return partial/missing when some defaults apply)
+        # Data-dependent sections should have error, partial, or missing status
+        # post_deployment_activities is static content and always complete
+        static_sections = {"post_deployment_activities"}
         sections = result["sections"]
         for section_name, section_data in sections.items():
+            if section_name in static_sections:
+                continue
             self.assertIn(
                 section_data["status"],
                 ("error", "partial", "missing"),

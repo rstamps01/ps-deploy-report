@@ -261,9 +261,15 @@ class TestProxyJumpConfig:
         ), patch("builtins.print"):
             mock_vlog_cls.return_value = MagicMock()
             m = ExternalPortMapper(
-                cluster_ip="10.0.0.1", api_user="admin", api_password="pass",
-                cnode_ip="10.0.0.2", node_user="vastdata", node_password="nodepass",
-                switch_ips=["10.0.0.10"], switch_user="cumulus", switch_password="switchpass",
+                cluster_ip="10.0.0.1",
+                api_user="admin",
+                api_password="pass",
+                cnode_ip="10.0.0.2",
+                node_user="vastdata",
+                node_password="nodepass",
+                switch_ips=["10.0.0.10"],
+                switch_user="cumulus",
+                switch_password="switchpass",
                 proxy_jump=False,
             )
         assert m._jump_kwargs() == {}
@@ -280,9 +286,7 @@ class TestProxyJumpConfig:
     def test_onyx_interactive_routes_through_ssh_adapter(self, mapper_with_proxy):
         with patch("external_port_mapper.run_interactive_ssh") as mock_issh:
             mock_issh.return_value = (0, "output", "")
-            mapper_with_proxy._run_onyx_interactive_command(
-                "10.0.0.10", "admin", "admin", "show version"
-            )
+            mapper_with_proxy._run_onyx_interactive_command("10.0.0.10", "admin", "admin", "show version")
         _, kwargs = mock_issh.call_args
         assert kwargs.get("jump_host") == "10.0.0.2"
         assert kwargs.get("jump_user") == "vastdata"
@@ -294,13 +298,18 @@ class TestProxyJumpConfig:
         ), patch("builtins.print"):
             mock_vlog_cls.return_value = MagicMock()
             m = ExternalPortMapper(
-                cluster_ip="10.0.0.1", api_user="admin", api_password="pass",
-                cnode_ip="10.0.0.2", node_user="vastdata", node_password="nodepass",
-                switch_ips=["10.0.0.10"], switch_user="cumulus", switch_password="switchpass",
+                cluster_ip="10.0.0.1",
+                api_user="admin",
+                api_password="pass",
+                cnode_ip="10.0.0.2",
+                node_user="vastdata",
+                node_password="nodepass",
+                switch_ips=["10.0.0.10"],
+                switch_user="cumulus",
+                switch_password="switchpass",
                 proxy_jump=False,
             )
-        with patch("external_port_mapper.run_interactive_ssh") as mock_issh, \
-             patch("pexpect.spawn") as mock_spawn:
+        with patch("external_port_mapper.run_interactive_ssh") as mock_issh, patch("pexpect.spawn") as mock_spawn:
             mock_spawn.return_value = MagicMock()
             mock_spawn.return_value.expect.return_value = 0
             mock_spawn.return_value.before = "output"

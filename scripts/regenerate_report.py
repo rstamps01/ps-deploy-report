@@ -218,10 +218,10 @@ Examples:
                     "completeness": 100.0,
                     "status": "complete",
                 },
-                "post_deployment_validation": {
-                    "name": "post_deployment_validation",
-                    "title": "Post Deployment Validation",
-                    "data": raw_health,
+                "post_deployment_activities": {
+                    "name": "post_deployment_activities",
+                    "title": "Post Deployment Activities",
+                    "data": {"next_steps": []},
                     "completeness": 100.0,
                     "status": "complete",
                 },

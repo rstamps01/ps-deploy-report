@@ -1,5 +1,7 @@
 # CI/CD Pipeline Validation Report
 
+**Note:** This report was generated for a previous release cycle. Version references below are historical.
+
 **Date:** 2026-03-10  
 **Scope:** Full pipeline run (quality gate, unit tests, integration tests, UI tests, build smoke).
 

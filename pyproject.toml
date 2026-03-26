@@ -3,8 +3,8 @@ line-length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# cov-fail-under=55: raised after omitting dead-code modules (TSE-10); target 75%+ per TSE-9
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=55"
+# cov-fail-under=60: raised after Test Coverage Extension Plan; target 75%+ per TSE-9
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=60"
 markers = [
     "integration: full pipeline integration tests",
     "ui: browser-based UI tests (require Playwright)",

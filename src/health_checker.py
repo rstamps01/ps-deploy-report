@@ -14,7 +14,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from utils.ssh_adapter import run_ssh_command
 
@@ -3257,7 +3257,7 @@ class HealthChecker:
 
         jump_kwargs: Dict[str, Any] = {}
         if self.switch_ssh_config.get("proxy_jump"):
-            pj = self.switch_ssh_config["proxy_jump"]
+            pj = cast(Dict[str, Any], self.switch_ssh_config["proxy_jump"])
             jump_kwargs = {
                 "jump_host": pj.get("host"),
                 "jump_user": pj.get("username"),
@@ -3423,7 +3423,9 @@ class HealthChecker:
 
     # --- Switch SSH Check: Config Backup ----------------------------------
 
-    def _check_switch_config_backup(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
+    def _check_switch_config_backup(
+        self, host: str, username: str, password: str, **ssh_kwargs: Any
+    ) -> HealthCheckResult:
         start = time.time()
         try:
             cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"

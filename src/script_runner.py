@@ -360,7 +360,7 @@ class ScriptRunner:
         remote_path: str,
     ) -> bool:
         """SCP transfer using subprocess and sshpass.
-        
+
         Uses SSHPASS env var (sshpass -e) to avoid exposing password in
         the process table.
         """
@@ -375,9 +375,12 @@ class ScriptRunner:
             "sshpass",
             "-e",
             "scp",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=30",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=30",
             local_path,
             f"{username}@{host}:{remote_path}",
         ]
@@ -408,9 +411,13 @@ class ScriptRunner:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             client.connect(
-                host, username=username, password=password,
-                timeout=30, banner_timeout=30,
-                look_for_keys=False, allow_agent=False,
+                host,
+                username=username,
+                password=password,
+                timeout=30,
+                banner_timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
             )
 
             sftp = client.open_sftp()
@@ -433,7 +440,6 @@ class ScriptRunner:
                 existing = f"{p}:{existing}"
         env["PATH"] = existing
         return env
-
 
     def _classify_output_line(self, line: str) -> Optional[str]:
         """Classify a remote command output line for appropriate log level.
@@ -734,7 +740,7 @@ class ScriptRunner:
         local_path: str,
     ) -> bool:
         """Download file using subprocess scp.
-        
+
         Uses SSHPASS env var (sshpass -e) to avoid exposing password in
         the process table.
         """
@@ -748,9 +754,12 @@ class ScriptRunner:
             "sshpass",
             "-e",
             "scp",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
-            "-o", "ConnectTimeout=30",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-o",
+            "ConnectTimeout=30",
             f"{username}@{host}:{remote_path}",
             local_path,
         ]
@@ -781,9 +790,13 @@ class ScriptRunner:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             client.connect(
-                host, username=username, password=password,
-                timeout=30, banner_timeout=30,
-                look_for_keys=False, allow_agent=False,
+                host,
+                username=username,
+                password=password,
+                timeout=30,
+                banner_timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
             )
 
             sftp = client.open_sftp()

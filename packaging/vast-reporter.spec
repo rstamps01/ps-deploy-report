@@ -54,6 +54,8 @@ a = Analysis(
         (str(ROOT / "README.md"), "."),
         (str(ROOT / "CHANGELOG.md"), "."),
         (str(ROOT / "docs" / "API-REFERENCE.md"), "docs"),
+        (str(ROOT / "docs" / "ADVANCED-OPERATIONS.md"), "docs"),
+        (str(ROOT / "docs" / "POST-INSTALL-VALIDATION.md"), "docs"),
         (str(ROOT / "docs" / "api" / "EBOX_API_V7_DISCOVERY.md"), "docs/api"),
         (str(ROOT / "docs" / "deployment"), "docs/deployment"),
     ] + [
@@ -140,8 +142,8 @@ if IS_MAC:
         icon=ICON_MAC,
         bundle_identifier="com.vastdata.asbuilt-reporter",
         info_plist={
-            "CFBundleShortVersionString": "1.4.7",
-            "CFBundleVersion": "1.4.7",
+            "CFBundleShortVersionString": "1.5.0",
+            "CFBundleVersion": "1.5.0",
             "NSHighResolutionCapable": True,
             "NSAppTransportSecurity": {
                 "NSAllowsLocalNetworking": True,

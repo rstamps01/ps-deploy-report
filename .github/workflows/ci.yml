@@ -123,7 +123,7 @@ jobs:
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=45
+            --cov-fail-under=60
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
@@ -192,7 +192,7 @@ jobs:
 
       - name: Run Advanced Operations tests
         run: |
-          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             -v --no-cov
+          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov
 
     # -------------------------------------------------------------------
   # Job 4: Integration tests (Linux only)

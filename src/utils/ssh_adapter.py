@@ -155,7 +155,11 @@ def run_interactive_ssh(
     """
     if jump_host:
         return _paramiko_exec(
-            host, username, password, command, timeout,
+            host,
+            username,
+            password,
+            command,
+            timeout,
             force_tty=True,
             jump_host=jump_host,
             jump_user=jump_user,
@@ -362,9 +366,9 @@ def _paramiko_exec(
     jump_params = [jump_host, jump_user, jump_password]
     if any(jump_params) and not all(jump_params):
         return (
-            1, "",
-            "Incomplete jump host config: jump_host, jump_user, "
-            "and jump_password must all be provided",
+            1,
+            "",
+            "Incomplete jump host config: jump_host, jump_user, " "and jump_password must all be provided",
         )
 
     use_jump = jump_host and jump_user and jump_password
@@ -379,7 +383,8 @@ def _paramiko_exec(
         if use_jump:
             logger.debug(
                 "Opening SSH tunnel via jump host %s to reach %s",
-                jump_host, host,
+                jump_host,
+                host,
             )
             jump_client = paramiko.SSHClient()
             jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -395,26 +400,30 @@ def _paramiko_exec(
                 )
             except paramiko.AuthenticationException:
                 return (
-                    1, "",
-                    "Jump host authentication failed for "
-                    + jump_user + "@" + jump_host,
+                    1,
+                    "",
+                    "Jump host authentication failed for " + jump_user + "@" + jump_host,
                 )
             except (paramiko.SSHException, OSError) as exc:
                 return (
-                    1, "",
-                    "Jump host connection failed for "
-                    + jump_host + ": " + str(exc),
+                    1,
+                    "",
+                    "Jump host connection failed for " + jump_host + ": " + str(exc),
                 )
 
             jump_transport = jump_client.get_transport()
             if jump_transport is None:
                 return 1, "", "Jump host transport unavailable for " + jump_host
             sock = jump_transport.open_channel(
-                "direct-tcpip", (host, 22), ("127.0.0.1", 0),
+                "direct-tcpip",
+                (host, 22),
+                ("127.0.0.1", 0),
             )
             logger.debug(
                 "SSH tunnel established: %s -> %s:22 via %s",
-                jump_host, host, jump_host,
+                jump_host,
+                host,
+                jump_host,
             )
 
         client.connect(

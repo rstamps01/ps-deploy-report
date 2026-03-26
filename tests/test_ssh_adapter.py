@@ -69,6 +69,7 @@ class TestParamikoExec(unittest.TestCase):
     def _make_mock_paramiko(self):
         mock_paramiko = MagicMock()
         mock_paramiko.AuthenticationException = type("AuthenticationException", (Exception,), {})
+        mock_paramiko.SSHException = type("SSHException", (Exception,), {})
         mock_paramiko.AutoAddPolicy.return_value = "policy"
         return mock_paramiko
 

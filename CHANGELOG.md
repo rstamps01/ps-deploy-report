@@ -5,9 +5,179 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-03-26
 
-### Added
+### Added (SSH Proxy Hop — Field Deployment Support)
+- **SSH proxy hop for field deployments:** Switch SSH connections now tunnel through the CNode via paramiko nested transport (`direct-tcpip` channel), enabling port mapping and Tier 3 health checks when switches are only reachable from inside the cluster network
+- **"Proxy through CNode" toggle** on Generate and Reporter pages (default: ON) — persists in profiles and UI state
+- **CLI `--no-proxy-jump` flag** to disable proxy hop for direct-connection environments
+- **Improved error messages** distinguish unreachable switches (network/connectivity) from authentication failures, with actionable guidance
+
+### Changed (Version & Branding)
+- **Version bumped to v1.5.0** across all canonical locations (`src/app.py`, `src/main.py`, `src/__init__.py`, `packaging/vast-reporter.spec`)
+- **Beta badge removed** from the navigation header for production release (REL-1)
+
+### Changed (Connection Settings Layout — Advanced Ops)
+- **Collapse/expand arrow** moved to the card header for always-accessible tile toggling
+- **Initial render** now shows only the Saved Profiles dropdown, Create Cluster button, and collapse arrow (collapsed by default)
+- **Expand** reveals all credential fields, the Global Setting — Autofill Default Passwords toggle (Disable / Enable labels), and Save / Delete profile icons
+- **Collapse** returns to the minimal dropdown-only view; no intermediate state
+- **Create Cluster Profile button** always expands the full tile, sets dropdown to "-- Create a profile --", and clears Cluster IP
+- **Default Passwords toggle** relabeled: heading reads "Global Setting — Autofill Default Passwords" with Disable/Enable flanking the switch
+- **Save and Delete icons** relocated to the bottom-right of the tile toolbar
+- Tile collapse/expand state persisted in localStorage across page navigation
+
+### Changed (Default Credentials)
+- **Global default changed to `support` / `654321`** across Advanced Ops, Generate, and Health Check pages — all pages now share the same default API user
+- **vperfsanity auto-override:** When "Autofill Default Passwords" is enabled, the One-Shot runner automatically injects `admin` / `123456` for the vperfsanity operation only — the single operation that requires admin access
+- **Actionable auth failure hint:** If vperfsanity encounters an HTTP 403, the output now advises the user to disable autofill defaults and enter the current admin credentials
+
+### Fixed (Report — Health Check & Post Deployment)
+- **Memory usage message:** Removed the parenthetical "(high utilization is normal for VAST clusters)" from the Detailed Check Results memory usage row for a cleaner report
+- **Next Steps table word wrap:** The "Post Deployment Activities — Next Steps" checklist table now wraps text properly within column boundaries using `Paragraph` objects; row heights dynamically resize to fit wrapped content
+
+### Fixed (Result Bundler — As-Built Report Collection)
+- **As-Built report PDF now included in bundle:** Bundler matches reports via `.meta.json` sidecar `cluster_ip` field instead of relying on cluster name in filename (which failed when only the IP was known)
+- **As-Built JSON data file** now collected alongside the PDF in the `reports/` folder within the bundle
+- **Cluster name auto-resolution:** When `cluster_name` is missing or equals the IP, the bundler scans existing `vast_data_*.json` files to resolve the real API cluster name for accurate manifest metadata
+- **One-Shot runner** now passes the resolved API cluster name (from report data) to the bundler instead of the raw IP
+
+### Added (Reporter Page — Standard-Mode Workflow Interface)
+- **Reporter page:** New `/reporter` page as the primary user-facing workflow interface, combining as-built report generation with switch placement and post-install validation
+  - **Switch Placement Mode:** Auto/Manual toggle with rack/switch discovery, manual switch IP entry, and placed switches table; settings persist in cluster profiles
+  - **Reporter Checklist:** Pre-Validation (recommended), Run Reporter, and optional Health Check with tier logic
+  - **View/Download PDF and Download JSON buttons** appear upon report completion
+  - **Manual switch discovery workflow:** When no switches found, options to manually add switches or add in VMS with re-run discovery
+  - **Library switch integration:** Manual switch IP entries use library switch model dropdown for correct rack diagram rendering
+
+### Added (Navigation Restructuring)
+- **Hamburger menu:** Legacy and Developer pages moved to collapsible menu in top-right navbar
+  - **Legacy section:** Generate, Reports
+  - **Developer section** (dev-mode only): Advanced Ops, Health Check, Configuration
+- **Standard navigation:** Dashboard, Reporter, Results, Library, Docs always visible
+- **"Validation Results" renamed to "Results"** in navigation header
+- **Library** repositioned between Results and Docs in navigation order
+- **Page heading icons** added to all navigation buttons and page titles
+
+### Added (One-Shot UI Overhaul)
+- **Pre-Validation converted to checkbox** at the top of the One-Shot checklist (previously a separate button)
+- **"Start One-Shot" button renamed to "Run"**
+- **"Download Bundle" button** now hidden until all operations complete
+- **"View Deployment Tool Status" button** added next to "Update Tools"
+- **Operation badges** with color-coded labels on left side of each operation:
+  - Pre-Validation: "Recommended" (orange)
+  - vnetmap: "Net Test" (green)
+  - Support Tools: "Sys Test" (green)
+  - vperfsanity: "Perf Test" (green)
+  - Log Bundle: "Pull Logs" (green)
+  - Switch Config: "Pull Config" (green)
+  - Network Config: "Pull Config" (green)
+  - Generate As-Built Report: "Recommended" (orange)
+  - Include Health Checks: "Optional" (blue)
+- **Reporter/One-Shot toggle** uses consistent blue on both sides (mode switch, not on/off)
+- **vperfsanity default unchecked** in One-Shot checklist
+
+### Added (VAST Logo Progress Indicator)
+- **VAST Logo fill animation** replaces previous SVG ring progress indicator
+  - CSS `mask-image` over dynamic `linear-gradient` fills the VAST logo incrementally as operations progress
+  - Percentage and stopwatch timer displayed in the logo center
+  - Positioned in open area to the right of operations list (One-Shot) or under placed switches table / centered overlay (Reporter)
+  - Pulse animation during active operations; fills to completion state with checkmark on success
+  - Error and cancel states with distinct colors
+
+### Added (Connection Settings Enhancements)
+- **Field label changes:** "Cluster IP" → "Cluster IP / VMS", "API Username" → "VMS Username", "API Password" → "VMS Password"
+- **Info icons with tooltips** on all connection settings fields:
+  - Cluster IP: Tech Port IP guidance (192.168.2.2)
+  - VMS Username: Support-level authorization requirement
+  - VMS Password: Default support password
+  - Node SSH Password: Default vastdata password
+  - Switch SSH User: Per-vendor user guidance (cumulus, admin)
+  - Switch SSH Password: Per-vendor default passwords
+- **"Global Setting — Autofill Default Passwords" info icon** listing applied credentials
+
+### Changed (Validation Results Page)
+- **Tab space increased** to eliminate vertical scrollbar
+- **Output Directory tile** added at page top
+- **Cluster Profile dropdown** positioned parallel to output directory
+- **Tab labels shortened:** Reports, Health, Network, Switch, vnetmap, vperfsanity, Support, Logs, Bundles
+- **Equal tab sizing** with even spacing; tabs prevent overflow on narrow widths
+- **Tab colors adjusted** for visibility with darker edge contrast
+- **SVG document type icons** and icon action buttons replace text buttons
+- **Column widths optimized** to minimize text wrap
+
+### Changed (Library Page)
+- **Image requirements text removed** (format, "No file chosen", placeholder notes)
+- **Choose File button** replaced with consistently styled button
+- **Device Image info icon** with hover tooltip detailing image guidelines (format, dimensions, sizes)
+
+### Changed (Health Check Page)
+- **Log window height increased** in Progress tile for better log visibility
+
+### Changed (Docs Page)
+- **Live API Explorer** restricted to Developer Mode only
+
+### Fixed (Rack Diagram)
+- **Placeholder Arista switch injection removed:** Fallback code that injected 2 placeholder Arista 7060DX5 switches eliminated
+- **Manual switch placement data** now correctly flows to report generation even without API-discovered switches
+- **Manual placement processing enhanced:** `model_key`, `name`, and `height_u` correctly extracted from manual placement data
+
+### Fixed (Dynamic Log Tier Filtering)
+- **Log tier passthrough** fixed on Reporter and Advanced Ops output panes — Status, Live, Debug filtering now works correctly by passing `e.log_tier` to `outputPane.append()`
+
+### Fixed (Port Mapping Activation)
+- **Frontend-backend payload mismatch:** `enable_port_mapping` now sent as `'on'` string instead of boolean `true` to match backend expectation
+
+### Added (One-Shot Orchestration Mode — AO-16)
+- **One-Shot Mode for Advanced Operations:** New toggle in Advanced Ops "Select Operation" tile switches between step-by-step and one-shot modes
+  - **Checkbox Operation Selection:** Select multiple operations to run sequentially in a single pass
+  - **Pre-Validation Checks:** Automated checks before execution — credential completeness, cluster API reachability, node/switch SSH connectivity (with proceed/stop option), cluster outbound internet access (for vnetmap/support tools/vperfsanity downloads), tool freshness (warn if >10 days old), vperfsanity ~30 min duration notice
+  - **Sequential Execution:** Selected operations first, then optional As-Built report generation (health checks run within report when selected)
+  - **Auto-Bundling:** All results automatically bundled into a cluster-scoped ZIP on completion
+  - **Progress Tracking:** Phase indicator (Health Checks → Operations → Report → Bundling) with operation counter
+  - **Cancellation Support:** Cancel at any point between phases or workflow steps
+  - **Health Checks now optional:** Selectable checkbox (checked by default, "Recommended" badge) instead of forced
+  - **SSL fix for pre-validation:** Disabled SSL verification and reduced timeouts in validation API calls to prevent hangs with self-signed cluster certs
+  - **Async pre-validation with cancel:** Validation runs in a background thread; Cancel button stops validation at any point
+- **OneShotRunner Module:** New `src/oneshot_runner.py` orchestrator with pre-validation, phased execution, and progress state tracking
+
+### Added (Validation Results Page — AO-18, Developer Mode)
+- **Validation Results Page:** New `/validation-results` page (developer mode only) for browsing all operation results
+  - **Operation Tabs:** 9 tabs — As-Built Reports, Health Checks, Network Config, Switch Config, vnetmap, vperfsanity, Support Tools, Log Bundles, Bundles
+  - **Profile Filter Dropdown:** Filter all tabs by saved cluster profile, "All Clusters", or "Unsaved Cluster Results"
+  - **Per-Tab Result Tables:** File name, type badge, size, cluster IP, generated date, View/Download/Delete actions
+  - **File Counts:** Tab badges show result counts per operation
+- **ResultScanner Module:** New `src/result_scanner.py` scans all output directories, tags results by cluster_ip, groups by operation type
+
+### Added (Dynamic Log Levels and State Persistence — AO-19, in progress)
+- **Dynamic Log Level Selector:** Three-tier output filter buttons (Status / Live / Debug) in the Advanced Ops output pane
+  - **Status:** Operation start/complete banners, progress counters (1/N), phase results summary
+  - **Live:** Everything in Status + piped internal logger output from HealthChecker, report pipeline, and workflows
+  - **Debug:** Everything in Live + debug-level messages
+- **Per-Check Health Progress:** Individual health check results reported in output (e.g., "[PASS] Cluster RAID Health (1/28)")
+- **Report Generation Progress:** Step-by-step status messages during As-Built report generation (authenticating, collecting data, processing, generating PDF)
+- **Persistent Operation Logs:** Session logs auto-saved to disk on One-Shot completion with 1GB total capacity limit; oldest 25% purged when exceeded with user warning
+- **Window State Persistence:** Advanced Ops page resumes its exact state after navigation or browser close/reopen
+  - Backend state snapshot API returns running operation state, progress, and output count
+  - Frontend hydrates from backend snapshot on page load — resumes polling and progress UI
+  - UI preferences (mode toggle, selected profile, checklist, log tier) persisted in localStorage
+  - Output buffer de-duplication prevents duplicate log entries on resume
+
+### Changed (Navigation — AO-19, in progress)
+- **Health Check and Configuration moved to Developer Mode:** Nav links and routes now gated behind `--dev-mode` flag alongside Advanced Ops and Validation Results
+
+### Planned (Generate Report Page — AO-20, future)
+- Apply log level selector, persistent log storage, and window state persistence to Generate Report page
+
+### Changed (Result Bundler — Cluster-Scoped Improvements)
+- **PDF reports now filtered by cluster name** instead of always picking the globally latest PDF
+- **Support tools matched via sidecar `.meta.json`** (new) instead of broken text-header heuristic on binary .tgz files
+- **Log bundles matched via verification JSON `cluster_ip`** (new) instead of being excluded when cluster-scoped
+- **All switch txt files included** in bundle (previously only one due to `setdefault` bug)
+- **Health remediation report** and **vnetmap output txt** now collected in bundles
+- **Missing operation placeholders:** Bundle includes `{category}_NOT_FOUND.txt` for operations not run for the cluster
+- **Workflow metadata improvements:** Log bundle verification JSON and support tool archives now embed `cluster_ip`
+
 ### Added (Test Coverage Phase A-C)
 - **Test Coverage Phase A-C:** Implemented 8-stream test coverage plan adding ~98 new tests across all modules
   - **WS-1 Config:** Fixed stale vperfsanity step count test (6→7); added `[tool.coverage.run]` omit for 3 dead-code modules; raised `cov-fail-under` from 45 to 55

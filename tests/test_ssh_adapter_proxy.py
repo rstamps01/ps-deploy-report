@@ -16,7 +16,9 @@ def _make_mock_paramiko():
     """Build a mock paramiko module with real exception classes."""
     mock_paramiko = MagicMock()
     mock_paramiko.AuthenticationException = type(
-        "AuthenticationException", (Exception,), {},
+        "AuthenticationException",
+        (Exception,),
+        {},
     )
     mock_paramiko.SSHException = type("SSHException", (Exception,), {})
     mock_paramiko.AutoAddPolicy.return_value = "policy"
@@ -57,7 +59,11 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
             reload(mod)
             rc, out, err = mod._paramiko_exec(
-                "172.27.51.4", "admin", "switchpass", "hostname", 30,
+                "172.27.51.4",
+                "admin",
+                "switchpass",
+                "hostname",
+                30,
                 jump_host="192.168.2.2",
                 jump_user="vastdata",
                 jump_password="cnodepass",
@@ -73,7 +79,9 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
         self.assertEqual(jc_kwargs[1]["password"], "cnodepass")
 
         mock_jump_transport.open_channel.assert_called_once_with(
-            "direct-tcpip", ("172.27.51.4", 22), ("127.0.0.1", 0),
+            "direct-tcpip",
+            ("172.27.51.4", 22),
+            ("127.0.0.1", 0),
         )
 
         tc_kwargs = mock_target_client.connect.call_args
@@ -93,7 +101,11 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
             reload(mod)
             rc, out, err = mod._paramiko_exec(
-                "10.0.0.1", "user", "pass", "ls", 10,
+                "10.0.0.1",
+                "user",
+                "pass",
+                "ls",
+                10,
             )
 
         self.assertEqual(rc, 0)
@@ -121,7 +133,11 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
             reload(mod)
             rc, out, err = mod._paramiko_exec(
-                "172.27.51.4", "admin", "switchpass", "hostname", 30,
+                "172.27.51.4",
+                "admin",
+                "switchpass",
+                "hostname",
+                30,
                 jump_host="192.168.2.2",
                 jump_user="vastdata",
                 jump_password="wrong",
@@ -141,7 +157,11 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
             reload(mod)
             rc, out, err = mod._paramiko_exec(
-                "172.27.51.4", "admin", "switchpass", "hostname", 30,
+                "172.27.51.4",
+                "admin",
+                "switchpass",
+                "hostname",
+                30,
                 jump_host="192.168.2.2",
                 jump_user="vastdata",
             )
@@ -170,7 +190,11 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
             reload(mod)
             rc, out, err = mod._paramiko_exec(
-                "172.27.51.4", "admin", "switchpass", "hostname", 30,
+                "172.27.51.4",
+                "admin",
+                "switchpass",
+                "hostname",
+                30,
                 jump_host="192.168.2.2",
                 jump_user="vastdata",
                 jump_password="cnodepass",
@@ -189,7 +213,10 @@ class TestRunInteractiveSSHWithJumpHost(unittest.TestCase):
         from utils.ssh_adapter import run_interactive_ssh
 
         rc, out, err = run_interactive_ssh(
-            "172.27.51.4", "admin", "switchpass", "show version",
+            "172.27.51.4",
+            "admin",
+            "switchpass",
+            "show version",
             jump_host="192.168.2.2",
             jump_user="vastdata",
             jump_password="cnodepass",
@@ -198,7 +225,11 @@ class TestRunInteractiveSSHWithJumpHost(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, "proxied")
         mock_exec.assert_called_once_with(
-            "172.27.51.4", "admin", "switchpass", "show version", 30,
+            "172.27.51.4",
+            "admin",
+            "switchpass",
+            "show version",
+            30,
             force_tty=True,
             jump_host="192.168.2.2",
             jump_user="vastdata",

@@ -6,6 +6,12 @@ This guide maps VAST cluster post-installation validation procedures to the As-B
 
 The VAST installation template includes a comprehensive post-install validation checklist. This document shows how each validation item is addressed by the As-Built Report Generator.
 
+## Prerequisites
+
+### SSH Proxy Hop
+
+By default, switch SSH connections tunnel through the CNode for field deployments where switches are only reachable from inside the cluster network. The "Proxy through CNode" toggle (default: ON) is available on Generate and Reporter pages. Use `--no-proxy-jump` on the CLI to disable.
+
 ---
 
 ## Health Check Validations (Automated)
@@ -84,14 +90,15 @@ These validations require user-initiated workflows via **Advanced Operations** (
 
 **Confluence Procedure:** Run performance sanity tests
 
-**Advanced Ops Workflow:** `vperfsanity` (6 steps)
+**Advanced Ops Workflow:** `vperfsanity` (7 steps)
 
-1. Download vperfsanity package
-2. Prepare environment
-3. Run write test
-4. Run read test
-5. Collect results
-6. Cleanup
+1. Deploy
+2. Extract
+3. Prepare
+4. Run tests
+5. Collect
+6. Upload
+7. Cleanup
 
 ### VMS Log Bundle Collection
 
@@ -159,9 +166,11 @@ These items require manual verification. The tool generates reminders.
 
 ## Validation Workflow
 
+The **Reporter** page is the primary web interface for standard users (report generation and health checks). **Advanced Operations**, workflow bundles, and One-Shot validation require launching the app with `--dev-mode`.
+
 ### Recommended Sequence
 
-1. **Run Health Check (Tier 1)** - Generate → Include Health Check
+1. **Run Health Check (Tier 1)** - Reporter or Generate → Include Health Check
 2. **Run Health Check (Tier 2+3)** - Enable Port Mapping with SSH credentials
 3. **Review PDF Report** - Check Health Check Results section
 4. **Address Failures** - Follow remediation report guidance
@@ -205,6 +214,25 @@ These items require manual verification. The tool generates reminders.
 | **Documentation** | Config Backup | Advanced Ops | switch_config, network_config |
 | **Handoff** | VIP Failover | Manual | Reminder |
 | | Passwords | Manual | Reminder |
+
+---
+
+## One-Shot Mode: Automated Full Validation
+
+For comprehensive post-install validation in a single pass, use **One-Shot Mode** in Advanced Operations:
+
+1. Navigate to Advanced Ops (requires `--dev-mode`)
+2. Toggle the mode switch to **One-Shot**
+3. Select all validation workflows and check **Generate As-Built Report**
+4. Run **Pre-Validation** to verify credentials, connectivity, and tool readiness
+5. Click **Start One-Shot** to execute:
+   - Health Checks (Tiers 1-3)
+   - All selected operations (vnetmap, support tools, vperfsanity, log bundle, switch config, network config)
+   - As-Built Report generation
+   - Automatic bundling of all results
+6. Download the bundle for handoff documentation
+
+This is the recommended path for complete post-install validation when all credentials and network access are available.
 
 ---
 

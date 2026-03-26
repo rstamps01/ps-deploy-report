@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-22 (Test Coverage Phase A-C: +98 tests, 503 total, 56% coverage, cov-fail-under=55)  
+**Last updated:** 2026-03-26 (v1.5.0 release prep; Beta badge removed REL-1; SSH proxy hop PM-1 done; NET-1 planned for v1.5.0; AO-15/AO-19 to complete before release)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -43,7 +43,7 @@
 |------|------|----------|--------|
 | QG-1 | Run flake8 + black (and optionally mypy) as part of documented pre-release run | Done | README Development § Pre-release checklist |
 | QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Done | Followed [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md): types-paramiko, _MEIPASS, var annotations, return casts, api_handler session/optional, network_diagram Path/float, report_builder tuple/int/float; mypy passes. |
-| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=55 (raised from 45); total coverage 56%+ (503 tests); Phase A-C complete; track TSE-9 for 80% |
+| QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=60 (raised from 55); total coverage 60%+; Phase A-C complete; track TSE-9 for 80% |
 
 ---
 
@@ -106,7 +106,17 @@
 | AO-11 | Testing suite (80% coverage) | Done | test_advanced_ops.py, test_script_runner.py, test_workflows.py, test_result_bundler.py |
 | AO-12 | CI integration | Done | `advanced-ops-tests` job in CI pipeline |
 | AO-13 | WP-13 documentation verification | Done | CHANGELOG, README, TODO-ROADMAP updates |
+| AO-16 | One-Shot orchestration mode | Done | oneshot_runner.py, async pre-validation, optional health checks, auto-bundle |
+| AO-17 | Bundle contents cluster-scoped overhaul | Done | PDF/support-tool/log-bundle filtering, sidecar .meta.json, all switch txts, placeholders |
+| AO-18 | Validation Results page (dev mode) | Done | result_scanner.py, validation_results.html; 9 operation tabs with profile-based cluster filtering |
 | AO-14 | Advanced Operations documentation | Done | ADVANCED-OPERATIONS.md, POST-INSTALL-VALIDATION.md |
+| AO-21 | Connection Settings layout revision | Done | Collapse arrow in header; tile starts collapsed; two clean states (dropdown-only vs full); Default PW toggle + Save/Delete in bottom toolbar; Create Cluster Profile button |
+| AO-22 | Default credentials unified to support/654321 | Done | Global default changed to `support`/`654321` across all pages; vperfsanity auto-injected with `admin`/`123456`; actionable 403 hint |
+| AO-23 | Rack diagram auto-placement annotation | Done | "Unverified - Auto Switch Placement" notation rendered below switch label when auto-placement mode is used |
+| AO-24 | Health checks consolidated into report phase | Done | Health checks no longer run as standalone phase; run within report generation when selected; checkbox moved to sub-item of report checkbox |
+| AO-25 | Port mapping in one-shot report | Done | ExternalPortMapper runs inside `_run_report()` when node+switch credentials are present |
+| AO-26 | Memory usage threshold to PASS | Done | >90% memory usage reports PASS (expected for VAST clusters) |
+| AO-27 | Post Deployment Activities section | Done | Replaced SSH validation table with "Next Steps — Get Started Using VAST Data" checklist; word-wrapped Paragraph cells for clean table layout |
 
 ---
 
@@ -127,9 +137,9 @@
 | RFE-9 | Add recommended next steps | Planned | |
 | RFE-10 | Add Alert Summary | Planned | |
 | RFE-11 | Create .json export database | Planned | |
-| RFE-12 | Fix DC/DBox Rack naming | Planned | |
-| RFE-13 | Fix Rack API Call | Planned | |
-| RFE-14 | Check capacity calculations | Planned | |
+| RFE-12 | Fix DC/DBox Rack naming | Deferred | Needs concrete bug report; depends on RFE-13 (now fixed) |
+| RFE-13 | Fix Rack API Call | Done | get_racks() now uses _normalize_list_response() for paginated API support |
+| RFE-14 | Check capacity calculations | Deferred | No local calculations (API pass-through); needs specific discrepancy report |
 
 ---
 
@@ -140,6 +150,33 @@
 | ID | Item | Notes |
 |------|------|--------|
 | AO-15 | **Advanced Ops hardening:** Cross-tenant vperfsanity cleanup, unified profile management, SSH adapter stability, UI refinements | vperfsanity_workflow.py, app.py, ssh_adapter.py, advanced_ops.html |
+| AO-19 | **Dynamic log levels, state persistence, and nav gating:** (1) Move Health Check and Configuration to dev mode; (2) Three-tier log level selector (Status/Live/Debug) with per-check health progress and piped logger output; (3) Persistent operation log storage with 1GB capacity management and oldest-25% purge; (4) Full Advanced Ops window state persistence — backend state snapshot API, frontend hydration on load, localStorage for cross-session survival | base.html, app.py, advanced_ops.py, oneshot_runner.py, advanced_ops.html, ops_log_manager.py |
+
+## Fixed Issues — State Persistence and One-Shot (pre-release)
+
+| ID | Issue | Priority | Status | Fix |
+|------|-------|----------|--------|-----|
+| BUG-1 | **Profile selection not persistent:** Selected Saved Profile reverted on refresh. | High | Done | `await loadWorkflows()` and `await fetchProfiles()` in DOMContentLoaded before applying saved state |
+| BUG-2 | **One-Shot checklist resets to all-checked:** Selections lost on refresh. | High | Done | Added `oneShotChecklist` array to `saveUIState()`; restore after `populateOneShotChecklist()` completes; change listeners on checkboxes |
+| BUG-3 | **Cleared output repopulates on refresh:** Manual clear did not persist. | Medium | Done | `clear()` now sets `SYNC_CURSOR_KEY` to current server output count instead of removing it |
+| BUG-4 | **Mode toggle resets to One-Shot on refresh:** Step-by-step not remembered. | High | Done | Added step-by-step restore path in `applySavedUIState`; removed forced one-shot for completed result; removed conflicting label init |
+| BUG-5 | **As-Built reports filter into Unsaved Cluster Results:** PDF/JSON not linked to cluster. | Medium | Done | Embed `cluster_ip` in JSON output; write PDF sidecar `.meta.json`; scanner checks sidecar and builds API-name-to-IP map from existing JSON |
+| BUG-6 | **One-Shot default creds use single user for all operations:** admin used everywhere. | High | Done | Global default changed to `support`/`654321`; per-phase credential routing injects `admin`/`123456` only for vperfsanity when default creds active; actionable 403 hint added |
+| BUG-7 | **As-Built report/JSON missing from bundle:** Bundler matched by `cluster_name` in filename but received IP instead. | High | Done | Match via `.meta.json` sidecar `cluster_ip`; collect `asbuilt_json`; auto-resolve cluster name from report JSON; one-shot passes resolved API name |
+
+---
+
+## Planned — Future enhancements
+
+| ID | Item | Priority | Notes |
+|------|------|----------|--------|
+| AO-18 | **Validation Results page (dev mode):** Browse all operation results with tabs and profile-based cluster filtering. Will replace production Reports page when Post Deployment Validation is fully released. | Medium | result_scanner.py, app.py, validation_results.html — implemented, needs polish |
+| AO-20 | **Generate Report page enhancements:** Apply log level selector (Status/Live/Debug), persistent log storage with 1GB capacity, and window state persistence to the Generate Report page. Align Generate page UX with Advanced Ops improvements. | Low | Future work — apply patterns from AO-19 to generate.html and report generation pipeline |
+| NET-1 | **Add nb_eth_mtu to network configuration:** Collect `nb_eth_mtu` (non-blocking Ethernet MTU) from `/api/v7/vms/1/network_settings/` response `data` field. Add to `VastClusterInfo` dataclass, `get_network_config()` extraction, `data_extractor.py` network section, and report output (PDF Network Configuration table and JSON export) alongside existing `eth_mtu` and `ib_mtu` fields. | Medium | v1.5.0 release; Source: `vms/1/network_settings/` `data.nb_eth_mtu`; currently not collected |
+| REL-1 | **Remove Beta badge before v1.5.0 release:** Remove the `nav-badge-beta` span from `base.html` and its CSS from `app.css` prior to tagging the production release. | High | Done — removed in v1.5.0 release prep |
+| PM-1 | **SSH proxy hop for field deployments:** Tunnel switch SSH through CNode via paramiko nested transport (`direct-tcpip` channel) so port mapping and Tier 3 health checks work when switches are only reachable from the cluster internal network. Default on. UI toggle, CLI `--no-proxy-jump`, profile persistence. Hot-fix candidate for v1.4.8 (ssh_adapter + external_port_mapper subset). | High | Done — v1.5.0; hot-fix cherry-pick available for v1.4.8 |
+| UPD-1 | **In-app self-update mechanism:** Add ability for the application to check for, download, and apply updates (hot-fixes and new versions) from GitHub Releases. Workflow: (1) Check current version against latest GitHub Release tag; (2) Display update notification with release notes when newer version available; (3) User-initiated download of platform-appropriate artifact (.dmg / .zip); (4) Apply update and restart. Consider: auto-check on launch (configurable), manual check via UI button, rollback capability, update channel (stable vs pre-release), signature verification for downloaded artifacts. | Medium | Future enhancement; reduces manual update friction for field-deployed instances |
+| CFG-1 | **Configuration template refresh:** Update `config/config.yaml.template` to reflect all settings, features, and enhancements added since last update. Ensure parity between template and runtime config keys. Document new keys (ops_log settings, SSH proxy defaults, reporter defaults) in README Configuration section. | High | v1.5.0 release; template has drifted from runtime capabilities |
 
 ---
 
@@ -182,10 +219,28 @@
 
 ## Next steps (current focus)
 
-1. **Test suite (next):** TSE-9 (coverage toward 80%: comprehensive_report_template, enhanced_report_builder, external_port_mapper, rack_diagram, report_builder); TSE-10 (optional coverage omit). “all features validated” before next release.
-2. Before each release: update this file (status, Last updated, move completed items to Done).
-3. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
-4. Restore cov-fail-under to 49%+ when adding tests per TSE-8 (QG-3).
+1. **v1.5.0 release finalization:** All documentation updated, Beta badge removed (REL-1 done), version strings synchronized, CI thresholds aligned at 60%.
+2. **Network config (NET-1):** Implement `nb_eth_mtu` collection from `vms/1/network_settings/` for PDF and JSON output — included in v1.5.0.
+3. **Advanced Ops hardening (AO-15):** Complete cross-tenant vperfsanity cleanup, unified profile management, SSH adapter stability, UI refinements.
+4. **Dynamic log levels and state persistence (AO-19):** Complete three-tier log level selector, persistent operation log storage, full window state persistence.
+5. **Configuration template refresh:** Update `config/config.yaml.template` to reflect all new settings added since last update.
+6. **Final QA pass:** Run full test suite, lint, format, type checks. Merge feature branch to develop, then to main, tag v1.5.0.
+7. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
+8. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release. Currently at 60%+.
+9. Before each release: update this file (status, Last updated, move completed items to Done).
+10. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+
+---
+
+## Planned — Port Mapper Integration (low priority)
+
+*Source: Review of Jeff's Port Mapper (pm.py v5.6) — design-time switch port planning tool.*
+
+| ID    | Item | Priority | Status  | Notes |
+|-------|------|----------|---------|-------|
+| PMI-1 | **Extract switch model metadata:** Extract `SWITCH_LAYOUTS` dictionary (11 switch models: SN3700, SN4600, SN5400, SN5600, Arista 7050DX4/7060DX5/7060X6, Cisco 9332D/9364D/9364E) into shared `src/switch_models.py` reference. Enriches rack diagrams, port mapping reports, and health checks with port counts, native speeds, and vendor names. | Low | Planned | Low effort; immediate value for `rack_diagram.py` and `health_checker.py` model awareness |
+| PMI-2 | **Planned-vs-actual port validation health check:** Compare planned port assignments (from Port Mapper output or saved JSON) against actual MAC-to-port mapping collected by `ExternalPortMapper`. Detect wrong port assignments, missing connections, cross-cabled nodes, and reserved ports in use. New Tier 3 health check. | Low | Planned | Requires defining import format for planned port maps; high diagnostic value |
+| PMI-3 | **Switch face-plate diagram in reports:** Port the `PortDrawer` class and switch face-plate PNG overlays into the PDF report's Switch Port Mapping section. Color-coded visual port diagrams supplement existing table-based data. | Low | Planned | Medium effort; depends on PMI-1 for model metadata; visually impactful for reports |
 
 ---
 

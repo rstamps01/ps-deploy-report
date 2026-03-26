@@ -485,12 +485,8 @@ class TestCorrelationEngine:
 
     def test_correlate_no_findings(self, checker_with_handler):
         results = [
-            HealthCheckResult(
-                check_name="CNode Status", category="api", status="pass", message="All CNodes ACTIVE"
-            ),
-            HealthCheckResult(
-                check_name="DNode Status", category="api", status="pass", message="All DNodes ACTIVE"
-            ),
+            HealthCheckResult(check_name="CNode Status", category="api", status="pass", message="All CNodes ACTIVE"),
+            HealthCheckResult(check_name="DNode Status", category="api", status="pass", message="All DNodes ACTIVE"),
         ]
         correlations = checker_with_handler._correlate_findings(results)
         assert correlations == {}
@@ -578,11 +574,7 @@ class TestSSHTier3Checks:
 
     @patch("health_checker.run_ssh_command")
     def test_mlag_status_pass(self, mock_ssh, switch_checker):
-        mlag_output = (
-            "peer-alive          : true\n"
-            "backup-active       : true\n"
-            "mlag-id             : 1\n"
-        )
+        mlag_output = "peer-alive          : true\n" "backup-active       : true\n" "mlag-id             : 1\n"
         mock_ssh.return_value = (0, mlag_output, "")
         result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
         assert result.status == "pass"
@@ -590,10 +582,7 @@ class TestSSHTier3Checks:
 
     @patch("health_checker.run_ssh_command")
     def test_mlag_status_fail(self, mock_ssh, switch_checker):
-        mlag_output = (
-            "peer-alive          : false\n"
-            "backup-active       : false\n"
-        )
+        mlag_output = "peer-alive          : false\n" "backup-active       : false\n"
         mock_ssh.return_value = (0, mlag_output, "")
         result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
         assert result.status == "fail"
@@ -615,3 +604,427 @@ class TestSSHTier3Checks:
         checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=None)
         results = checker.run_switch_ssh_checks()
         assert results == []
+
+
+# ===================================================================
+# WS-B: TestResolveIPs
+# ===================================================================
+
+
+class TestResolveIPs:
+    def test_resolve_cnode_ip_from_config(self, mock_api_handler):
+        hc = HealthChecker(
+            api_handler=mock_api_handler,
+            ssh_config={"cnode_ip": "192.168.1.50", "username": "vastdata", "password": "pass"},
+        )
+        assert hc._resolve_cnode_ip() == "192.168.1.50"
+        mock_api_handler._make_api_request.assert_not_called()
+
+    def test_resolve_cnode_ip_from_api(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [{"mgmt_ip": "10.0.0.1"}]
+        hc = HealthChecker(
+            api_handler=mock_api_handler,
+            ssh_config={"username": "vastdata", "password": "pass"},
+        )
+        assert hc._resolve_cnode_ip() == "10.0.0.1"
+
+    def test_resolve_cnode_ip_api_error(self, mock_api_handler):
+        mock_api_handler._make_api_request.side_effect = RuntimeError("API down")
+        hc = HealthChecker(
+            api_handler=mock_api_handler,
+            ssh_config={"username": "vastdata", "password": "pass"},
+        )
+        assert hc._resolve_cnode_ip() is None
+
+    def test_resolve_switch_ips_from_config(self, mock_api_handler):
+        hc = HealthChecker(
+            api_handler=mock_api_handler,
+            switch_ssh_config={"switch_ips": ["10.0.0.20", "10.0.0.21"], "username": "cumulus", "password": "pass"},
+        )
+        assert hc._resolve_switch_ips() == ["10.0.0.20", "10.0.0.21"]
+
+    def test_resolve_switch_ips_api_fallback(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [{"mgmt_ip": "10.0.0.10"}]
+        hc = HealthChecker(
+            api_handler=mock_api_handler,
+            switch_ssh_config={"username": "cumulus", "password": "pass"},
+        )
+        assert hc._resolve_switch_ips() == ["10.0.0.10"]
+
+
+# ===================================================================
+# WS-B: TestAPICheckBranches
+# ===================================================================
+
+
+class TestAPICheckBranches:
+    def _make_hc(self, mock_api, cluster_dict):
+        hc = HealthChecker(
+            api_handler=mock_api,
+            ssh_config={"cnode_ip": "10.0.0.1", "username": "vastdata", "password": "pass"},
+        )
+        hc._cluster_cache = cluster_dict
+        return hc
+
+    def test_check_replication_no_dr(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"dr_enabled": False, "name": "c"})
+        r = hc._check_replication()
+        assert r.status == "pass"
+        assert "not enabled" in r.message.lower()
+
+    def test_check_replication_dr_no_policies(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = []
+        hc = self._make_hc(mock_api_handler, {"dr_enabled": True, "name": "c"})
+        r = hc._check_replication()
+        assert r.status == "warning"
+        assert "no protection policies" in r.message.lower()
+
+    def test_check_replication_dr_unhealthy(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [{"name": "p1", "status": "DEGRADED"}]
+        hc = self._make_hc(mock_api_handler, {"dr_enabled": True, "name": "c"})
+        r = hc._check_replication()
+        assert r.status == "warning"
+        assert "not healthy" in r.message.lower()
+
+    def test_check_snapshots_none(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = None
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_snapshots()
+        assert r.status == "skipped"
+
+    def test_check_snapshots_failed(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [{"name": "snap-a", "status": "failed"}]
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_snapshots()
+        assert r.status == "warning"
+        assert "failed" in r.message.lower()
+
+    def test_check_snapshots_404(self, mock_api_handler):
+        mock_api_handler._make_api_request.side_effect = Exception("404 page not found")
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_snapshots()
+        assert r.status == "skipped"
+
+    def test_check_quotas_none(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = None
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_quotas()
+        assert r.status == "skipped"
+
+    def test_check_quotas_blocked(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [{"name": "u1", "is_blocked": True}]
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_quotas()
+        assert r.status == "warning"
+        assert "blocked" in r.message.lower()
+
+    def test_check_call_home_enabled(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"call_home_enabled": True, "name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "pass"
+        assert "enabled" in r.message.lower()
+
+    def test_check_call_home_disabled(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"call_home_enabled": False, "name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "warning"
+        assert "not enabled" in r.message.lower()
+
+    def test_check_switches_registered_empty(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = []
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_switches_registered()
+        assert r.status == "warning"
+        assert "no switches" in r.message.lower()
+
+    def test_check_device_health_no_metrics(self, mock_api_handler):
+        mock_api_handler.get_prometheus_metrics.return_value = None
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_device_health()
+        assert r.status == "skipped"
+
+
+# ===================================================================
+# WS-B: TestSSHNodeChecks
+# ===================================================================
+
+
+class TestSSHNodeChecks:
+    @pytest.fixture
+    def ssh_hc(self, mock_api_handler):
+        return HealthChecker(
+            api_handler=mock_api_handler,
+            ssh_config={"cnode_ip": "10.0.0.1", "username": "vastdata", "password": "pass"},
+        )
+
+    @patch("health_checker.run_ssh_command")
+    def test_panic_logs_found(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (0, "PANIC in subsystem", "")
+        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
+        assert r.status == "fail"
+
+    @patch("health_checker.run_ssh_command")
+    def test_panic_logs_clean(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (0, "", "")
+        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
+        assert r.status == "pass"
+
+    @patch("health_checker.run_ssh_command")
+    def test_panic_logs_ssh_error(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (1, "", "connection refused")
+        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
+        assert r.status == "error"
+
+    @patch("health_checker.run_ssh_command")
+    def test_memory_normal(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (
+            0,
+            "Mem:          16000        8000        8000         500        4000        7000",
+            "",
+        )
+        r = ssh_hc._check_memory_usage("10.0.0.1", "vastdata", "pass")
+        assert r.status == "pass"
+
+    @patch("health_checker.run_ssh_command")
+    def test_memory_high_is_expected(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (
+            0,
+            "Mem:          16000       15000        1000         500        4000        1000",
+            "",
+        )
+        r = ssh_hc._check_memory_usage("10.0.0.1", "vastdata", "pass")
+        assert r.status == "pass"
+        assert "expected" in r.message.lower()
+
+    @patch("health_checker.run_ssh_command")
+    def test_disk_space_normal(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (0, "/dev/sda1   100G   40G   60G  40% /\n/dev/sda2   100G   10G   90G  10% /var", "")
+        r = ssh_hc._check_disk_space("10.0.0.1", "vastdata", "pass")
+        assert r.status == "pass"
+
+    @patch("health_checker.run_ssh_command")
+    def test_disk_space_high(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (0, "/dev/sda1   100G   50G   50G  50% /\n/dev/sda2   100G   95G    5G  95% /var", "")
+        r = ssh_hc._check_disk_space("10.0.0.1", "vastdata", "pass")
+        assert r.status == "warning"
+
+    @patch("health_checker.run_ssh_command")
+    def test_network_interfaces_down(self, mock_ssh, ssh_hc):
+        mock_ssh.return_value = (0, "2: eth0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN", "")
+        r = ssh_hc._check_network_interfaces("10.0.0.1", "vastdata", "pass")
+        assert r.status == "warning"
+
+
+# ===================================================================
+# WS-C: TestSwitchCheckDispatch
+# ===================================================================
+
+
+class TestSwitchCheckDispatch:
+    def test_switch_checks_no_ips(self, mock_api_handler):
+        switch_config = {"username": "cumulus", "password": "secret"}
+        mock_api_handler._make_api_request.return_value = []
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        assert checker.run_switch_ssh_checks() == []
+
+    @patch("health_checker.run_ssh_command")
+    def test_switch_checks_with_ips(self, mock_ssh, mock_api_handler):
+        switch_config = {"username": "cumulus", "password": "secret", "switch_ips": ["10.0.0.10"]}
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+
+        mlag_ok = "peer-alive: Yes\nbackup-active: Yes\n"
+        ntp_ok = (
+            "     remote           refid      st t when poll reach   delay   offset  jitter\n"
+            "==============================================================================\n"
+            "*ntp.server.com  17.253.34.123    2 u  532 1024  377   12.345   -0.678   1.234\n"
+        )
+        cfg_ok = "interface swp1\n"
+
+        mock_ssh.side_effect = [
+            (0, mlag_ok, ""),
+            (0, ntp_ok, ""),
+            (0, cfg_ok, ""),
+        ]
+
+        results = checker.run_switch_ssh_checks()
+        assert len(results) == 3
+        assert results[0].status == "pass"
+        assert results[1].status == "pass"
+        assert results[2].status == "pass"
+
+    def test_switch_checks_cancelled(self, mock_api_handler):
+        switch_config = {"username": "cumulus", "password": "secret", "switch_ips": ["10.0.0.10"]}
+        cancel_event = threading.Event()
+        cancel_event.set()
+        checker = HealthChecker(
+            api_handler=mock_api_handler,
+            switch_ssh_config=switch_config,
+            cancel_event=cancel_event,
+        )
+        with pytest.raises(CancelledError):
+            checker.run_switch_ssh_checks()
+
+
+# ===================================================================
+# WS-C: TestSwitchCheckMethods
+# ===================================================================
+
+
+class TestSwitchCheckMethods:
+    @pytest.fixture
+    def sw_checker(self, mock_api_handler):
+        return HealthChecker(
+            api_handler=mock_api_handler,
+            switch_ssh_config={"username": "cumulus", "password": "secret", "switch_ips": ["10.0.1.1"]},
+        )
+
+    @patch("health_checker.run_ssh_command")
+    def test_mlag_healthy(self, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "peer-alive: Yes\nbackup-active: Yes\n", "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        assert r.status == "pass"
+        assert "MLAG healthy" in r.message
+
+    @patch("health_checker.run_ssh_command")
+    def test_mlag_unhealthy(self, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "peer-alive: No\nbackup-active: Yes\n", "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        assert r.status == "fail"
+
+    @patch("health_checker.run_ssh_command")
+    def test_mlag_not_available(self, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "MLAG command not available", "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        assert r.status == "skipped"
+
+    @patch("health_checker.run_ssh_command")
+    def test_switch_ntp_peers(self, mock_ssh, sw_checker):
+        ntp_output = (
+            "     remote           refid      st t when poll reach   delay   offset  jitter\n"
+            "==============================================================================\n"
+            "*ntp.server.com  17.253.34.123    2 u  532 1024  377   12.345   -0.678   1.234\n"
+        )
+        mock_ssh.return_value = (0, ntp_output, "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "cumulus", "secret")
+        assert r.status == "pass"
+        assert "NTP peers found" in r.message
+
+
+# ===================================================================
+# WS-C: TestRemediationEdgeCases
+# ===================================================================
+
+
+class TestRemediationEdgeCases:
+    def test_format_finding_with_alarms(self, mock_api_handler, tmp_path):
+        checker = HealthChecker(api_handler=mock_api_handler)
+        results = [
+            HealthCheckResult(
+                check_name="Active Alarms",
+                category="api",
+                status="fail",
+                message="Unresolved alarms",
+                details={
+                    "alarms": [
+                        {"severity": "CRITICAL", "description": "disk failure", "object_name": "obj", "timestamp": "t"},
+                    ],
+                },
+                timestamp="2026-03-03T00:00:00Z",
+            ),
+        ]
+        report = HealthCheckReport(
+            cluster_ip="10.0.0.1",
+            cluster_name="test-cluster",
+            cluster_version="5.3.0",
+            timestamp="2026-03-03T00:00:00Z",
+            results=results,
+            summary={"pass": 0, "fail": 1, "warning": 0, "skipped": 0, "error": 0},
+            manual_checklist=[],
+            tiers_run=[1],
+        )
+        filepath = checker.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "CRITICAL" in text
+        assert "disk failure" in text
+
+    def test_format_finding_unknown_check(self, mock_api_handler, tmp_path):
+        checker = HealthChecker(api_handler=mock_api_handler)
+        results = [
+            HealthCheckResult(
+                check_name="Totally Unknown Synthetic Check",
+                category="api",
+                status="fail",
+                message="Something failed",
+                timestamp="2026-03-03T00:00:00Z",
+            ),
+        ]
+        report = HealthCheckReport(
+            cluster_ip="10.0.0.1",
+            cluster_name="test-cluster",
+            cluster_version="5.3.0",
+            timestamp="2026-03-03T00:00:00Z",
+            results=results,
+            summary={"pass": 0, "fail": 1, "warning": 0, "skipped": 0, "error": 0},
+            manual_checklist=[],
+            tiers_run=[1],
+        )
+        filepath = checker.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "UNKNOWN" in text
+
+    def test_correlate_cnode_dnode_down(self, mock_api_handler):
+        checker = HealthChecker(api_handler=mock_api_handler)
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE",
+                details={"inactive": ["cnode-2"]},
+            ),
+            HealthCheckResult(
+                check_name="DNode Status",
+                category="api",
+                status="fail",
+                message="1 DNode INACTIVE",
+                details={"inactive": ["dnode-3"]},
+            ),
+        ]
+        correlations = checker._correlate_findings(results)
+        assert "CNode Status" in correlations
+        assert "DNode Status" in correlations
+        assert any("chassis" in c.lower() for c in correlations["CNode Status"])
+
+    def test_remediation_report_all_pass(self, mock_api_handler, tmp_path):
+        checker = HealthChecker(api_handler=mock_api_handler)
+        results = [
+            HealthCheckResult(
+                check_name="Cluster RAID Health",
+                category="api",
+                status="pass",
+                message="All RAID states HEALTHY",
+                timestamp="2026-03-03T00:00:00Z",
+            ),
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="pass",
+                message="All CNodes ACTIVE",
+                timestamp="2026-03-03T00:00:00Z",
+            ),
+        ]
+        report = HealthCheckReport(
+            cluster_ip="10.0.0.1",
+            cluster_name="test-cluster",
+            cluster_version="5.3.0",
+            timestamp="2026-03-03T00:00:00Z",
+            results=results,
+            summary={"pass": 2, "fail": 0, "warning": 0, "skipped": 0, "error": 0},
+            manual_checklist=[],
+            tiers_run=[1],
+        )
+        filepath = checker.generate_remediation_report(report, output_dir=str(tmp_path))
+        text = Path(filepath).read_text()
+        assert "CRITICAL FINDINGS" not in text
+        assert "PASSING CHECKS" in text
+        assert "2 PASS" in text

@@ -118,7 +118,7 @@ class TestGenerateRoutes(unittest.TestCase):
 class TestConfigRoutes(unittest.TestCase):
 
     def setUp(self):
-        self.app = create_flask_app()
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
         self.client = self.app.test_client()
         self.tmpdir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmpdir, "config.yaml")
@@ -609,7 +609,7 @@ class TestSSEStream(unittest.TestCase):
 class TestHealthRoutes(unittest.TestCase):
 
     def setUp(self):
-        self.app = create_flask_app()
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
         self.client = self.app.test_client()
 
     def test_health_page_loads(self):
@@ -922,6 +922,68 @@ class TestAdvancedOpsToolRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
         body = json.loads(resp.data)
         self.assertIn("error", body)
+
+
+class TestStateSnapshotRoute(unittest.TestCase):
+    """Tests for /advanced-ops/state-snapshot endpoint."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_state_snapshot_returns_json(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr._output_buffer = []
+        mock_mgr.is_running.return_value = False
+        mock_mgr.current_workflow_id = None
+        mock_mgr.get_state.return_value = None
+        mock_get_mgr.return_value = mock_mgr
+        self.app.config["ONESHOT_RUNNING"] = False
+        self.app.config["ONESHOT_RUNNER"] = None
+        self.app.config["ONESHOT_RESULT"] = None
+        resp = self.client.get("/advanced-ops/state-snapshot")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("oneshot", body)
+        self.assertIn("workflow", body)
+        self.assertIn("output_count", body)
+        self.assertFalse(body["oneshot"]["running"])
+        self.assertFalse(body["workflow"]["running"])
+
+
+class TestLogCapacityRoutes(unittest.TestCase):
+    """Tests for /advanced-ops/logs/* endpoints."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    @patch("utils.ops_log_manager.OpsLogManager")
+    def test_capacity_returns_stats(self, mock_cls):
+        mock_inst = MagicMock()
+        mock_inst.check_capacity.return_value = {
+            "total_bytes": 500,
+            "file_count": 2,
+            "max_bytes": 1073741824,
+            "over_limit": False,
+            "usage_percent": 0.0,
+        }
+        mock_cls.return_value = mock_inst
+        resp = self.client.get("/advanced-ops/logs/capacity")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["over_limit"])
+
+    @patch("utils.ops_log_manager.OpsLogManager")
+    def test_purge_returns_result(self, mock_cls):
+        mock_inst = MagicMock()
+        mock_inst.purge_oldest.return_value = {"purged": 1, "freed_bytes": 1024}
+        mock_cls.return_value = mock_inst
+        resp = self.client.post("/advanced-ops/logs/purge")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["purged"], 1)
 
 
 if __name__ == "__main__":

@@ -947,6 +947,13 @@ class OneShotRunner:
 
             processed["cluster_ip"] = self._credentials.get("cluster_ip", "")
 
+            if self._credentials.get("switch_placement") == "manual" and self._credentials.get("manual_placements"):
+                processed["manual_switch_placements"] = self._credentials["manual_placements"]
+                self._emit(
+                    "info",
+                    f"Using manual switch placement ({len(self._credentials['manual_placements'])} assignments)",
+                )
+
             json_path = output_dir / f"vast_data_{cluster_name}_{timestamp}.json"
             data_extractor.save_processed_data(processed, str(json_path))
             self._emit("info", f"JSON saved: {json_path.name}")

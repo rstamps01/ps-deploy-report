@@ -1976,19 +1976,65 @@ class VastDataExtractor:
                         status="complete",
                     )
                 )
-                has_ssh_results = any(
-                    r.get("category") in ("node_ssh", "switch_ssh", "performance")
-                    for r in health_check_data.get("results", [])
+
+            # Post Deployment Activities — always included (next steps checklist)
+            next_steps = [
+                {
+                    "item": "Configure Call Home w/ Cloud Integration",
+                    "description": (
+                        "Configure cloud integration to enable remote monitoring and proactive support. "
+                        "Ensure Cloud VMS fields match Salesforce records exactly. "
+                        "Outbound traffic requires *.cloud.vastdata.com:443."
+                    ),
+                },
+                {
+                    "item": "Create VIP",
+                    "description": (
+                        "Create Virtual IP Pool(s) via VMS GUI or CLI (vcli > vippool create). "
+                        "Verify VIPs are setup and listening using showmount -e <VIP>."
+                    ),
+                },
+                {
+                    "item": "Test Fail-over Behavior",
+                    "description": (
+                        "Identify the VMS host node and intentionally reboot it. "
+                        "Verify VMS migrates and cluster stays healthy. Repeat for the leader node."
+                    ),
+                },
+                {
+                    "item": "Confirm VIP Movement and ARP Updates",
+                    "description": (
+                        "After MLAG is confirmed, validate that gratuitous ARP updates propagate "
+                        "correctly when VIPs move between CNodes. Mount from a client and test "
+                        "during a controlled fail-over."
+                    ),
+                },
+                {
+                    "item": "Activate License",
+                    "description": (
+                        "Locate the PSNT asset record in Salesforce and click 'Activate Cluster'. "
+                        "Configure the license key in VMS via GUI or CLI. "
+                        "License start date is the last day of cluster install."
+                    ),
+                },
+                {
+                    "item": "Change Default Passwords",
+                    "description": (
+                        "Change all default passwords: Linux root, vastdata, and IPMI admin via "
+                        "VCLI (cluster set-password). Change VMS admin, support, and root passwords "
+                        "via VMS UI. Change switch admin and monitor passwords."
+                    ),
+                },
+            ]
+            report_data["sections"]["post_deployment_activities"] = asdict(
+                ReportSection(
+                    name="post_deployment_activities",
+                    title="Post Deployment Activities",
+                    data={"next_steps": next_steps},
+                    completeness=100.0,
+                    status="complete",
                 )
-                report_data["sections"]["post_deployment_validation"] = asdict(
-                    ReportSection(
-                        name="post_deployment_validation",
-                        title="Post Deployment Validation",
-                        data=health_check_data,
-                        completeness=100.0 if has_ssh_results else 50.0,
-                        status="complete",
-                    )
-                )
+            )
 
             self.logger.info(f"Data extraction completed (overall completeness: {overall_completeness:.1%})")
             return report_data

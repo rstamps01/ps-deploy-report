@@ -86,7 +86,7 @@ jobs:
             --ignore=tests/test_ui.py \
             --cov=src \
             --cov-report=xml \
-            --cov-fail-under=47
+            --cov-fail-under=60
 
   # -------------------------------------------------------------------
   # Build platform-specific bundles from the tagged release code (checkout at tag).

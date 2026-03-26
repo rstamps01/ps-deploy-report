@@ -363,12 +363,20 @@ class ExternalPortMapper:
                 # For Onyx switches, use interactive SSH (they require PTY)
                 if expected_os == "onyx":
                     returncode, stdout, stderr = run_interactive_ssh(
-                        switch_ip, user, password, test_cmd, timeout=15,
+                        switch_ip,
+                        user,
+                        password,
+                        test_cmd,
+                        timeout=15,
                         **self._jump_kwargs(),
                     )
                 else:
                     returncode, stdout, stderr = run_ssh_command(
-                        switch_ip, user, password, test_cmd, timeout=15,
+                        switch_ip,
+                        user,
+                        password,
+                        test_cmd,
+                        timeout=15,
                         **self._jump_kwargs(),
                     )
 
@@ -386,13 +394,10 @@ class ExternalPortMapper:
                         "network is unreachable",
                     )
                 ):
-                    connectivity_error = (
-                        f"Cannot reach switch {switch_ip} — network connectivity issue. "
-                        + (
-                            "Enable 'Proxy through CNode' to tunnel SSH via the CNode."
-                            if not self.proxy_jump
-                            else "Check that the CNode can reach this switch IP."
-                        )
+                    connectivity_error = f"Cannot reach switch {switch_ip} — network connectivity issue. " + (
+                        "Enable 'Proxy through CNode' to tunnel SSH via the CNode."
+                        if not self.proxy_jump
+                        else "Check that the CNode can reach this switch IP."
                     )
                     self.vlog.log_error(connectivity_error)
                     raise Exception(connectivity_error)
@@ -485,10 +490,15 @@ class ExternalPortMapper:
             - stderr: Error output (if any)
         """
         if self.proxy_jump:
-            return run_interactive_ssh(
-                switch_ip, username, password, command, timeout=timeout,
+            result = run_interactive_ssh(
+                switch_ip,
+                username,
+                password,
+                command,
+                timeout=timeout,
                 **self._jump_kwargs(),
             )
+            return (int(result[0]), str(result[1]), str(result[2]))
 
         try:
             import pexpect
@@ -1237,7 +1247,11 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {mac_cmd}", self.vlog.BLUE)
                     result_returncode, result_stdout, result_stderr = run_ssh_command(
-                        switch_ip, user, password, mac_cmd, timeout=30,
+                        switch_ip,
+                        user,
+                        password,
+                        mac_cmd,
+                        timeout=30,
                         **self._jump_kwargs(),
                     )
                     self.vlog.log(
@@ -1273,7 +1287,11 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {vlan69_cmd_str}", self.vlog.BLUE)
                     vlan69_returncode, vlan69_stdout, vlan69_stderr = run_ssh_command(
-                        switch_ip, user, password, vlan69_cmd_str, timeout=30,
+                        switch_ip,
+                        user,
+                        password,
+                        vlan69_cmd_str,
+                        timeout=30,
                         **self._jump_kwargs(),
                     )
                     self.vlog.log(
@@ -1470,7 +1488,11 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {lldp_cmd}", self.vlog.BLUE)
                     returncode, stdout, stderr = run_ssh_command(
-                        switch_ip, user, password, lldp_cmd, timeout=30,
+                        switch_ip,
+                        user,
+                        password,
+                        lldp_cmd,
+                        timeout=30,
                         **self._jump_kwargs(),
                     )
                     self.vlog.log(

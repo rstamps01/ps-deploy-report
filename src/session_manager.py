@@ -297,7 +297,7 @@ chmod +x {script_file}"""
         rc, _, _ = run_ssh_command(host, username, password, kill_cmd, timeout=10)
         if session_name in self._active_sessions:
             del self._active_sessions[session_name]
-        return rc == 0
+        return bool(rc == 0)
 
     def cleanup_session(self, host: str, username: str, password: str, session_name: str, log_file: str) -> bool:
         """Clean up a session and its log file."""
