@@ -13,7 +13,7 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, cast
+from typing import Any, Callable, Dict, Optional, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
@@ -35,7 +35,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.4.7"
+APP_VERSION = "1.5.0"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -177,6 +177,13 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["HEALTH_JOB_LOCK"] = threading.Lock()
     app.config["HEALTH_JOB_CANCEL"] = threading.Event()
 
+    # One-shot background job state (independent from workflow and report jobs)
+    app.config["ONESHOT_RUNNING"] = False
+    app.config["ONESHOT_RESULT"] = None
+    app.config["ONESHOT_LOCK"] = threading.Lock()
+    app.config["ONESHOT_CANCEL"] = threading.Event()
+    app.config["ONESHOT_RUNNER"] = None
+
     # Developer Mode - enables Advanced Operations page
     # Set via --dev-mode flag or VAST_DEV_MODE environment variable
     app.config["DEVELOPER_MODE"] = (
@@ -201,16 +208,16 @@ def _register_routes(app: Flask) -> None:
     def inject_developer_mode():
         return {"developer_mode": app.config.get("DEVELOPER_MODE", False)}
 
-    # -- Route guard for Advanced Operations (Developer Mode required) ------
+    # -- Route guard for Developer Mode pages --------------------------------
     @app.before_request
-    def check_advanced_ops_access():
-        if request.path.startswith("/advanced-ops"):
+    def check_developer_mode_access():
+        if request.path in ("/advanced-ops", "/health", "/config"):
             if not app.config.get("DEVELOPER_MODE", False):
                 return (
                     jsonify(
                         {
                             "error": "Developer Mode required",
-                            "message": "Start the application with --dev-mode flag to access Advanced Operations",
+                            "message": "Start the application with --dev-mode flag to access this page",
                         }
                     ),
                     403,
@@ -264,6 +271,7 @@ def _register_routes(app: Flask) -> None:
             "node_password": form.get("node_password", ""),
             "verbose": form.get("verbose") == "on",
             "switch_placement": form.get("switch_placement", "auto"),
+            "proxy_jump": form.get("proxy_jump") == "on",
         }
 
         if params["switch_placement"] == "manual":
@@ -392,6 +400,17 @@ def _register_routes(app: Flask) -> None:
         if result and result.get("success"):
             return jsonify(result.get("report", {}))
         return jsonify({"error": "No results available"}), 404
+
+    # -- Reporter (standard UI) -----------------------------------------------
+
+    @app.route("/reporter")
+    def reporter_page():
+        """Reporter page — future replacement for the Generate page.
+
+        Uses the same Advanced Ops backend infrastructure but is accessible
+        in the standard (non-developer) UI.
+        """
+        return render_template("reporter.html", version=APP_VERSION)
 
     # -- Advanced Operations (Developer Mode) --------------------------------
 
@@ -551,7 +570,7 @@ def _register_routes(app: Flask) -> None:
     def advanced_ops_tools():
         """Get information about all deployment tools."""
         from tool_manager import ToolManager
-        
+
         manager = ToolManager()
         tools = manager.get_all_tools_info()
         return jsonify({"tools": tools})
@@ -561,10 +580,10 @@ def _register_routes(app: Flask) -> None:
         """Update all deployment tools in local cache."""
         from tool_manager import ToolManager
         from advanced_ops import get_advanced_ops_manager
-        
+
         ops_manager = get_advanced_ops_manager()
         tool_manager = ToolManager(output_callback=ops_manager._emit_output)
-        
+
         results = tool_manager.update_all_tools()
         return jsonify(results)
 
@@ -573,19 +592,19 @@ def _register_routes(app: Flask) -> None:
         """Deploy tools to CNode."""
         from tool_manager import ToolManager
         from advanced_ops import get_advanced_ops_manager
-        
+
         data = request.get_json(silent=True) or {}
         host = data.get("host")
         username = data.get("username", "vastdata")
         password = data.get("password")
         tools = data.get("tools")  # Optional list of specific tools
-        
+
         if not host or not password:
             return jsonify({"success": False, "message": "Missing host or password"}), 400
-        
+
         ops_manager = get_advanced_ops_manager()
         tool_manager = ToolManager(output_callback=ops_manager._emit_output)
-        
+
         results = tool_manager.deploy_all_tools_to_cnode(host, username, password, tools)
         return jsonify(results)
 
@@ -593,38 +612,41 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/advanced-ops/bundle/collect", methods=["POST"])
     def advanced_ops_bundle_collect():
-        """Collect results for bundling."""
+        """Collect results for bundling, scoped to the selected cluster."""
         from result_bundler import get_result_bundler
 
         data = request.get_json(silent=True) or {}
+        cluster_ip = data.get("cluster_ip", "").strip() or None
         bundler = get_result_bundler()
         bundler.set_metadata(
             cluster_name=data.get("cluster_name", "Unknown"),
-            cluster_ip=data.get("cluster_ip", "Unknown"),
+            cluster_ip=cluster_ip or "Unknown",
             cluster_version=data.get("cluster_version", "Unknown"),
         )
-        collected = bundler.collect_results()
+        collected = bundler.collect_results(cluster_ip=cluster_ip)
         return jsonify(
             {
                 "status": "collected",
                 "files": {k: str(v) for k, v in collected.items()},
                 "count": len(collected),
+                "cluster_ip": cluster_ip,
             }
         )
 
     @app.route("/advanced-ops/bundle/create", methods=["POST"])
     def advanced_ops_bundle_create():
-        """Create a downloadable bundle."""
+        """Create a downloadable bundle scoped to the selected cluster."""
         from result_bundler import get_result_bundler
 
         data = request.get_json(silent=True) or {}
+        cluster_ip = data.get("cluster_ip", "").strip() or None
         bundler = get_result_bundler()
         bundler.set_metadata(
             cluster_name=data.get("cluster_name", "Unknown"),
-            cluster_ip=data.get("cluster_ip", "Unknown"),
+            cluster_ip=cluster_ip or "Unknown",
             cluster_version=data.get("cluster_version", "Unknown"),
         )
-        bundler.collect_results()
+        bundler.collect_results(cluster_ip=cluster_ip)
         try:
             bundle_path = bundler.create_bundle(data.get("bundle_name"))
             return jsonify(
@@ -641,10 +663,12 @@ def _register_routes(app: Flask) -> None:
     @app.route("/advanced-ops/bundle/download/<path:filename>")
     def advanced_ops_bundle_download(filename: str):
         """Download a bundle file."""
-        from pathlib import Path
+        from utils import get_data_dir
 
-        bundle_dir = Path("output/bundles")
-        file_path = bundle_dir / filename
+        bundle_dir = get_data_dir() / "output" / "bundles"
+        file_path = (bundle_dir / filename).resolve()
+        if not str(file_path).startswith(str(bundle_dir.resolve())):
+            return jsonify({"error": "Invalid path"}), 400
         if not file_path.exists() or not file_path.is_file():
             return jsonify({"error": "Bundle not found"}), 404
         return send_file(
@@ -663,7 +687,249 @@ def _register_routes(app: Flask) -> None:
         bundles = bundler.list_bundles()
         return jsonify({"bundles": bundles})
 
-        # -- Configuration ------------------------------------------------------
+    # -- One-Shot Mode -------------------------------------------------------
+
+    @app.route("/advanced-ops/oneshot/validate", methods=["POST"])
+    def advanced_ops_oneshot_validate():
+        """Run pre-validation checks in a background thread."""
+        from oneshot_runner import OneShotRunner
+
+        with app.config["ONESHOT_LOCK"]:
+            if app.config["ONESHOT_RUNNING"]:
+                return jsonify({"error": "One-shot operation already running"}), 409
+
+        data = request.get_json(silent=True) or {}
+        selected_ops = data.get("selected_ops", [])
+        include_health = data.get("include_health", True)
+        credentials = _extract_oneshot_credentials(data)
+
+        app.config["ONESHOT_CANCEL"].clear()
+        runner = OneShotRunner(
+            selected_ops=selected_ops,
+            credentials=credentials,
+            include_health=include_health,
+            cancel_event=app.config["ONESHOT_CANCEL"],
+            output_callback=_get_oneshot_output_callback(),
+        )
+
+        with app.config["ONESHOT_LOCK"]:
+            app.config["ONESHOT_RUNNING"] = True
+            app.config["ONESHOT_RESULT"] = None
+            app.config["ONESHOT_RUNNER"] = runner
+
+        def _run_validation():
+            try:
+                results = runner.run_prevalidation()
+                with app.config["ONESHOT_LOCK"]:
+                    app.config["ONESHOT_RESULT"] = {"validation": results}
+            finally:
+                with app.config["ONESHOT_LOCK"]:
+                    app.config["ONESHOT_RUNNING"] = False
+
+        thread = threading.Thread(target=_run_validation, daemon=True)
+        thread.start()
+        return jsonify({"status": "validating"})
+
+    @app.route("/advanced-ops/oneshot/start", methods=["POST"])
+    def advanced_ops_oneshot_start():
+        """Start one-shot execution in a background thread."""
+        from oneshot_runner import OneShotRunner
+
+        with app.config["ONESHOT_LOCK"]:
+            if app.config["ONESHOT_RUNNING"]:
+                return jsonify({"error": "One-shot execution already running"}), 409
+
+        data = request.get_json(silent=True) or {}
+        selected_ops = data.get("selected_ops", [])
+        include_report = data.get("include_report", False)
+        include_health = data.get("include_health", True)
+        use_default_creds = data.get("use_default_creds", False)
+        credentials = _extract_oneshot_credentials(data)
+
+        if not selected_ops:
+            return jsonify({"error": "No operations selected"}), 400
+
+        app.config["ONESHOT_CANCEL"].clear()
+        runner = OneShotRunner(
+            selected_ops=selected_ops,
+            credentials=credentials,
+            include_report=include_report,
+            include_health=include_health,
+            cancel_event=app.config["ONESHOT_CANCEL"],
+            output_callback=_get_oneshot_output_callback(),
+            config_path=app.config.get("CONFIG_PATH"),
+            use_default_creds=use_default_creds,
+        )
+
+        with app.config["ONESHOT_LOCK"]:
+            app.config["ONESHOT_RUNNING"] = True
+            app.config["ONESHOT_RESULT"] = None
+            app.config["ONESHOT_RUNNER"] = runner
+
+        def _run():
+            try:
+                result = runner.run_all()
+                with app.config["ONESHOT_LOCK"]:
+                    app.config["ONESHOT_RESULT"] = result
+            finally:
+                with app.config["ONESHOT_LOCK"]:
+                    app.config["ONESHOT_RUNNING"] = False
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        return jsonify({"status": "started", "operations": selected_ops, "include_report": include_report})
+
+    @app.route("/advanced-ops/oneshot/status")
+    def advanced_ops_oneshot_status():
+        """Get one-shot execution status."""
+        with app.config["ONESHOT_LOCK"]:
+            runner = app.config.get("ONESHOT_RUNNER")
+            running = app.config["ONESHOT_RUNNING"]
+            result = app.config.get("ONESHOT_RESULT")
+
+        state = runner.get_state() if runner else None
+        return jsonify({"running": running, "state": state, "result": result})
+
+    @app.route("/advanced-ops/oneshot/cancel", methods=["POST"])
+    def advanced_ops_oneshot_cancel():
+        """Cancel one-shot execution."""
+        with app.config["ONESHOT_LOCK"]:
+            runner = app.config.get("ONESHOT_RUNNER")
+        if runner and runner.is_running():
+            app.config["ONESHOT_CANCEL"].set()
+            return jsonify({"status": "cancelling"})
+        return jsonify({"status": "not_running"})
+
+    @app.route("/advanced-ops/state-snapshot")
+    def advanced_ops_state_snapshot():
+        """Return complete backend state for Advanced Ops page hydration."""
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        runner = app.config.get("ONESHOT_RUNNER")
+
+        oneshot_state = None
+        if runner:
+            try:
+                oneshot_state = runner.get_state()
+            except Exception:
+                pass
+
+        workflow_state = None
+        workflow_id = None
+        workflow_running = False
+        if hasattr(manager, "is_running"):
+            try:
+                workflow_running = manager.is_running()
+                workflow_id = getattr(manager, "current_workflow_id", None)
+                if hasattr(manager, "get_state"):
+                    workflow_state = manager.get_state()
+            except Exception:
+                pass
+
+        return jsonify(
+            {
+                "oneshot": {
+                    "running": app.config.get("ONESHOT_RUNNING", False),
+                    "state": oneshot_state,
+                    "result": app.config.get("ONESHOT_RESULT"),
+                },
+                "workflow": {
+                    "running": workflow_running,
+                    "workflow_id": workflow_id,
+                    "state": workflow_state,
+                },
+                "output_count": len(manager._output_buffer),
+            }
+        )
+
+    @app.route("/advanced-ops/logs/capacity")
+    def advanced_ops_logs_capacity():
+        """Get operation log storage capacity stats."""
+        from utils.ops_log_manager import OpsLogManager
+
+        manager = OpsLogManager()
+        return jsonify(manager.check_capacity())
+
+    @app.route("/advanced-ops/logs/purge", methods=["POST"])
+    def advanced_ops_logs_purge():
+        """Manually purge oldest operation logs."""
+        from utils.ops_log_manager import OpsLogManager
+
+        manager = OpsLogManager()
+        result = manager.purge_oldest()
+        return jsonify(result)
+
+    # -- Validation Results (Developer Mode) ---------------------------------
+
+    @app.route("/validation-results")
+    def validation_results_page():
+        """Validation Results page — browse operation results by cluster."""
+        profiles = _load_profiles(app.config["PROFILES_PATH"])
+        return render_template(
+            "validation_results.html",
+            version=APP_VERSION,
+            profiles=profiles,
+            output_dir=app.config["DEFAULT_OUTPUT_DIR"],
+        )
+
+    @app.route("/validation-results/api/results")
+    def validation_results_api():
+        """Return all results grouped by operation, optionally filtered."""
+        from result_scanner import ResultScanner
+
+        profiles = _load_profiles(app.config["PROFILES_PATH"])
+        cluster_ip = request.args.get("cluster_ip", "").strip() or None
+        profile_filter = request.args.get("profile", "").strip()
+
+        scanner = ResultScanner(profiles=profiles)
+
+        if profile_filter == "Unsaved":
+            saved_ips = {p.get("cluster_ip", "") for p in profiles.values() if p.get("cluster_ip")}
+            all_results = scanner.scan_all()
+            for op_key in all_results:
+                all_results[op_key] = [e for e in all_results[op_key] if e["cluster_ip"] not in saved_ips]
+            return jsonify({"operations": all_results})
+
+        results = scanner.scan_all(cluster_ip=cluster_ip)
+        return jsonify({"operations": results})
+
+    @app.route("/validation-results/api/clusters")
+    def validation_results_clusters():
+        """Return unique cluster IPs found across all result files."""
+        from result_scanner import ResultScanner
+
+        profiles = _load_profiles(app.config["PROFILES_PATH"])
+        scanner = ResultScanner(profiles=profiles)
+        return jsonify({"clusters": scanner.get_known_clusters()})
+
+    @app.route("/validation-results/api/file/<operation>/<path:filename>")
+    def validation_results_file(operation, filename):
+        """Serve or download an operation result file."""
+        from result_scanner import ResultScanner
+
+        scanner = ResultScanner()
+        resolved = scanner.resolve_file_path(operation, filename)
+        if not resolved:
+            return jsonify({"error": "File not found"}), 404
+        return send_file(resolved, as_attachment=("download" in request.args))
+
+    @app.route("/validation-results/api/file/<operation>/<path:filename>", methods=["DELETE"])
+    def validation_results_file_delete(operation, filename):
+        """Delete an operation result file."""
+        from result_scanner import ResultScanner
+
+        scanner = ResultScanner()
+        resolved = scanner.resolve_file_path(operation, filename)
+        if not resolved:
+            return jsonify({"error": "File not found"}), 404
+        try:
+            resolved.unlink()
+            return jsonify({"status": "deleted", "filename": filename})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    # -- Configuration ------------------------------------------------------
 
     @app.route("/config", methods=["GET"])
     def config_page():
@@ -728,6 +994,9 @@ def _register_routes(app: Flask) -> None:
             "vip_pool": "main",
             "switch_placement": "auto",
             "use_default_creds": True,
+            "manual_placements": [],
+            "manual_switch_ips": [],
+            "proxy_jump": True,
         }
 
         merged = {field: existing.get(field, default) for field, default in ALL_FIELDS.items()}
@@ -1026,6 +1295,37 @@ def _register_routes(app: Flask) -> None:
 
 
 # ---------------------------------------------------------------------------
+# One-shot helpers
+# ---------------------------------------------------------------------------
+
+
+def _extract_oneshot_credentials(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract credential dict from one-shot JSON request body."""
+    return {
+        "cluster_ip": data.get("cluster_ip", "").strip(),
+        "username": data.get("username", "").strip(),
+        "password": data.get("password", ""),
+        "api_token": data.get("api_token", "").strip(),
+        "node_user": data.get("node_user", "").strip(),
+        "node_password": data.get("node_password", ""),
+        "switch_user": data.get("switch_user", "").strip(),
+        "switch_password": data.get("switch_password", ""),
+        "vip_pool": data.get("vip_pool", "main").strip(),
+        "cluster_name": data.get("cluster_name", ""),
+        "cluster_version": data.get("cluster_version", ""),
+        "proxy_jump": data.get("proxy_jump", True),
+    }
+
+
+def _get_oneshot_output_callback() -> Callable[[str, str, Optional[str]], None]:
+    """Return an output callback that routes to the Advanced Ops output buffer."""
+    from advanced_ops import get_advanced_ops_manager
+
+    manager = get_advanced_ops_manager()
+    return manager._emit_output
+
+
+# ---------------------------------------------------------------------------
 # Background report generation
 # ---------------------------------------------------------------------------
 
@@ -1133,6 +1433,14 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         "username": params.get("switch_user", "cumulus"),
                         "password": switch_pw,
                     }
+                    if params.get("proxy_jump", True):
+                        ssh_config_host = ssh_config.get("host") if ssh_config else None
+                        if ssh_config_host:
+                            switch_ssh_config["proxy_jump"] = {
+                                "host": ssh_config_host,
+                                "username": params.get("node_user", "vastdata"),
+                                "password": node_pw,
+                            }
 
                     checker = HealthChecker(
                         api_handler=api_handler,
@@ -1189,6 +1497,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         cluster_name = processed_data.get("cluster_summary", {}).get("name", "unknown")
 
+        cluster_ip = params["cluster_ip"]
+        processed_data["cluster_ip"] = cluster_ip
+
         json_path = output_dir / f"vast_data_{cluster_name}_{timestamp}.json"
         data_extractor.save_processed_data(processed_data, str(json_path))
         job_logger.info("JSON saved: %s", json_path.name)
@@ -1198,6 +1509,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not report_builder.generate_pdf_report(processed_data, str(pdf_path)):
             raise RuntimeError("PDF generation failed")
         job_logger.info("PDF saved: %s", pdf_path.name)
+
+        import json as json_mod
+
+        meta = {"cluster_ip": cluster_ip, "cluster_name": cluster_name, "timestamp": timestamp}
+        meta_path = pdf_path.parent / (pdf_path.stem + ".meta.json")
+        meta_path.write_text(json_mod.dumps(meta))
 
         api_handler.close()
         job_logger.info("Report generation completed successfully")
@@ -1278,6 +1595,7 @@ def _collect_port_mapping_web(
                     switch_ips=switch_ips,
                     switch_user=params.get("switch_user", "cumulus"),
                     switch_password=params.get("switch_password", ""),
+                    proxy_jump=bool(params.get("proxy_jump", True)),
                 )
                 result = mapper.collect_port_mapping()
                 if result.get("available"):
@@ -1351,6 +1669,12 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
         switch_ssh_config = None
         if params.get("switch_user") and params.get("switch_password"):
             switch_ssh_config = {"username": params["switch_user"], "password": params["switch_password"]}
+            if ssh_config and params.get("proxy_jump", True):
+                switch_ssh_config["proxy_jump"] = {
+                    "host": params["cluster_ip"],
+                    "username": params["node_user"],
+                    "password": params["node_password"],
+                }
 
         checker = HealthChecker(
             api_handler=api_handler,

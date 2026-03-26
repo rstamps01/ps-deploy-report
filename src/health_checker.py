@@ -2939,7 +2939,7 @@ class HealthChecker:
                 )
 
             output = stdout.strip() if stdout else ""
-            high_usage_nodes = []
+            node_usage = []
 
             for line in output.split("\n"):
                 if "Mem:" in line:
@@ -2949,27 +2949,17 @@ class HealthChecker:
                             total = int(parts[1]) if parts[1].isdigit() else int(parts[2])
                             used = int(parts[2]) if parts[2].isdigit() else int(parts[3])
                             pct = (used / total) * 100 if total > 0 else 0
-                            if pct > 90:
-                                high_usage_nodes.append({"line": line, "usage_pct": round(pct, 1)})
+                            node_usage.append({"line": line, "usage_pct": round(pct, 1)})
                         except (ValueError, IndexError):
                             pass
 
-            if high_usage_nodes:
-                return HealthCheckResult(
-                    check_name="Memory Usage",
-                    category="node_ssh",
-                    status="warning",
-                    message=f"{len(high_usage_nodes)} node(s) with >90% memory usage",
-                    details={"host": host, "high_usage_nodes": high_usage_nodes, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
+            # >90% memory usage is expected and normal for VAST clusters
             return HealthCheckResult(
                 check_name="Memory Usage",
                 category="node_ssh",
                 status="pass",
-                message="Memory usage within normal limits",
-                details={"host": host, "stdout": output},
+                message="Memory usage within expected range",
+                details={"host": host, "node_usage": node_usage, "stdout": output},
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
@@ -3265,6 +3255,15 @@ class HealthChecker:
         username = self.switch_ssh_config.get("username", "cumulus")
         password = self.switch_ssh_config.get("password", "")
 
+        jump_kwargs: Dict[str, Any] = {}
+        if self.switch_ssh_config.get("proxy_jump"):
+            pj = self.switch_ssh_config["proxy_jump"]
+            jump_kwargs = {
+                "jump_host": pj.get("host"),
+                "jump_user": pj.get("username"),
+                "jump_password": pj.get("password"),
+            }
+
         checks = [
             self._check_mlag_status,
             self._check_switch_ntp,
@@ -3276,7 +3275,7 @@ class HealthChecker:
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()
                 self.logger.info("Running switch SSH check %d/%d on %s: %s", i, len(checks), switch_ip, fn.__name__)
-                result = fn(switch_ip, username, password)
+                result = fn(switch_ip, username, password, **jump_kwargs)
                 results.append(result)
                 if result.status in ("fail", "error"):
                     self.logger.warning(
@@ -3286,11 +3285,11 @@ class HealthChecker:
 
     # --- Switch SSH Check: MLAG Status ------------------------------------
 
-    def _check_mlag_status(self, host: str, username: str, password: str) -> HealthCheckResult:
+    def _check_mlag_status(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
         start = time.time()
         try:
             cmd = "nv show mlag 2>/dev/null || show mlag detail 2>/dev/null || echo 'MLAG command not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
 
             if rc != 0 and not stdout:
                 return HealthCheckResult(
@@ -3368,11 +3367,11 @@ class HealthChecker:
 
     # --- Switch SSH Check: NTP --------------------------------------------
 
-    def _check_switch_ntp(self, host: str, username: str, password: str) -> HealthCheckResult:
+    def _check_switch_ntp(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
         start = time.time()
         try:
             cmd = "ntpq -p 2>/dev/null || echo 'NTP not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
 
             output = stdout.strip() if stdout else ""
 
@@ -3424,11 +3423,11 @@ class HealthChecker:
 
     # --- Switch SSH Check: Config Backup ----------------------------------
 
-    def _check_switch_config_backup(self, host: str, username: str, password: str) -> HealthCheckResult:
+    def _check_switch_config_backup(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
         start = time.time()
         try:
             cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
+            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
 
             output = stdout.strip() if stdout else ""
             return HealthCheckResult(

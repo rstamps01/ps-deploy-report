@@ -400,6 +400,7 @@ class VastReportGenerator:
                         switch_ips=switch_ips,
                         switch_user=args.switch_user,
                         switch_password=switch_password,
+                        proxy_jump=not args.no_proxy_jump,
                     )
                     port_mapping_data = port_mapper.collect_port_mapping()
                     if port_mapping_data.get("available"):
@@ -683,7 +684,14 @@ Examples:
         help="SSH password for VAST nodes (will prompt if not provided and port mapping enabled)",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.7")
+    parser.add_argument(
+        "--no-proxy-jump",
+        action="store_true",
+        default=False,
+        help="Disable SSH proxy hop through CNode (use direct switch connections)",
+    )
+
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.0")
 
     return parser
 
