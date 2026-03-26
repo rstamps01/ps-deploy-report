@@ -256,6 +256,7 @@ class ExternalPortMapper:
         switch_ips: List[str],
         switch_user: str,
         switch_password: str,
+        proxy_jump: bool = True,
     ):
         """
         Initialize external port mapper.
@@ -270,6 +271,7 @@ class ExternalPortMapper:
             switch_ips: List of switch management IPs
             switch_user: SSH username for switches (typically 'cumulus' or 'admin')
             switch_password: SSH password for switches (typically 'Vastdata1!' or 'admin')
+            proxy_jump: Route switch SSH through the CNode as a jump host (default True)
         """
         self.cluster_ip = cluster_ip
         self.api_user = api_user
@@ -280,6 +282,7 @@ class ExternalPortMapper:
         self.switch_ips = switch_ips
         self.switch_user = switch_user
         self.switch_password = switch_password
+        self.proxy_jump = proxy_jump
         self.logger = logging.getLogger(__name__)
 
         # Initialize verbose logger
@@ -305,6 +308,16 @@ class ExternalPortMapper:
         # Detect switch OS types (Cumulus vs Onyx) and store credentials
         self.switch_os_map: dict[str, str] = {}  # {switch_ip: 'cumulus' or 'onyx'}
         self.switch_credentials: dict[str, dict[str, str]] = {}  # {switch_ip: {'user': '', 'password': ''}}
+
+    def _jump_kwargs(self) -> dict:
+        """Return jump host keyword args for SSH adapter calls when proxy_jump is enabled."""
+        if self.proxy_jump:
+            return {
+                "jump_host": self.cnode_ip,
+                "jump_user": self.node_user,
+                "jump_password": self.node_password,
+            }
+        return {}
 
     def _detect_switch_os(self, switch_ip: str) -> Tuple[str, str, str]:
         """
@@ -349,9 +362,15 @@ class ExternalPortMapper:
 
                 # For Onyx switches, use interactive SSH (they require PTY)
                 if expected_os == "onyx":
-                    returncode, stdout, stderr = run_interactive_ssh(switch_ip, user, password, test_cmd, timeout=15)
+                    returncode, stdout, stderr = run_interactive_ssh(
+                        switch_ip, user, password, test_cmd, timeout=15,
+                        **self._jump_kwargs(),
+                    )
                 else:
-                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, test_cmd, timeout=15)
+                    returncode, stdout, stderr = run_ssh_command(
+                        switch_ip, user, password, test_cmd, timeout=15,
+                        **self._jump_kwargs(),
+                    )
 
                 self.vlog.log(f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
 
@@ -429,6 +448,12 @@ class ExternalPortMapper:
             - stdout: Command output
             - stderr: Error output (if any)
         """
+        if self.proxy_jump:
+            return run_interactive_ssh(
+                switch_ip, username, password, command, timeout=timeout,
+                **self._jump_kwargs(),
+            )
+
         try:
             import pexpect
 
@@ -1176,7 +1201,8 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {mac_cmd}", self.vlog.BLUE)
                     result_returncode, result_stdout, result_stderr = run_ssh_command(
-                        switch_ip, user, password, mac_cmd, timeout=30
+                        switch_ip, user, password, mac_cmd, timeout=30,
+                        **self._jump_kwargs(),
                     )
                     self.vlog.log(
                         f"SSH result: rc={result_returncode}, stdout_len={len(result_stdout)}",
@@ -1211,7 +1237,8 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {vlan69_cmd_str}", self.vlog.BLUE)
                     vlan69_returncode, vlan69_stdout, vlan69_stderr = run_ssh_command(
-                        switch_ip, user, password, vlan69_cmd_str, timeout=30
+                        switch_ip, user, password, vlan69_cmd_str, timeout=30,
+                        **self._jump_kwargs(),
                     )
                     self.vlog.log(
                         f"VLAN 69 SSH result: rc={vlan69_returncode}, stdout_len={len(vlan69_stdout)}",
@@ -1406,7 +1433,10 @@ class ExternalPortMapper:
                 else:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {lldp_cmd}", self.vlog.BLUE)
-                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, lldp_cmd, timeout=30)
+                    returncode, stdout, stderr = run_ssh_command(
+                        switch_ip, user, password, lldp_cmd, timeout=30,
+                        **self._jump_kwargs(),
+                    )
                     self.vlog.log(
                         f"IPL/LLDP SSH result: rc={returncode}, stdout_len={len(stdout)}",
                         self.vlog.GREEN if returncode == 0 else self.vlog.RED,
