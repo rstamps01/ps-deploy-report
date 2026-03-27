@@ -236,7 +236,7 @@
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptRunReporter" checked>
                         <span class="oneshot-item-badge badge-required">Required</span>
-                        <span class="oneshot-item-name">Run Reporter</span>
+                        <span class="oneshot-item-name">Generate As-Built Report</span>
                     </label>
                     <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptRunReporterDetail">
                         <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);">Generate as-built report with current connection and placement settings</span>
@@ -369,7 +369,7 @@
                     </svg>
                     Update Tools
                 </button>
-                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatus()" title="View deployment tools status">
+                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatusOneshot()" title="View deployment tools status">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
                         <circle cx="12" cy="12" r="10"/>
                         <line x1="12" y1="16" x2="12" y2="12"/>
@@ -377,6 +377,18 @@
                     </svg>
                 </button>
             </div>
+
+            <!-- One-Shot Tools Status Panel -->
+            <div id="toolsStatusPanelOneshot" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatusOneshot()" style="padding: 2px 8px;">&times;</button>
+                </div>
+                <div id="toolsStatusContentOneshot" style="font-size: 12px;">
+                    <span style="color: #888;">Loading...</span>
+                </div>
+            </div>
+
           </div><!-- /.panel-flex-left -->
           <div class="panel-flex-right">
             <div id="oneShotProgressVast" class="vast-progress-container hidden"></div>
@@ -480,8 +492,8 @@
 .output-line { margin: 2px 0; white-space: pre-wrap; }
 .output-line .timestamp { color: #888; margin-right: 8px; }
 .output-line.info { color: #e0e0e0; }
-.output-line.warn { color: #ffc107; }
-.output-line.error, .output-line.fail { color: #ff5252; }
+.output-line.warn, .output-line.warning { color: #ff9800; }
+.output-line.error, .output-line.fail, .output-line.critical { color: #f44336; }
 .output-line.success { color: #4caf50; }
 .output-line[data-tier="debug"] { color: #777; font-style: italic; }
 .output-line[data-tier="live"] { color: #b0bec5; }
@@ -591,6 +603,7 @@ var LOG_TIER_KEY = 'reporter_log_tier';
 var SYNC_CURSOR_KEY = 'reporter_sync_cursor';
 var outputPane, pollInterval = null;
 var currentLogTier = 'status';
+var reporterLogStream = null;
 
 var DEFAULT_CREDENTIALS = {
     username: 'support',     password: '654321',
@@ -1000,6 +1013,12 @@ async function saveProfile() {
     data.proxy_jump = pj ? pj.checked : true;
     try { data.manual_placements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { data.manual_placements = []; }
     data.manual_switch_ips = rptManualSwitchIps;
+    var preValEl = document.getElementById('rptPreValidation');
+    data.rpt_pre_validation = preValEl ? preValEl.checked : true;
+    var runRptEl = document.getElementById('rptRunReporter');
+    data.rpt_run_reporter = runRptEl ? runRptEl.checked : true;
+    var healthEl = document.getElementById('rptHealthCheck');
+    data.rpt_health_check = healthEl ? healthEl.checked : true;
     try {
         var resp = await fetch('/profiles', {
             method: 'POST',
@@ -1511,6 +1530,27 @@ var reporterRunning = false;
 var reporterPollInterval = null;
 var rptValidated = false;
 
+function startReporterLogStream() {
+    stopReporterLogStream();
+    reporterLogStream = new EventSource('/stream/logs');
+    reporterLogStream.onmessage = function(e) {
+        if (e.data.startsWith(':')) return;
+        try {
+            var entry = JSON.parse(e.data);
+            var tier = 'status';
+            var lvl = (entry.level || '').toUpperCase();
+            if (lvl === 'DEBUG') tier = 'debug';
+            else if (lvl === 'INFO') tier = 'status';
+            else if (lvl === 'WARNING') tier = 'live';
+            else if (lvl === 'ERROR' || lvl === 'CRITICAL') tier = 'status';
+            outputPane.append(lvl.toLowerCase() === 'warning' ? 'warn' : lvl.toLowerCase(), entry.message, null, tier);
+        } catch(ex) {}
+    };
+}
+function stopReporterLogStream() {
+    if (reporterLogStream) { reporterLogStream.close(); reporterLogStream = null; }
+}
+
 async function runReporterChecklist() {
     var creds = getCredentials();
     if (!creds.cluster_ip) { outputPane.append('warn', 'Enter a Cluster IP first.'); return; }
@@ -1622,11 +1662,20 @@ async function runReporterPreValidation(creds) {
 }
 
 async function pollValidationResult() {
+    var valOutputCursor = 0;
     for (var i = 0; i < 120; i++) {
         await new Promise(function(r) { setTimeout(r, 1000); });
         try {
-            var resp = await fetch('/advanced-ops/oneshot/status');
-            var data = await resp.json();
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + valOutputCursor)
+            ]);
+            var data = await results[0].json();
+            var outputData = await results[1].json();
+            if (outputData.entries && outputData.entries.length > 0) {
+                outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+                valOutputCursor += outputData.count;
+            }
             if (!data.running && data.result) return data.result;
             if (!data.running) return null;
         } catch(e) { /* retry */ }
@@ -1688,6 +1737,7 @@ async function runReporterGenerate(creds, includeHealth) {
         proxy_jump: creds.proxy_jump ? 'on' : ''
     });
 
+    startReporterLogStream();
     try {
         var body = new URLSearchParams();
         for (var k in payload) { body.append(k, payload[k]); }
@@ -1695,12 +1745,16 @@ async function runReporterGenerate(creds, includeHealth) {
         var data = await resp.json();
         if (!resp.ok) {
             outputPane.append('error', data.error || 'Failed to start report generation');
+            stopReporterLogStream();
             return false;
         }
         outputPane.append('info', 'Report generation started...');
-        return await pollReporterGeneration();
+        var result = await pollReporterGeneration();
+        stopReporterLogStream();
+        return result;
     } catch (e) {
         outputPane.append('error', 'Report generation error: ' + e.message);
+        stopReporterLogStream();
         return false;
     }
 }
@@ -1749,6 +1803,7 @@ async function runReporterHealthCheck(creds) {
         switch_user: creds.switch_user,
         switch_password: creds.switch_password
     };
+    startReporterLogStream();
     try {
         var resp = await fetch('/health/run', {
             method: 'POST',
@@ -1756,7 +1811,7 @@ async function runReporterHealthCheck(creds) {
             body: JSON.stringify(payload)
         });
         var data = await resp.json();
-        if (data.error) { outputPane.append('error', 'Health check error: ' + data.error); return; }
+        if (data.error) { outputPane.append('error', 'Health check error: ' + data.error); stopReporterLogStream(); return; }
         outputPane.append('info', 'Health check started...');
         for (var i = 0; i < 300; i++) {
             await new Promise(function(r) { setTimeout(r, 2000); });
@@ -1764,16 +1819,19 @@ async function runReporterHealthCheck(creds) {
             var stData = await st.json();
             if (!stData.running) {
                 outputPane.append('success', 'Health check completed');
+                stopReporterLogStream();
                 return;
             }
         }
     } catch (e) {
         outputPane.append('error', 'Health check error: ' + e.message);
     }
+    stopReporterLogStream();
 }
 
 function cancelReporterRun() {
     reporterRunning = false;
+    stopReporterLogStream();
     fetch('/generate/cancel', { method: 'POST' }).catch(function() {});
     outputPane.append('warn', 'Cancellation requested');
     rptRing.cancel();
@@ -2212,11 +2270,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         var d = new Date(isoDate);
         return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
     }
-    function _showToolsStatus() {
-        var panel = document.getElementById('toolsStatusPanel');
-        var content = document.getElementById('toolsStatusContent');
-        panel.style.display = 'block';
-        content.innerHTML = '<span style="color: #888;">Loading...</span>';
+    function _renderToolsTable(contentEl) {
+        contentEl.innerHTML = '<span style="color: #888;">Loading...</span>';
         fetch('/advanced-ops/tools')
             .then(function(response) { return response.json(); })
             .then(function(data) {
@@ -2229,11 +2284,22 @@ document.addEventListener('DOMContentLoaded', async function() {
                     html += '<tr style="border-bottom: 1px solid #333;"><td style="padding: 6px 8px;"><strong>' + tool.name + '</strong><br><small style="color: #888;">' + tool.description + '</small></td><td style="padding: 6px 8px;">' + st + '</td><td style="padding: 6px 8px;">' + sz + '</td><td style="padding: 6px 8px;">' + dt + '</td></tr>';
                 });
                 html += '</table>';
-                content.innerHTML = html;
+                contentEl.innerHTML = html;
             })
-            .catch(function(err) { content.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
+            .catch(function(err) { contentEl.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
+    }
+    function _showToolsStatus() {
+        var panel = document.getElementById('toolsStatusPanel');
+        panel.style.display = 'block';
+        _renderToolsTable(document.getElementById('toolsStatusContent'));
     }
     function _hideToolsStatus() { document.getElementById('toolsStatusPanel').style.display = 'none'; }
+    function _showToolsStatusOneshot() {
+        var panel = document.getElementById('toolsStatusPanelOneshot');
+        panel.style.display = 'block';
+        _renderToolsTable(document.getElementById('toolsStatusContentOneshot'));
+    }
+    function _hideToolsStatusOneshot() { document.getElementById('toolsStatusPanelOneshot').style.display = 'none'; }
     function _updateDeploymentTools() {
         var btn = document.getElementById('btnUpdateTools');
         var originalText = btn.innerHTML;
@@ -2258,11 +2324,15 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
             var panel = document.getElementById('toolsStatusPanel');
             if (panel.style.display !== 'none') { _showToolsStatus(); }
+            var panelOs = document.getElementById('toolsStatusPanelOneshot');
+            if (panelOs.style.display !== 'none') { _showToolsStatusOneshot(); }
         })
         .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
     }
     window.showToolsStatus = _showToolsStatus;
     window.hideToolsStatus = _hideToolsStatus;
+    window.showToolsStatusOneshot = _showToolsStatusOneshot;
+    window.hideToolsStatusOneshot = _hideToolsStatusOneshot;
     window.updateDeploymentTools = _updateDeploymentTools;
 });
 

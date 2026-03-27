@@ -20,6 +20,9 @@ The new `/reporter` page replaces Advanced Ops as the primary interface for stan
 ### SSH Proxy Hop
 Switch SSH connections now tunnel through the CNode by default, enabling port mapping and Tier 3 health checks when switches are only reachable from inside the cluster network. A "Proxy through CNode" toggle is available on Generate and Reporter pages, with CLI opt-out via `--no-proxy-jump`.
 
+### NVMe/TCP Ethernet MTU (NET-1)
+The `nb_eth_mtu` field is now collected from the VAST API and reported in the PDF Network Configuration table and JSON export alongside `eth_mtu` and `ib_mtu`.
+
 ### One-Shot UI Overhaul
 The One-Shot mode received a complete visual and functional refresh:
 - Pre-Validation converted from button to inline checkbox
@@ -83,6 +86,5 @@ Standard navigation now shows Dashboard, Reporter, Results, Library, and Docs. L
 
 ## Known Limitations
 
-- NET-1 (nb_eth_mtu collection) — planned for inclusion in v1.5.0 final or v1.5.1
 - AO-15 (Advanced Ops hardening) and AO-19 (dynamic log levels, state persistence) — to be completed before final tag
 - Coverage target is 60%; roadmap target is 75%+ (TSE-9)

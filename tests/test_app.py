@@ -57,9 +57,32 @@ class TestDashboardRoute(unittest.TestCase):
 
     def test_dashboard_contains_nav_links(self):
         resp = self.client.get("/")
-        self.assertIn(b"Generate", resp.data)
-        self.assertIn(b"Reports", resp.data)
-        self.assertIn(b"Configuration", resp.data)
+        self.assertIn(b"Dashboard", resp.data)
+        self.assertIn(b"Reporter", resp.data)
+        self.assertIn(b"Results", resp.data)
+        self.assertIn(b"Library", resp.data)
+        self.assertIn(b"Docs", resp.data)
+
+    def test_dashboard_quick_start_content(self):
+        resp = self.client.get("/")
+        self.assertIn(b"Quick Start", resp.data)
+        self.assertIn(b"What You Need", resp.data)
+        self.assertIn(b"Connect to Cluster", resp.data)
+        self.assertIn(b"Configure Switches", resp.data)
+        self.assertIn(b"Run Reporter", resp.data)
+        self.assertIn(b"Review Results", resp.data)
+
+    def test_dashboard_status_api(self):
+        resp = self.client.get("/api/dashboard/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("job_status", data)
+        self.assertIn("job_active", data)
+        self.assertIn("tools_cached", data)
+        self.assertIn("tools_total", data)
+        self.assertIn("profiles_count", data)
+        self.assertIn("total_reports", data)
+        self.assertFalse(data["job_active"])
 
 
 class TestGenerateRoutes(unittest.TestCase):

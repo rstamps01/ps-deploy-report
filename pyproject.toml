@@ -12,11 +12,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-omit = [
-    "src/comprehensive_report_template.py",
-    "src/enhanced_report_builder.py",
-    "src/session_manager.py",
-]
+omit = []
 
 [tool.mypy]
 python_version = "3.11"

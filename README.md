@@ -487,7 +487,7 @@ python -m pytest tests/ -v --ignore=tests/test_ui.py --ignore=tests/test_integra
   --cov=src --cov-report=term-missing --cov-fail-under=60
 ```
 
-Coverage threshold is currently 60% (`pyproject.toml`); target is 75%+ per roadmap item TSE-9. Dead-code modules (`comprehensive_report_template.py`, `enhanced_report_builder.py`, `session_manager.py`) are omitted from coverage measurement.
+Coverage threshold is currently 60% (`pyproject.toml`); target is 75%+ per roadmap item TSE-9.
 
 See [docs/TODO-ROADMAP.md](docs/TODO-ROADMAP.md) for quality-gate items (QG-1 through QG-3).
 

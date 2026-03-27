@@ -207,6 +207,142 @@ body {
 .card p { color: var(--text-secondary); margin-bottom: 1rem; font-size: 0.95rem; }
 .card-action { border-left: 4px solid var(--accent); }
 
+/* ---- Dashboard Quick Start ---- */
+.status-bar {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.status-tile {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1rem;
+}
+.status-tile-icon {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent-subtle);
+    color: var(--accent);
+}
+.status-tile-body { min-width: 0; }
+.status-tile-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    line-height: 1;
+    margin-bottom: 3px;
+}
+.status-tile-value {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.status-tile-value a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.status-tile-value a:hover { text-decoration: underline; }
+.status-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+.status-dot-green { background: var(--success); }
+.status-dot-amber { background: var(--warning); }
+
+.workflow-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+}
+.step-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 1.25rem 1.25rem;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+}
+.step-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
+    transform: translateY(-2px);
+}
+.step-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+.step-number {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.step-icon {
+    flex-shrink: 0;
+    color: var(--accent);
+}
+.step-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.step-card p {
+    flex: 1;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+.step-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    margin-top: auto;
+}
+.step-cta svg { transition: transform 0.15s; }
+.step-card:hover .step-cta svg { transform: translateX(3px); }
+
+@media (max-width: 600px) {
+    .status-bar { grid-template-columns: 1fr 1fr; }
+    .workflow-steps { grid-template-columns: 1fr; }
+}
+
 /* ---- Buttons ---- */
 .btn {
     display: inline-block;

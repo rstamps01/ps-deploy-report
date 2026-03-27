@@ -69,6 +69,7 @@ class VastColorPalette:
     WARNING_ORANGE = HexColor("#FFC107")
     ERROR_RED = HexColor("#DC3545")
     INFO_BLUE = HexColor("#17A2B8")
+    ACCENT_BLUE = HexColor("#1A6FB5")
 
     # Neutral Grays
     LIGHT_GRAY = HexColor("#F8F9FA")

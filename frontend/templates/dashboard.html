@@ -1,66 +1,247 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - VAST As-Built Reporter{% endblock %}
+{% block title %}Quick Start - VAST As-Built Reporter{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dashboard</h1>
-    <p class="subtitle">VAST As-Built Report Generator</p>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Quick Start</h1>
+    <p class="subtitle">Your launch pad for cluster testing and report generation</p>
 </div>
 
-<div class="card-grid">
-    <div class="card card-action">
-        <div class="card-icon">+</div>
-        <h3>Generate Report</h3>
-        <p>Connect to a VAST cluster and generate a new as-built report.</p>
-        <a href="{{ url_for('generate_form') }}" class="btn btn-primary">New Report</a>
+<!-- ── Status Bar ─────────────────────────────────────────── -->
+<div class="status-bar">
+    <div class="status-tile">
+        <div class="status-tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="status-tile-body">
+            <div class="status-tile-label">Job Status</div>
+            <div class="status-tile-value" id="dsJobStatus"><span class="status-dot status-dot-green"></span>Idle</div>
+        </div>
     </div>
-
-    <div class="card">
-        <div class="card-icon">&#9776;</div>
-        <h3>Browse Reports</h3>
-        <p>View, download, or manage previously generated PDF and JSON reports.</p>
-        <a href="{{ url_for('reports_page') }}" class="btn btn-secondary">View Reports</a>
+    <div class="status-tile">
+        <div class="status-tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+        </div>
+        <div class="status-tile-body">
+            <div class="status-tile-label">Last Report</div>
+            <div class="status-tile-value" id="dsLastReport">--</div>
+        </div>
     </div>
-
-    <div class="card">
-        <div class="card-icon">&#9881;</div>
-        <h3>Configuration</h3>
-        <p>Edit API settings, logging, report formatting, and security options.</p>
-        <a href="{{ url_for('config_page') }}" class="btn btn-secondary">Edit Config</a>
+    <div class="status-tile">
+        <div class="status-tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94L6.73 20.15a2.12 2.12 0 01-3-3l6.72-6.72a6 6 0 017.94-7.94L14.7 6.3z"/></svg>
+        </div>
+        <div class="status-tile-body">
+            <div class="status-tile-label">Deployment Tools</div>
+            <div class="status-tile-value" id="dsTools">--</div>
+        </div>
+    </div>
+    <div class="status-tile">
+        <div class="status-tile-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="status-tile-body">
+            <div class="status-tile-label">Saved Profiles</div>
+            <div class="status-tile-value" id="dsProfiles">--</div>
+        </div>
     </div>
 </div>
 
-{% if reports %}
-<section class="section">
-    <h2>Recent Reports</h2>
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>File</th>
-                <th class="text-center">Type</th>
-                <th class="text-center">Size</th>
-                <th class="text-center">Generated</th>
-                <th class="text-center">Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for r in reports %}
-            <tr>
-                <td class="filename">{{ r.name }}</td>
-                <td class="text-center">{% if r.type == 'PDF' %}<span class="file-icon file-icon-pdf" title="PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="7" y="17" font-size="6" font-weight="700" fill="currentColor" stroke="none">PDF</text></svg></span>{% else %}<span class="file-icon file-icon-json" title="JSON"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><text x="5" y="17" font-size="5.5" font-weight="700" fill="currentColor" stroke="none">JSON</text></svg></span>{% endif %}</td>
-                <td class="text-center">{{ "%.1f"|format(r.size / 1024) }} KB</td>
-                <td class="text-center">{{ r.modified }}</td>
-                <td class="actions"><span class="actions-inner">
-                    <a href="{{ url_for('reports_download', filename=r.name) }}" class="btn btn-sm">Download</a>
-                </span></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</section>
-{% else %}
-<section class="section empty-state">
-    <p>No reports generated yet. Click <strong>New Report</strong> above to get started.</p>
-</section>
-{% endif %}
+<!-- ── Report Odometer ─────────────────────────────────────── -->
+<div style="margin-bottom:2rem;">
+    <h2 style="font-size:1.15rem;margin-bottom:0.75rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+        Results Odometer
+        <span id="dsOdoTotal" style="font-size:0.85rem;color:var(--text-secondary);font-weight:400;margin-left:auto;">Total: --</span>
+    </h2>
+    <div class="status-bar" id="dsOdometer" style="grid-template-columns: repeat(9, 1fr);">
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Reports">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoReports" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Reports</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Health Checks">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoHealth" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Health</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Network Configuration">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoNetwork" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Network</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Switch Configuration">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoSwitch" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Switch</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="vnetmap Topology">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoVnetmap" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">vnetmap</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="vperfsanity Performance">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoVperf" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">vperfsanity</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Support Tools">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoSupport" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Support</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Log Bundles">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoLogs" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Logs</div>
+            </div>
+        </a>
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Validation Bundles">
+            <div class="status-tile-body" style="text-align:center;width:100%;">
+                <div class="status-tile-value" id="dsOdoBundles" style="font-size:1.3rem;">0</div>
+                <div class="status-tile-label">Bundles</div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- ── Workflow Steps ──────────────────────────────────────── -->
+<h2 style="font-size:1.15rem;margin-bottom:1rem;color:var(--text-primary);">Get Started in 5 Steps</h2>
+
+<div class="workflow-steps">
+
+    <a href="{{ url_for('docs_page') }}" class="step-card">
+        <div class="step-header">
+            <span class="step-number">1</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+        </div>
+        <div class="step-title">What You Need</div>
+        <p>Gather your cluster IP (or VMS address), VMS credentials (support user), node SSH password, and switch SSH credentials. Tech port connections use 192.168.2.2.</p>
+        <span class="step-cta">View Docs <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+    </a>
+
+    <a href="{{ url_for('reporter_page') }}" class="step-card">
+        <div class="step-header">
+            <span class="step-number">2</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </div>
+        <div class="step-title">Connect to Cluster</div>
+        <p>Open the Reporter page, select or create a Cluster Profile, and enter your connection settings. Enable "Autofill Default Passwords" for quick setup.</p>
+        <span class="step-cta">Open Reporter <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+    </a>
+
+    <a href="{{ url_for('reporter_page') }}" class="step-card">
+        <div class="step-header">
+            <span class="step-number">3</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <div class="step-title">Configure Switches</div>
+        <p>Choose Auto or Manual switch placement. Run Discovery to find rack switches, then assign positions or add switches manually from the Library.</p>
+        <span class="step-cta">Configure <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+    </a>
+
+    <a href="{{ url_for('reporter_page') }}" class="step-card">
+        <div class="step-header">
+            <span class="step-number">4</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+        <div class="step-title">Run Reporter</div>
+        <p>Select your operations &mdash; Pre-Validation (recommended), Run Reporter (generates the as-built PDF), and optional Health Check. Press Run and monitor progress.</p>
+        <span class="step-cta">Run <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+    </a>
+
+    <a href="{{ url_for('validation_results_page') }}" class="step-card">
+        <div class="step-header">
+            <span class="step-number">5</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <div class="step-title">Review Results</div>
+        <p>View or download your PDF and JSON reports. Browse all past results on the Results page, or download complete bundles from One-Shot runs.</p>
+        <span class="step-cta">View Results <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
+    </a>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var ids = {
+        job: document.getElementById('dsJobStatus'),
+        report: document.getElementById('dsLastReport'),
+        tools: document.getElementById('dsTools'),
+        profiles: document.getElementById('dsProfiles'),
+        odoTotal: document.getElementById('dsOdoTotal'),
+        odoReports: document.getElementById('dsOdoReports'),
+        odoHealth: document.getElementById('dsOdoHealth'),
+        odoNetwork: document.getElementById('dsOdoNetwork'),
+        odoSwitch: document.getElementById('dsOdoSwitch'),
+        odoVnetmap: document.getElementById('dsOdoVnetmap'),
+        odoVperf: document.getElementById('dsOdoVperf'),
+        odoSupport: document.getElementById('dsOdoSupport'),
+        odoLogs: document.getElementById('dsOdoLogs'),
+        odoBundles: document.getElementById('dsOdoBundles')
+    };
+
+    function dotHtml(active) {
+        return '<span class="status-dot ' + (active ? 'status-dot-amber' : 'status-dot-green') + '"></span>';
+    }
+
+    function update(data) {
+        ids.job.innerHTML = dotHtml(data.job_active) + data.job_status;
+
+        if (data.last_report) {
+            ids.report.textContent = data.last_report.name + ' \u00B7 ' + data.last_report.modified;
+        } else {
+            ids.report.textContent = 'No reports yet';
+        }
+
+        if (data.tools_total > 0) {
+            ids.tools.innerHTML = data.tools_cached + '/' + data.tools_total + ' Cached';
+            if (data.tools_cached < data.tools_total) {
+                ids.tools.innerHTML += ' \u00B7 <a href="/reporter">Update</a>';
+            }
+        } else {
+            ids.tools.textContent = 'Unavailable';
+        }
+
+        ids.profiles.innerHTML = data.profiles_count > 0
+            ? data.profiles_count + ' saved \u00B7 <a href="/reporter">Manage</a>'
+            : 'None \u00B7 <a href="/reporter">Create</a>';
+
+        var rc = data.result_counts || {};
+        ids.odoReports.textContent = rc.asbuilt_reports || 0;
+        ids.odoHealth.textContent = rc.health_checks || 0;
+        ids.odoNetwork.textContent = rc.network_config || 0;
+        ids.odoSwitch.textContent = rc.switch_config || 0;
+        ids.odoVnetmap.textContent = rc.vnetmap || 0;
+        ids.odoVperf.textContent = rc.vperfsanity || 0;
+        ids.odoSupport.textContent = rc.support_tools || 0;
+        ids.odoLogs.textContent = rc.log_bundles || 0;
+        ids.odoBundles.textContent = rc.bundles || 0;
+        var total = 0;
+        for (var k in rc) { total += rc[k] || 0; }
+        ids.odoTotal.textContent = 'Total: ' + total;
+    }
+
+    function poll() {
+        fetch('/api/dashboard/status')
+            .then(function(r) { return r.json(); })
+            .then(update)
+            .catch(function() {
+                ids.job.innerHTML = dotHtml(false) + 'Unavailable';
+            });
+    }
+
+    poll();
+    setInterval(poll, 15000);
+})();
+</script>
 {% endblock %}

@@ -223,7 +223,7 @@ def _register_routes(app: Flask) -> None:
     # -- Route guard for Developer Mode pages --------------------------------
     @app.before_request
     def check_developer_mode_access():
-        if request.path in ("/advanced-ops", "/health", "/config"):
+        if request.path in ("/advanced-ops", "/health"):
             if not app.config.get("DEVELOPER_MODE", False):
                 return (
                     jsonify(
@@ -239,12 +239,58 @@ def _register_routes(app: Flask) -> None:
 
     @app.route("/")
     def dashboard():
+        return render_template("dashboard.html", version=APP_VERSION)
+
+    @app.route("/api/dashboard/status")
+    def dashboard_status():
+        """Lightweight status snapshot for the Dashboard Quick Start panel."""
+        from tool_manager import ToolManager
+
+        job_running = app.config["JOB_RUNNING"]
+        health_running = app.config.get("HEALTH_JOB_RUNNING", False)
+        job_label = "Report Running" if job_running else ("Health Check Running" if health_running else "Idle")
+
         reports = _list_reports(app.config["OUTPUT_DIRS"])
-        return render_template(
-            "dashboard.html",
-            version=APP_VERSION,
-            reports=reports[:10],
-            job_running=app.config["JOB_RUNNING"],
+        last_report = reports[0] if reports else None
+
+        try:
+            manager = ToolManager()
+            tools = manager.get_all_tools_info()
+            cached = sum(1 for t in tools if t and t.get("cached"))
+            tools_total = len(tools)
+        except Exception:
+            cached, tools_total = 0, 0
+
+        profiles = _load_profiles(app.config["PROFILES_PATH"])
+
+        try:
+            from result_scanner import ResultScanner
+
+            scanner = ResultScanner(profiles=profiles)
+            all_results = scanner.scan_all()
+            result_counts = {k: len(v) for k, v in all_results.items()}
+        except Exception:
+            result_counts = {}
+
+        return jsonify(
+            {
+                "job_status": job_label,
+                "job_active": job_running or health_running,
+                "last_report": (
+                    {
+                        "name": last_report["name"],
+                        "modified": last_report["modified"],
+                        "type": last_report["type"],
+                    }
+                    if last_report
+                    else None
+                ),
+                "total_reports": len(reports),
+                "tools_cached": cached,
+                "tools_total": tools_total,
+                "profiles_count": len(profiles),
+                "result_counts": result_counts,
+            }
         )
 
     # -- Generate -----------------------------------------------------------
@@ -858,17 +904,13 @@ def _register_routes(app: Flask) -> None:
     @app.route("/advanced-ops/logs/capacity")
     def advanced_ops_logs_capacity():
         """Get operation log storage capacity stats."""
-        from utils.ops_log_manager import OpsLogManager
-
-        manager = OpsLogManager()
+        manager = _create_ops_log_manager(app.config["CONFIG_PATH"])
         return jsonify(manager.check_capacity())
 
     @app.route("/advanced-ops/logs/purge", methods=["POST"])
     def advanced_ops_logs_purge():
         """Manually purge oldest operation logs."""
-        from utils.ops_log_manager import OpsLogManager
-
-        manager = OpsLogManager()
+        manager = _create_ops_log_manager(app.config["CONFIG_PATH"])
         result = manager.purge_oldest()
         return jsonify(result)
 
@@ -1009,6 +1051,9 @@ def _register_routes(app: Flask) -> None:
             "manual_placements": [],
             "manual_switch_ips": [],
             "proxy_jump": True,
+            "rpt_pre_validation": True,
+            "rpt_run_reporter": True,
+            "rpt_health_check": True,
         }
 
         merged = {field: existing.get(field, default) for field, default in ALL_FIELDS.items()}
@@ -1782,6 +1827,23 @@ def _load_yaml(path: str) -> Dict[str, Any]:
     except (OSError, yaml.YAMLError) as exc:
         logger.debug("Failed to load YAML %s: %s", path, exc)
         return {}
+
+
+def _create_ops_log_manager(config_path: str) -> Any:
+    """Create an OpsLogManager wired to YAML config values."""
+    from utils.ops_log_manager import OpsLogManager
+
+    cfg = _load_yaml(config_path).get("logging", {})
+    log_dir = cfg.get("ops_log_dir")
+    max_bytes = int(cfg.get("ops_log_max_bytes", OpsLogManager.DEFAULT_MAX_BYTES))
+    purge_fraction = float(cfg.get("ops_log_purge_fraction", OpsLogManager.DEFAULT_PURGE_FRACTION))
+
+    kw: Dict[str, Any] = {"max_bytes": max_bytes, "purge_fraction": purge_fraction}
+    if log_dir:
+        from utils import get_data_dir
+
+        kw["log_dir"] = get_data_dir() / log_dir
+    return OpsLogManager(**kw)
 
 
 def _load_profiles(path: str) -> Dict[str, Any]:

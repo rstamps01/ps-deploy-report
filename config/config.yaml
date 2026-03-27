@@ -31,6 +31,11 @@ logging:
   rotation_size: 10485760 # 10MB in bytes
   backup_count: 5
 
+  # Operation log settings (One-Shot persistent logs)
+  ops_log_dir: "logs/operations"
+  ops_log_max_bytes: 1073741824  # 1GB
+  ops_log_purge_fraction: 0.25
+
   # Console color configuration
   console_colors:
     DEBUG: "cyan"
@@ -42,7 +47,7 @@ logging:
 # Report Configuration
 report:
   # Company/organization name for report header
-  organization: "VAST Data - Format testing"
+  organization: "VAST Data Professional Services"
 
   # Report template settings
   template:
@@ -83,13 +88,21 @@ output:
 # Data Collection Configuration
 data_collection:
   # Sections to include in the report (set to false to skip)
+  # When false, the section heading, description, tables, images,
+  # and TOC entry are all omitted from the PDF output.
+  # JSON export is unaffected — all data is always collected.
   sections:
     executive_summary: true
-    hardware_inventory: true
+    cluster_information: true
+    hardware_inventory: true          # includes Physical Rack Layout
     network_configuration: true
+    switch_configuration: true
+    port_mapping: true                # includes Logical Network Diagram
     logical_configuration: true
-    security_authentication: true
-    data_protection: true
+    security_authentication: true     # includes Data Protection sub-sections
+    data_protection: true             # controls data extraction for protection policies
+    health_check: true
+    post_deployment_activities: true
 
   # Parallel processing settings
   concurrent_requests: 5
@@ -99,6 +112,48 @@ data_collection:
 
   # Handle missing data gracefully
   graceful_degradation: true
+
+# SSH Configuration
+ssh:
+  # Proxy hop through CNode for switch SSH connections (field deployments)
+  # When true, switch SSH connections tunnel through the CNode via paramiko
+  # nested transport, enabling port mapping when switches are only reachable
+  # from inside the cluster network
+  proxy_jump: true
+
+  # SSH connection timeout (seconds)
+  timeout: 60
+
+  # Per-ping timeout for SSH health checks (seconds)
+  ping_timeout: 10
+
+# Health Check Configuration
+health_check:
+  # Enable health check in report generation
+  include_in_report: false
+
+  # Health check tiers (selected dynamically based on available credentials)
+  # Tier 1: API checks (26 checks) — always available
+  # Tier 2: Node SSH checks (10 checks) — requires node SSH credentials
+  # Tier 3: Switch SSH checks (6 checks) — requires switch SSH credentials
+  tiers:
+    api: true
+    node_ssh: true
+    switch_ssh: true
+
+# Advanced Operations Configuration
+advanced_operations:
+  # Default mode for Select Operation toggle (reporter or oneshot)
+  default_mode: "reporter"
+
+  # Default switch placement mode (auto or manual)
+  default_switch_placement: "manual"
+
+  # Auto-fill default credentials (support/654321)
+  autofill_default_passwords: true
+
+  # vperfsanity default selection in One-Shot checklist
+  vperfsanity_default_selected: false
 
 # Security Configuration
 security:

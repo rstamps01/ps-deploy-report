@@ -109,6 +109,7 @@ class ClusterSummary:
     b2b_ipmi: Optional[bool] = None
     eth_mtu: Optional[int] = None
     ib_mtu: Optional[int] = None
+    nb_eth_mtu: Optional[int] = None
     ipmi_gateway: Optional[str] = None
     ipmi_netmask: Optional[str] = None
 
@@ -265,6 +266,7 @@ class VastDataExtractor:
                 b2b_ipmi=cluster_info.get("b2b_ipmi"),
                 eth_mtu=cluster_info.get("eth_mtu"),
                 ib_mtu=cluster_info.get("ib_mtu"),
+                nb_eth_mtu=cluster_info.get("nb_eth_mtu"),
                 ipmi_gateway=cluster_info.get("ipmi_gateway", "Unknown"),
                 ipmi_netmask=cluster_info.get("ipmi_netmask", "Unknown"),
             )
@@ -726,6 +728,9 @@ class VastDataExtractor:
                 "b2b_ipmi": cluster_network_data.get("b2b_ipmi", cluster_summary.get("b2b_ipmi", False)),
                 "eth_mtu": cluster_network_data.get("eth_mtu", cluster_summary.get("eth_mtu", "Not Configured")),
                 "ib_mtu": cluster_network_data.get("ib_mtu", cluster_summary.get("ib_mtu", "Not Configured")),
+                "nb_eth_mtu": cluster_network_data.get(
+                    "nb_eth_mtu", cluster_summary.get("nb_eth_mtu", "Not Configured")
+                ),
                 "ipmi_gateway": cluster_network_data.get(
                     "ipmi_gateway",
                     cluster_summary.get("ipmi_gateway", "Not Configured"),
@@ -2026,6 +2031,9 @@ class VastDataExtractor:
                     ),
                 },
             ]
+
+            self._resolve_post_deploy_status(next_steps, report_data)
+
             report_data["sections"]["post_deployment_activities"] = asdict(
                 ReportSection(
                     name="post_deployment_activities",
@@ -2047,6 +2055,43 @@ class VastDataExtractor:
                 "error": str(e),
                 "metadata": {"extraction_timestamp": datetime.now().isoformat()},
             }
+
+    def _resolve_post_deploy_status(self, next_steps: List[Dict[str, Any]], report_data: Dict[str, Any]) -> None:
+        """Resolve status for each post-deployment item from health check results and cluster data.
+
+        Sets ``step["status"]`` to ``Completed``, ``Optional``, or ``Pending``.
+
+        Args:
+            next_steps: Mutable list of step dicts to update in place.
+            report_data: The assembled report_data dict (sections + cluster_summary).
+        """
+        hc_results: Dict[str, str] = {}
+        hc_section = report_data.get("sections", {}).get("health_check", {})
+        for r in hc_section.get("data", {}).get("results", []):
+            hc_results[r.get("check_name", "")] = r.get("status", "")
+
+        cluster = report_data.get("cluster_summary", {})
+        license_val = str(cluster.get("license", "") or "").strip().lower()
+
+        _AUTO_CHECKS: Dict[str, bool] = {
+            "Configure Call Home w/ Cloud Integration": hc_results.get("Call Home Status") == "pass",
+            "Create VIP": hc_results.get("VIP Pools") == "pass",
+            "Activate License": (
+                hc_results.get("License") == "pass"
+                or (bool(license_val) and license_val not in ("", "none", "unknown"))
+            ),
+        }
+
+        _MANUAL_ITEMS = {"Test Fail-over Behavior", "Confirm VIP Movement and ARP Updates"}
+
+        for step in next_steps:
+            item = step.get("item", "")
+            if item in _MANUAL_ITEMS:
+                step["status"] = "Optional"
+            elif item in _AUTO_CHECKS:
+                step["status"] = "Completed" if _AUTO_CHECKS[item] else "Pending"
+            else:
+                step["status"] = "Pending"
 
     def _calculate_completeness(self, conditions: List[bool]) -> float:
         """Calculate data completeness percentage."""

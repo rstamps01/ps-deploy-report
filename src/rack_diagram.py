@@ -392,6 +392,7 @@ class RackDiagram:
         model: str = "",
         status: str = "ACTIVE",
         annotation: str = "",
+        label_override: str = "",
     ) -> None:
         """
         Create a visual representation of a device in the rack.
@@ -474,7 +475,7 @@ class RackDiagram:
         post_width = 0.08 * self.rack_width
         label_x = start_x + self.rack_width + post_width + 0.15 * inch
         label_y = device_y + (device_height / 2) - 3
-        label_text = f"{label_prefix}-{device_id}"
+        label_text = label_override if label_override else f"{label_prefix}-{device_id}"
 
         # Connector line from device to label
         line_start_x = start_x + self.rack_width
@@ -871,12 +872,13 @@ class RackDiagram:
                 for idx, u_pos in enumerate(calculated_positions, start=1):
                     switch_positions_map[idx] = u_pos
 
-        # Place CBoxes
+        # Place CBoxes — label with box name/serial from Hardware Inventory
         for cbox in cboxes:
             device_id = cbox.get("id", 0)
             model = cbox.get("model", "")
             rack_position = cbox.get("rack_unit", "")
             status = cbox.get("state", "ACTIVE")
+            box_name = cbox.get("name", "")
 
             if not rack_position:
                 logger.warning(f"CBox-{device_id} has no rack position, skipping")
@@ -888,14 +890,18 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
-            self._create_device_representation(drawing, "cbox", device_id, u_position, u_height, model, status)
+            self._create_device_representation(
+                drawing, "cbox", device_id, u_position, u_height, model, status, label_override=box_name
+            )
 
-        # Place DBoxes
+        # Place DBoxes — label with box name/serial; deduplicate at same U position
+        dbox_seen_u: set = set()
         for dbox in dboxes:
             device_id = dbox.get("id", 0)
             model = dbox.get("hardware_type", dbox.get("model", ""))
             rack_position = dbox.get("rack_unit", "")
             status = dbox.get("state", "ACTIVE")
+            box_name = dbox.get("name", "")
 
             if not rack_position:
                 logger.warning(f"DBox-{device_id} has no rack position, skipping")
@@ -905,9 +911,15 @@ class RackDiagram:
             if u_position == 0:
                 continue
 
+            if u_position in dbox_seen_u:
+                continue
+            dbox_seen_u.add(u_position)
+
             u_height = self._get_device_height_units(model)
 
-            self._create_device_representation(drawing, "dbox", device_id, u_position, u_height, model, status)
+            self._create_device_representation(
+                drawing, "dbox", device_id, u_position, u_height, model, status, label_override=box_name
+            )
 
         # Place EBoxes (enclosures; use ebox U height in Physical Rack Layout)
         for ebox in eboxes:

@@ -88,13 +88,21 @@ output:
 # Data Collection Configuration
 data_collection:
   # Sections to include in the report (set to false to skip)
+  # When false, the section heading, description, tables, images,
+  # and TOC entry are all omitted from the PDF output.
+  # JSON export is unaffected — all data is always collected.
   sections:
     executive_summary: true
-    hardware_inventory: true
+    cluster_information: true
+    hardware_inventory: true          # includes Physical Rack Layout
     network_configuration: true
+    switch_configuration: true
+    port_mapping: true                # includes Logical Network Diagram
     logical_configuration: true
-    security_authentication: true
-    data_protection: true
+    security_authentication: true     # includes Data Protection sub-sections
+    data_protection: true             # controls data extraction for protection policies
+    health_check: true
+    post_deployment_activities: true
 
   # Parallel processing settings
   concurrent_requests: 5

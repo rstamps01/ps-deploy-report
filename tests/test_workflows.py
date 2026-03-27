@@ -974,7 +974,7 @@ class TestSupportToolSteps:
 # ===================================================================
 
 
-class TestVnetmapParsing:
+class TestVnetmapParsingV2:
     @pytest.fixture(autouse=True)
     def setup_workflow(self):
         self.workflow = WorkflowRegistry.get("vnetmap")
@@ -1050,7 +1050,7 @@ class TestVnetmapParsing:
 # ===================================================================
 
 
-class TestSwitchConfigSteps:
+class TestSwitchConfigStepsV2:
     @pytest.fixture(autouse=True)
     def setup_workflow(self):
         self.workflow = WorkflowRegistry.get("switch_config")
@@ -1133,7 +1133,7 @@ class TestSwitchConfigSteps:
 # ===================================================================
 
 
-class TestNetworkConfigParsing:
+class TestNetworkConfigParsingV2:
     @pytest.fixture(autouse=True)
     def setup_workflow(self):
         self.workflow = WorkflowRegistry.get("network_config")
@@ -1218,7 +1218,7 @@ class TestNetworkConfigParsing:
 # ===================================================================
 
 
-class TestLogBundleSteps:
+class TestLogBundleStepsV2:
     @pytest.fixture(autouse=True)
     def setup_workflow(self):
         self.workflow = WorkflowRegistry.get("log_bundle")
@@ -1295,7 +1295,7 @@ class TestLogBundleSteps:
 # ===================================================================
 
 
-class TestSupportToolSteps:
+class TestSupportToolStepsV2:
     @pytest.fixture(autouse=True)
     def setup_workflow(self):
         self.workflow = WorkflowRegistry.get("support_tool")

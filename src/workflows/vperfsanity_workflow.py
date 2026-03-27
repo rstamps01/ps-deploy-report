@@ -547,6 +547,9 @@ class VperfsanityWorkflow:
             if line.strip():
                 self.emit("info", line)
 
+        # Cross-tenant API cleanup (catch stale views left in other tenants)
+        self._api_cleanup_cross_tenant_views(host, user, password, admin_user, admin_pass)
+
         # Remove package files
         self.emit("info", "")
         self.emit("info", "Removing package files...")

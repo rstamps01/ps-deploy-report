@@ -1,9 +1,0 @@
-# HELP vast_device_state Device state (1=healthy, 0=failed)
-# TYPE vast_device_state gauge
-vast_device_state{device="ssd_0",node="cnode-1"} 1.0
-vast_device_state{device="ssd_1",node="cnode-1"} 1.0
-vast_device_state{device="nvram_0",node="cnode-1"} 1.0
-# HELP vast_device_media_errors Media error count
-# TYPE vast_device_media_errors counter
-vast_device_media_errors{device="ssd_0",node="cnode-1"} 0
-vast_device_media_errors{device="ssd_1",node="cnode-1"} 0

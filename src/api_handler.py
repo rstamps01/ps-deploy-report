@@ -110,6 +110,7 @@ class VastClusterInfo:
     b2b_ipmi: Optional[bool] = None
     eth_mtu: Optional[int] = None
     ib_mtu: Optional[int] = None
+    nb_eth_mtu: Optional[int] = None
     ipmi_gateway: Optional[str] = None
     ipmi_netmask: Optional[str] = None
 
@@ -963,6 +964,7 @@ class VastApiHandler:
             cluster_info.b2b_ipmi = cluster_data.get("b2b_ipmi", "Not Configured")
             cluster_info.eth_mtu = cluster_data.get("eth_mtu", "Not Configured")
             cluster_info.ib_mtu = cluster_data.get("ib_mtu", "Not Configured")
+            cluster_info.nb_eth_mtu = cluster_data.get("nb_eth_mtu", "Not Configured")
             cluster_info.ipmi_gateway = cluster_data.get("ipmi_gateway", "Not Configured")
             cluster_info.ipmi_netmask = cluster_data.get("ipmi_netmask", "Not Configured")
 
@@ -1541,6 +1543,7 @@ class VastApiHandler:
                 "b2b_ipmi": data.get("b2b_ipmi", False),
                 "eth_mtu": data.get("eth_mtu", "Unknown"),
                 "ib_mtu": data.get("ib_mtu", "Unknown"),
+                "nb_eth_mtu": data.get("nb_eth_mtu", "Unknown"),
                 "ipmi_gateway": data.get("ipmi_gateway", "Unknown"),
                 "ipmi_netmask": data.get("ipmi_netmask", "Unknown"),
                 "net_type": net_type,
@@ -2536,6 +2539,7 @@ class VastApiHandler:
                     "b2b_ipmi": cluster_info.b2b_ipmi,
                     "eth_mtu": cluster_info.eth_mtu,
                     "ib_mtu": cluster_info.ib_mtu,
+                    "nb_eth_mtu": cluster_info.nb_eth_mtu,
                     "ipmi_gateway": cluster_info.ipmi_gateway,
                     "ipmi_netmask": cluster_info.ipmi_netmask,
                 }

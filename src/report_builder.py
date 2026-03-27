@@ -20,7 +20,7 @@ Date: September 26, 2025
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -80,6 +80,11 @@ class ReportConfig:
     include_toc: bool = True
     include_timestamp: bool = True
     include_enhanced_features: bool = True
+    sections: Dict[str, bool] = field(default_factory=dict)
+
+    def section_enabled(self, key: str) -> bool:
+        """Return whether a report section should be rendered (default True)."""
+        return self.sections.get(key, True)
 
     @classmethod
     def from_yaml(cls, config: Dict[str, Any]) -> "ReportConfig":
@@ -111,6 +116,11 @@ class ReportConfig:
         _set("include_toc", pdf.get("include_toc", report.get("include_toc")), bool)
         _set("include_timestamp", report.get("include_timestamp"), bool)
         _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
+
+        dc = config.get("data_collection", {})
+        raw_sections = dc.get("sections", {})
+        if isinstance(raw_sections, dict):
+            kwargs["sections"] = {k: bool(v) for k, v in raw_sections.items()}
 
         return cls(**kwargs)
 
@@ -248,100 +258,115 @@ class VastReportBuilder:
             story.append(PageBreak())
 
         # Add executive summary
-        story.extend(
-            self._create_executive_summary(processed_data, page_tracker, "exec_summary" if is_first_pass else None)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("executive_summary"):
+            story.extend(
+                self._create_executive_summary(processed_data, page_tracker, "exec_summary" if is_first_pass else None)
+            )
+            story.append(PageBreak())
 
         # Add cluster information
-        story.extend(
-            self._create_cluster_information(processed_data, page_tracker, "cluster_info" if is_first_pass else None)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("cluster_information"):
+            story.extend(
+                self._create_cluster_information(
+                    processed_data, page_tracker, "cluster_info" if is_first_pass else None
+                )
+            )
+            story.append(PageBreak())
 
         # Add hardware inventory (includes Physical Rack Layout)
-        # Pass hardware_summary key for main section, and rack_layout key if rack positions are available
-        hardware_section_key = "hardware_summary" if is_first_pass else None
-        rack_layout_key = (
-            "rack_layout"
-            if (is_first_pass and processed_data.get("hardware_inventory", {}).get("rack_positions_available", False))
-            else None
-        )
-        story.extend(
-            self._create_hardware_inventory(processed_data, page_tracker, hardware_section_key, rack_layout_key)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("hardware_inventory"):
+            hardware_section_key = "hardware_summary" if is_first_pass else None
+            rack_layout_key = (
+                "rack_layout"
+                if (
+                    is_first_pass
+                    and processed_data.get("hardware_inventory", {}).get("rack_positions_available", False)
+                )
+                else None
+            )
+            story.extend(
+                self._create_hardware_inventory(processed_data, page_tracker, hardware_section_key, rack_layout_key)
+            )
+            story.append(PageBreak())
 
         # Add comprehensive network configuration
-        story.extend(
-            self._create_comprehensive_network_configuration(
-                processed_data,
-                page_tracker,
-                "network_config" if is_first_pass else None,
-            )
-        )
-
-        # Add switch configuration section (no PageBreak - let content flow naturally)
-        story.extend(
-            self._create_switch_configuration(processed_data, page_tracker, "switch_config" if is_first_pass else None)
-        )
-
-        # Add port mapping (if available) - method includes its own PageBreak at start
-        port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
-        port_mapping_data = port_mapping_section.get("data", {})
-        port_mapping_enabled = port_mapping_data.get("available") and port_mapping_section.get("status") == "complete"
-
-        if port_mapping_enabled:
-            # Extract port mapping data and switches for the method
-            hardware = processed_data.get("hardware_inventory", {})
-            switches = hardware.get("switches") or []
+        if self.config.section_enabled("network_configuration"):
             story.extend(
-                self._create_port_mapping_section(
-                    port_mapping_data,
-                    switches,
-                    page_tracker,
-                    "port_mapping" if is_first_pass else None,
-                )
-            )
-            story.append(PageBreak())
-
-            # Add logical network diagram (only when port mapping is enabled)
-            story.extend(
-                self._create_logical_network_diagram(
+                self._create_comprehensive_network_configuration(
                     processed_data,
                     page_tracker,
-                    "network_diagram" if is_first_pass else None,
+                    "network_config" if is_first_pass else None,
                 )
             )
-            story.append(PageBreak())
+
+        # Add switch configuration section
+        if self.config.section_enabled("switch_configuration"):
+            story.extend(
+                self._create_switch_configuration(
+                    processed_data, page_tracker, "switch_config" if is_first_pass else None
+                )
+            )
+
+        # Add port mapping (if available and enabled in config)
+        if self.config.section_enabled("port_mapping"):
+            port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
+            port_mapping_data = port_mapping_section.get("data", {})
+            port_mapping_enabled = (
+                port_mapping_data.get("available") and port_mapping_section.get("status") == "complete"
+            )
+
+            if port_mapping_enabled:
+                hardware = processed_data.get("hardware_inventory", {})
+                switches = hardware.get("switches") or []
+                story.extend(
+                    self._create_port_mapping_section(
+                        port_mapping_data,
+                        switches,
+                        page_tracker,
+                        "port_mapping" if is_first_pass else None,
+                    )
+                )
+                story.append(PageBreak())
+
+                story.extend(
+                    self._create_logical_network_diagram(
+                        processed_data,
+                        page_tracker,
+                        "network_diagram" if is_first_pass else None,
+                    )
+                )
+                story.append(PageBreak())
+            else:
+                story.append(PageBreak())
         else:
-            # No port mapping - skip network diagram section entirely
             story.append(PageBreak())
 
         # Add logical configuration
-        story.extend(
-            self._create_logical_configuration(
-                processed_data,
-                page_tracker,
-                "logical_config" if is_first_pass else None,
+        if self.config.section_enabled("logical_configuration"):
+            story.extend(
+                self._create_logical_configuration(
+                    processed_data,
+                    page_tracker,
+                    "logical_config" if is_first_pass else None,
+                )
             )
-        )
-        story.append(PageBreak())
+            story.append(PageBreak())
 
         # Add security configuration
-        story.extend(
-            self._create_security_configuration(
-                processed_data,
-                page_tracker,
-                "security_config" if is_first_pass else None,
+        if self.config.section_enabled("security_authentication"):
+            story.extend(
+                self._create_security_configuration(
+                    processed_data,
+                    page_tracker,
+                    "security_config" if is_first_pass else None,
+                )
             )
-        )
-        story.append(PageBreak())
+            story.append(PageBreak())
 
         # Health Check Results (optional)
         sections = processed_data.get("sections", {})
         health_data = sections.get("health_check", {}).get("data")
-        if health_data:
+        if health_data and self.config.section_enabled("health_check"):
             story.extend(
                 self._create_health_check_section(
                     health_data,
@@ -353,12 +378,13 @@ class VastReportBuilder:
 
         # Post Deployment Activities (next steps checklist)
         activities_data = sections.get("post_deployment_activities", {}).get("data")
-        if activities_data:
+        if activities_data and self.config.section_enabled("post_deployment_activities"):
             story.extend(
                 self._create_post_deployment_activities_section(
                     activities_data,
                     page_tracker,
                     "post_deploy_activities" if is_first_pass else None,
+                    processed_data=processed_data,
                 )
             )
             story.append(PageBreak())
@@ -938,9 +964,40 @@ class VastReportBuilder:
             ("Post Deployment Activities", 0, "post_deploy_activities", True),
         ]
 
-        # Filter out optional sections that weren't captured
-        filtered_structure = []
+        # Map TOC section keys to config toggle keys so disabled sections
+        # (and their child indent-1 items) are excluded from the TOC.
+        _toc_key_to_config: Dict[str, str] = {
+            "exec_summary": "executive_summary",
+            "cluster_info": "cluster_information",
+            "hardware_summary": "hardware_inventory",
+            "rack_layout": "hardware_inventory",
+            "network_config": "network_configuration",
+            "switch_config": "switch_configuration",
+            "port_mapping": "port_mapping",
+            "network_diagram": "port_mapping",
+            "logical_config": "logical_configuration",
+            "security_config": "security_authentication",
+            "health_check": "health_check",
+            "post_deploy_activities": "post_deployment_activities",
+        }
+
+        # First pass: remove config-disabled sections and their children
+        config_filtered: list[tuple[str, int, Optional[str], bool]] = []
+        skip_children = False
         for entry in toc_structure:
+            _text, indent_level, section_key, _is_bold = entry
+            if indent_level == 0:
+                cfg_key = _toc_key_to_config.get(section_key or "", "")
+                skip_children = not self.config.section_enabled(cfg_key) if cfg_key else False
+            if skip_children and indent_level > 0:
+                continue
+            if indent_level == 0 and skip_children:
+                continue
+            config_filtered.append(entry)
+
+        # Second pass: remove optional sections that weren't captured in page_tracker
+        filtered_structure: list[tuple[str, int, Optional[str], bool]] = []
+        for entry in config_filtered:
             text, indent_level, section_key, is_bold = entry
             if section_key is None or section_key in page_tracker:
                 filtered_structure.append(entry)
@@ -1155,6 +1212,30 @@ class VastReportBuilder:
             ("Encryption Configuration", 1, None, False),
             ("Authentication Services", 1, None, False),
         ]
+
+        _label_to_config: Dict[str, str] = {
+            "Executive Summary": "executive_summary",
+            "Cluster Information": "cluster_information",
+            "Hardware Summary": "hardware_inventory",
+            "Physical Rack Layout": "hardware_inventory",
+            "Network Configuration": "network_configuration",
+            "Switch Configuration": "switch_configuration",
+            "Port Mapping": "port_mapping",
+            "Logical Network Diagram": "port_mapping",
+            "Logical Configuration": "logical_configuration",
+            "Security & Authentication": "security_authentication",
+        }
+        config_filtered_ph: list[tuple[str, int, Optional[str], bool]] = []
+        skip_children = False
+        for entry in toc_structure:
+            _text, indent_level, _page, _bold = entry
+            if indent_level == 0:
+                cfg_key = _label_to_config.get(_text, "")
+                skip_children = not self.config.section_enabled(cfg_key) if cfg_key else False
+            if skip_children:
+                continue
+            config_filtered_ph.append(entry)
+        toc_structure = config_filtered_ph
 
         # Build TOC table with calculated dot leaders for perfect alignment
         from reportlab.pdfbase.pdfmetrics import stringWidth
@@ -2312,6 +2393,7 @@ class VastReportBuilder:
                                 break
                     cbox_entry = {
                         "id": cbox_data.get("id"),
+                        "name": cbox_name,
                         "model": model,
                         "rack_unit": rack_unit,
                         "state": cbox_data.get("state", "ACTIVE"),
@@ -2335,6 +2417,7 @@ class VastReportBuilder:
 
                         dbox_data = {
                             "id": dbox_info.get("id"),
+                            "name": dbox_name,
                             "model": dbox_info.get("hardware_type", "Unknown"),
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
@@ -2687,6 +2770,10 @@ class VastReportBuilder:
             ib_mtu_display = ib_mtu if ib_mtu is not None else "Not Configured"
             content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
 
+            nb_eth_mtu = cluster_summary.get("nb_eth_mtu")
+            nb_eth_mtu_display = nb_eth_mtu if nb_eth_mtu is not None else "Not Configured"
+            content.append(Paragraph(f"• NVMe/TCP Ethernet MTU: {nb_eth_mtu_display}", normal_style))
+
         return content
 
     def _create_cluster_network_configuration(self, data: Dict[str, Any]) -> List[Any]:
@@ -2792,6 +2879,10 @@ class VastReportBuilder:
             ib_mtu = cluster_network_config.get("ib_mtu", "Unknown")
             ib_mtu_display = ib_mtu if ib_mtu != "Unknown" else "Not Configured"
             content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
+
+            nb_eth_mtu = cluster_network_config.get("nb_eth_mtu", "Unknown")
+            nb_eth_mtu_display = nb_eth_mtu if nb_eth_mtu != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• NVMe/TCP Ethernet MTU: {nb_eth_mtu_display}", normal_style))
 
             # IPMI Gateway and Netmask
             ipmi_gateway = cluster_network_config.get("ipmi_gateway", "Unknown")
@@ -3181,6 +3272,16 @@ class VastReportBuilder:
                     [
                         "InfiniBand MTU",
                         str(cluster_network_config.get("ib_mtu", "Not Configured")),
+                    ]
+                )
+            if (
+                cluster_network_config.get("nb_eth_mtu")
+                and cluster_network_config.get("nb_eth_mtu") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "NVMe/TCP Ethernet MTU",
+                        str(cluster_network_config.get("nb_eth_mtu", "Not Configured")),
                     ]
                 )
 
@@ -4804,13 +4905,15 @@ class VastReportBuilder:
         activities_data: Dict[str, Any],
         page_tracker: Optional[Dict[str, int]] = None,
         section_key: Optional[str] = None,
+        processed_data: Optional[Dict[str, Any]] = None,
     ) -> List[Any]:
         """Create the Post Deployment Activities section with next-steps checklist.
 
         Args:
-            activities_data: Dict with 'next_steps' list of {item, description} dicts.
+            activities_data: Dict with 'next_steps' list of {item, description, status} dicts.
             page_tracker: Optional page tracker for TOC page capture.
             section_key: Section key for PageMarker registration.
+            processed_data: Full report data for render-time status resolution fallback.
 
         Returns:
             List of flowables for the section.
@@ -4855,6 +4958,9 @@ class VastReportBuilder:
 
         next_steps = activities_data.get("next_steps", [])
 
+        if next_steps and not next_steps[0].get("status"):
+            self._resolve_post_deploy_status_at_render(next_steps, processed_data or {})
+
         if next_steps:
             cell_font_size = self.config.font_size - 1
 
@@ -4890,12 +4996,19 @@ class VastReportBuilder:
                 ]
             ]
 
+            status_colors = {
+                "Completed": self.brand_compliance.colors.SUCCESS_GREEN,
+                "Optional": self.brand_compliance.colors.ACCENT_BLUE,
+                "Pending": self.brand_compliance.colors.WARNING_ORANGE,
+            }
+
             for step in next_steps:
+                step_status = step.get("status", "Pending")
                 checklist_data.append(
                     [
                         Paragraph(self._safe_table_value(step.get("item")), cell_style_bold),
                         Paragraph(self._safe_table_value(step.get("description")), cell_style),
-                        Paragraph("Pending", cell_style_center),
+                        Paragraph(step_status, cell_style_center),
                     ]
                 )
 
@@ -4921,13 +5034,16 @@ class VastReportBuilder:
                 ),
             ]
 
-            for row_idx in range(1, len(checklist_data)):
-                checklist_styles.append(
-                    ("BACKGROUND", (2, row_idx), (2, row_idx), self.brand_compliance.colors.WARNING_ORANGE)
+            for row_idx, step in enumerate(next_steps, start=1):
+                step_status = step.get("status", "Pending")
+                bg = status_colors.get(step_status, self.brand_compliance.colors.WARNING_ORANGE)
+                text_color = (
+                    self.brand_compliance.colors.PURE_WHITE
+                    if step_status in ("Completed", "Optional")
+                    else self.brand_compliance.colors.DARK_GRAY
                 )
-                checklist_styles.append(
-                    ("TEXTCOLOR", (2, row_idx), (2, row_idx), self.brand_compliance.colors.DARK_GRAY)
-                )
+                checklist_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
+                checklist_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), text_color))
 
             checklist_table.setStyle(TableStyle(checklist_styles))
             content.append(Paragraph("<b>Next Steps — Get Started Using VAST Data</b>", styles["Normal"]))
@@ -4943,6 +5059,36 @@ class VastReportBuilder:
             )
 
         return content
+
+    @staticmethod
+    def _resolve_post_deploy_status_at_render(next_steps: List[Dict[str, Any]], processed_data: Dict[str, Any]) -> None:
+        """Render-time fallback: resolve post-deploy status from health check data in the report JSON."""
+        hc_results: Dict[str, str] = {}
+        hc_section = processed_data.get("sections", {}).get("health_check", {})
+        for r in hc_section.get("data", {}).get("results", []):
+            hc_results[r.get("check_name", "")] = r.get("status", "")
+
+        cluster = processed_data.get("cluster_summary", {})
+        license_val = str(cluster.get("license", "") or "").strip().lower()
+
+        auto_checks: Dict[str, bool] = {
+            "Configure Call Home w/ Cloud Integration": hc_results.get("Call Home Status") == "pass",
+            "Create VIP": hc_results.get("VIP Pools") == "pass",
+            "Activate License": (
+                hc_results.get("License") == "pass"
+                or (bool(license_val) and license_val not in ("", "none", "unknown"))
+            ),
+        }
+        manual_items = {"Test Fail-over Behavior", "Confirm VIP Movement and ARP Updates"}
+
+        for step in next_steps:
+            item = step.get("item", "")
+            if item in manual_items:
+                step["status"] = "Optional"
+            elif item in auto_checks:
+                step["status"] = "Completed" if auto_checks[item] else "Pending"
+            else:
+                step["status"] = "Pending"
 
     def _create_data_protection_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create data protection configuration section."""

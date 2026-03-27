@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-26 (v1.5.0 release prep; Beta badge removed REL-1; SSH proxy hop PM-1 done; NET-1 planned for v1.5.0; AO-15/AO-19 to complete before release)  
+**Last updated:** 2026-03-27 (v1.5.0 release prep; rack labels, hardware library, post-deploy dynamic status done; AO-15/AO-19/CFG-1 to complete before release)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -32,8 +32,8 @@
 | TSE-6 | **Profiles API:** Unit tests GET/POST/DELETE `/profiles` and `/profiles/<name>` (mock _load_profiles/_save_profiles) | Medium | Done | test_app.py |
 | TSE-7 | **Shutdown:** Optional unit test POST `/shutdown` (200, no crash) or document as manual check | Lower | Done | test_app.py |
 | TSE-8 | **Coverage:** Add tests for external_port_mapper, rack_diagram, report_builder (EBox path, partial port mapping) toward 80% | Lower | Done | Coverage 53%+ (49%+ restored); further toward 80% in TSE-9 |
-| TSE-9 | **Coverage — low-coverage modules:** Add tests for comprehensive_report_template.py, enhanced_report_builder.py (and expand external_port_mapper, rack_diagram, report_builder per TSE-8) to raise total coverage toward 80% | Lower | In progress | Phase A-C complete: +98 tests across 8 work streams; coverage 53%→56%; dead-code modules omitted; external_port_mapper, rack_diagram, health_checker, tool_manager, script_runner, workflows augmented |
-| TSE-10 | **Coverage — omit config:** Optionally configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Done | pyproject.toml `[tool.coverage.run]` omit: comprehensive_report_template.py, enhanced_report_builder.py, session_manager.py |
+| TSE-9 | **Coverage — low-coverage modules:** Expand tests for external_port_mapper, rack_diagram, report_builder, health_checker, tool_manager, script_runner, workflows to raise total coverage toward 80% | Lower | In progress | Phase A-C complete: +98 tests across 8 work streams; coverage 53%→56%; dead-code modules archived; external_port_mapper, rack_diagram, health_checker, tool_manager, script_runner, workflows augmented |
+| TSE-10 | **Coverage — omit config:** Configure coverage omit for files not intended to be tested so cov-fail-under=80 applies only to in-scope code when threshold is raised | Lower | Done | Dead-code modules (comprehensive_report_template.py, enhanced_report_builder.py) moved to archive/; session_manager.py restored to coverage; pyproject.toml omit list cleared |
 
 ---
 
@@ -149,8 +149,7 @@
 
 | ID | Item | Notes |
 |------|------|--------|
-| AO-15 | **Advanced Ops hardening:** Cross-tenant vperfsanity cleanup, unified profile management, SSH adapter stability, UI refinements | vperfsanity_workflow.py, app.py, ssh_adapter.py, advanced_ops.html |
-| AO-19 | **Dynamic log levels, state persistence, and nav gating:** (1) Move Health Check and Configuration to dev mode; (2) Three-tier log level selector (Status/Live/Debug) with per-check health progress and piped logger output; (3) Persistent operation log storage with 1GB capacity management and oldest-25% purge; (4) Full Advanced Ops window state persistence — backend state snapshot API, frontend hydration on load, localStorage for cross-session survival | base.html, app.py, advanced_ops.py, oneshot_runner.py, advanced_ops.html, ops_log_manager.py |
+| — | *(No items currently in progress)* | |
 
 ## Fixed Issues — State Persistence and One-Shot (pre-release)
 
@@ -172,11 +171,15 @@
 |------|------|----------|--------|
 | AO-18 | **Validation Results page (dev mode):** Browse all operation results with tabs and profile-based cluster filtering. Will replace production Reports page when Post Deployment Validation is fully released. | Medium | result_scanner.py, app.py, validation_results.html — implemented, needs polish |
 | AO-20 | **Generate Report page enhancements:** Apply log level selector (Status/Live/Debug), persistent log storage with 1GB capacity, and window state persistence to the Generate Report page. Align Generate page UX with Advanced Ops improvements. | Low | Future work — apply patterns from AO-19 to generate.html and report generation pipeline |
-| NET-1 | **Add nb_eth_mtu to network configuration:** Collect `nb_eth_mtu` (non-blocking Ethernet MTU) from `/api/v7/vms/1/network_settings/` response `data` field. Add to `VastClusterInfo` dataclass, `get_network_config()` extraction, `data_extractor.py` network section, and report output (PDF Network Configuration table and JSON export) alongside existing `eth_mtu` and `ib_mtu` fields. | Medium | v1.5.0 release; Source: `vms/1/network_settings/` `data.nb_eth_mtu`; currently not collected |
+| NET-1 | **Add nb_eth_mtu to network configuration:** Collect `nb_eth_mtu` (non-blocking Ethernet MTU) from `/api/v7/vms/1/network_settings/` response `data` field. Add to `VastClusterInfo` dataclass, `get_network_config()` extraction, `data_extractor.py` network section, and report output (PDF Network Configuration table and JSON export) alongside existing `eth_mtu` and `ib_mtu` fields. | Medium | Done — v1.5.0; collected from both clusters/ and network_settings endpoints |
 | REL-1 | **Remove Beta badge before v1.5.0 release:** Remove the `nav-badge-beta` span from `base.html` and its CSS from `app.css` prior to tagging the production release. | High | Done — removed in v1.5.0 release prep |
 | PM-1 | **SSH proxy hop for field deployments:** Tunnel switch SSH through CNode via paramiko nested transport (`direct-tcpip` channel) so port mapping and Tier 3 health checks work when switches are only reachable from the cluster internal network. Default on. UI toggle, CLI `--no-proxy-jump`, profile persistence. Hot-fix candidate for v1.4.8 (ssh_adapter + external_port_mapper subset). | High | Done — v1.5.0; hot-fix cherry-pick available for v1.4.8 |
 | UPD-1 | **In-app self-update mechanism:** Add ability for the application to check for, download, and apply updates (hot-fixes and new versions) from GitHub Releases. Workflow: (1) Check current version against latest GitHub Release tag; (2) Display update notification with release notes when newer version available; (3) User-initiated download of platform-appropriate artifact (.dmg / .zip); (4) Apply update and restart. Consider: auto-check on launch (configurable), manual check via UI button, rollback capability, update channel (stable vs pre-release), signature verification for downloaded artifacts. | Medium | Future enhancement; reduces manual update friction for field-deployed instances |
 | CFG-1 | **Configuration template refresh:** Update `config/config.yaml.template` to reflect all settings, features, and enhancements added since last update. Ensure parity between template and runtime config keys. Document new keys (ops_log settings, SSH proxy defaults, reporter defaults) in README Configuration section. | High | v1.5.0 release; template has drifted from runtime capabilities |
+| CFG-2 | **Report section toggles:** Per-section true/false toggles under `data_collection.sections` controlling PDF rendering (headings, descriptions, tables, images, TOC entries). Covers all 11 report sections. JSON export unaffected. | High | Done — v1.5.0 |
+| RPT-1 | **Rack diagram serial labels:** CBox/DBox labels replaced with Hardware Inventory Name/Serial Number; DBox deduplication at same U position for Ceres V1 (4x dnodes → 1 label). | Medium | Done — v1.5.0 |
+| RPT-2 | **Post Deployment Activities dynamic status:** Status column auto-resolves to Completed (green), Optional (accent blue), or Pending (orange) from health check results and cluster data. Render-time fallback for existing JSON files. | Medium | Done — v1.5.0 |
+| HWL-1 | **Hardware library additions:** `supermicro_turin_cbox` and `bluefield` entries added to BUILTIN_DEVICES for VMS API model matching. | Low | Done — v1.5.0 |
 
 ---
 
@@ -186,6 +189,9 @@
 
 | ID   | Item | Notes |
 |------|------|--------|
+| AO-15 | Advanced Ops hardening | Cross-tenant vperfsanity cleanup in Step 7; reporter profile save includes rpt_* checklist fields; ALL_FIELDS extended for profile round-trip |
+| AO-19 | Dynamic log levels, state persistence | Tier UI on Adv Ops + Reporter; ops_log_manager 1GB/25% purge; YAML config wired to OpsLogManager factory; state snapshot API + hydration; localStorage persistence |
+| CFG-1 | Configuration template refresh | Template verified in sync with runtime config; all new keys present (SSH proxy, ops_log, section toggles, advanced operations) |
 | QG-2 | Fix flake8/black/mypy exceptions to achieve green quality gate | mypy: 97→0 errors; see [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md). |
 | QG-1 | Document pre-release run (flake8, black, mypy, pytest) | README Development § Pre-release checklist. |
 | TSE-1 | Library API unit tests | GET /library, GET/POST/DELETE /api/library (mocked _load_library/_save_library). |
@@ -219,16 +225,11 @@
 
 ## Next steps (current focus)
 
-1. **v1.5.0 release finalization:** All documentation updated, Beta badge removed (REL-1 done), version strings synchronized, CI thresholds aligned at 60%.
-2. **Network config (NET-1):** Implement `nb_eth_mtu` collection from `vms/1/network_settings/` for PDF and JSON output — included in v1.5.0.
-3. **Advanced Ops hardening (AO-15):** Complete cross-tenant vperfsanity cleanup, unified profile management, SSH adapter stability, UI refinements.
-4. **Dynamic log levels and state persistence (AO-19):** Complete three-tier log level selector, persistent operation log storage, full window state persistence.
-5. **Configuration template refresh:** Update `config/config.yaml.template` to reflect all new settings added since last update.
-6. **Final QA pass:** Run full test suite, lint, format, type checks. Merge feature branch to develop, then to main, tag v1.5.0.
-7. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
-8. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release. Currently at 60%+.
-9. Before each release: update this file (status, Last updated, move completed items to Done).
-10. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+1. **v1.5.0 release:** All pre-release items complete (AO-15, AO-19, CFG-1, NET-1, REL-1, PM-1, CFG-2, RPT-1, RPT-2, HWL-1). QA passed: flake8 clean, black formatted, 730 tests pass, 62% coverage. Merge feature branch to develop, then to main, tag v1.5.0.
+2. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
+3. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release. Currently at 62%+.
+4. Before each release: update this file (status, Last updated, move completed items to Done).
+5. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
 
 ---
 

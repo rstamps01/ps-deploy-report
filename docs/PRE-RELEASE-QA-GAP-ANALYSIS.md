@@ -45,8 +45,8 @@
 
 ### 2.2 Modules without dedicated test files
 
-- **comprehensive_report_template.py** — 0% coverage; excluded from `cov-fail-under` via omit config
-- **enhanced_report_builder.py** — 0% coverage; excluded from `cov-fail-under` via omit config
+- **comprehensive_report_template.py** — archived (dead code, moved to `archive/src/`)
+- **enhanced_report_builder.py** — archived (dead code, moved to `archive/src/`)
 - **enhanced_port_mapper.py** — 44% (covered indirectly via port_mapper tests)
 - **external_port_mapper.py** — ~30%+; new dedicated `test_external_port_mapper.py` with 12 tests (switch OS detection, MAC parsing, cross-connection)
 - **network_diagram.py** — 56% (covered via integration/other paths)
@@ -92,7 +92,7 @@
 - Current total ~56% (up from ~50% after Phase A-C: +98 tests); dead-code modules excluded via omit config; `cov-fail-under=55`.  
   **Gap:** Suite does not yet meet 80% target but threshold is enforced and trending upward.
 
-**Recommendation:** Either (a) add tests for low-coverage modules (e.g. comprehensive_report_template, enhanced_report_builder, external_port_mapper, rack_diagram) to move toward 80%, or (b) temporarily lower `--cov-fail-under` in CI/pyproject with a tracked plan to restore it, and still run coverage locally to monitor regressions.
+**Recommendation:** Either (a) add tests for low-coverage modules (e.g. external_port_mapper, rack_diagram) to move toward 80%, or (b) temporarily lower `--cov-fail-under` in CI/pyproject with a tracked plan to restore it, and still run coverage locally to monitor regressions. Dead-code modules (comprehensive_report_template, enhanced_report_builder) have been archived.
 
 ### 3.3 Security
 
@@ -213,8 +213,8 @@ Use this to align a release run with project rules and best practices:
 | Report PDF generation | Integration: PDF exists, sections present | No assertion on EBox block, Model column format, port-mapping partial flag |
 | Rack diagram | Generic 1U/2U fallback only | EBox placement, switch above/below ebox, device boundaries not unit-tested |
 | External port mapper | Import only (~16% coverage) | No tests for multi-CNode fallback, partial output handling |
-| comprehensive_report_template | 0% | All rendering paths untested at unit level |
-| enhanced_report_builder | 0% | Unused or alternate path; clarify and test or document |
+| comprehensive_report_template | Archived | Dead code moved to `archive/src/` |
+| enhanced_report_builder | Archived | Dead code moved to `archive/src/` |
 
 ### 6.3 Recommendation: what to add before release
 

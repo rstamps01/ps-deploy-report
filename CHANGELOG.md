@@ -5,7 +5,36 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.0] - 2026-03-26
+## [1.5.0] - 2026-03-27
+
+### Added (Report — Post Deployment Activities Dynamic Status)
+- **Dynamic status column** in Post Deployment Activities table: status auto-resolves from health check results and cluster data at report generation time
+  - **Completed** (green): Call Home enabled, VIP pools configured, License activated — detected from health check pass or cluster API fields
+  - **Optional** (accent blue): Fail-over testing and VIP/ARP validation — manual verification items
+  - **Pending** (orange): Items not yet completed or not auto-detectable (e.g., Change Default Passwords)
+- **Render-time fallback:** Reports regenerated from existing JSON files also resolve status from embedded health check data
+- **`ACCENT_BLUE`** (#1A6FB5) added to brand compliance colors — matches app UI button color
+
+### Changed (Rack Diagram — Device Labels)
+- **CBox/DBox labels replaced with serial names:** Rack diagram labels now show the Hardware Inventory Name/Serial Number (e.g., `cbox-S961313X6134067`) instead of generic `CBox-6` / `DBox-1` numbering
+- **DBox deduplication:** Multiple dnodes sharing the same physical DBox at a given U position (e.g., 4x Ceres V1 dnodes) now render as a single device with one label instead of 4 overlapping entries
+
+### Added (Hardware Library)
+- **`supermicro_turin_cbox`** entry: Matches the `supermicro_turin_cbox` model string returned by the VMS API for SMC Gen6 Turin CBoxes (image: `smc_turin_cbox_1u.png`)
+- **`bluefield`** entry: Matches the `bluefield` hardware_type returned by the VMS API for Ceres V1 1U DBoxes (image: `ceres_v2_1u.png`)
+
+### Added (Report — Section Toggles)
+- **Per-section PDF visibility toggles:** All 11 report sections (Executive Summary, Cluster Information, Hardware Inventory, Network Configuration, Switch Configuration, Port Mapping, Logical Configuration, Security & Authentication, Data Protection, Health Check, Post Deployment Activities) can be individually disabled via `data_collection.sections` in `config/config.yaml`
+- When a section is set to `false`, its heading, description paragraph, tables, images, and TOC entry are all omitted from the PDF output
+- JSON data export is unaffected — all data is always collected regardless of section toggle state
+
+### Changed (Dashboard — Quick Start Revamp)
+- **Dashboard redesigned as Quick Start launch pad:** Replaced generic cards and Recent Reports table with a dynamic status bar (job status, last report, deployment tools, saved profiles) and five clickable workflow step cards guiding users from prerequisites through report review
+- **New `/api/dashboard/status` endpoint:** Lightweight JSON API aggregating active job state, tool cache status, profile count, and latest report metadata; polled every 15 seconds by Dashboard JS
+- **New CSS component library:** Status bar tiles (`status-tile`, `status-dot`), numbered workflow cards (`step-card`, `step-number`), responsive grid layouts with hover effects and accent borders
+
+### Added (Network Configuration — NVMe/TCP Ethernet MTU)
+- **`nb_eth_mtu` collection and reporting (NET-1):** NVMe/TCP Ethernet MTU is now collected from both `clusters/` and `vms/1/network_settings/` API endpoints, extracted through `VastClusterInfo` and `ClusterSummary` dataclasses, and reported in the PDF Network Configuration sections and JSON export alongside `eth_mtu` and `ib_mtu`
 
 ### Added (SSH Proxy Hop — Field Deployment Support)
 - **SSH proxy hop for field deployments:** Switch SSH connections now tunnel through the CNode via paramiko nested transport (`direct-tcpip` channel), enabling port mapping and Tier 3 health checks when switches are only reachable from inside the cluster network
