@@ -14,7 +14,7 @@ Generate professional as-built reports for VAST Data clusters in minutes—no Py
 - [Usage](#usage)
 - [Output files](#output-files)
 - [Health check](#health-check)
-- [Advanced operations (developer mode)](#advanced-operations-developer-mode)
+- [Reporter and post-install validation](#reporter-and-post-install-validation)
 - [Building from source](#building-from-source)
 - [Project structure](#project-structure)
 - [Development](#development)
@@ -43,7 +43,7 @@ No Python, pip, or virtual environment needed. Updates: download the latest rele
 | **Desktop app** | Single .dmg/.zip install, browser-based UI at localhost:5173, live progress via SSE, cancel anytime, cluster profiles (shared across pages), report browser, config editor, hardware device library, in-app documentation viewer, full CLI via `--cli` |
 | **Reporter** | Unified workflow: switch placement (auto/manual), as-built report generation, optional pre-validation and health checks, VAST logo progress indicator with stopwatch timer, result bundling — all from a single page |
 | **Report generation** | VAST REST API v7 (v1 fallback), rack U positioning, auto/manual switch placement, PSNT tracking, optional SSH-based port mapping and IPL detection, SSH proxy hop through CNode for field deployments, EBox cluster support |
-| **Health check** | Tier-1 (26 API checks), Tier-2 (10 node SSH checks), Tier-3 (6 switch SSH checks); correlation engine; auto-generated remediation report with severity levels and actionable guidance |
+| **Health check** | Tier 1 (26 API checks) and Tier 3 (6 switch SSH checks) — 32 total checks; correlation engine; auto-generated remediation report with severity levels and actionable guidance |
 | **Post-install validation** | One-Shot mode runs selected operations sequentially with operation badges, pre-validation, auto-bundling; Developer-mode Advanced Ops for step-by-step execution |
 | **Reports** | PDF (VAST-branded) + JSON; executive summary, hardware inventory, physical rack layout, network topology, security, optional health check results and post-deployment validation |
 | **Reliability** | Secure auth (args, env, or prompt), fault tolerance with graceful degradation, sanitized logging, retries with backoff, read-only API policy (GET only) |
@@ -143,7 +143,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
 
 ## Configuration
 
-**Quick setup:** copy the template and edit as needed, or use the **Configuration** page in the web UI.
+**Quick setup:** use the **Advanced Configuration** page (`/config/advanced`) in the web UI — the recommended way to manage settings. Alternatively, copy the YAML template and edit manually.
 
 ```bash
 cp config/config.yaml.template config/config.yaml
@@ -155,6 +155,12 @@ cp config/config.yaml.template config/config.yaml
 | `config/config.yaml.template` | Default template (committed) |
 | `config/cluster_profiles.json` | Saved cluster profiles (UI-managed, shared across Generate, Health Check, and Advanced Ops) |
 | `config/device_library.json` | Custom hardware devices (UI-managed) |
+
+**Advanced Configuration UI** provides form-based settings across 9 sections (Report Formatting, Report Sections, API Settings, Logging, Output, SSH, Health Check, Advanced Operations, Security). Changes are saved via deep-merge — only modified keys are updated, preserving all other config values. Use **Reset to Template** to restore defaults without saving.
+
+**Report Tuning Tool** (on the Results page) lets you select a previously generated JSON report file and regenerate a customized PDF with section toggles and formatting overrides — no cluster access required.
+
+**Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`.
 
 **Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping.
 
@@ -176,11 +182,12 @@ The app listens at `http://127.0.0.1:5173` and opens the browser automatically.
 
 | Page | Purpose |
 |------|---------|
-| **Dashboard** | Recent reports; download, view, delete |
-| **Reporter** | Combined workflow: switch placement, as-built report generation, pre-validation, health checks, one-shot operations with VAST logo progress indicator |
-| **Results** | Browse validation results across 9 operation types with cluster profile filtering |
+| **Dashboard** | Quick Start launch pad with status bar and step-by-step workflow cards |
+| **Reporter** | Combined workflow: switch placement, as-built report generation, pre-validation, health checks, one-shot operations with VAST logo progress indicator and granular per-operation progress tracking |
+| **Results** | Browse validation results across 9 operation types with cluster profile filtering; Report Tuning Tool for PDF regeneration with section toggles |
 | **Library** | Built-in and custom hardware devices (CBox, DBox, Switch, EBox) with images |
 | **Docs** | In-app documentation viewer with searchable guides and references |
+| **Advanced Configuration** | Form-based settings with 9 accordion sections, Report Tuning Tool for PDF regeneration from JSON with config overrides, deep-merge save |
 | **Exit** (navbar) | Shut down the application |
 | **More** (hamburger) | Legacy pages (Generate, Reports) and Developer pages (Advanced Ops, Health Check, Configuration — requires `--dev-mode`) |
 
@@ -259,14 +266,15 @@ python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json ou
 
 The Health Check module runs tiered cluster validation:
 - **Tier 1 (API):** 26 read-only API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
-- **Tier 2 (Node SSH):** 10 node-level checks (memory, disk, services, network interfaces, etc.)
-- **Tier 3 (Switch SSH):** 6 switch checks (MLAG status, NTP, config backup)
+- **Tier 3 (Switch SSH):** 6 switch checks (MLAG status, NTP, config backup readability)
 
 **Standalone Health Check:** Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated.
 
 **Include in Report:** Enable the **Include Health Check** toggle on the Generate page to add health check results to the PDF report:
 - **Port Mapping disabled:** Runs Tier 1 only (26 API checks)
-- **Port Mapping enabled with SSH credentials:** Runs Tier 1 + 2 + 3 (42 total checks)
+- **Port Mapping enabled with SSH credentials:** Runs Tier 1 + 3 (32 total checks)
+
+**VIP Pools:** When no VIP pools are configured, the check returns `warning` (not `fail`) — an unconfigured VIP pool is informational. Reports regenerated from older JSON files automatically correct stale statuses.
 
 ### Health check report sections
 
@@ -379,7 +387,7 @@ vast-asbuilt-reporter/
 ├── frontend/
 │   ├── templates/                # Jinja2 HTML: dashboard, reporter, generate,
 │   │                             #   reports, validation_results, library, health,
-│   │                             #   config, docs, advanced_ops
+│   │                             #   config, advanced_config, docs, advanced_ops
 │   └── static/                   # CSS, JS, images
 ├── packaging/
 │   ├── vast-reporter.spec        # PyInstaller spec
@@ -397,7 +405,7 @@ vast-asbuilt-reporter/
 │   ├── api_handler.py            # VAST API client (GET-only policy)
 │   ├── data_extractor.py         # API → report sections
 │   ├── report_builder.py         # PDF/JSON generation
-│   ├── health_checker.py         # Tier 1-3 health checks + remediation
+│   ├── health_checker.py         # Tier 1 + Tier 3 health checks + remediation
 │   ├── rack_diagram.py           # Physical rack layout
 │   ├── network_diagram.py        # Network topology
 │   ├── brand_compliance.py       # VAST styling
@@ -422,7 +430,8 @@ vast-asbuilt-reporter/
 │       ├── __init__.py           # Path helpers (bundle_dir, data_dir)
 │       ├── logger.py             # Logging + SSE log handler
 │       ├── ops_log_manager.py    # Persistent operation log storage
-│       └── ssh_adapter.py        # Cross-platform SSH (paramiko + pexpect)
+│       ├── ssh_adapter.py        # Cross-platform SSH (paramiko + pexpect)
+│       └── vms_tunnel.py         # VMS tunnel for Tech Port auto-discovery
 └── tests/                        # pytest suite
     ├── conftest.py               # Shared fixtures
     ├── test_app.py               # Flask route tests
@@ -536,4 +545,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.5.0 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 21 test files, 60%+ coverage threshold
+**Version:** 1.5.0 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 786 passing, 60%+ coverage threshold

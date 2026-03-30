@@ -1,13 +1,13 @@
-# VAST As-Built Report Generator - Reports Directory
+# VAST As-Built Report Generator — Reports Directory
 
 ## Overview
 
-This directory contains **active** VAST As-Built reports. All development iterations and test reports have been archived to maintain a clean working structure.
+This directory contains generated VAST As-Built reports. All development iterations and test reports have been archived to maintain a clean working structure.
 
 ## Active Reports
 
 ### Current Production Report
-**Latest Report**: `vast_asbuilt_report_selab-var-204_YYYYMMDD_HHMMSS.pdf`
+**Latest Report**: `vast_asbuilt_report_<cluster>_<timestamp>.pdf`
 - Most recent production-ready report
 - Includes all latest features and improvements
 - Automatically replaces previous version on new generation
@@ -18,37 +18,10 @@ This directory contains **active** VAST As-Built reports. All development iterat
 - Preserved for comparison and rollback purposes
 - Generated: October 17, 2025
 
-## Features in Latest Report
-
-✅ **Physical Rack Layout (Page 6)**:
-- 42U rack diagram with actual hardware images
-- Precise U-position placement
-- Supermicro CBox and Ceres DBox hardware images
-- Green status indicators
-
-✅ **Logical Network Diagram (Page 8)**:
-- Complete network topology visualization
-- CBoxes, DBoxes, Switch A, Switch B connectivity
-- Customer Network integration
-- Color-coded network paths
-
-✅ **Professional Styling**:
-- VAST brand color scheme (#2F2042)
-- Centered tables with alternating row colors
-- Repeating footers with page numbers
-- Section overviews for context
-
-✅ **Comprehensive Data**:
-- Cluster information and configuration
-- Hardware inventory with images
-- Network configuration tables
-- Logical configuration details
-- Security and authentication settings
-
 ## Report Types
 
-- **PDF Reports**: Formatted reports ready for distribution
-- **JSON Reports**: Raw data in JSON format for programmatic access
+- **PDF Reports**: VAST-branded reports ready for customer distribution
+- **JSON Reports**: Structured data for automation, archival, and PDF regeneration
 
 ## File Naming Convention
 
@@ -61,18 +34,57 @@ Where:
 - `<cluster-name>`: Name of the VAST cluster (e.g., selab-var-204)
 - `<timestamp>`: Generation timestamp (YYYYMMDD_HHMMSS)
 
-## Generating New Reports
+## Report Sections
 
-### Basic Generation
+Reports contain the following sections (each individually toggleable via config):
+
+1. **Title Page** — Cluster identity, PSNT, hardware summary
+2. **Table of Contents** — Dynamic TOC with page links
+3. **Executive Summary** — Cluster and hardware overview tables
+4. **Cluster Information** — Configuration and feature flags
+5. **Hardware Summary** — Inventory and capacity metrics
+6. **Hardware Inventory** — CBox, DBox, and EBox detailed tables
+7. **Physical Rack Layout** — 42U rack diagrams with CBox, DBox, EBox, and switch positions; device status indicators (active/inactive/VMS) with legend; hardware bezel images
+8. **Network Configuration** — Detailed network settings
+9. **Switch Port Mapping** — Port-level connectivity (when SSH port mapping enabled)
+10. **Logical Network Diagram** — Network topology with port mapping and IPL/MLAG links; EBox clusters with EB# labels and color-coded Network A/B connections
+11. **Logical Configuration** — VIP pools, tenants, views, policies
+12. **Security & Authentication** — Security settings
+13. **Cluster Health Check Results** — Summary + detailed table (when health check enabled)
+14. **Post Deployment Activities** — Dynamic next-steps checklist derived from health check results
+
+## Generating Reports
+
+### Web UI (recommended)
+
+Open the **Reporter** page in the web UI, enter cluster credentials, run Discovery, and click **Run**.
+
+### CLI
+
 ```bash
-cd /Users/ray.stamps/Documents/as-built-report/ps-deploy-report
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
+python3 src/main.py --cli --cluster <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output reports
 ```
 
-### Example
+### Regenerating PDF from JSON
+
+Rebuild a PDF from a saved JSON file without cluster access:
+
 ```bash
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
+python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json
+python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json output/custom.pdf
 ```
+
+The **Report Tuning Tool** on the Results page also supports regeneration with section toggles and formatting overrides.
+
+## Report Formatting Options
+
+Configurable via Advanced Configuration or `config/config.yaml`:
+
+- **Organization** — Name displayed in PDF footer
+- **Margins** — 0.25"–1.5" (default 0.5")
+- **Font family** — Helvetica, Times-Roman, or Courier
+- **Include TOC** — Toggle table of contents
+- **Include Page Numbers** — Toggle page number footer
 
 ## Archived Reports
 
@@ -100,49 +112,22 @@ reports/
 │   └── vast_asbuilt_report_MVP_baseline_selab-var-204/
 │       ├── vast_asbuilt_report_selab-var-204_20251017_084623.pdf
 │       └── vast_data_selab-var-204_20251017_084623.json
-├── vast_asbuilt_report_selab-var-204_20251017_180708.pdf (latest)
-└── vast_data_selab-var-204_20251017_180708.json (latest)
+└── <generated reports>
 ```
-
-## Report Sections
-
-1. **Title Page**: Cluster identity, PSNT, hardware summary
-2. **Executive Summary**: Cluster and hardware overview tables
-3. **Cluster Information**: Configuration and feature flags
-4. **Hardware Summary**: Inventory and capacity metrics
-5. **Hardware Inventory**: CBox and DBox detailed tables
-6. **Physical Rack Layout**: Visual 42U rack diagram
-7. **Network Configuration**: Detailed network settings
-8. **Logical Network Diagram**: Network topology visualization
-9. **Logical Configuration**: VIP pools, tenants, views, policies
-10. **Security & Authentication**: Security settings
-
-## Data Completeness
-
-Current reports achieve **84.1% data completeness**:
-- ✅ Complete: Network configuration, logical configuration
-- ⚠️ Partial: Cluster network (87.5%), data protection (50.0%)
-- ❌ Missing: Performance metrics, licensing (cluster-specific)
 
 ## Archive Policy
 
 ### Keep Active
-- ✅ MVP baseline report (always)
-- ✅ Latest production report (current version only)
+- MVP baseline report (always)
+- Latest production report (current version only)
 
 ### Archive Automatically
-- ✅ Development iterations
-- ✅ Test reports
-- ✅ Old production reports (superseded)
-
-### Manual Cleanup
-To free disk space, delete archived reports older than 30 days:
-```bash
-find ../.archive/development_reports -name "*.pdf" -mtime +30 -delete
-```
+- Development iterations
+- Test reports
+- Old production reports (superseded)
 
 ---
 
-**Last Updated**: October 17, 2025
-**Report Version**: Production with Network Diagram
+**Last Updated**: March 21, 2026
+**Report Version**: v1.5.0
 **Maintained By**: VAST Professional Services
