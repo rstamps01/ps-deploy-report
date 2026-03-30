@@ -116,6 +116,80 @@ class SupportToolWorkflow:
             logger.exception(f"Step {step_id} failed")
             return {"success": False, "message": str(e)}
 
+    def _scp_to_vms(
+        self,
+        jump_host: str,
+        jump_user: str,
+        jump_password: str,
+        vms_ip: str,
+        remote_src: str,
+        remote_dst: str,
+    ) -> tuple[bool, str]:
+        """SCP a file from CNode to VMS through a Paramiko jump-host channel.
+
+        The CNode doesn't have passwordless SSH to VMS, so a shell ``scp``
+        command would fail.  Instead we:
+          1. Read the file from CNode via Paramiko SCP (get).
+          2. Write the file to VMS via a jump-host Paramiko SCP (put).
+        """
+        import tempfile
+
+        import paramiko
+        from scp import SCPClient
+
+        jump_client: paramiko.SSHClient | None = None
+        vms_client: paramiko.SSHClient | None = None
+        tmp_path = None
+
+        try:
+            # Pull file from CNode to a local temp file
+            jump_client = paramiko.SSHClient()
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            jump_client.connect(
+                jump_host, username=jump_user, password=jump_password,
+                timeout=30, look_for_keys=False, allow_agent=False,
+            )
+
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".py")
+            tmp_path = tmp.name
+            tmp.close()
+
+            with SCPClient(jump_client.get_transport()) as scp:
+                scp.get(remote_src, tmp_path)
+
+            # Push file from local temp to VMS via jump-host channel
+            jump_transport = jump_client.get_transport()
+            if jump_transport is None:
+                return False, "Jump host transport unavailable"
+
+            sock = jump_transport.open_channel("direct-tcpip", (vms_ip, 22), ("127.0.0.1", 0))
+
+            vms_client = paramiko.SSHClient()
+            vms_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            vms_client.connect(
+                vms_ip, username=jump_user, password=jump_password,
+                timeout=30, look_for_keys=False, allow_agent=False,
+                sock=sock,
+            )
+
+            with SCPClient(vms_client.get_transport()) as scp:
+                scp.put(tmp_path, remote_dst)
+
+            return True, "OK"
+        except Exception as exc:
+            return False, str(exc)
+        finally:
+            if vms_client:
+                vms_client.close()
+            if jump_client:
+                jump_client.close()
+            if tmp_path:
+                import os
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+
     def _step_download_script(self) -> Dict[str, Any]:
         from tool_manager import ToolManager
 
@@ -155,6 +229,7 @@ class SupportToolWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
+        vms_internal_ip = self._credentials.get("vms_internal_ip")
 
         remote_script = self._step_data.get("remote_script_path", "/tmp/vast_scripts/vast_support_tools.py")
 
@@ -171,21 +246,59 @@ class SupportToolWorkflow:
 
         self.emit("success", f"Copied to {self.CONTAINER_SCRIPT_PATH}")
 
-        # Set execute permissions on the container copy
-        self.emit("info", "Setting execute permissions...")
-        chmod_cmd = f"chmod +x {self.CONTAINER_SCRIPT_PATH}"
-        self.emit("info", f"$ {chmod_cmd}")
+        if vms_internal_ip:
+            # Tech Port: the Docker container bind-mounts the VMS host's
+            # /vast/data/, not the CNode's.  Push the script from CNode → VMS
+            # so docker exec can find it.
+            self.emit("info", f"Tech Port mode: pushing script to VMS {vms_internal_ip}...")
+            self.emit("info", f"  CNode {host} → VMS {vms_internal_ip}:{self.CONTAINER_SCRIPT_PATH}")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, chmod_cmd, timeout=30)
-        if rc != 0:
-            self.emit("error", f"chmod failed: {stderr}")
-            return {"success": False, "message": f"Failed to set permissions: {stderr}"}
+            push_ok, push_msg = self._scp_to_vms(
+                host, user, password, vms_internal_ip,
+                self.CONTAINER_SCRIPT_PATH, self.CONTAINER_SCRIPT_PATH,
+            )
+            if not push_ok:
+                self.emit("error", f"Failed to push script to VMS: {push_msg}")
+                return {"success": False, "message": f"SCP to VMS failed: {push_msg}"}
 
-        # Verify
-        verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
-        rc, stdout, _ = run_ssh_command(host, user, password, verify_cmd, timeout=10)
-        if stdout:
-            self.emit("info", stdout.strip())
+            self.emit("success", f"Script pushed to VMS {vms_internal_ip}")
+
+            # Set permissions and verify on VMS via jump SSH
+            self.emit("info", "Setting execute permissions on VMS...")
+            chmod_cmd = f"chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            self.emit("info", f"$ {chmod_cmd}")
+
+            rc, stdout, stderr = run_ssh_command(
+                vms_internal_ip, user, password, chmod_cmd, timeout=30,
+                jump_host=host, jump_user=user, jump_password=password,
+            )
+            if rc != 0:
+                self.emit("error", f"chmod failed: {stderr}")
+                return {"success": False, "message": f"Failed to set permissions: {stderr}"}
+
+            verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
+            rc, stdout, _ = run_ssh_command(
+                vms_internal_ip, user, password, verify_cmd, timeout=10,
+                jump_host=host, jump_user=user, jump_password=password,
+            )
+            if stdout:
+                self.emit("info", stdout.strip())
+        else:
+            # Set execute permissions on the container copy
+            self.emit("info", "Setting execute permissions...")
+            chmod_cmd = f"chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            self.emit("info", f"$ {chmod_cmd}")
+
+            rc, stdout, stderr = run_ssh_command(host, user, password, chmod_cmd, timeout=30)
+            if rc != 0:
+                self.emit("error", f"chmod failed: {stderr}")
+                return {"success": False, "message": f"Failed to set permissions: {stderr}"}
+
+            # Verify
+            verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
+            rc, stdout, _ = run_ssh_command(host, user, password, verify_cmd, timeout=10)
+            if stdout:
+                self.emit("info", stdout.strip())
 
         self.emit("success", "Script ready in container path")
         return {"success": True, "message": "Permissions set successfully"}
@@ -194,21 +307,31 @@ class SupportToolWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
+        vms_internal_ip = self._credentials.get("vms_internal_ip")
 
-        self.emit("info", "Running vast_support_tools.py inspect inside VAST container...")
+        self.emit("info", "Running vast_support_tools.py inspect via VAST container...")
         self.emit("info", "This may take several minutes...")
         self.emit("info", "")
 
-        # Run inside VAST container using vms.sh with container-accessible path
-        run_cmd = f"{self.VMS_PATH} {self.CONTAINER_SCRIPT_PATH} inspect"
+        script = self.CONTAINER_SCRIPT_PATH
+        run_cmd = f"{self.VMS_PATH} {script} inspect"
 
-        self.emit("info", f"$ ssh {user}@{host}")
-        self.emit("info", f"$ {run_cmd}")
-        self.emit("info", "")
+        if vms_internal_ip:
+            self.emit("info", f"Tech Port mode: routing through CNode {host} → VMS {vms_internal_ip}")
+            self.emit("info", f"$ ssh {user}@{host} → ssh {user}@{vms_internal_ip}")
+            self.emit("info", f"$ {run_cmd}")
+            self.emit("info", "")
 
-        # This command can take a while, use longer timeout
-        # force_tty=True is needed because vms.sh uses docker exec which requires a TTY
-        rc, stdout, stderr = run_ssh_command(host, user, password, run_cmd, timeout=600, force_tty=True)
+            rc, stdout, stderr = run_ssh_command(
+                vms_internal_ip, user, password, run_cmd, timeout=600, force_tty=True,
+                jump_host=host, jump_user=user, jump_password=password,
+            )
+        else:
+            self.emit("info", f"$ ssh {user}@{host}")
+            self.emit("info", f"$ {run_cmd}")
+            self.emit("info", "")
+
+            rc, stdout, stderr = run_ssh_command(host, user, password, run_cmd, timeout=600, force_tty=True)
 
         # Show output
         output = stdout + stderr
@@ -245,7 +368,8 @@ class SupportToolWorkflow:
         rc, hostname, _ = run_ssh_command(host, user, password, "hostname", timeout=10)
         hostname = hostname.strip() if rc == 0 else "cnode"
 
-        archive_name = f"{hostname}-support_tool_logs.tgz"
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_name = f"{hostname}-support_tool_logs_{ts}.tgz"
         archive_path = f"/userdata/{archive_name}"
 
         self._step_data["archive_name"] = archive_name

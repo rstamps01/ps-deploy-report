@@ -47,13 +47,121 @@
     </div>
 </div>
 
+<!-- ── Dashboard Styles ── -->
+<style>
+/* Dashboard checklist */
+.ds-checklist {
+    margin: 8px 0 0 0; padding: 0 0 0 18px; line-height: 1.8;
+    font-size: 0.85rem; color: var(--text-secondary);
+}
+.ds-checklist li { margin-bottom: 2px; }
+.ds-checklist code {
+    font-size: 0.8rem; padding: 1px 5px; border-radius: 3px;
+    background: var(--bg-input, #0d1117); color: var(--accent);
+}
+.ds-note { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
+
+/* Shared odometer mechanics */
+.mech-odo-area{display:flex;flex-direction:column;align-items:center;margin-bottom:1.2rem;}
+.mech-odo-title{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);margin-bottom:6px;font-weight:600;}
+.mech-odo-inner{display:flex;flex-direction:column;align-items:center;}
+.mech-odo-row{display:flex;align-items:center;gap:0;position:relative;}
+.mech-odo-cycle{
+  background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);
+  width:28px;height:28px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s,color .15s;flex-shrink:0;
+  position:absolute;left:calc(100% + 12px);top:50%;transform:translateY(-50%);
+}
+.mech-odo-cycle:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
+.mech-odo-cycle svg{width:14px;height:14px;}
+.odo-variant{display:none;}
+.odo-variant.active{display:block;}
+.odo-wheel{position:relative;overflow:hidden;width:34px;height:40px;}
+.odo-strip{display:flex;flex-direction:column;will-change:transform;}
+.odo-strip span{display:flex;align-items:center;justify-content:center;width:34px;height:40px;user-select:none;}
+
+/* Style A — Sleek Modern */
+.odo-modern .odo-frame{
+  display:flex;background:var(--bg-surface);border:1px solid var(--border);border-radius:10px;
+  padding:3px;gap:0;box-shadow:0 4px 20px rgba(0,0,0,.4);position:relative;
+}
+.odo-modern .odo-wheel{border-right:1px solid var(--border-light);}
+.odo-modern .odo-wheel:last-child{border-right:none;}
+.odo-modern .odo-strip{transition:transform .6s ease-out;}
+.odo-modern .odo-strip span{font-size:1.4rem;font-weight:600;color:var(--text-primary);font-family:inherit;}
+.odo-modern .odo-frame::after{
+  content:'';position:absolute;left:3px;right:3px;top:50%;height:1px;
+  background:#1a6fb5;box-shadow:0 0 6px #1a6fb5;pointer-events:none;z-index:2;
+}
+.odo-modern .odo-wheel::before,.odo-modern .odo-wheel::after{
+  content:'';position:absolute;left:0;right:0;height:10px;z-index:1;pointer-events:none;
+}
+.odo-modern .odo-wheel::before{top:0;background:linear-gradient(to bottom,var(--bg-surface),transparent);}
+.odo-modern .odo-wheel::after{bottom:0;background:linear-gradient(to top,var(--bg-surface),transparent);}
+
+/* Style B — Classic Car */
+.odo-classic .odo-frame{
+  display:flex;background:#1a1a1a;border:3px solid transparent;border-radius:8px;padding:4px 2px;
+  gap:0;position:relative;background-clip:padding-box;
+  box-shadow:0 0 0 3px #888,0 6px 24px rgba(0,0,0,.6);
+}
+.odo-classic .odo-frame::before{
+  content:'';position:absolute;inset:-6px;border-radius:12px;z-index:-1;
+  background:linear-gradient(160deg,#d4d4d4 0%,#666 30%,#999 50%,#555 70%,#aaa 100%);
+}
+.odo-classic .rivet{
+  position:absolute;width:5px;height:5px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#ccc,#666);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.3),0 1px 2px rgba(0,0,0,.5);z-index:3;
+}
+.odo-classic .rivet-tl{top:-3px;left:-3px}.odo-classic .rivet-tr{top:-3px;right:-3px}
+.odo-classic .rivet-bl{bottom:-3px;left:-3px}.odo-classic .rivet-br{bottom:-3px;right:-3px}
+.odo-classic .odo-wheel{border-right:2px solid #0a0a0a;box-shadow:inset 1px 0 0 rgba(255,255,255,.05),-1px 0 0 rgba(0,0,0,.4);}
+.odo-classic .odo-wheel:last-child{border-right:none;box-shadow:none;}
+.odo-classic .odo-strip{transition:transform .8s ease-in-out;}
+.odo-classic .odo-strip span{font-size:1.35rem;font-weight:700;color:#f5f0e0;font-family:Georgia,"Times New Roman",serif;text-shadow:0 1px 2px rgba(0,0,0,.6);}
+.odo-classic .odo-wheel::before,.odo-classic .odo-wheel::after{
+  content:'';position:absolute;left:0;right:0;height:12px;z-index:1;pointer-events:none;
+}
+.odo-classic .odo-wheel::before{top:0;background:linear-gradient(to bottom,rgba(26,26,26,.95),transparent);}
+.odo-classic .odo-wheel::after{bottom:0;background:linear-gradient(to top,rgba(26,26,26,.95),transparent);}
+
+/* Style C — Futuristic AI */
+.odo-future .odo-frame{
+  display:flex;background:rgba(22,27,34,.65);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid rgba(27,163,209,.35);border-radius:12px;padding:3px;gap:0;position:relative;
+  box-shadow:0 0 18px rgba(27,163,209,.15),0 4px 24px rgba(0,0,0,.5);
+}
+.odo-future .odo-wheel{border-right:1px solid rgba(27,163,209,.2);}
+.odo-future .odo-wheel:last-child{border-right:none;}
+.odo-future .odo-strip{transition:transform .4s cubic-bezier(.2,.8,.2,1);}
+.odo-future .odo-strip span{
+  font-size:1.35rem;font-weight:500;color:#e0f7ff;
+  font-family:"SF Mono","Fira Code","Cascadia Code","Consolas",monospace;
+  text-shadow:0 0 8px rgba(27,163,209,.5);
+}
+.odo-future .odo-wheel::before{
+  content:'';position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,transparent 0px,transparent 2px,rgba(27,163,209,.04) 2px,rgba(27,163,209,.04) 4px);
+}
+.odo-future .odo-frame::after{
+  content:'';position:absolute;left:2px;right:2px;top:50%;height:2px;background:#1BA3D1;border-radius:1px;
+  box-shadow:0 0 10px #1BA3D1,0 0 20px rgba(27,163,209,.3);pointer-events:none;z-index:2;
+}
+.odo-future .odo-wheel .fade-top,.odo-future .odo-wheel .fade-bot{
+  position:absolute;left:0;right:0;height:11px;z-index:1;pointer-events:none;
+}
+.odo-future .odo-wheel .fade-top{top:0;background:linear-gradient(to bottom,rgba(14,17,23,.9),transparent);}
+.odo-future .odo-wheel .fade-bot{bottom:0;background:linear-gradient(to top,rgba(14,17,23,.9),transparent);}
+</style>
+
 <!-- ── Report Odometer ─────────────────────────────────────── -->
 <div style="margin-bottom:2rem;">
     <h2 style="font-size:1.15rem;margin-bottom:0.75rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
         Results Odometer
-        <span id="dsOdoTotal" style="font-size:0.85rem;color:var(--text-secondary);font-weight:400;margin-left:auto;">Total: --</span>
     </h2>
+
     <div class="status-bar" id="dsOdometer" style="grid-template-columns: repeat(9, 1fr);">
         <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="Reports">
             <div class="status-tile-body" style="text-align:center;width:100%;">
@@ -85,7 +193,7 @@
                 <div class="status-tile-label">vnetmap</div>
             </div>
         </a>
-        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="vperfsanity Performance">
+        <a href="{{ url_for('validation_results_page') }}" class="status-tile" style="text-decoration:none;cursor:pointer;" title="VAST vperfsanity">
             <div class="status-tile-body" style="text-align:center;width:100%;">
                 <div class="status-tile-value" id="dsOdoVperf" style="font-size:1.3rem;">0</div>
                 <div class="status-tile-label">vperfsanity</div>
@@ -110,60 +218,119 @@
             </div>
         </a>
     </div>
+
+    <!-- Mechanical Odometer -->
+    <div class="mech-odo-area" style="margin-top:1rem;">
+      <div class="mech-odo-inner">
+        <div class="mech-odo-title">Results Generated</div>
+        <div class="mech-odo-row">
+            <div id="odoVariantModern" class="odo-variant odo-modern active"><div class="odo-frame" id="odoFrameModern"></div></div>
+            <div id="odoVariantClassic" class="odo-variant odo-classic"><div class="odo-frame" id="odoFrameClassic"><div class="rivet rivet-tl"></div><div class="rivet rivet-tr"></div><div class="rivet rivet-bl"></div><div class="rivet rivet-br"></div></div></div>
+            <div id="odoVariantFuture" class="odo-variant odo-future"><div class="odo-frame" id="odoFrameFuture"></div></div>
+            <button class="mech-odo-cycle" id="odoCycleBtn" title="Switch odometer style">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            </button>
+        </div>
+      </div>
+    </div>
+</div>
+
+<!-- ── Before You Begin ──────────────────────────────────── -->
+<h2 style="font-size:1.15rem;margin-bottom:0.6rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+    Before You Begin
+</h2>
+<div class="workflow-steps" style="grid-template-columns: 1fr 1fr;">
+
+    <div class="step-card" style="cursor:default;">
+        <div class="step-header">
+            <span class="step-number" style="background:var(--accent);color:#fff;">P</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+        </div>
+        <div class="step-title">Prerequisites</div>
+        <ul class="ds-checklist">
+            <li>Download and install As-Built Reporter</li>
+            <li>Add Rack(s) to VMS</li>
+            <li>Add CBoxes / DBoxes / EBoxes with Rack U-Heights</li>
+            <li>Add Switches to VMS <em class="ds-note">(customer-managed switches can be added manually)</em></li>
+            <li>Gather switch information: Name, Rack, U-Height</li>
+        </ul>
+    </div>
+
+    <div class="step-card" style="cursor:default;">
+        <div class="step-header">
+            <span class="step-number" style="background:var(--accent);color:#fff;">G</span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        </div>
+        <div class="step-title">Getting Started</div>
+        <ul class="ds-checklist">
+            <li>Connect directly to a Tech Port (<code>192.168.2.2</code>) or to VMS VIP over the network. Tech Port connections discover VMS CNode automatically.</li>
+            <li>Verify CNode SSH access: <code>ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile /dev/null" vastdata@192.168.2.2</code></li>
+            <li>Verify Switch SSH access from CNode: <code>ssh cumulus@&lt;switch-ip&gt;</code></li>
+        </ul>
+    </div>
+
 </div>
 
 <!-- ── Workflow Steps ──────────────────────────────────────── -->
-<h2 style="font-size:1.15rem;margin-bottom:1rem;color:var(--text-primary);">Get Started in 5 Steps</h2>
+<h2 style="font-size:1.15rem;margin:1.5rem 0 0.6rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+    Deployment Workflow
+</h2>
 
 <div class="workflow-steps">
 
-    <a href="{{ url_for('docs_page') }}" class="step-card">
-        <div class="step-header">
-            <span class="step-number">1</span>
-            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-        </div>
-        <div class="step-title">What You Need</div>
-        <p>Gather your cluster IP (or VMS address), VMS credentials (support user), node SSH password, and switch SSH credentials. Tech port connections use 192.168.2.2.</p>
-        <span class="step-cta">View Docs <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
-    </a>
-
     <a href="{{ url_for('reporter_page') }}" class="step-card">
         <div class="step-header">
-            <span class="step-number">2</span>
+            <span class="step-number">1</span>
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
         </div>
-        <div class="step-title">Connect to Cluster</div>
-        <p>Open the Reporter page, select or create a Cluster Profile, and enter your connection settings. Enable "Autofill Default Passwords" for quick setup.</p>
+        <div class="step-title">Connection Settings</div>
+        <div style="flex:1;">
+            <p style="margin-bottom:0;">Enter the Cluster IP and save a new profile. Default passwords are pre-populated when Autofill is enabled (see Advanced).</p>
+            <ul class="ds-checklist" style="margin-top:2px;">
+                <li><strong>Tech Port:</strong> use <code>192.168.2.2</code>.</li>
+                <li><strong>Network:</strong> use the VMS VIP.</li>
+            </ul>
+        </div>
         <span class="step-cta">Open Reporter <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
     <a href="{{ url_for('reporter_page') }}" class="step-card">
         <div class="step-header">
-            <span class="step-number">3</span>
+            <span class="step-number">2</span>
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         </div>
-        <div class="step-title">Configure Switches</div>
-        <p>Choose Auto or Manual switch placement. Run Discovery to find rack switches, then assign positions or add switches manually from the Library.</p>
+        <div class="step-title">Discovery &amp; Switch Placement</div>
+        <p>Click <strong>Discovery</strong> to open the Switch Placement Editor. Run Discovery, assign switch U-height. Optionally, use <strong>+Switch</strong> to add customer-managed switches and assign rack U-height, then <strong>Save to Profile</strong>.</p>
         <span class="step-cta">Configure <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
     <a href="{{ url_for('reporter_page') }}" class="step-card">
         <div class="step-header">
-            <span class="step-number">4</span>
+            <span class="step-number">3</span>
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </div>
-        <div class="step-title">Run Reporter</div>
-        <p>Select your operations &mdash; Pre-Validation (recommended), Run Reporter (generates the as-built PDF), and optional Health Check. Press Run and monitor progress.</p>
+        <div class="step-title">Run Report</div>
+        <div style="flex:1;">
+            <p style="margin-bottom:0;">Open Reporter &mdash; Under Select Operation, select:</p>
+            <ul class="ds-checklist" style="margin-top:2px;">
+                <li>Pre-Validation</li>
+                <li>Generate As-Built Report</li>
+                <li>Health Check</li>
+            </ul>
+            <p style="margin-top:6px;margin-bottom:0;">Click <strong>Run</strong>, then monitor progress in Output Results logging console.</p>
+        </div>
         <span class="step-cta">Run <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
     <a href="{{ url_for('validation_results_page') }}" class="step-card">
         <div class="step-header">
-            <span class="step-number">5</span>
+            <span class="step-number">4</span>
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </div>
-        <div class="step-title">Review Results</div>
-        <p>View or download your PDF and JSON reports. Browse all past results on the Results page, or download complete bundles from One-Shot runs.</p>
+        <div class="step-title">Review &amp; Download</div>
+        <p>View PDF, Download PDF, and Download JSON buttons activate once the report completes. Browse all results on the Results page.</p>
         <span class="step-cta">View Results <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
@@ -173,12 +340,14 @@
 {% block scripts %}
 <script>
 (function() {
+    var DIGIT_H = 40;
+    var WHEELS = 5;
+
     var ids = {
         job: document.getElementById('dsJobStatus'),
         report: document.getElementById('dsLastReport'),
         tools: document.getElementById('dsTools'),
         profiles: document.getElementById('dsProfiles'),
-        odoTotal: document.getElementById('dsOdoTotal'),
         odoReports: document.getElementById('dsOdoReports'),
         odoHealth: document.getElementById('dsOdoHealth'),
         odoNetwork: document.getElementById('dsOdoNetwork'),
@@ -190,6 +359,78 @@
         odoBundles: document.getElementById('dsOdoBundles')
     };
 
+    /* ── Mechanical odometer setup ── */
+    var odoFrames = [
+        document.getElementById('odoFrameModern'),
+        document.getElementById('odoFrameClassic'),
+        document.getElementById('odoFrameFuture')
+    ];
+    var variants = [
+        document.getElementById('odoVariantModern'),
+        document.getElementById('odoVariantClassic'),
+        document.getElementById('odoVariantFuture')
+    ];
+    var styleNames = ['modern', 'classic', 'future'];
+    var currentStyle = parseInt(localStorage.getItem('odoStyle') || '0', 10) % 3;
+
+    function buildWheels(frameEl, hasFadeOverlays) {
+        var existing = frameEl.querySelectorAll('.odo-wheel');
+        existing.forEach(function(w){ w.remove(); });
+        for (var i = 0; i < WHEELS; i++) {
+            var wheel = document.createElement('div');
+            wheel.className = 'odo-wheel';
+            var strip = document.createElement('div');
+            strip.className = 'odo-strip';
+            for (var d = 0; d <= 10; d++) {
+                var s = document.createElement('span');
+                s.textContent = String(d % 10);
+                strip.appendChild(s);
+            }
+            wheel.appendChild(strip);
+            if (hasFadeOverlays) {
+                var ft = document.createElement('div'); ft.className = 'fade-top'; wheel.appendChild(ft);
+                var fb = document.createElement('div'); fb.className = 'fade-bot'; wheel.appendChild(fb);
+            }
+            frameEl.appendChild(wheel);
+        }
+    }
+
+    function setOdometer(frameEl, val) {
+        var str = String(val).padStart(WHEELS, '0').slice(-WHEELS);
+        var wheels = frameEl.querySelectorAll('.odo-wheel');
+        for (var i = 0; i < wheels.length; i++) {
+            var digit = parseInt(str[i], 10);
+            var strip = wheels[i].querySelector('.odo-strip');
+            if (strip) strip.style.transform = 'translateY(-' + (digit * DIGIT_H) + 'px)';
+        }
+    }
+
+    buildWheels(odoFrames[0], false);
+    buildWheels(odoFrames[1], false);
+    buildWheels(odoFrames[2], true);
+
+    function showStyle(idx) {
+        for (var i = 0; i < variants.length; i++) {
+            variants[i].classList.toggle('active', i === idx);
+        }
+        currentStyle = idx;
+        localStorage.setItem('odoStyle', String(idx));
+    }
+    showStyle(currentStyle);
+
+    document.getElementById('odoCycleBtn').addEventListener('click', function() {
+        showStyle((currentStyle + 1) % 3);
+    });
+
+    var lastTotal = 0;
+    function updateOdometers(total) {
+        lastTotal = total;
+        for (var i = 0; i < odoFrames.length; i++) {
+            setOdometer(odoFrames[i], total);
+        }
+    }
+
+    /* ── Dashboard polling ── */
     function dotHtml(active) {
         return '<span class="status-dot ' + (active ? 'status-dot-amber' : 'status-dot-green') + '"></span>';
     }
@@ -228,7 +469,7 @@
         ids.odoBundles.textContent = rc.bundles || 0;
         var total = 0;
         for (var k in rc) { total += rc[k] || 0; }
-        ids.odoTotal.textContent = 'Total: ' + total;
+        updateOdometers(total);
     }
 
     function poll() {

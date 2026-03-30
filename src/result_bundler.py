@@ -270,7 +270,7 @@ class ResultBundler:
         # -- Support tool archives (via sidecar .meta.json or text header) --
         if scripts_dir.exists():
             hit = self._pick_latest(
-                list(scripts_dir.glob("*support_tool_logs.tgz")),
+                list(scripts_dir.glob("*support_tool_logs*.tgz")),
                 cluster_ip,
                 lambda f, ip: self._sidecar_matches(f, ip) or self._text_header_has_ip(f, ip),
             )

@@ -180,12 +180,14 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     # Background job state shared across requests
     app.config["JOB_RUNNING"] = False
     app.config["JOB_RESULT"] = None
+    app.config["JOB_PROGRESS"] = {"percent": 0, "phase": "", "label": ""}
     app.config["JOB_LOCK"] = threading.Lock()
     app.config["JOB_CANCEL"] = threading.Event()
 
     # Health check background job state (independent from report job)
     app.config["HEALTH_JOB_RUNNING"] = False
     app.config["HEALTH_JOB_RESULT"] = None
+    app.config["HEALTH_JOB_PROGRESS"] = {"percent": 0, "phase": "", "label": ""}
     app.config["HEALTH_JOB_LOCK"] = threading.Lock()
     app.config["HEALTH_JOB_CANCEL"] = threading.Event()
 
@@ -223,7 +225,7 @@ def _register_routes(app: Flask) -> None:
     # -- Route guard for Developer Mode pages --------------------------------
     @app.before_request
     def check_developer_mode_access():
-        if request.path in ("/advanced-ops", "/health"):
+        if request.path in ("/advanced-ops", "/health", "/config"):
             if not app.config.get("DEVELOPER_MODE", False):
                 return (
                     jsonify(
@@ -330,6 +332,7 @@ def _register_routes(app: Flask) -> None:
             "verbose": form.get("verbose") == "on",
             "switch_placement": form.get("switch_placement", "auto"),
             "proxy_jump": form.get("proxy_jump") == "on",
+            "tech_port": form.get("tech_port") == "on",
         }
 
         if params["switch_placement"] == "manual":
@@ -350,6 +353,7 @@ def _register_routes(app: Flask) -> None:
             {
                 "running": app.config["JOB_RUNNING"],
                 "result": app.config["JOB_RESULT"],
+                "progress": app.config["JOB_PROGRESS"],
             }
         )
         resp.headers["Cache-Control"] = "no-store"
@@ -363,6 +367,7 @@ def _register_routes(app: Flask) -> None:
                 return jsonify({"status": "no_job"})
             app.config["JOB_CANCEL"].set()
             app.config["JOB_RUNNING"] = False
+            app.config["JOB_PROGRESS"] = {"percent": 0, "phase": "", "label": ""}
             app.config["JOB_RESULT"] = {
                 "success": False,
                 "error": "Report generation cancelled by user",
@@ -440,6 +445,7 @@ def _register_routes(app: Flask) -> None:
             {
                 "running": app.config["HEALTH_JOB_RUNNING"],
                 "result": app.config["HEALTH_JOB_RESULT"],
+                "progress": app.config["HEALTH_JOB_PROGRESS"],
             }
         )
 
@@ -468,7 +474,19 @@ def _register_routes(app: Flask) -> None:
         Uses the same Advanced Ops backend infrastructure but is accessible
         in the standard (non-developer) UI.
         """
-        return render_template("reporter.html", version=APP_VERSION)
+        config = _load_yaml(app.config["CONFIG_PATH"])
+        adv = config.get("advanced_operations", {})
+        ssh_cfg = config.get("ssh", {})
+        return render_template(
+            "reporter.html",
+            version=APP_VERSION,
+            cfg_proxy_jump=ssh_cfg.get("proxy_jump", True),
+            cfg_tech_port=ssh_cfg.get("tech_port_mode", False),
+            cfg_default_mode=adv.get("default_mode", "reporter"),
+            cfg_switch_placement=adv.get("default_switch_placement", "manual"),
+            cfg_autofill_passwords=adv.get("autofill_default_passwords", True),
+            cfg_vperfsanity_default=adv.get("vperfsanity_default_selected", False),
+        )
 
     # -- Advanced Operations (Developer Mode) --------------------------------
 
@@ -479,7 +497,18 @@ def _register_routes(app: Flask) -> None:
         This page is only accessible when Developer Mode is enabled (--dev-mode flag).
         The before_request guard will return 403 if Developer Mode is not enabled.
         """
-        return render_template("advanced_ops.html", version=APP_VERSION)
+        config = _load_yaml(app.config["CONFIG_PATH"])
+        adv = config.get("advanced_operations", {})
+        ssh_cfg = config.get("ssh", {})
+        defaults = adv.get("defaults", {})
+        return render_template(
+            "advanced_ops.html",
+            version=APP_VERSION,
+            cfg_proxy_jump=ssh_cfg.get("proxy_jump", True),
+            cfg_tech_port=ssh_cfg.get("tech_port_mode", False),
+            cfg_autofill_passwords=adv.get("autofill_default_passwords", True),
+            cfg_defaults=defaults,
+        )
 
     @app.route("/advanced-ops/workflows")
     def advanced_ops_workflows():
@@ -752,16 +781,16 @@ def _register_routes(app: Flask) -> None:
         """Run pre-validation checks in a background thread."""
         from oneshot_runner import OneShotRunner
 
-        with app.config["ONESHOT_LOCK"]:
-            if app.config["ONESHOT_RUNNING"]:
-                return jsonify({"error": "One-shot operation already running"}), 409
-
         data = request.get_json(silent=True) or {}
         selected_ops = data.get("selected_ops", [])
         include_health = data.get("include_health", True)
         credentials = _extract_oneshot_credentials(data)
 
         app.config["ONESHOT_CANCEL"].clear()
+
+        from advanced_ops import get_advanced_ops_manager
+        get_advanced_ops_manager()._output_buffer.clear()
+
         runner = OneShotRunner(
             selected_ops=selected_ops,
             credentials=credentials,
@@ -771,6 +800,8 @@ def _register_routes(app: Flask) -> None:
         )
 
         with app.config["ONESHOT_LOCK"]:
+            if app.config["ONESHOT_RUNNING"]:
+                return jsonify({"error": "One-shot operation already running"}), 409
             app.config["ONESHOT_RUNNING"] = True
             app.config["ONESHOT_RESULT"] = None
             app.config["ONESHOT_RUNNER"] = runner
@@ -1012,6 +1043,116 @@ def _register_routes(app: Flask) -> None:
         _write_config(app.config["CONFIG_PATH"], template)
         return jsonify({"status": "reset", "config_text": template})
 
+    # -- Advanced Configuration ---------------------------------------------
+
+    @app.route("/config/advanced")
+    def advanced_config_page():
+        return render_template("advanced_config.html", version=APP_VERSION)
+
+    @app.route("/config/json", methods=["GET"])
+    def config_json_get():
+        """Return current config.yaml as a JSON object."""
+        return jsonify(_load_yaml(app.config["CONFIG_PATH"]))
+
+    @app.route("/config/json", methods=["POST"])
+    def config_json_save():
+        """Accept a JSON object and write it back to config.yaml."""
+        import yaml
+
+        data = request.get_json(silent=True)
+        if data is None:
+            return jsonify({"error": "Invalid JSON body"}), 400
+        try:
+            text = yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
+        except Exception as exc:
+            return jsonify({"error": f"YAML serialisation failed: {exc}"}), 400
+        _write_config(app.config["CONFIG_PATH"], text)
+        return jsonify({"status": "saved"})
+
+    @app.route("/config/template/json", methods=["GET"])
+    def config_template_json():
+        """Return the default template config as a JSON object."""
+        return jsonify(_load_yaml(app.config["CONFIG_TEMPLATE"]))
+
+    @app.route("/config/advanced/json-files", methods=["GET"])
+    def config_json_files():
+        """List available vast_data_*.json report files for the tuning tool."""
+        files = []
+        for entry in _list_reports(app.config["OUTPUT_DIRS"]):
+            if entry["type"] == "JSON":
+                files.append(entry)
+        return jsonify({"files": files})
+
+    @app.route("/config/advanced/tune-report", methods=["POST"])
+    def config_tune_report():
+        """Regenerate a PDF from an existing JSON file using report config overrides."""
+        from report_builder import ReportConfig, create_report_builder
+
+        payload = request.get_json(silent=True) or {}
+        json_source = payload.get("json_path", "").strip()
+        overrides = payload.get("report_overrides", {})
+
+        if not json_source:
+            return jsonify({"error": "json_path is required"}), 400
+
+        src = Path(json_source)
+        if not src.is_file():
+            return jsonify({"error": f"JSON file not found: {json_source}"}), 404
+
+        try:
+            with open(src, "r", encoding="utf-8") as fh:
+                processed_data = json.load(fh)
+        except Exception as exc:
+            return jsonify({"error": f"Failed to load JSON: {exc}"}), 400
+
+        base_config = _load_yaml(app.config["CONFIG_PATH"])
+        if overrides:
+            base_config.setdefault("report", {}).update(
+                {k: v for k, v in overrides.items() if k in ("organization", "template", "pdf")}
+            )
+            if "template" in overrides:
+                base_config["report"].setdefault("template", {}).update(overrides["template"])
+            if "pdf" in overrides:
+                base_config["report"].setdefault("pdf", {}).update(overrides["pdf"])
+            if "sections" in overrides:
+                base_config.setdefault("data_collection", {})["sections"] = overrides["sections"]
+
+        report_config = ReportConfig.from_yaml(base_config)
+        builder = create_report_builder(
+            config=report_config,
+            library_path=app.config.get("LIBRARY_PATH"),
+            user_images_dir=app.config.get("USER_IMAGES_DIR"),
+        )
+
+        pdf_name = src.stem.replace("vast_data_", "vast_asbuilt_report_") + "_REGEN.pdf"
+        pdf_path = src.parent / pdf_name
+        if not builder.generate_pdf_report(processed_data, str(pdf_path)):
+            return jsonify({"error": "PDF generation failed"}), 500
+
+        return jsonify({"status": "ok", "pdf_path": str(pdf_path), "pdf_name": pdf_name})
+
+    @app.route("/config/advanced/upload-json", methods=["POST"])
+    def config_upload_json():
+        """Accept an uploaded JSON file and store it in the default output dir."""
+        uploaded = request.files.get("json_file")
+        if not uploaded or not uploaded.filename:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        out_dir = Path(app.config["DEFAULT_OUTPUT_DIR"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        dest = out_dir / uploaded.filename
+        uploaded.save(str(dest))
+        return jsonify({"status": "uploaded", "path": str(dest)})
+
+    @app.route("/config/advanced/download/<path:filename>")
+    def config_download_file(filename):
+        """Serve a regenerated PDF for preview or download."""
+        target = Path("/" + filename) if not filename.startswith("/") else Path(filename)
+        if not target.is_file():
+            return jsonify({"error": "File not found"}), 404
+        as_download = "download" in request.args
+        return send_file(str(target), as_attachment=as_download)
+
     # -- Cluster Profiles ---------------------------------------------------
 
     @app.route("/profiles", methods=["GET"])
@@ -1051,6 +1192,7 @@ def _register_routes(app: Flask) -> None:
             "manual_placements": [],
             "manual_switch_ips": [],
             "proxy_jump": True,
+            "tech_port": False,
             "rpt_pre_validation": True,
             "rpt_run_reporter": True,
             "rpt_health_check": True,
@@ -1084,13 +1226,33 @@ def _register_routes(app: Flask) -> None:
     @app.route("/api/discover", methods=["POST"])
     def api_discover():
         """Authenticate and fetch rack + switch data for manual placement UI."""
+        import socket
+
         from api_handler import create_vast_api_handler
         from rack_diagram import RackDiagram
+
+        CONNECT_PROBE_TIMEOUT = 5  # seconds — fast TCP reachability check
 
         data = request.get_json(silent=True) or {}
         cluster_ip = data.get("cluster_ip", "").strip()
         if not cluster_ip:
             return jsonify({"error": "Cluster IP is required"}), 400
+
+        # --- Fast reachability probe before any API work ---
+        try:
+            sock = socket.create_connection((cluster_ip, 443), timeout=CONNECT_PROBE_TIMEOUT)
+            sock.close()
+        except OSError:
+            return (
+                jsonify(
+                    {
+                        "error": f"Unable to reach {cluster_ip}:443 — connection "
+                        f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
+                        f"the cluster IP is correct and reachable."
+                    }
+                ),
+                504,
+            )
 
         username = password = token = None
         if data.get("auth_method") == "token":
@@ -1099,14 +1261,32 @@ def _register_routes(app: Flask) -> None:
             username = data.get("username")
             password = data.get("password")
 
+        tunnel = None
         try:
             config = _load_yaml(app.config["CONFIG_PATH"])
+            config.setdefault("api", {})
+            config["api"]["timeout"] = 10
+            config["api"]["max_retries"] = 0
+
+            tunnel_address = None
+            if data.get("tech_port"):
+                from utils.vms_tunnel import VMSTunnel
+
+                tunnel = VMSTunnel(
+                    cluster_ip,
+                    data.get("node_user", "vastdata"),
+                    data.get("node_password", "vastdata"),
+                )
+                tunnel.connect()
+                tunnel_address = tunnel.local_bind_address
+
             handler = create_vast_api_handler(
                 cluster_ip=cluster_ip,
                 username=username,
                 password=password,
                 token=token,
                 config=config,
+                tunnel_address=tunnel_address,
             )
             if not handler.authenticate():
                 return jsonify({"error": "Authentication failed"}), 401
@@ -1141,6 +1321,9 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"racks": racks, "switches": switches})
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
+        finally:
+            if tunnel:
+                tunnel.close()
 
     # -- Filesystem browse (for directory picker) ----------------------------
 
@@ -1374,6 +1557,7 @@ def _extract_oneshot_credentials(data: Dict[str, Any]) -> Dict[str, Any]:
         "switch_placement": data.get("switch_placement", "auto"),
         "manual_placements": data.get("manual_placements", []),
         "manual_switch_ips": data.get("manual_switch_ips", []),
+        "tech_port": data.get("tech_port", False),
     }
 
 
@@ -1400,6 +1584,13 @@ def _check_cancel(app: Flask) -> None:
         raise _JobCancelled("Cancelled by user")
 
 
+def _update_progress(app: Flask, key: str, phase: str, percent: int, label: str) -> None:
+    """Update a progress dict in app.config under JOB_LOCK / HEALTH_JOB_LOCK."""
+    lock_key = "HEALTH_JOB_LOCK" if "HEALTH" in key else "JOB_LOCK"
+    with app.config[lock_key]:
+        app.config[key] = {"percent": min(percent, 100), "phase": phase, "label": label}
+
+
 def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
     """Execute the report pipeline in a background thread."""
     from api_handler import create_vast_api_handler
@@ -1410,7 +1601,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
     with app.config["JOB_LOCK"]:
         app.config["JOB_RUNNING"] = True
         app.config["JOB_RESULT"] = None
+        app.config["JOB_PROGRESS"] = {"percent": 0, "phase": "init", "label": "Initializing..."}
 
+    tunnel = None
     try:
         _check_cancel(app)
 
@@ -1423,6 +1616,20 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         job_logger = get_logger("job")
         job_logger.info("Starting report generation for %s", params["cluster_ip"])
+
+        has_health = bool(params.get("include_health_check"))
+        has_ports = bool(params.get("enable_port_mapping"))
+        phase_weights = {"auth": 5, "data_collection": 20, "health_check": 15, "port_mapping": 10, "data_extraction": 20, "json_save": 5, "pdf_generation": 25}
+        if not has_health:
+            phase_weights["health_check"] = 0
+        if not has_ports:
+            phase_weights["port_mapping"] = 0
+        total_weight = sum(phase_weights.values())
+        cumulative = 0
+        phase_start = {}
+        for p in ["auth", "data_collection", "health_check", "port_mapping", "data_extraction", "json_save", "pdf_generation"]:
+            phase_start[p] = int(cumulative * 100 / total_weight)
+            cumulative += phase_weights[p]
 
         output_dir = Path(params["output_dir"])
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -1438,6 +1645,26 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         _check_cancel(app)
 
+        # Tech Port tunnel (auto-discover VMS and forward API traffic)
+        tunnel_address = None
+        if params.get("tech_port"):
+            from utils.vms_tunnel import VMSTunnel
+
+            job_logger.info("Tech Port mode: discovering VMS via %s ...", params["cluster_ip"])
+            tunnel = VMSTunnel(
+                params["cluster_ip"],
+                params.get("node_user", "vastdata"),
+                params.get("node_password", "vastdata"),
+            )
+            tunnel.connect()
+            tunnel_address = tunnel.local_bind_address
+            job_logger.info(
+                "VMS discovered: internal=%s, management=%s, tunnel=%s",
+                tunnel.vms_internal_ip,
+                tunnel.vms_management_ip,
+                tunnel_address,
+            )
+
         # Build components
         api_handler = create_vast_api_handler(
             cluster_ip=params["cluster_ip"],
@@ -1445,6 +1672,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             password=password,
             token=token,
             config=config,
+            tunnel_address=tunnel_address,
         )
         data_extractor = create_data_extractor(config)
         report_config = ReportConfig.from_yaml(config)
@@ -1456,6 +1684,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Authenticate
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "auth", phase_start["auth"], "Authenticating...")
         job_logger.info("Authenticating with VAST cluster...")
         if not api_handler.authenticate():
             raise RuntimeError("Authentication failed")
@@ -1463,6 +1692,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Collect data
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "data_collection", phase_start["data_collection"], "Collecting cluster data...")
         job_logger.info("Collecting cluster data...")
         raw_data = api_handler.get_all_data()
         if not raw_data:
@@ -1470,24 +1700,30 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Optional health check - tiers depend on Port Mapping settings
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "health_check", phase_start["health_check"], "Running health checks...")
         if params.get("include_health_check"):
             try:
                 from health_checker import HealthChecker
 
-                # Determine which tiers to run based on Port Mapping toggle
+                hc_start = phase_start["health_check"]
+                hc_width = int(phase_weights["health_check"] * 100 / total_weight)
+
+                def _inline_hc_progress(check_idx: int, total: int, check_name: str) -> None:
+                    sub_pct = int(check_idx * 100 / max(total, 1))
+                    overall = hc_start + int(sub_pct * hc_width / 100)
+                    _update_progress(app, "JOB_PROGRESS", "health_check", overall, f"Health: {check_name}")
+
                 enable_ssh = params.get("enable_port_mapping", False)
                 node_pw = params.get("node_password", "")
                 switch_pw = params.get("switch_password", "")
 
-                if enable_ssh and node_pw and switch_pw:
-                    # Port Mapping enabled with credentials -> run all tiers
-                    tiers = [1, 2, 3]
-                    job_logger.info("Running health checks (Tier 1-3: API + Node SSH + Switch SSH)...")
+                if enable_ssh and switch_pw:
+                    tiers = [1, 3]
+                    job_logger.info("Running health checks (Tier 1 API + Tier 3 Switch SSH)...")
 
-                    # Build SSH configs for Tier 2 and Tier 3
                     ssh_config = {
                         "username": params.get("node_user", "vastdata"),
-                        "password": node_pw,
+                        "password": params.get("node_password", ""),
                     }
                     switch_ssh_config = {
                         "username": params.get("switch_user", "cumulus"),
@@ -1497,7 +1733,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         switch_ssh_config["proxy_jump"] = {
                             "host": params["cluster_ip"],
                             "username": params.get("node_user", "vastdata"),
-                            "password": node_pw,
+                            "password": params.get("node_password", ""),
                         }
 
                     checker = HealthChecker(
@@ -1505,26 +1741,28 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         ssh_config=ssh_config,
                         switch_ssh_config=switch_ssh_config,
                         cancel_event=app.config["JOB_CANCEL"],
+                        progress_callback=_inline_hc_progress,
                     )
                 else:
-                    # Port Mapping disabled or missing credentials -> Tier 1 only
                     tiers = [1]
                     job_logger.info("Running health check (Tier 1 API only)...")
                     checker = HealthChecker(
                         api_handler=api_handler,
                         cancel_event=app.config["JOB_CANCEL"],
+                        progress_callback=_inline_hc_progress,
                     )
 
                 health_report = checker.run_all_checks(tiers=tiers)
                 raw_data["health_check_results"] = checker.to_dict(health_report)
 
-                tier_desc = "Tier 1-3" if len(tiers) == 3 else "Tier 1"
+                tier_desc = "Tier 1 & 3" if 3 in tiers else "Tier 1"
                 job_logger.info("Health check completed (%s) — results will be included in report", tier_desc)
             except Exception as hc_exc:
                 job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
 
         # Optional port mapping
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "port_mapping", phase_start["port_mapping"], "Collecting port mapping data...")
         if params.get("enable_port_mapping"):
             job_logger.info("Collecting port mapping data via SSH...")
             port_data = _collect_port_mapping_web(params, raw_data, api_handler)
@@ -1536,6 +1774,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Process data
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "data_extraction", phase_start["data_extraction"], "Processing collected data...")
         job_logger.info("Processing collected data...")
         use_ext = bool(params.get("enable_port_mapping") and "port_mapping_external" in raw_data)
         processed_data = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext)
@@ -1558,11 +1797,13 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         cluster_ip = params["cluster_ip"]
         processed_data["cluster_ip"] = cluster_ip
 
+        _update_progress(app, "JOB_PROGRESS", "json_save", phase_start["json_save"], "Saving JSON data...")
         json_path = output_dir / f"vast_data_{cluster_name}_{timestamp}.json"
         data_extractor.save_processed_data(processed_data, str(json_path))
         job_logger.info("JSON saved: %s", json_path.name)
 
         _check_cancel(app)
+        _update_progress(app, "JOB_PROGRESS", "pdf_generation", phase_start["pdf_generation"], "Generating PDF report...")
         pdf_path = output_dir / f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
         if not report_builder.generate_pdf_report(processed_data, str(pdf_path)):
             raise RuntimeError("PDF generation failed")
@@ -1575,6 +1816,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         meta_path.write_text(json_mod.dumps(meta))
 
         api_handler.close()
+        _update_progress(app, "JOB_PROGRESS", "complete", 100, "Complete")
         job_logger.info("Report generation completed successfully")
 
         with app.config["JOB_LOCK"]:
@@ -1596,6 +1838,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             if not app.config["JOB_CANCEL"].is_set():
                 app.config["JOB_RESULT"] = {"success": False, "error": str(exc)}
     finally:
+        if tunnel is not None:
+            try:
+                tunnel.close()
+            except Exception:
+                pass
         with app.config["JOB_LOCK"]:
             app.config["JOB_RUNNING"] = False
 
@@ -1643,6 +1890,9 @@ def _collect_port_mapping_web(
         last_partial = None
         for cnode_ip in cnode_ips:
             try:
+                tunnel_addr = getattr(api_handler, "_api_host", None)
+                if tunnel_addr == params["cluster_ip"]:
+                    tunnel_addr = None
                 mapper = ExternalPortMapper(
                     cluster_ip=params["cluster_ip"],
                     api_user=api_handler.username or "support",
@@ -1654,6 +1904,7 @@ def _collect_port_mapping_web(
                     switch_user=params.get("switch_user", "cumulus"),
                     switch_password=params.get("switch_password", ""),
                     proxy_jump=bool(params.get("proxy_jump", True)),
+                    tunnel_address=tunnel_addr,
                 )
                 result = mapper.collect_port_mapping()
                 if result.get("available"):
@@ -1693,6 +1944,9 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
     from health_checker import HealthChecker
     from utils.logger import setup_logging
 
+    with app.config["HEALTH_JOB_LOCK"]:
+        app.config["HEALTH_JOB_PROGRESS"] = {"percent": 0, "phase": "init", "label": "Initializing..."}
+
     try:
         config_path = app.config["CONFIG_PATH"]
         config = _load_yaml(config_path)
@@ -1700,6 +1954,8 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
         enable_sse_logging()
         job_logger = get_logger("health_job")
         job_logger.info("Starting health check for %s", params["cluster_ip"])
+
+        _update_progress(app, "HEALTH_JOB_PROGRESS", "auth", 5, "Authenticating...")
 
         username = password = token = None
         if params.get("api_token"):
@@ -1721,6 +1977,8 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
 
+        _update_progress(app, "HEALTH_JOB_PROGRESS", "setup", 10, "Preparing health checks...")
+
         ssh_config = None
         if params.get("node_user") and params.get("node_password"):
             ssh_config = {"username": params["node_user"], "password": params["node_password"]}
@@ -1734,18 +1992,27 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
                     "password": params["node_password"],
                 }
 
+        def _health_progress_callback(check_idx: int, total: int, check_name: str) -> None:
+            pct = 10 + int(check_idx * 85 / max(total, 1))
+            _update_progress(app, "HEALTH_JOB_PROGRESS", "checks", min(pct, 95), f"Check {check_idx}/{total}: {check_name}")
+
         checker = HealthChecker(
             api_handler=api_handler,
             ssh_config=ssh_config,
             switch_ssh_config=switch_ssh_config,
             cancel_event=app.config["HEALTH_JOB_CANCEL"],
+            progress_callback=_health_progress_callback,
         )
         report = checker.run_all_checks(tiers=params.get("tiers", [1]))
         report_dict = checker.to_dict(report)
 
+        _update_progress(app, "HEALTH_JOB_PROGRESS", "save", 96, "Saving results...")
+
         output_dir = config.get("output", {}).get("directory", "output")
         json_path = checker.save_json(report, output_dir)
         remediation_path = checker.generate_remediation_report(report, output_dir)
+
+        _update_progress(app, "HEALTH_JOB_PROGRESS", "complete", 100, "Complete")
 
         with app.config["HEALTH_JOB_LOCK"]:
             app.config["HEALTH_JOB_RESULT"] = {

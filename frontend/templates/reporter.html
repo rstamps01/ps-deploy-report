@@ -16,85 +16,105 @@
 <div class="card" id="connectionSettingsCard">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
         <h3>Connection Settings</h3>
-        <button type="button" class="btn-icon-collapse collapsed" onclick="toggleConnectionSettings()" id="btnCollapseConn" title="Expand settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button type="button" class="btn-icon-collapse" onclick="toggleConnectionSettings()" id="btnCollapseConn" title="Collapse settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
     </div>
     <div class="card-body">
+        <p class="card-steps">
+            <strong>Step 1</strong> — <strong style="color:var(--accent);">Verify SSH access.</strong>
+            <span class="info-icon" title="Physical: Connect to Tech Port.&#10;Network: Connect to VMS VIP.&#10;&#10;For network connections to VMS VIP, open Advanced and uncheck Tech Port Mode.">&#9432;</span><br>
+            <strong>Step 2</strong> — <strong style="color:var(--accent);">Enter IP</strong> for Tech Port or VMS and <strong style="color:var(--accent);">click save.</strong>
+            <span class="info-icon" title="For Tech Port connections use 192.168.2.2&#10;For network connections use the VMS VIP address&#10;&#10;Default passwords are pre-populated when Autofill is enabled (see Advanced).&#10;Edit any non-default passwords and save.">&#9432;</span>
+        </p>
         <form id="credentialsForm">
-            <div class="form-group" style="margin-bottom: 12px;">
-                <label for="profileSelect">Saved Profiles</label>
-                <div class="profile-controls">
-                    <select id="profileSelect" onchange="loadProfile()">
-                        <option value="">-- Select a profile --</option>
-                    </select>
-                    <button type="button" class="btn-icon-add" onclick="createProfile()" title="Create cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+            <!-- Row 1: Profile dropdown + Cluster IP side by side -->
+            <div class="form-row creds-row-profile">
+                <div class="form-group" style="flex: 1;">
+                    <label for="profileSelect">Saved Profiles</label>
+                    <div class="profile-controls">
+                        <select id="profileSelect" onchange="loadProfile()">
+                            <option value="">- Create or Select a profile -</option>
+                        </select>
+                        <button type="button" class="btn-icon-add" onclick="createProfile()" title="Create cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label for="clusterIp">Tech Port IP / VMS VIP <span class="info-icon" title="Tech Port: 192.168.2.2&#10;Network: VMS VIP address (e.g. 10.143.10.100)">&#9432;</span></label>
+                    <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
                 </div>
             </div>
 
-            <!-- Collapsible section: credential fields + bottom toolbar (collapsed on initial render) -->
-            <div id="connSettingsDetails" class="collapsed-section">
+            <!-- Collapsible section: credential fields + bottom toolbar -->
+            <div id="connSettingsDetails">
                 <div id="credentialFields" class="credential-fields">
+                    <!-- Row 2: Three user fields -->
                     <div class="form-row creds-row-3">
                         <div class="form-group">
-                            <label for="clusterIp">Cluster IP / VMS <span class="info-icon" title="When connecting through the Tech Port, set this IP to 192.168.2.2">&#9432;</span></label>
-                            <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+                            <label for="username">VMS User <span class="info-icon" title="VAST API requires &quot;support&quot; level authorization. Enter the &quot;support&quot; user.">&#9432;</span></label>
+                            <input type="text" id="username" name="username" class="form-control" placeholder="support">
                         </div>
                         <div class="form-group">
-                            <label for="username">VMS Username <span class="info-icon" title="The VAST Data API requires &quot;support&quot; level authorization to gather certain cluster metrics. Enter &quot;support&quot; user and credentials.">&#9432;</span></label>
-                            <input type="text" id="username" name="username" class="form-control" placeholder="admin">
+                            <label for="nodeUser">Node User <span class="info-icon" title="SSH user for CNode access. Default: vastdata">&#9432;</span></label>
+                            <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
                         </div>
+                        <div class="form-group">
+                            <label for="switchUser">Switch User <span class="info-icon" title="Mellanox/Cumulus: cumulus&#10;Mellanox/Onyx: admin&#10;Cisco &amp; Arista: admin">&#9432;</span></label>
+                            <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
+                        </div>
+                    </div>
+                    <!-- Row 3: Three password fields -->
+                    <div class="form-row creds-row-3">
                         <div class="form-group">
                             <label for="password">VMS Password <span class="info-icon" title="Default support password: 654321">&#9432;</span></label>
                             <input type="password" id="password" name="password" class="form-control">
                         </div>
-                    </div>
-                    <div class="form-row creds-row-5">
                         <div class="form-group">
-                            <label for="nodeUser">Node SSH User</label>
-                            <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
-                        </div>
-                        <div class="form-group">
-                            <label for="nodePassword">Node SSH Password <span class="info-icon" title="Default vastdata password: vastdata">&#9432;</span></label>
+                            <label for="nodePassword">Node Password <span class="info-icon" title="Default vastdata password: vastdata">&#9432;</span></label>
                             <input type="password" id="nodePassword" name="node_password" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label for="switchUser">Switch SSH User <span class="info-icon" title="Mellanox switches running Cumulus: cumulus&#10;Mellanox switches running Onyx: admin&#10;All other switches: admin">&#9432;</span></label>
-                            <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
-                        </div>
-                        <div class="form-group">
-                            <label for="switchPassword">Switch SSH Password <span class="info-icon" title="Default cumulus: Vastdata1!&#10;Alt for cumulus: VastData1! / cumulus&#10;Alt for cumulus: Cumu1usLinux! / CumulusLinux! / vastdata&#10;Default onyx: admin&#10;Default Cisco &amp; Arista: admin">&#9432;</span></label>
+                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default cumulus: Vastdata1!&#10;Alt: VastData1! / cumulus / Cumu1usLinux!&#10;Default onyx/Cisco/Arista: admin">&#9432;</span></label>
                             <input type="password" id="switchPassword" name="switch_password" class="form-control">
                         </div>
-                        <div class="form-group">
-                            <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
-                            <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
-                        </div>
                     </div>
-                    <div class="form-group" style="margin-top:12px;">
-                        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-                            <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" checked style="width:auto;">
-                            <span>Proxy switch SSH through CNode</span>
-                            <span class="info-icon" title="Enable when switches are not directly reachable from this machine (e.g., field deployments via tech port). SSH to switches will tunnel through the CNode using node credentials.">&#9432;</span>
-                        </label>
-                    </div>
+                    <input type="hidden" id="vipPool" name="vip_pool" value="main">
                 </div>
 
-                <!-- Bottom toolbar: default-creds left, profile actions right -->
-                <div class="conn-settings-toolbar">
-                    <div class="conn-settings-toolbar-left">
-                        <span class="default-creds-heading">Global Setting — Autofill Default Passwords</span>
-                        <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH: cumulus / Vastdata1!&#10;Switch SSH (alt): admin / admin">&#9432;</span>
-                        <div class="default-creds-widget">
-                            <span class="default-creds-label">Disable</span>
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span class="default-creds-label">Enable</span>
+                <!-- Action bar: Advanced + Save + Delete -->
+                <div class="conn-action-bar">
+                    <div class="conn-action-bar-left">
+                        <div class="conn-advanced-wrapper">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnAdvancedToggle" onclick="toggleAdvancedMenu()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                                Advanced
+                            </button>
+                            <div class="conn-advanced-menu" id="advancedMenu" style="display:none;">
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" checked style="width:auto;">
+                                    <span>SSH Proxy Mode</span>
+                                    <span class="info-icon" title="Tunnel switch SSH through CNode. Enable for tech port or when switches are not directly reachable.">&#9432;</span>
+                                </label>
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" name="tech_port" id="techPortToggle" checked style="width:auto;">
+                                    <span>Tech Port Mode</span>
+                                    <span class="info-icon" title="Connect via CBox Tech Port (192.168.2.2). Auto-discovers VMS and tunnels API calls through SSH.">&#9432;</span>
+                                </label>
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                                    <span>Autofill Passwords</span>
+                                    <span class="info-icon" title="Auto-populate default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!">&#9432;</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
-                    <div class="conn-settings-toolbar-right">
-                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
-                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    <div class="conn-action-bar-right">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="saveProfile()" title="Save current form as profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>
+                            Save
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="deleteProfile()" title="Delete selected profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg>
+                            Delete
+                        </button>
                     </div>
                 </div>
             </div>
@@ -104,150 +124,57 @@
 
 <!-- Workflow Selection Card -->
 <div class="card">
-    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3>Select Operation</h3>
-        <div class="mode-toggle-widget">
-            <span class="mode-label" id="labelStepByStep">Reporter</span>
-            <label class="toggle-switch">
-                <input type="checkbox" id="modeToggle" onchange="toggleOneShotMode()">
-                <span class="toggle-slider"></span>
-            </label>
-            <span class="mode-label" id="labelOneShot">One-Shot</span>
+    <div class="op-mode-bar op-mode-bar-top">
+        <div class="seg-toggle" id="segToggle">
+            <input type="checkbox" id="modeToggle" onchange="toggleOneShotMode()">
+            <span class="seg-option seg-left" id="labelStepByStep" onclick="if(document.getElementById('modeToggle').checked){document.getElementById('modeToggle').checked=false;toggleOneShotMode();}">Reporter</span>
+            <span class="seg-option seg-right" id="labelOneShot" onclick="if(!document.getElementById('modeToggle').checked){document.getElementById('modeToggle').checked=true;toggleOneShotMode();}">Test Suite</span>
+            <span class="seg-slider"></span>
         </div>
     </div>
     <div class="card-body">
+        <div class="op-title-row">
+            <h3>Select Operation</h3>
+            <div class="placement-pills" id="rptPlacementSummaryHeader">
+                <span class="pill pill-rack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> <span id="rptPlacementCount">0</span> Racks</span>
+                <span class="pill pill-switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="7" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg> <span id="rptManualCount">0</span> Switches Placed</span>
+                <button type="button" class="btn-open-editor" onclick="openPlacementModal()" title="Open Switch Placement Editor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Open Editor
+                </button>
+            </div>
+        </div>
         <!-- Reporter Mode (default) -->
         <div id="stepByStepPanel">
           <div class="panel-flex">
           <div class="panel-flex-left">
 
-            <!-- Section A: Switch Placement Mode -->
-            <div class="rpt-section">
-                <div class="rpt-section-title">Switch Placement Mode</div>
-                <div class="form-group toggle-row" style="margin-bottom: 8px;">
-                    <div class="toggle-control">
-                        <span class="toggle-label-text toggle-spacer">Auto</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="rptSwitchPlacementToggle" checked onchange="toggleRptSwitchPlacement()">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="toggle-label-text">Manual</span>
-                    </div>
-                    <input type="hidden" id="rptSwitchPlacement" value="manual">
-                    <small id="rptAutoPlacementHint" class="form-hint" style="display:none;">Auto tries center, then above CBoxes, then below DBoxes</small>
-                </div>
+            <input type="hidden" id="rptSwitchPlacement" value="manual">
+            <input type="hidden" id="rptManualPlacements" value="[]">
+            <input type="hidden" id="rptManualSwitchIps" value="[]">
 
-                <div id="rptManualPlacementPanel">
-                    <small id="rptDiscoverStatus" class="discover-status"></small>
-                    <div class="form-group action-row">
-                        <span class="action-label">Racks &amp; Switches</span>
-                        <button type="button" class="btn btn-accent btn-action" onclick="rptDiscoverSwitches()">Discovery</button>
-                    </div>
+            <p class="card-steps" style="margin-top:0;">
+                <strong>Step 3</strong> — <strong style="color:var(--accent);">Click Discovery</strong> to add racks, switches, and assign U-heights.
+                <span class="info-icon" title="Run Discovery to find switches and place in racks. U-height assignment is used in report rack diagram.&#10;&#10;Optional: Use +Switch to add customer managed Leaf &amp; Spine switches.">&#9432;</span><br>
+                <strong>Step 4</strong> — <strong style="color:var(--accent);">Save to profile</strong> and <strong style="color:var(--accent);">click Run</strong> to generate the Report.
+            </p>
 
-                    <!-- Add Switches Manually button (shown after discovery finds switches) -->
-                    <div id="rptAddManualBtn" class="hidden" style="margin-top:8px; text-align:right;">
-                        <button type="button" class="btn btn-accent btn-sm" onclick="rptShowManualEntry()">Add Switches Manually</button>
-                    </div>
-
-                    <!-- No switches fallback panel -->
-                    <div id="rptNoSwitchesPanel" class="hidden" style="margin-top:10px; text-align:center; padding:12px; border:1px dashed var(--border-color); border-radius:6px;">
-                        <p style="margin:0 0 10px; font-size:13px; color:var(--text-secondary);">No switches were discovered on this cluster.</p>
-                        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-                            <button type="button" class="btn btn-accent btn-sm" onclick="rptShowManualEntry()">Add Switches Manually</button>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="rptOpenVmsSwitch()">Add in VMS</button>
-                        </div>
-                        <div id="rptVmsRerunRow" class="hidden" style="margin-top:10px;">
-                            <button type="button" class="btn btn-accent btn-sm" onclick="rptDiscoverSwitches()">Re-run Discovery</button>
-                        </div>
-                    </div>
-
-                    <div id="rptAssignmentControls" class="hidden">
-                        <!-- Manual Switch IP row (above rack/switch/height) -->
-                        <div id="rptManualIpRow" class="form-row placement-controls" style="display:none;">
-                            <div class="form-group third">
-                                <label for="rptManualSwitchIpInput">Switch IP</label>
-                                <input type="text" id="rptManualSwitchIpInput" placeholder="e.g. 10.143.10.50">
-                            </div>
-                            <div class="form-group third">
-                                <label for="rptManualSwitchIpModel">Switch Model</label>
-                                <select id="rptManualSwitchIpModel">
-                                    <option value="">-- Select model --</option>
-                                </select>
-                            </div>
-                            <div class="form-group sixth" style="align-self:flex-end">
-                                <button type="button" class="btn-icon-add" onclick="rptAddManualSwitchIp()" title="Add manual switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
-                            </div>
-                        </div>
-
-                        <!-- Manual switch IP table (placed-switches style) -->
-                        <div id="rptManualSwitchIpTableContainer" class="hidden">
-                            <label class="placed-title">Manual Switches</label>
-                            <table class="placed-switches-table">
-                                <thead><tr><th>IP Address</th><th>Switch Model</th><th>Height</th><th></th></tr></thead>
-                                <tbody id="rptManualSwitchIpBody"></tbody>
-                            </table>
-                        </div>
-
-                        <!-- Rack / Switch / Height placement row (shown after Discovery) -->
-                        <div id="rptRackSwitchHeightRow" class="form-row placement-controls" style="display:none;">
-                            <div class="form-group third">
-                                <label for="rptRackSelect">Rack</label>
-                                <select id="rptRackSelect"></select>
-                            </div>
-                            <div class="form-group third">
-                                <label for="rptSwitchSelect">Switch</label>
-                                <select id="rptSwitchSelect"></select>
-                            </div>
-                            <div class="form-group sixth">
-                                <label for="rptUPositionInput">Height</label>
-                                <input type="number" id="rptUPositionInput" min="1" max="48" placeholder="U">
-                            </div>
-                            <div class="form-group sixth" style="align-self:flex-end">
-                                <button type="button" class="btn-icon-add" onclick="rptAddSwitchPlacement()" title="Add switch placement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
-                            </div>
-                        </div>
-
-                        <div id="rptPlacedSwitchesContainer" class="hidden">
-                            <label class="placed-title">Placed Switches</label>
-                            <table class="placed-switches-table">
-                                <thead><tr><th>Rack</th><th>Switch</th><th>Model</th><th>Position</th><th></th></tr></thead>
-                                <tbody id="rptPlacedSwitchesBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <input type="hidden" id="rptManualPlacements" value="[]">
-                    <input type="hidden" id="rptManualSwitchIps" value="[]">
-                </div>
-            </div>
-
-            <!-- Section B: Reporter Checklist -->
-            <div class="rpt-section" id="rptChecklistSection" style="margin-top: 16px;">
+            <!-- Reporter Checklist -->
+            <div class="rpt-section" id="rptChecklistSection">
                 <div class="rpt-section-title">Reporter Checklist</div>
                 <div class="oneshot-checklist" id="reporterChecklist">
                     <label class="oneshot-item">
-                        <input type="checkbox" id="rptPreValidation">
-                        <span class="oneshot-item-badge badge-recommended">Recommended</span>
-                        <span class="oneshot-item-name">Pre-Validation</span>
-                    </label>
-                    <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptPreValidationDetail">
-                        <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);">Verify credentials, VMS access, rack config, switch config, SSH access</span>
+                        <input type="checkbox" id="rptPreValidation" checked>
+                        <span class="oneshot-item-name">Pre-Validation <span class="info-icon" title="Verify credentials, VMS access, rack config, switch config, SSH access">&#9432;</span></span>
                     </label>
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptRunReporter" checked>
+                        <span class="oneshot-item-name">Generate As-Built Report <span class="info-icon" title="Generate as-built report with current connection and placement settings">&#9432;</span></span>
                         <span class="oneshot-item-badge badge-required">Required</span>
-                        <span class="oneshot-item-name">Generate As-Built Report</span>
-                    </label>
-                    <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptRunReporterDetail">
-                        <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);">Generate as-built report with current connection and placement settings</span>
                     </label>
                     <label class="oneshot-item">
-                        <input type="checkbox" id="rptHealthCheck">
-                        <span class="oneshot-item-badge badge-optional">Optional</span>
-                        <span class="oneshot-item-name">Health Check</span>
-                    </label>
-                    <label class="oneshot-item oneshot-sub-item" style="padding-left: 44px; display: none;" id="rptHealthCheckDetail">
-                        <span class="oneshot-item-name" style="font-size:12px; color: var(--text-secondary);" id="rptHealthTierHint">Tier 1 (API) always; +Tier 2 if node credentials; +Tier 3 if switch credentials</span>
+                        <input type="checkbox" id="rptHealthCheck" checked>
+                        <span class="oneshot-item-name">Health Check <span class="info-icon" id="rptHealthTierHint" title="Tier 1 (API) always; +Tier 3 (Switch SSH) if switch credentials provided">&#9432;</span></span>
                     </label>
                 </div>
             </div>
@@ -265,35 +192,6 @@
                 </div>
             </div>
 
-            <!-- Section C: Action Buttons -->
-            <div class="btn-group" style="margin-top: 20px;">
-                <button type="button" class="btn btn-primary" id="btnReporterRun" onclick="runReporterChecklist()">Run</button>
-                <button type="button" class="btn btn-danger" id="btnReporterCancel" style="display:none;" onclick="cancelReporterRun()">Cancel</button>
-                <button type="button" class="btn btn-secondary" id="btnUpdateTools" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                    </svg>
-                    Update Tools
-                </button>
-                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfo" onclick="showToolsStatus()" title="View deployment tools status">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="16" x2="12" y2="12"/>
-                        <line x1="12" y1="8" x2="12.01" y2="8"/>
-                    </svg>
-                </button>
-            </div>
-
-            <!-- Section D: Report Result Buttons (hidden until completion) -->
-            <div id="reporterResultPanel" class="rpt-result-panel" style="display: none;">
-                <div class="rpt-result-title">Report Generated Successfully</div>
-                <div class="btn-group" style="margin-top: 8px;">
-                    <a id="rptViewPdf" href="#" target="_blank" class="btn btn-accent btn-sm">View PDF</a>
-                    <a id="rptDownloadPdf" href="#" class="btn btn-accent btn-sm">Download PDF</a>
-                    <a id="rptDownloadJson" href="#" class="btn btn-accent btn-sm">Download JSON</a>
-                </div>
-            </div>
-
             <!-- Tools Status Panel -->
             <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -305,32 +203,61 @@
                 </div>
             </div>
           </div><!-- /.panel-flex-left -->
-          <div id="reporterProgress" class="vast-progress-container rpt-progress-overlay hidden"></div>
+          <div class="panel-flex-right" id="reporterProgressColumn">
+            <div id="reporterProgress" class="vast-progress-container"></div>
+          </div>
           </div><!-- /.panel-flex -->
+
+          <!-- Reporter Stepper Action Bar -->
+          <div class="op-stepper-bar" id="reporterStepperBar">
+              <div class="stepper-track">
+                  <div class="stepper-line"><div class="stepper-line-fill" id="stepperLineFill"></div></div>
+                  <div class="stepper-dot active" id="stepDot1"></div>
+                  <div class="stepper-dot active" id="stepDot2"></div>
+                  <div class="stepper-dot disabled" id="stepDot3"></div>
+                  <div class="stepper-dot disabled" id="stepDot4"></div>
+                  <div class="stepper-dot disabled" id="stepDot5"></div>
+              </div>
+              <div class="stepper-buttons">
+                  <button type="button" class="btn btn-primary" id="btnDiscovery" onclick="openPlacementModal()">Discovery</button>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <div class="stepper-btn-slot">
+                      <button type="button" class="btn btn-primary" id="btnReporterRun" onclick="runReporterChecklist()">Run</button>
+                      <button type="button" class="btn btn-danger" id="btnReporterCancel" style="display:none;" onclick="cancelReporterRun()">Cancel</button>
+                  </div>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptViewPdf" href="#" target="_blank" class="btn btn-ghosted">View PDF</a>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptDownloadPdf" href="#" class="btn btn-ghosted">Download PDF</a>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptDownloadJson" href="#" class="btn btn-ghosted">Download JSON</a>
+              </div>
+          </div>
         </div>
 
         <!-- One-Shot Mode (hidden by default) -->
         <div id="oneShotPanel" style="display: none;">
           <div class="panel-flex">
           <div class="panel-flex-left">
-            <p class="text-muted" style="margin-bottom: 12px;">Select operations to run sequentially.</p>
+            <p class="card-steps" style="margin-bottom: 12px;">
+                <strong>Step 3</strong> — Select operations, click <strong>Run</strong>.
+                <span class="info-icon" title="Re-Validation verifies credentials and connectivity before executing tests.&#10;Results are bundled for download when all selected operations complete.&#10;VIP Pool is required for vperfsanity — enable that checkbox to configure it.">&#9432;</span>
+            </p>
 
             <div class="oneshot-checklist" id="oneShotChecklist">
                 <label class="oneshot-item">
                     <input type="checkbox" id="oneShotPreValidation" checked>
+                    <span class="oneshot-item-name">Re-Validation</span>
                     <span class="oneshot-item-badge badge-recommended">Recommended</span>
-                    <span class="oneshot-item-name">Pre-Validation</span>
                 </label>
                 <div id="oneShotOpsContainer"></div>
                 <label class="oneshot-item">
-                    <input type="checkbox" id="oneShotIncludeReport">
-                    <span class="oneshot-item-badge badge-recommended">Recommended</span>
+                    <input type="checkbox" id="oneShotIncludeReport" checked>
                     <span class="oneshot-item-name">Generate As-Built Report</span>
                 </label>
                 <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
                     <input type="checkbox" id="oneShotIncludeHealth" checked>
-                    <span class="oneshot-item-badge badge-optional">Optional</span>
-                    <span class="oneshot-item-name">Include Health Checks (Tiers 1-3)</span>
+                    <span class="oneshot-item-name">Include Health Checks (Tier 1 &amp; 3)</span>
                 </label>
             </div>
 
@@ -349,33 +276,7 @@
 
             <!-- One-Shot Progress Tracking -->
             <div id="oneShotProgress" style="display: none; margin-top: 16px;">
-                <div class="progress-phases" id="oneShotPhases">
-                    <span class="phase-item" data-phase="operations">Operations</span>
-                    <span class="phase-arrow">&rarr;</span>
-                    <span class="phase-item" data-phase="report">Report</span>
-                    <span class="phase-arrow">&rarr;</span>
-                    <span class="phase-item" data-phase="bundling">Bundling</span>
-                </div>
                 <div class="progress-detail" id="oneShotProgressDetail"></div>
-            </div>
-
-            <div class="btn-group" style="margin-top: 20px;">
-                <button type="button" class="btn btn-primary" id="btnOneShotStart" onclick="startOneShot()">Run</button>
-                <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
-                <button type="button" class="btn btn-secondary" id="btnOneShotDownload" style="display: none;" onclick="downloadResults()">Download Bundle</button>
-                <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
-                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                    </svg>
-                    Update Tools
-                </button>
-                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatusOneshot()" title="View deployment tools status">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="12" y1="16" x2="12" y2="12"/>
-                        <line x1="12" y1="8" x2="12.01" y2="8"/>
-                    </svg>
-                </button>
             </div>
 
             <!-- One-Shot Tools Status Panel -->
@@ -390,10 +291,128 @@
             </div>
 
           </div><!-- /.panel-flex-left -->
-          <div class="panel-flex-right">
-            <div id="oneShotProgressVast" class="vast-progress-container hidden"></div>
+          <div class="panel-flex-right" id="oneShotProgressColumn">
+            <div id="oneShotProgressVast" class="vast-progress-container"></div>
           </div>
           </div><!-- /.panel-flex -->
+
+          <!-- Test Suite Action Bar -->
+          <div class="op-action-bar">
+              <div class="bar-left">
+                  <button type="button" class="btn btn-primary" id="btnOneShotStart" onclick="startOneShot()">Run</button>
+                  <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
+              </div>
+              <div class="bar-center" id="oneShotResultPanel" style="display: none;">
+                  <span class="result-label">Bundle Generated Successfully</span>
+                  <button type="button" class="btn btn-accent btn-sm" onclick="downloadResults()">Download Bundle</button>
+              </div>
+              <div class="bar-spacer"></div>
+              <div class="bar-right">
+                  <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                      </svg>
+                      Update Tools
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatusOneshot()" title="View deployment tools status">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                          <circle cx="12" cy="12" r="10"/>
+                          <line x1="12" y1="16" x2="12" y2="12"/>
+                          <line x1="12" y1="8" x2="12.01" y2="8"/>
+                      </svg>
+                  </button>
+              </div>
+          </div>
+        </div>
+    </div>
+</div>
+
+<!-- Switch Placement Editor Modal -->
+<div id="placementModal" class="placement-modal-overlay hidden">
+    <div class="placement-modal">
+        <div class="placement-modal-header">
+            <h3>Switch Placement Editor</h3>
+            <button class="placement-modal-close" onclick="cancelPlacementModal()">&times;</button>
+        </div>
+        <div class="placement-modal-body">
+            <small id="rptDiscoverStatus" class="discover-status"></small>
+
+            <div class="rpt-section-title">Find Racks &amp; Switches <span class="info-icon" title="Connects to the cluster using your credentials, discovers all racks and their switches, and populates the assignment controls below so you can place each switch in the rack diagram.">&#9432;</span></div>
+            <div style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="rptDiscoverSwitches()">Run Discovery</button>
+            </div>
+
+            <div id="rptAddManualBtn" class="hidden" style="margin-top: 4px; margin-bottom: 12px;">
+                <div class="rpt-section-title">Add non-VMS Switch <span class="info-icon" title="Manually add switches that are not managed by VMS. Enter a name or description and select its model to include it in rack placement.">&#9432;</span></div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="rptShowManualEntry()">+ Switch</button>
+            </div>
+
+            <div id="rptNoSwitchesPanel" class="hidden" style="margin-top:10px; text-align:center; padding:12px; border:1px dashed var(--border-color); border-radius:6px;">
+                <p style="margin:0 0 10px; font-size:13px; color:var(--text-secondary);">No switches were discovered on this cluster.</p>
+                <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="rptShowManualEntry()">+ Switch</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="rptOpenVmsSwitch()">Add in VMS</button>
+                </div>
+                <div id="rptVmsRerunRow" class="hidden" style="margin-top:10px;">
+                    <button type="button" class="btn btn-accent btn-sm" onclick="rptDiscoverSwitches()">Re-run Discovery</button>
+                </div>
+            </div>
+
+            <div id="rptAssignmentControls" class="hidden">
+                <div id="rptManualIpRow" class="form-row placement-controls" style="display:none;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptManualSwitchIpInput">Switch Name</label>
+                        <input type="text" id="rptManualSwitchIpInput" placeholder="e.g. Spine-A or Rack1-TOR" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddManualSwitchIp();}">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptManualSwitchIpModel">Switch Model</label>
+                        <select id="rptManualSwitchIpModel" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddManualSwitchIp();}">
+                            <option value="">-- Select model --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self:flex-end;">
+                        <button type="button" class="btn-icon-add" onclick="rptAddManualSwitchIp()" title="Add manual switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+
+                <div id="rptManualSwitchIpTableContainer" class="hidden">
+                    <label class="placed-title">Manual Switches</label>
+                    <table class="placed-switches-table">
+                        <thead><tr><th>Name</th><th>Switch Model</th><th>Height</th><th></th></tr></thead>
+                        <tbody id="rptManualSwitchIpBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="rptRackSwitchHeightRow" class="form-row placement-controls" style="display:none;">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="rptRackSelect">Rack</label>
+                        <select id="rptRackSelect"></select>
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label for="rptSwitchSelect">Switch</label>
+                        <select id="rptSwitchSelect"></select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptUPositionInput">Height</label>
+                        <input type="number" id="rptUPositionInput" min="1" max="48" placeholder="U" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddSwitchPlacement();}">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self:flex-end;">
+                        <button type="button" class="btn-icon-add" onclick="rptAddSwitchPlacement()" title="Add switch placement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+
+                <div id="rptPlacedSwitchesContainer" class="hidden">
+                    <label class="placed-title">Placed Switches</label>
+                    <table class="placed-switches-table">
+                        <thead><tr><th>Rack</th><th>Switch</th><th>Model</th><th>Position</th><th></th></tr></thead>
+                        <tbody id="rptPlacedSwitchesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="placement-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="cancelPlacementModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="savePlacementModal()">Save to Profile</button>
         </div>
     </div>
 </div>
@@ -431,8 +450,227 @@
 .rpt-section { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); padding: 14px 16px; }
 .rpt-section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
 .rpt-sub-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px; }
-.rpt-result-panel { margin-top: 16px; padding: 14px 16px; background: rgba(34, 197, 94, 0.08); border: 1px solid var(--success); border-radius: 6px; }
-.rpt-result-title { font-weight: 600; color: var(--success); margin-bottom: 4px; }
+.op-action-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0.65rem 1.25rem;
+    background: var(--bg-surface);
+    border-top: 2px solid var(--accent);
+    border-radius: 0 0 var(--radius, 8px) var(--radius, 8px);
+    margin: 20px -1.5rem -1.5rem -1.5rem;
+}
+.op-action-bar .bar-left { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.op-action-bar .bar-center { display: flex; gap: 8px; align-items: center; }
+.op-action-bar .bar-spacer { flex: 1 1 auto; }
+.op-action-bar .bar-right { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.op-action-bar .result-label { font-weight: 600; color: var(--accent); font-size: 0.85rem; white-space: nowrap; }
+
+/* --- Stepper Action Bar --- */
+.op-stepper-bar {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 0.85rem 1.25rem;
+    background: var(--bg-surface);
+    border-top: 2px solid var(--accent);
+    border-radius: 0 0 var(--radius, 8px) var(--radius, 8px);
+    margin: 20px -1.5rem -1.5rem -1.5rem;
+}
+.stepper-track {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: center;
+    position: relative;
+    height: 24px;
+}
+.stepper-line {
+    position: absolute; top: 50%;
+    left: 10%; right: 10%;
+    height: 3px; background: var(--border);
+    transform: translateY(-50%); z-index: 0;
+    border-radius: 2px;
+}
+.stepper-line-fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    background: var(--accent); width: 0%;
+    transition: width 0.4s ease;
+    border-radius: 2px;
+}
+.stepper-dot {
+    z-index: 1; display: flex; justify-content: center; align-items: center;
+    transition: all 0.3s ease;
+}
+.stepper-dot::after {
+    content: ''; display: block;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 3px solid var(--border);
+    background: var(--bg-surface);
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+.stepper-dot.active::after {
+    border-color: var(--accent); background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(26, 111, 181, 0.22);
+}
+.stepper-dot.completed::after {
+    border-color: var(--accent); background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26, 111, 181, 0.15);
+}
+.stepper-dot.disabled::after {
+    border-color: var(--border); background: var(--bg-surface); opacity: 0.5;
+    box-shadow: none;
+}
+.stepper-buttons {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: center; gap: 0;
+}
+.stepper-buttons .btn {
+    width: 100%; display: flex; justify-content: center; align-items: center;
+    box-sizing: border-box;
+    padding: 9px 4px; font-size: 0.82rem; font-weight: 600;
+    white-space: nowrap; border-radius: 6px;
+    letter-spacing: 0.01em; text-align: center;
+    text-decoration: none;
+}
+.stepper-buttons .btn.btn-ghosted {
+    background: transparent; color: var(--text-muted);
+    border: 1.5px dashed var(--border); opacity: 0.45;
+    cursor: default; pointer-events: none;
+}
+.stepper-buttons .btn.btn-ghosted:hover { background: transparent; }
+.stepper-chevron {
+    font-size: 1.4rem; font-weight: 300;
+    color: var(--accent); opacity: 0.45;
+    line-height: 1; padding: 0 3px;
+    user-select: none; text-align: center;
+}
+.stepper-btn-slot {
+    display: flex; min-width: 0;
+}
+.stepper-btn-slot .btn { width: 100%; }
+
+/* --- Placement pill badges --- */
+.placement-pills {
+    display: flex; align-items: center; gap: 8px;
+}
+.pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(26, 111, 181, 0.12);
+    color: var(--accent); border: 1px solid rgba(26, 111, 181, 0.25);
+    white-space: nowrap; letter-spacing: 0.01em;
+}
+.pill svg { opacity: 0.7; flex-shrink: 0; }
+.pill span { font-variant-numeric: tabular-nums; }
+.pill.pill-muted {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted); border-color: var(--border-color);
+}
+.btn-open-editor {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; border: 1px solid rgba(26, 111, 181, 0.4);
+    border-radius: var(--radius, 8px);
+    padding: 0.5rem 1.25rem;
+    color: var(--accent); cursor: pointer;
+    font-size: 0.85rem; font-weight: 500;
+    transition: all 0.15s;
+    line-height: 1.4;
+}
+.btn-open-editor:hover {
+    border-color: var(--accent); background: rgba(26, 111, 181, 0.1);
+}
+
+/* --- Mode header bar (mirrors stepper footer) --- */
+.op-mode-bar {
+    display: flex; justify-content: center; align-items: center;
+    padding: 0.65rem 1.25rem;
+    background: var(--bg-surface);
+    border-bottom: 2px solid var(--accent);
+    margin: -1.5rem -1.5rem 0 -1.5rem;
+}
+.op-mode-bar-top {
+    border-radius: var(--radius, 8px) var(--radius, 8px) 0 0;
+}
+.op-title-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 1.25rem;
+    margin-bottom: 6px;
+}
+.op-title-row h3 { margin: 0; }
+
+/* --- Segmented toggle (Reporter / Test Suite) --- */
+.seg-toggle {
+    position: relative; display: inline-flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1.5px solid var(--border);
+    border-radius: 26px; padding: 3px;
+    user-select: none;
+    flex-shrink: 0;
+}
+.seg-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.seg-option {
+    position: relative; z-index: 1;
+    padding: 6px 24px; border-radius: 22px;
+    font-size: 13px; font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer; transition: color 0.25s;
+    text-align: center; white-space: nowrap;
+}
+.seg-option.active { color: #fff; }
+.seg-slider {
+    position: absolute; top: 3px; left: 3px;
+    width: calc(50% - 3px); height: calc(100% - 6px);
+    background: var(--accent);
+    border-radius: 22px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.seg-toggle input:checked ~ .seg-slider {
+    transform: translateX(100%);
+}
+
+/* --- Switch Placement Editor Modal --- */
+.placement-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.placement-modal-overlay.hidden { display: none; }
+.placement-modal {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: min(800px, 92vw);
+    max-height: 82vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.placement-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 8px 8px 0 0;
+}
+.placement-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text-primary); }
+.placement-modal-close {
+    background: none; border: none; font-size: 1.4rem;
+    cursor: pointer; color: var(--text-secondary); padding: 0 4px;
+}
+.placement-modal-close:hover { color: var(--text-primary); }
+.placement-modal-body {
+    overflow-y: auto; padding: 1.25rem;
+    flex: 1;
+}
+.placement-modal-footer {
+    display: flex; justify-content: flex-end; gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-top: 2px solid var(--accent);
+}
+.placement-modal-body .rpt-section-title { margin-top: 0; }
+.placement-modal-body .discover-status { display: block; margin-bottom: 10px; }
+/* (header-separator and header-placement-info replaced by .placement-pills) */
 
 /* Hide number input spinners on Height field */
 #rptUPositionInput::-webkit-inner-spin-button,
@@ -440,25 +678,65 @@
 #rptUPositionInput { -moz-appearance: textfield; }
 
 /* --- Connection Settings bottom toolbar --- */
-.conn-settings-toolbar { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
-.conn-settings-toolbar-left { display: flex; flex-direction: column; gap: 4px; }
-.conn-settings-toolbar-right { display: flex; align-items: center; gap: 6px; }
+/* --- Connection action bar (Advanced + Save/Delete) --- */
+.conn-action-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color);
+}
+.conn-action-bar-left { display: flex; align-items: center; }
+.conn-action-bar-right { display: flex; align-items: center; gap: 8px; }
+.conn-action-bar .btn-sm {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; font-size: 13px; border-radius: 6px;
+}
+.conn-action-bar .btn-secondary {
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.conn-action-bar .btn-secondary:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+/* --- Advanced dropdown menu --- */
+.conn-advanced-wrapper { position: relative; }
+.conn-advanced-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+    min-width: 240px; padding: 8px 0;
+    background: var(--bg-elevated, #161b22); border: 1px solid var(--border-color);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.adv-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px;
+    color: var(--text-primary); transition: background 0.1s;
+    margin: 0;
+}
+.adv-menu-item:hover { background: var(--bg-tertiary); }
+.adv-menu-item input[type="checkbox"] { accent-color: var(--accent); }
+
 .info-icon { cursor: help; color: var(--text-secondary); font-size: 14px; opacity: 0.7; transition: opacity 0.15s; }
 .info-icon:hover { opacity: 1; color: var(--accent); }
-.default-creds-heading { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
-.default-creds-widget { display: flex; align-items: center; gap: 6px; }
-.default-creds-label { font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); line-height: 1; }
 .btn-icon-collapse { background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-secondary); transition: color 0.15s, transform 0.2s; vertical-align: middle; line-height: 0; }
 .btn-icon-collapse:hover { color: var(--text-primary); }
 .btn-icon-collapse svg { width: 20px; height: 20px; }
 .btn-icon-collapse.collapsed { transform: rotate(180deg); }
 #connSettingsDetails.collapsed-section { display: none; }
 
+/* --- Card step description --- */
+.card-steps {
+    font-size: 13px; color: var(--text-secondary);
+    margin: 0 0 14px 0; line-height: 1.6;
+}
+.card-steps strong { color: var(--text-primary); }
+
+/* --- Profile row (dropdown + Cluster IP side by side) --- */
+.creds-row-profile { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.creds-row-profile .form-group { flex: 1 1 0; min-width: 180px; }
+.creds-row-profile .profile-controls { display: flex; gap: 6px; }
+.creds-row-profile .profile-controls select { flex: 1; }
+
 /* --- Credential fields (collapsible) --- */
 .credential-fields { padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .creds-row-3 .form-group { flex: 1 1 0; min-width: 0; }
-.creds-row-5 .form-group { flex: 1 1 0; min-width: 0; }
 
 /* --- Workflow & steps --- */
 .workflow-steps { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); }
@@ -508,19 +786,15 @@
 .text-danger { color: #ff5252 !important; }
 .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
 
-/* --- Mode toggle --- */
-.mode-toggle-widget { display: flex; align-items: center; gap: 8px; }
-.mode-toggle-widget .toggle-slider { background: var(--accent); }
-.mode-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
-.mode-label.active { color: var(--text-primary); font-weight: 700; }
+/* --- Mode toggle (legacy classes removed — see .seg-toggle) --- */
 
 /* --- One-Shot checklist --- */
-.oneshot-checklist { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); overflow: hidden; }
-.oneshot-item { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; gap: 10px; margin: 0; }
+.oneshot-checklist { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-tertiary); overflow: visible; }
+.oneshot-item { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; gap: 10px; margin: 0; }
 .oneshot-item:last-child { border-bottom: none; }
 .oneshot-item:hover { background: var(--bg-secondary); }
 .oneshot-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2196f3; flex-shrink: 0; }
-.oneshot-item-name { flex: 1; font-size: 14px; }
+.oneshot-item-name { font-size: 14px; }
 .oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
 .badge-required { background: #ff9800; color: #000; }
 .badge-recommended { background: #ff9800; color: #000; }
@@ -528,6 +802,22 @@
 .badge-automated { background: #4caf50; color: white; }
 .oneshot-sub-item { padding-left: 44px; background: var(--bg-secondary); }
 .oneshot-sub-item.hidden { display: none; }
+.oneshot-sub-field {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 44px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+}
+.oneshot-sub-field label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; margin: 0; }
+.oneshot-sub-field input[type="text"] {
+    max-width: 140px; padding: 0.4rem 0.75rem; font-size: 0.9rem;
+    background: var(--bg-input); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: 4px;
+    transition: border-color 0.15s;
+}
+.oneshot-sub-field input[type="text"]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56,139,253,0.15);
+}
 
 /* --- Validation results --- */
 .validation-header { font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -549,24 +839,16 @@
 .progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
 
 /* --- VAST Logo Progress Indicator --- */
-.panel-flex { position: relative; }
-.panel-flex-left { /* no change — full width content */ }
+.panel-flex { display: flex; gap: 16px; }
+.panel-flex-left { flex: 1; min-width: 0; }
 .panel-flex-right {
-    position: absolute; bottom: 33%; right: 10%;
-    pointer-events: none; z-index: 1;
+    flex: 0 0 200px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
 }
-.vast-progress-container { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.vast-progress-container.hidden { display: none; }
-.rpt-progress-overlay {
-    position: absolute; top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none; z-index: 1;
-}
-.rpt-progress-inflow {
-    position: static; transform: none;
-    margin-top: 16px; pointer-events: none;
-}
-.vast-progress-logo-wrap { position: relative; width: 320px; height: 274px; }
+.vast-progress-container { display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.25; transition: opacity 0.4s ease; }
+.vast-progress-container.active { opacity: 1; }
+.vast-progress-logo-wrap { position: relative; width: 180px; height: 154px; }
 .vast-progress-logo {
     width: 100%; height: 100%;
     -webkit-mask-image: url('/static/img/vast-icon-mask.png');
@@ -579,20 +861,31 @@
 }
 .vast-progress-logo.pulse { animation: vastPulse 1.8s ease-in-out infinite; }
 @keyframes vastPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-.vast-progress-overlay {
+.vast-progress-logo.brand-complete {
+    animation: brandGlow 2s ease-in-out 1;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+}
+@keyframes brandGlow {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+    100% { filter: brightness(1); }
+}
+.vast-progress-inner-overlay {
     position: absolute; top: 0; left: 0; width: 100%; height: 100%;
     display: flex; flex-direction: column; align-items: center;
-    justify-content: flex-start; padding-top: 28%;
+    justify-content: flex-start; padding-top: 25%;
     pointer-events: none;
 }
-.vast-progress-timer { font-size: 16px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; line-height: 1; }
-.vast-progress-pct { font-size: 34px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-top: 4px; }
-.vast-progress-check { font-size: 36px; color: var(--accent, #00d4ff); line-height: 1; margin-top: 4px; }
-.vast-progress-label { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 6px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
-.vast-progress-sub { font-size: 11px; color: var(--text-secondary); text-align: center; max-width: 320px; }
+.vast-progress-timer { font-size: 12px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; line-height: 1; }
+.vast-progress-pct { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-top: 3px; }
+.vast-progress-check { font-size: 24px; color: var(--accent, #00d4ff); line-height: 1; margin-top: 3px; }
+.vast-progress-label { font-size: 11px; font-weight: 600; color: var(--text-primary); margin-top: 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.vast-progress-sub { font-size: 10px; color: var(--text-secondary); text-align: center; max-width: 180px; }
 @media (max-width: 600px) {
-    .panel-flex-right { position: static; display: flex; justify-content: center; margin-top: 16px; }
-    .vast-progress-logo-wrap { width: 200px; height: 171px; }
+    .panel-flex { flex-direction: column; }
+    .panel-flex-right { flex: 0 0 auto; }
+    .vast-progress-logo-wrap { width: 120px; height: 103px; }
 }
 </style>
 
@@ -603,6 +896,9 @@ var LOG_TIER_KEY = 'reporter_log_tier';
 var SYNC_CURSOR_KEY = 'reporter_sync_cursor';
 var outputPane, pollInterval = null;
 var currentLogTier = 'status';
+var CFG_DEFAULTS = {};
+var CFG_REPORTER_DEFAULTS = {};
+var CFG_SSH_ADV = {};
 var reporterLogStream = null;
 
 var DEFAULT_CREDENTIALS = {
@@ -637,6 +933,11 @@ function toggleConnectionSettings() {
     saveUIState();
 }
 
+function toggleAdvancedMenu() {
+    var menu = document.getElementById('advancedMenu');
+    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+}
+
 function expandCredentials() {
     var details = document.getElementById('connSettingsDetails');
     var btn = document.getElementById('btnCollapseConn');
@@ -668,8 +969,7 @@ function toggleDefaultCredentials() {
             if (el) el.value = DEFAULT_CREDENTIALS[key];
         }
     } else {
-        document.getElementById('username').value = '';
-        ['password', 'node_password', 'switch_password'].forEach(function(k) {
+        ['username', 'password', 'node_user', 'node_password', 'switch_user', 'switch_password'].forEach(function(k) {
             var el = document.getElementById(profileFieldMap[k] || k);
             if (el) el.value = '';
         });
@@ -713,6 +1013,8 @@ function saveUIState() {
         };
         var proxyJump = document.getElementById('proxyJumpToggle');
         if (proxyJump) state.proxy_jump = proxyJump.checked;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort) state.tech_port = techPort.checked;
         var healthEl = document.getElementById('oneShotIncludeHealth');
         if (healthEl) state.includeHealth = healthEl.checked;
         var reportEl = document.getElementById('oneShotIncludeReport');
@@ -720,6 +1022,9 @@ function saveUIState() {
         var checks = [];
         document.querySelectorAll('.oneshot-op-checkbox:checked').forEach(function(cb) { checks.push(cb.value); });
         if (checks.length > 0) state.oneShotChecklist = checks;
+        state.cfgDefaults = CFG_DEFAULTS;
+        state.cfgReporterDefaults = CFG_REPORTER_DEFAULTS;
+        state.cfgSshAdv = CFG_SSH_ADV;
         try { state.manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { state.manualPlacements = []; }
         localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
     } catch(e) {}
@@ -751,19 +1056,27 @@ async function applySavedUIState(saved) {
         document.getElementById('labelStepByStep').classList.toggle('active', true);
         document.getElementById('labelOneShot').classList.toggle('active', false);
     }
+    var profileLoaded = false;
     if (saved.selectedProfile) {
         var sel = document.getElementById('profileSelect');
-        if (sel) { sel.value = saved.selectedProfile; if (sel.value === saved.selectedProfile) loadProfile(saved.selectedProfile); }
+        if (sel) {
+            sel.value = saved.selectedProfile;
+            if (sel.value === saved.selectedProfile) {
+                await loadProfile();
+                profileLoaded = true;
+            }
+        }
     }
-    if (saved.useDefaultCreds !== undefined) {
+    var sshAdvChanged = JSON.stringify(saved.cfgSshAdv || {}) !== JSON.stringify(CFG_SSH_ADV);
+    if (!sshAdvChanged && saved.useDefaultCreds !== undefined) {
         document.getElementById('useDefaultCreds').checked = saved.useDefaultCreds;
-        toggleDefaultCredentials();
     }
-    if (saved.includeHealth !== undefined) {
+    var defaultsChanged = JSON.stringify(saved.cfgDefaults || {}) !== JSON.stringify(CFG_DEFAULTS);
+    if (!defaultsChanged && saved.includeHealth !== undefined) {
         var h = document.getElementById('oneShotIncludeHealth');
         if (h) h.checked = saved.includeHealth;
     }
-    if (saved.includeReport !== undefined) {
+    if (!defaultsChanged && saved.includeReport !== undefined) {
         var r = document.getElementById('oneShotIncludeReport');
         if (r) {
             r.checked = saved.includeReport;
@@ -772,32 +1085,46 @@ async function applySavedUIState(saved) {
             else healthRow.classList.add('hidden');
         }
     }
-    if (saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
+    if (!defaultsChanged && saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
         document.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
             cb.checked = saved.oneShotChecklist.indexOf(cb.value) !== -1;
         });
     }
-    if (saved.connSettingsCollapsed === false) {
-        expandCredentials();
+    var vpSub = document.getElementById('vipPoolSubField');
+    var vpCb = document.querySelector('.oneshot-op-checkbox[value="vperfsanity"]');
+    if (vpSub && vpCb) vpSub.style.display = vpCb.checked ? '' : 'none';
+    if (saved.connSettingsCollapsed === true) {
+        collapseCredentials();
     }
-    if (saved.switchPlacement === 'auto') {
-        document.getElementById('rptSwitchPlacementToggle').checked = false;
-        toggleRptSwitchPlacement();
+    if (!profileLoaded) {
+        if (saved.switchPlacement) {
+            document.getElementById('rptSwitchPlacement').value = saved.switchPlacement;
+        }
+        if (saved.manualSwitchIps && Array.isArray(saved.manualSwitchIps) && saved.manualSwitchIps.length > 0) {
+            rptManualSwitchIps = saved.manualSwitchIps;
+            document.getElementById('rptManualSwitchIps').value = JSON.stringify(saved.manualSwitchIps);
+        }
+        if (saved.manualPlacements && Array.isArray(saved.manualPlacements) && saved.manualPlacements.length > 0) {
+            rptPlacedSwitches = saved.manualPlacements;
+            document.getElementById('rptManualPlacements').value = JSON.stringify(saved.manualPlacements);
+        }
+        renderPlacementSummary();
     }
-    if (saved.manualSwitchIps && Array.isArray(saved.manualSwitchIps) && saved.manualSwitchIps.length > 0) {
-        rptManualSwitchIps = saved.manualSwitchIps;
-        document.getElementById('rptManualIpRow').style.display = '';
-        document.getElementById('rptAssignmentControls').classList.remove('hidden');
-        rptFetchLibrarySwitches();
-        rptRenderManualSwitchIps();
-        rptRenderSwitchDropdown();
+    var reporterDefaultsChanged = JSON.stringify(saved.cfgReporterDefaults || {}) !== JSON.stringify(CFG_REPORTER_DEFAULTS);
+    if (!reporterDefaultsChanged) {
+        if (saved.rptPreValidation !== undefined) document.getElementById('rptPreValidation').checked = saved.rptPreValidation;
+        if (saved.rptRunReporter !== undefined) document.getElementById('rptRunReporter').checked = saved.rptRunReporter;
+        if (saved.rptHealthCheck !== undefined) document.getElementById('rptHealthCheck').checked = saved.rptHealthCheck;
     }
-    if (saved.rptPreValidation !== undefined) document.getElementById('rptPreValidation').checked = saved.rptPreValidation;
-    if (saved.rptRunReporter !== undefined) document.getElementById('rptRunReporter').checked = saved.rptRunReporter;
-    if (saved.rptHealthCheck !== undefined) document.getElementById('rptHealthCheck').checked = saved.rptHealthCheck;
-    if (saved.oneShotPreValidation !== undefined) document.getElementById('oneShotPreValidation').checked = saved.oneShotPreValidation;
-    var proxyJump = document.getElementById('proxyJumpToggle');
-    if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
+    if (!defaultsChanged && saved.oneShotPreValidation !== undefined) {
+        document.getElementById('oneShotPreValidation').checked = saved.oneShotPreValidation;
+    }
+    if (!sshAdvChanged) {
+        var proxyJump = document.getElementById('proxyJumpToggle');
+        if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort && saved.tech_port !== undefined) techPort.checked = saved.tech_port;
+    }
 }
 
 // --- State Snapshot Hydration ---
@@ -877,7 +1204,14 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
     var tier = entry.log_tier || 'status';
     var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
     var line = document.createElement('div');
-    line.className = 'output-line ' + entry.level;
+    var cls = entry.level;
+    var msgUpper = (entry.message || '').toUpperCase();
+    if (cls === 'info') {
+        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
+        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('FAIL') !== -1) cls = 'error';
+        else if (msgUpper.indexOf('SUCCESS') !== -1 || msgUpper.indexOf('COMPLETED') !== -1) cls = 'success';
+    }
+    line.className = 'output-line ' + cls;
     line.setAttribute('data-tier', tier);
     if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
     line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
@@ -913,7 +1247,7 @@ async function fetchProfiles() {
         var profiles = await resp.json();
         var sel = document.getElementById('profileSelect');
         var current = sel.value;
-        sel.innerHTML = '<option value="">-- Select a profile --</option>';
+        sel.innerHTML = '<option value="">- Create or Select a profile -</option>';
         for (var name of Object.keys(profiles).sort()) {
             var opt = document.createElement('option');
             opt.value = name;
@@ -937,13 +1271,15 @@ async function loadProfile() {
         var el = document.getElementById(formId);
         if (el) el.value = p[profileKey] || '';
     }
+    var vipVis = document.getElementById('vipPoolVisible');
+    if (vipVis) vipVis.value = document.getElementById('vipPool').value || 'main';
     var toggle = document.getElementById('useDefaultCreds');
     toggle.checked = p.use_default_creds !== false;
-    toggleDefaultCredentials();
     var pj = document.getElementById('proxyJumpToggle');
     if (pj) pj.checked = p.proxy_jump !== false;
+    var tp = document.getElementById('techPortToggle');
+    if (tp) tp.checked = !!p.tech_port;
 
-    // Reset Select Operation tile state before applying profile data
     rptDiscoveredRacks = [];
     rptDiscoveredSwitches = [];
     rptPlacedSwitches = [];
@@ -958,17 +1294,11 @@ async function loadProfile() {
     document.getElementById('rptManualSwitchIps').value = '[]';
     document.getElementById('rptPlacedSwitchesContainer').classList.add('hidden');
     document.getElementById('rptManualSwitchIpTableContainer').classList.add('hidden');
-    document.getElementById('reporterResultPanel').style.display = 'none';
+    document.getElementById('oneShotResultPanel').style.display = 'none';
+    resetReporterStepper();
 
-    if (p.switch_placement === 'auto') {
-        document.getElementById('rptSwitchPlacementToggle').checked = false;
-        toggleRptSwitchPlacement();
-    } else {
-        document.getElementById('rptSwitchPlacementToggle').checked = true;
-        toggleRptSwitchPlacement();
-    }
+    document.getElementById('rptSwitchPlacement').value = p.switch_placement || 'manual';
 
-    // Restore reporter checklist options
     var preVal = document.getElementById('rptPreValidation');
     if (preVal) preVal.checked = p.rpt_pre_validation !== false;
     var runRpt = document.getElementById('rptRunReporter');
@@ -976,24 +1306,16 @@ async function loadProfile() {
     var healthChk = document.getElementById('rptHealthCheck');
     if (healthChk) healthChk.checked = p.rpt_health_check !== undefined ? p.rpt_health_check : true;
 
-    // Restore saved placements
     if (p.manual_placements && Array.isArray(p.manual_placements) && p.manual_placements.length > 0) {
         rptPlacedSwitches = p.manual_placements;
         document.getElementById('rptManualPlacements').value = JSON.stringify(rptPlacedSwitches);
-        rptRenderPlacedTable();
-        document.getElementById('rptAssignmentControls').classList.remove('hidden');
     }
 
-    // Restore saved manual switch IPs
     if (p.manual_switch_ips && Array.isArray(p.manual_switch_ips) && p.manual_switch_ips.length > 0) {
         rptManualSwitchIps = p.manual_switch_ips;
         document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
-        document.getElementById('rptManualIpRow').style.display = '';
-        document.getElementById('rptAssignmentControls').classList.remove('hidden');
-        rptFetchLibrarySwitches();
-        rptRenderManualSwitchIps();
-        rptRenderSwitchDropdown();
     }
+    renderPlacementSummary();
 }
 
 async function saveProfile() {
@@ -1011,6 +1333,8 @@ async function saveProfile() {
     data.switch_placement = document.getElementById('rptSwitchPlacement').value;
     var pj = document.getElementById('proxyJumpToggle');
     data.proxy_jump = pj ? pj.checked : true;
+    var tpSave = document.getElementById('techPortToggle');
+    data.tech_port = tpSave ? tpSave.checked : false;
     try { data.manual_placements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { data.manual_placements = []; }
     data.manual_switch_ips = rptManualSwitchIps;
     var preValEl = document.getElementById('rptPreValidation');
@@ -1037,10 +1361,12 @@ async function saveProfile() {
 function createProfile() {
     var sel = document.getElementById('profileSelect');
     sel.value = '';
-    if (sel.options[0]) sel.options[0].text = '-- Create a profile --';
+    if (sel.options[0]) sel.options[0].text = '- Create or Select a profile -';
     document.getElementById('clusterIp').value = '';
     toggleDefaultCredentials();
     document.getElementById('vipPool').value = 'main';
+    var vipVis = document.getElementById('vipPoolVisible');
+    if (vipVis) vipVis.value = 'main';
     expandCredentials();
     saveUIState();
 }
@@ -1060,6 +1386,7 @@ async function deleteProfile() {
 
 function getCredentials() {
     var pj = document.getElementById('proxyJumpToggle');
+    var tp = document.getElementById('techPortToggle');
     return {
         cluster_ip: document.getElementById('clusterIp').value,
         username: document.getElementById('username').value,
@@ -1070,6 +1397,7 @@ function getCredentials() {
         switch_password: document.getElementById('switchPassword').value,
         vip_pool: document.getElementById('vipPool').value || 'main',
         proxy_jump: pj ? pj.checked : true,
+        tech_port: tp ? tp.checked : false,
     };
 }
 
@@ -1088,12 +1416,17 @@ async function loadWorkflows() {
 // =====================================================================
 // VAST LOGO PROGRESS COMPONENT
 // =====================================================================
-var VAST_LOGO_HEIGHT = 274;
-var VAST_COLORS = { running: '#00d4ff', complete: '#4caf50', error: '#f44336', cancel: '#ffc107', dim: 'rgba(100,100,100,0.15)' };
+var VAST_LOGO_HEIGHT = 154;
+var VAST_COLORS = {
+    running: '#00d4ff', complete: '#4caf50', error: '#f44336', cancel: '#ffc107',
+    dim: 'rgba(100,100,100,0.15)',
+    brandGradient: 'linear-gradient(135deg, #0a1628 0%, #0d2b4a 30%, #1a6fb5 60%, #00d4ff 100%)'
+};
 
 function VastProgress(containerId) {
     this.container = document.getElementById(containerId);
     this._timerInterval = null;
+    this._animFrame = null;
     this._startTime = null;
     this._elapsed = 0;
     this._percent = 0;
@@ -1106,9 +1439,9 @@ VastProgress.prototype._render = function() {
     this.container.innerHTML =
         '<div class="vast-progress-logo-wrap">' +
             '<div class="vast-progress-logo" id="' + this.container.id + '_logo"></div>' +
-            '<div class="vast-progress-overlay">' +
-                '<span class="vast-progress-timer" id="' + this.container.id + '_timer">00:00</span>' +
-                '<span class="vast-progress-pct" id="' + this.container.id + '_pct">0%</span>' +
+            '<div class="vast-progress-inner-overlay">' +
+                '<span class="vast-progress-timer" id="' + this.container.id + '_timer"></span>' +
+                '<span class="vast-progress-pct" id="' + this.container.id + '_pct"></span>' +
                 '<span class="vast-progress-check-el" id="' + this.container.id + '_check" style="display:none;"></span>' +
             '</div>' +
         '</div>' +
@@ -1122,8 +1455,8 @@ VastProgress.prototype._render = function() {
     this._subEl = document.getElementById(this.container.id + '_sub');
 };
 
-VastProgress.prototype.show = function() { this.container.classList.remove('hidden'); };
-VastProgress.prototype.hide = function() { this.container.classList.add('hidden'); };
+VastProgress.prototype.show = function() { this.container.classList.add('active'); };
+VastProgress.prototype.hide = function() { this.container.classList.remove('active'); };
 
 VastProgress.prototype._setFill = function(pct) {
     var fillPx = Math.round((pct / 100) * VAST_LOGO_HEIGHT);
@@ -1138,6 +1471,7 @@ VastProgress.prototype.start = function() {
     this._percent = 0;
     this._fillColor = VAST_COLORS.running;
     this._logoEl.classList.add('pulse');
+    this._logoEl.classList.remove('brand-complete');
     this._setFill(0);
     this._pctEl.textContent = '0%';
     this._pctEl.className = 'vast-progress-pct';
@@ -1170,18 +1504,46 @@ VastProgress.prototype._freezeTimer = function() {
 };
 
 VastProgress.prototype.update = function(percent, label, sub) {
-    this._percent = Math.min(100, Math.max(0, percent));
-    this._setFill(this._percent);
-    this._pctEl.textContent = Math.round(this._percent) + '%';
+    var target = Math.min(100, Math.max(0, percent));
     if (label !== undefined) this._labelEl.textContent = label;
     if (sub !== undefined) this._subEl.textContent = sub;
+    this._animateTo(target);
+};
+
+VastProgress.prototype._animateTo = function(target) {
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    var self = this;
+    var from = this._percent;
+    var diff = target - from;
+    if (Math.abs(diff) < 0.5) {
+        this._percent = target;
+        this._setFill(target);
+        this._pctEl.textContent = Math.round(target) + '%';
+        return;
+    }
+    var duration = Math.min(800, Math.max(200, Math.abs(diff) * 20));
+    var startTime = performance.now();
+    function step(now) {
+        var elapsed = now - startTime;
+        var t = Math.min(elapsed / duration, 1);
+        t = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        var current = from + diff * t;
+        self._percent = current;
+        self._setFill(current);
+        self._pctEl.textContent = Math.round(current) + '%';
+        if (t < 1) { self._animFrame = requestAnimationFrame(step); }
+        else { self._animFrame = null; }
+    }
+    this._animFrame = requestAnimationFrame(step);
 };
 
 VastProgress.prototype.complete = function(label) {
     this._state = 'completed';
     this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
     this._logoEl.classList.remove('pulse');
-    this._setFill(100);
+    this._logoEl.style.background = VAST_COLORS.brandGradient;
+    this._logoEl.classList.add('brand-complete');
     this._pctEl.style.display = 'none';
     this._checkEl.textContent = '\u2713';
     this._checkEl.className = 'vast-progress-check';
@@ -1193,6 +1555,7 @@ VastProgress.prototype.complete = function(label) {
 VastProgress.prototype.error = function(label) {
     this._state = 'error';
     this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
     this._logoEl.classList.remove('pulse');
     this._fillColor = VAST_COLORS.error;
     this._setFill(this._percent);
@@ -1204,6 +1567,7 @@ VastProgress.prototype.error = function(label) {
 VastProgress.prototype.cancel = function() {
     this._state = 'cancelled';
     this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
     this._logoEl.classList.remove('pulse');
     this._fillColor = VAST_COLORS.cancel;
     this._setFill(this._percent);
@@ -1214,16 +1578,18 @@ VastProgress.prototype.cancel = function() {
 VastProgress.prototype.reset = function() {
     this._state = 'idle';
     if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
     this._percent = 0;
     this._elapsed = 0;
     this._fillColor = VAST_COLORS.running;
     this._logoEl.classList.remove('pulse');
+    this._logoEl.classList.remove('brand-complete');
     this._logoEl.style.background = VAST_COLORS.dim;
     this._pctEl.style.color = '';
     this._pctEl.style.display = '';
     this._pctEl.className = 'vast-progress-pct';
-    this._pctEl.textContent = '0%';
-    this._timerEl.textContent = '00:00';
+    this._pctEl.textContent = '';
+    this._timerEl.textContent = '';
     this._checkEl.style.display = 'none';
     this._checkEl.textContent = '';
     this._labelEl.textContent = '';
@@ -1232,19 +1598,7 @@ VastProgress.prototype.reset = function() {
 };
 
 function positionReporterProgress() {
-    var el = document.getElementById('reporterProgress');
-    var table = document.getElementById('rptPlacedSwitchesContainer');
-    var tableVisible = table && !table.classList.contains('hidden');
-    if (tableVisible) {
-        el.classList.remove('rpt-progress-overlay');
-        el.classList.add('rpt-progress-inflow');
-        table.parentElement.insertBefore(el, table.nextSibling);
-    } else {
-        el.classList.remove('rpt-progress-inflow');
-        el.classList.add('rpt-progress-overlay');
-        var panelFlex = document.querySelector('#stepByStepPanel .panel-flex');
-        panelFlex.appendChild(el);
-    }
+    // Progress tracker is permanently in the right column; no repositioning needed.
 }
 
 var rptRing = null;
@@ -1258,12 +1612,125 @@ var rptDiscoveredSwitches = [];
 var rptPlacedSwitches = [];
 var rptLibrarySwitches = [];
 
-function toggleRptSwitchPlacement() {
-    var isManual = document.getElementById('rptSwitchPlacementToggle').checked;
-    document.getElementById('rptSwitchPlacement').value = isManual ? 'manual' : 'auto';
-    document.getElementById('rptManualPlacementPanel').style.display = isManual ? '' : 'none';
-    document.getElementById('rptAutoPlacementHint').style.display = isManual ? 'none' : '';
+var _placementSnapshot = null;
+
+function openPlacementModal(autoDiscover) {
+    _placementSnapshot = {
+        placed: JSON.parse(document.getElementById('rptManualPlacements').value || '[]'),
+        manual: JSON.parse(JSON.stringify(rptManualSwitchIps)),
+        racks: JSON.parse(JSON.stringify(rptDiscoveredRacks)),
+        switches: JSON.parse(JSON.stringify(rptDiscoveredSwitches)),
+        placedArr: JSON.parse(JSON.stringify(rptPlacedSwitches))
+    };
+    document.getElementById('placementModal').classList.remove('hidden');
+    if (rptPlacedSwitches.length > 0) {
+        document.getElementById('rptAssignmentControls').classList.remove('hidden');
+        rptRenderPlacedTable();
+        if (rptDiscoveredRacks.length > 0) {
+            document.getElementById('rptRackSwitchHeightRow').style.display = '';
+            rptRenderPlacementUI();
+        }
+    }
+    if (autoDiscover && rptDiscoveredRacks.length === 0) {
+        rptDiscoverSwitches();
+    }
+}
+
+function closePlacementModal() {
+    document.getElementById('placementModal').classList.add('hidden');
+    _placementSnapshot = null;
+}
+
+async function savePlacementModal() {
+    rptSyncManualPlacements();
+    document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    renderPlacementSummary();
+    if (rptPlacedSwitches.length > 0 || rptManualSwitchIps.length > 0) {
+        document.getElementById('rptSwitchPlacement').value = 'manual';
+    } else {
+        document.getElementById('rptSwitchPlacement').value = 'auto';
+    }
+    var profileName = document.getElementById('profileSelect').value;
+    if (profileName) {
+        await saveProfile();
+    }
+    closePlacementModal();
     saveUIState();
+}
+
+function cancelPlacementModal() {
+    if (_placementSnapshot) {
+        document.getElementById('rptManualPlacements').value = JSON.stringify(_placementSnapshot.placed);
+        rptManualSwitchIps = _placementSnapshot.manual;
+        rptDiscoveredRacks = _placementSnapshot.racks;
+        rptDiscoveredSwitches = _placementSnapshot.switches;
+        rptPlacedSwitches = _placementSnapshot.placedArr;
+        rptRenderManualSwitchIps();
+        rptRenderPlacedTable();
+    }
+    closePlacementModal();
+}
+
+function renderPlacementSummary() {
+    var racks = rptDiscoveredRacks ? rptDiscoveredRacks.length : 0;
+    if (racks === 0 && rptPlacedSwitches.length > 0) {
+        var seen = {};
+        rptPlacedSwitches.forEach(function(p) { if (p.rack_name) seen[p.rack_name] = true; });
+        racks = Object.keys(seen).length;
+    }
+    var placed = rptPlacedSwitches.length;
+    var manual = rptManualSwitchIps.length;
+    var totalSwitches = placed + manual;
+    document.getElementById('rptPlacementCount').textContent = racks;
+    document.getElementById('rptManualCount').textContent = totalSwitches;
+    var rackPill = document.querySelector('.pill-rack');
+    var switchPill = document.querySelector('.pill-switch');
+    if (rackPill) rackPill.classList.toggle('pill-muted', racks === 0);
+    if (switchPill) switchPill.classList.toggle('pill-muted', totalSwitches === 0);
+}
+
+function activateReportSteps(result) {
+    ['stepDot3', 'stepDot4', 'stepDot5'].forEach(function(id) {
+        var dot = document.getElementById(id);
+        dot.classList.remove('disabled');
+        dot.classList.add('completed');
+    });
+    var fill = document.getElementById('stepperLineFill');
+    if (fill) fill.style.width = '100%';
+
+    var viewBtn = document.getElementById('rptViewPdf');
+    var dlPdf = document.getElementById('rptDownloadPdf');
+    var dlJson = document.getElementById('rptDownloadJson');
+
+    if (result.pdf) {
+        viewBtn.href = '/reports/view/' + encodeURIComponent(result.pdf);
+        viewBtn.className = 'btn btn-primary';
+        viewBtn.style.pointerEvents = '';
+        dlPdf.href = '/reports/download/' + encodeURIComponent(result.pdf);
+        dlPdf.className = 'btn btn-primary';
+        dlPdf.style.pointerEvents = '';
+    }
+    if (result.json) {
+        dlJson.href = '/reports/download/' + encodeURIComponent(result.json);
+        dlJson.className = 'btn btn-primary';
+        dlJson.style.pointerEvents = '';
+    }
+}
+
+function resetReporterStepper() {
+    ['stepDot3', 'stepDot4', 'stepDot5'].forEach(function(id) {
+        var dot = document.getElementById(id);
+        dot.classList.remove('completed', 'active');
+        dot.classList.add('disabled');
+    });
+    var fill = document.getElementById('stepperLineFill');
+    if (fill) fill.style.width = '25%';
+    ['rptViewPdf', 'rptDownloadPdf', 'rptDownloadJson'].forEach(function(id) {
+        var btn = document.getElementById(id);
+        btn.className = 'btn btn-ghosted';
+        btn.style.pointerEvents = '';
+        btn.href = '#';
+    });
 }
 
 async function rptFetchLibrarySwitches() {
@@ -1300,12 +1767,16 @@ async function rptDiscoverSwitches() {
     var ip = document.getElementById('clusterIp').value.trim();
     if (!ip) { statusEl.textContent = 'Enter Cluster IP first'; return; }
 
+    var tp = document.getElementById('techPortToggle');
     var payload = {
         cluster_ip: ip,
         auth_method: 'password',
         username: document.getElementById('username').value,
         password: document.getElementById('password').value,
-        token: ''
+        token: '',
+        tech_port: tp ? tp.checked : false,
+        node_user: document.getElementById('nodeUser').value || 'vastdata',
+        node_password: document.getElementById('nodePassword').value
     };
     try {
         var resp = await fetch('/api/discover', {
@@ -1318,7 +1789,16 @@ async function rptDiscoverSwitches() {
 
         rptDiscoveredRacks = data.racks || [];
         rptDiscoveredSwitches = data.switches || [];
-        rptPlacedSwitches = [];
+        var savedPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]');
+        if (savedPlacements.length > 0) {
+            var discoveredNames = {};
+            rptDiscoveredSwitches.forEach(function(s) { discoveredNames[s.name] = s; });
+            rptPlacedSwitches = savedPlacements.filter(function(p) {
+                return discoveredNames[p.switch_name] || rptManualSwitchIps.some(function(m) { return m.ip === p.switch_name; });
+            });
+        } else {
+            rptPlacedSwitches = [];
+        }
         rptRenderPlacementUI();
 
         if (rptDiscoveredSwitches.length === 0) {
@@ -1474,9 +1954,8 @@ function rptAddManualSwitchIp() {
     var ipInput = document.getElementById('rptManualSwitchIpInput');
     var modelSel = document.getElementById('rptManualSwitchIpModel');
     var ip = ipInput.value.trim();
-    if (!ip) { alert('Enter a switch IP address'); return; }
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) { alert('Enter a valid IPv4 address'); return; }
-    if (rptManualSwitchIps.some(function(m) { return m.ip === ip; })) { alert('IP already added'); return; }
+    if (!ip) { alert('Enter a switch name or description'); return; }
+    if (rptManualSwitchIps.some(function(m) { return m.ip === ip; })) { alert('Switch name already added'); return; }
 
     var modelKey = modelSel.value || '';
     var selOpt = modelSel.options[modelSel.selectedIndex];
@@ -1529,6 +2008,8 @@ function rptRenderManualSwitchIps() {
 var reporterRunning = false;
 var reporterPollInterval = null;
 var rptValidated = false;
+var _validationInFlight = false;
+var _oneShotOutputCursor = 0;
 
 function startReporterLogStream() {
     stopReporterLogStream();
@@ -1564,27 +2045,38 @@ async function runReporterChecklist() {
         return;
     }
 
-    var rptSteps = [];
-    if (doPreValidation) rptSteps.push('Pre-Validation');
-    if (doReport) rptSteps.push('Report Generation');
-    if (doHealth && !doReport) rptSteps.push('Health Check');
-    var rptStepIdx = 0;
-    var rptTotal = rptSteps.length;
+    var segments = [];
+    if (doPreValidation) segments.push({ name: 'Pre-Validation', weight: 10 });
+    if (doReport) segments.push({ name: 'Report Generation', weight: 80 });
+    if (doHealth && !doReport) segments.push({ name: 'Health Check', weight: 80 });
+
+    var totalWeight = segments.reduce(function(s, seg) { return s + seg.weight; }, 0);
+    var cumulative = 0;
+    segments.forEach(function(seg) {
+        seg.start = (cumulative / totalWeight) * 100;
+        seg.width = (seg.weight / totalWeight) * 100;
+        cumulative += seg.weight;
+    });
+
+    var segIdx = 0;
+    var rptTotal = segments.length;
 
     reporterRunning = true;
-    document.getElementById('btnReporterRun').disabled = true;
-    document.getElementById('btnReporterRun').textContent = 'Running...';
+    document.getElementById('btnReporterRun').style.display = 'none';
     document.getElementById('btnReporterCancel').style.display = '';
-    document.getElementById('reporterResultPanel').style.display = 'none';
+    resetReporterStepper();
 
     rptRing.reset();
     positionReporterProgress();
     rptRing.start();
-    rptRing.update(0, rptSteps[0] || '', 'Step 1 of ' + rptTotal);
+    rptRing.update(0, segments[0].name, 'Step 1 of ' + rptTotal);
+
+    window._rptSegments = segments;
 
     try {
         if (doPreValidation) {
-            rptRing.update((rptStepIdx / rptTotal) * 100, 'Pre-Validation', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
+            var seg = segments[segIdx];
+            rptRing.update(seg.start, 'Pre-Validation', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Starting pre-validation checks...');
             var preValOk = await runReporterPreValidation(creds);
             if (!preValOk && !rptValidated) {
@@ -1592,12 +2084,15 @@ async function runReporterChecklist() {
                 resetReporterUI();
                 return;
             }
-            rptStepIdx++;
-            rptRing.update((rptStepIdx / rptTotal) * 100, rptSteps[rptStepIdx] || 'Pre-Validation complete', rptStepIdx < rptTotal ? 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal : '');
+            segIdx++;
+            var nextPct = segIdx < rptTotal ? segments[segIdx].start : 100;
+            rptRing.update(nextPct, segIdx < rptTotal ? segments[segIdx].name : 'Pre-Validation complete', segIdx < rptTotal ? 'Step ' + (segIdx + 1) + ' of ' + rptTotal : '');
         }
 
         if (doReport) {
-            rptRing.update((rptStepIdx / rptTotal) * 100, 'Report Generation', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
+            var seg = segments[segIdx];
+            window._rptCurrentSeg = seg;
+            rptRing.update(seg.start, 'Report Generation', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Starting report generation...');
             var reportOk = await runReporterGenerate(creds, doHealth);
             if (!reportOk) {
@@ -1606,15 +2101,18 @@ async function runReporterChecklist() {
                 resetReporterUI();
                 return;
             }
-            rptStepIdx++;
-            rptRing.update((rptStepIdx / rptTotal) * 100, rptSteps[rptStepIdx] || 'Report complete', rptStepIdx < rptTotal ? 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal : '');
+            segIdx++;
+            var nextPct = segIdx < rptTotal ? segments[segIdx].start : 100;
+            rptRing.update(nextPct, segIdx < rptTotal ? segments[segIdx].name : 'Report complete', segIdx < rptTotal ? 'Step ' + (segIdx + 1) + ' of ' + rptTotal : '');
         }
 
         if (doHealth && !doReport) {
-            rptRing.update((rptStepIdx / rptTotal) * 100, 'Health Check', 'Step ' + (rptStepIdx + 1) + ' of ' + rptTotal);
+            var seg = segments[segIdx];
+            window._rptCurrentSeg = seg;
+            rptRing.update(seg.start, 'Health Check', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
             outputPane.append('info', 'Running standalone health check...');
             await runReporterHealthCheck(creds);
-            rptStepIdx++;
+            segIdx++;
         }
 
         rptRing.complete('All steps completed');
@@ -1628,6 +2126,11 @@ async function runReporterChecklist() {
 }
 
 async function runReporterPreValidation(creds) {
+    if (_validationInFlight) {
+        outputPane.append('warn', 'Validation already in progress, please wait...');
+        return false;
+    }
+    _validationInFlight = true;
     document.getElementById('rptValidationPanel').style.display = '';
     document.getElementById('rptValidationResults').innerHTML = '<span style="color: #888;">Running checks...</span>';
     document.getElementById('rptValidationActions').style.display = 'none';
@@ -1658,11 +2161,15 @@ async function runReporterPreValidation(creds) {
     } catch (e) {
         document.getElementById('rptValidationResults').innerHTML = '<span style="color: #f44336;">Validation error: ' + e.message + '</span>';
         return false;
+    } finally {
+        _validationInFlight = false;
     }
 }
 
 async function pollValidationResult() {
     var valOutputCursor = 0;
+    var segs = window._rptSegments || [];
+    var valSeg = segs.length > 0 ? segs[0] : { start: 0, width: 10 };
     for (var i = 0; i < 120; i++) {
         await new Promise(function(r) { setTimeout(r, 1000); });
         try {
@@ -1676,6 +2183,9 @@ async function pollValidationResult() {
                 outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
                 valOutputCursor += outputData.count;
             }
+            var subPct = Math.min((valOutputCursor / 4) * 100, 90);
+            var overall = valSeg.start + (subPct / 100) * valSeg.width;
+            rptRing.update(overall, 'Pre-Validation', 'Checking...');
             if (!data.running && data.result) return data.result;
             if (!data.running) return null;
         } catch(e) { /* retry */ }
@@ -1734,7 +2244,8 @@ async function runReporterGenerate(creds, includeHealth) {
         manual_switch_ips: JSON.stringify(rptManualSwitchIps),
         include_health_check: includeHealth ? '1' : '',
         enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
-        proxy_jump: creds.proxy_jump ? 'on' : ''
+        proxy_jump: creds.proxy_jump ? 'on' : '',
+        tech_port: creds.tech_port ? 'on' : ''
     });
 
     startReporterLogStream();
@@ -1760,11 +2271,18 @@ async function runReporterGenerate(creds, includeHealth) {
 }
 
 async function pollReporterGeneration() {
+    var seg = window._rptCurrentSeg || { start: 0, width: 100 };
     for (var i = 0; i < 600; i++) {
         await new Promise(function(r) { setTimeout(r, 2000); });
         try {
             var resp = await fetch('/generate/status?_t=' + Date.now());
             var data = await resp.json();
+            if (data.progress && data.running) {
+                var subPct = data.progress.percent || 0;
+                var overall = seg.start + (subPct / 100) * seg.width;
+                var label = data.progress.label || 'Generating report...';
+                rptRing.update(Math.min(overall, seg.start + seg.width - 1), label, data.progress.phase || '');
+            }
             if (!data.running && data.result) {
                 if (data.result.success) {
                     outputPane.append('success', 'Report generated for ' + (data.result.cluster || 'cluster'));
@@ -1782,15 +2300,7 @@ async function pollReporterGeneration() {
 }
 
 function showReporterResultButtons(result) {
-    var panel = document.getElementById('reporterResultPanel');
-    panel.style.display = '';
-    if (result.pdf) {
-        document.getElementById('rptViewPdf').href = '/reports/view/' + encodeURIComponent(result.pdf);
-        document.getElementById('rptDownloadPdf').href = '/reports/download/' + encodeURIComponent(result.pdf);
-    }
-    if (result.json) {
-        document.getElementById('rptDownloadJson').href = '/reports/download/' + encodeURIComponent(result.json);
-    }
+    activateReportSteps(result);
 }
 
 async function runReporterHealthCheck(creds) {
@@ -1813,10 +2323,16 @@ async function runReporterHealthCheck(creds) {
         var data = await resp.json();
         if (data.error) { outputPane.append('error', 'Health check error: ' + data.error); stopReporterLogStream(); return; }
         outputPane.append('info', 'Health check started...');
+        var hcSeg = window._rptCurrentSeg || { start: 0, width: 100 };
         for (var i = 0; i < 300; i++) {
             await new Promise(function(r) { setTimeout(r, 2000); });
             var st = await fetch('/health/status');
             var stData = await st.json();
+            if (stData.progress && stData.running) {
+                var subPct = stData.progress.percent || 0;
+                var overall = hcSeg.start + (subPct / 100) * hcSeg.width;
+                rptRing.update(Math.min(overall, hcSeg.start + hcSeg.width - 1), stData.progress.label || 'Running health checks...', stData.progress.phase || '');
+            }
             if (!stData.running) {
                 outputPane.append('success', 'Health check completed');
                 stopReporterLogStream();
@@ -1840,8 +2356,7 @@ function cancelReporterRun() {
 
 function resetReporterUI() {
     reporterRunning = false;
-    document.getElementById('btnReporterRun').disabled = false;
-    document.getElementById('btnReporterRun').textContent = 'Run';
+    document.getElementById('btnReporterRun').style.display = '';
     document.getElementById('btnReporterCancel').style.display = 'none';
 }
 
@@ -1850,13 +2365,13 @@ function resetReporterUI() {
 // =====================================================================
 var oneShotMode = false;
 var oneShotPollInterval = null;
-function toggleOneShotMode() {
+async function toggleOneShotMode() {
     oneShotMode = document.getElementById('modeToggle').checked;
     document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
     document.getElementById('oneShotPanel').style.display = oneShotMode ? '' : 'none';
     document.getElementById('labelStepByStep').classList.toggle('active', !oneShotMode);
     document.getElementById('labelOneShot').classList.toggle('active', oneShotMode);
-    if (oneShotMode) populateOneShotChecklist();
+    if (oneShotMode) await populateOneShotChecklist();
     saveUIState();
 }
 
@@ -1869,26 +2384,76 @@ var WORKFLOW_BADGE_MAP = {
     'network_config': 'Pull Config'
 };
 
+function applyReporterDefaults() {
+    var rd = CFG_REPORTER_DEFAULTS;
+    if (rd.pre_validation !== undefined) {
+        document.getElementById('rptPreValidation').checked = rd.pre_validation;
+        var d = document.getElementById('rptPreValidationDetail');
+        if (d) d.style.display = rd.pre_validation ? '' : 'none';
+    }
+    if (rd.run_reporter !== undefined) {
+        document.getElementById('rptRunReporter').checked = rd.run_reporter;
+        var d = document.getElementById('rptRunReporterDetail');
+        if (d) d.style.display = rd.run_reporter ? '' : 'none';
+    }
+    if (rd.health_check !== undefined) {
+        document.getElementById('rptHealthCheck').checked = rd.health_check;
+        var d = document.getElementById('rptHealthCheckDetail');
+        if (d) d.style.display = rd.health_check ? '' : 'none';
+    }
+}
+
 async function populateOneShotChecklist() {
     try {
-        var resp = await fetch('/advanced-ops/workflows');
-        var data = await resp.json();
+        var wfResp = await fetch('/advanced-ops/workflows');
+        var data = await wfResp.json();
+
+        try {
+            var cfgResp = await fetch('/config/json');
+            var cfg = await cfgResp.json();
+            var adv = cfg.advanced_operations || {};
+            CFG_DEFAULTS = adv.defaults || {};
+            CFG_REPORTER_DEFAULTS = adv.reporter_defaults || {};
+        } catch (e) { /* keep existing defaults */ }
+
         var container = document.getElementById('oneShotOpsContainer');
         container.innerHTML = '';
         data.workflows.forEach(function(wf) {
             if (!wf.enabled) return;
-            var isChecked = (wf.id !== 'vperfsanity');
-            var badgeText = WORKFLOW_BADGE_MAP[wf.id] || 'Automated Test';
+            var defaultOn = (CFG_DEFAULTS[wf.id] !== undefined) ? CFG_DEFAULTS[wf.id] : true;
             var label = document.createElement('label');
             label.className = 'oneshot-item';
-            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (isChecked ? ' checked' : '') + '>' +
-                '<span class="oneshot-item-badge badge-automated">' + badgeText + '</span>' +
+            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (defaultOn ? ' checked' : '') + '>' +
                 '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
             container.appendChild(label);
+            if (wf.id === 'vperfsanity') {
+                var sub = document.createElement('div');
+                sub.className = 'oneshot-sub-field';
+                sub.id = 'vipPoolSubField';
+                sub.style.display = defaultOn ? '' : 'none';
+                sub.innerHTML = '<label for="vipPoolVisible">VIP Pool</label>' +
+                    '<input type="text" id="vipPoolVisible" value="' +
+                    (document.getElementById('vipPool').value || 'main') + '" placeholder="main"' +
+                    ' oninput="document.getElementById(\'vipPool\').value=this.value">';
+                container.appendChild(sub);
+                var vpCb = label.querySelector('input');
+                vpCb.addEventListener('change', function() {
+                    var sf = document.getElementById('vipPoolSubField');
+                    if (sf) sf.style.display = this.checked ? '' : 'none';
+                });
+            }
         });
         container.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
             cb.addEventListener('change', function() { saveUIState(); });
         });
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl && CFG_DEFAULTS.include_report !== undefined) reportEl.checked = CFG_DEFAULTS.include_report;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl && CFG_DEFAULTS.include_health !== undefined) healthEl.checked = CFG_DEFAULTS.include_health;
+        var preValEl = document.getElementById('oneShotPreValidation');
+        if (preValEl && CFG_DEFAULTS.pre_validation !== undefined) preValEl.checked = CFG_DEFAULTS.pre_validation;
+
+        applyReporterDefaults();
     } catch (e) {
         outputPane.append('error', 'Failed to load workflows: ' + e.message);
     }
@@ -1945,8 +2510,16 @@ async function startOneShot() {
 
     document.getElementById('btnOneShotStart').disabled = true;
     document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotResultPanel').style.display = 'none';
+    _oneShotOutputCursor = 0;
 
     if (doPreValidation) {
+        if (_validationInFlight) {
+            outputPane.append('warn', 'Validation already in progress, please wait...');
+            resetOneShotUI();
+            return;
+        }
+        _validationInFlight = true;
         document.getElementById('oneShotProgress').style.display = '';
         osRing.reset();
         osRing.start();
@@ -1988,6 +2561,8 @@ async function startOneShot() {
             osRing.error('Pre-Validation error');
             resetOneShotUI();
             return;
+        } finally {
+            _validationInFlight = false;
         }
     }
 
@@ -2001,11 +2576,14 @@ async function pollOneShotValidationResult() {
         try {
             var results = await Promise.all([
                 fetch('/advanced-ops/oneshot/status'),
-                fetch('/advanced-ops/output?since=0')
+                fetch('/advanced-ops/output?since=' + _oneShotOutputCursor)
             ]);
             var data = await results[0].json();
             var outputData = await results[1].json();
-            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            if (outputData.entries && outputData.entries.length > 0) {
+                outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+                _oneShotOutputCursor += outputData.count;
+            }
             if (!data.running && data.result) return data.result;
             if (!data.running) return null;
         } catch(e) { /* retry */ }
@@ -2075,7 +2653,7 @@ async function cancelOneShot() {
 
 function startOneShotPolling() {
     if (oneShotPollInterval) return;
-    var lastOutputCount = 0;
+    var lastOutputCount = _oneShotOutputCursor;
     oneShotPollInterval = setInterval(async function() {
         try {
             var results = await Promise.all([
@@ -2108,8 +2686,7 @@ function startOneShotPolling() {
                 updateOneShotPhases(finalPhase);
                 document.getElementById('btnOneShotCancel').style.display = 'none';
                 if (finalPhase === 'completed') {
-                    document.getElementById('btnOneShotDownload').style.display = '';
-                    document.getElementById('btnOneShotDownload').disabled = false;
+                    document.getElementById('oneShotResultPanel').style.display = '';
                     osRing.complete('All operations completed');
                 } else if (finalPhase === 'cancelled') {
                     osRing.cancel();
@@ -2194,10 +2771,46 @@ document.addEventListener('DOMContentLoaded', async function() {
     toggleDefaultCredentials();
     restoreLogTier();
 
-    // Default: Reporter mode (toggle unchecked = left = Reporter)
-    oneShotMode = false;
-    document.getElementById('labelStepByStep').classList.add('active');
-    document.getElementById('labelOneShot').classList.remove('active');
+    // Fetch live config defaults for both Reporter and Test Suite tiles
+    try {
+        var cfgResp = await fetch('/config/json');
+        var cfg = await cfgResp.json();
+        var adv = cfg.advanced_operations || {};
+        CFG_DEFAULTS = adv.defaults || {};
+        CFG_REPORTER_DEFAULTS = adv.reporter_defaults || {};
+        applyReporterDefaults();
+
+        var sshCfg = cfg.ssh || {};
+        CFG_SSH_ADV = {
+            proxy_jump: sshCfg.proxy_jump,
+            tech_port_mode: sshCfg.tech_port_mode,
+            autofill: adv.autofill_default_passwords
+        };
+        if (sshCfg.proxy_jump !== undefined) {
+            document.getElementById('proxyJumpToggle').checked = !!sshCfg.proxy_jump;
+        }
+        if (sshCfg.tech_port_mode !== undefined) {
+            document.getElementById('techPortToggle').checked = !!sshCfg.tech_port_mode;
+        }
+        if (adv.autofill_default_passwords !== undefined) {
+            document.getElementById('useDefaultCreds').checked = !!adv.autofill_default_passwords;
+            toggleDefaultCredentials();
+        }
+    } catch (e) { /* use empty defaults */ }
+
+    // Apply config default mode
+    var cfgMode = '{{ cfg_default_mode }}';
+    if (cfgMode === 'oneshot') {
+        document.getElementById('modeToggle').checked = true;
+        toggleOneShotMode();
+    } else {
+        oneShotMode = false;
+        document.getElementById('labelStepByStep').classList.add('active');
+        document.getElementById('labelOneShot').classList.remove('active');
+    }
+
+    renderPlacementSummary();
+    resetReporterStepper();
 
     var backendActive = await hydrateFromBackend();
     if (!backendActive) {
@@ -2301,7 +2914,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     function _hideToolsStatusOneshot() { document.getElementById('toolsStatusPanelOneshot').style.display = 'none'; }
     function _updateDeploymentTools() {
-        var btn = document.getElementById('btnUpdateTools');
+        var btn = document.getElementById('btnUpdateToolsOneshot') || document.getElementById('btnUpdateToolsHeader');
+        if (!btn) return;
         var originalText = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
@@ -2329,6 +2943,38 @@ document.addEventListener('DOMContentLoaded', async function() {
         })
         .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
     }
+    function _hideAllToolsPanels() {
+        _hideToolsStatus();
+        _hideToolsStatusOneshot();
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            _hideAllToolsPanels();
+            var modal = document.getElementById('placementModal');
+            if (modal && !modal.classList.contains('hidden')) cancelPlacementModal();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        var panel = document.getElementById('toolsStatusPanel');
+        var panelOs = document.getElementById('toolsStatusPanelOneshot');
+        if (panel.style.display !== 'none' && !panel.contains(e.target) && !e.target.closest('#btnToolsInfo')) {
+            _hideToolsStatus();
+        }
+        if (panelOs.style.display !== 'none' && !panelOs.contains(e.target) && !e.target.closest('#btnToolsInfoOneshot')) {
+            _hideToolsStatusOneshot();
+        }
+        var modal = document.getElementById('placementModal');
+        if (modal && !modal.classList.contains('hidden') && e.target === modal) {
+            cancelPlacementModal();
+        }
+        var advMenu = document.getElementById('advancedMenu');
+        if (advMenu.style.display !== 'none' && !e.target.closest('.conn-advanced-wrapper')) {
+            advMenu.style.display = 'none';
+        }
+    });
+
     window.showToolsStatus = _showToolsStatus;
     window.hideToolsStatus = _hideToolsStatus;
     window.showToolsStatusOneshot = _showToolsStatusOneshot;
@@ -2339,11 +2985,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 function rptUpdateHealthTierHint() {
     var hint = document.getElementById('rptHealthTierHint');
     if (!hint) return;
-    var nodePw = document.getElementById('nodePassword').value;
     var switchPw = document.getElementById('switchPassword').value;
-    if (nodePw && switchPw) hint.textContent = 'Tier 1 (API) + Tier 2 (Node SSH) + Tier 3 (Switch SSH)';
-    else if (nodePw) hint.textContent = 'Tier 1 (API) + Tier 2 (Node SSH)';
-    else hint.textContent = 'Tier 1 (API) only — add node/switch credentials for deeper checks';
+    if (switchPw) hint.title = 'Tier 1 (API) + Tier 3 (Switch SSH)';
+    else hint.title = 'Tier 1 (API) only — add switch credentials for Switch SSH checks';
 }
 </script>
 {% endblock %}

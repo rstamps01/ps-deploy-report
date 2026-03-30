@@ -5,7 +5,133 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.0] - 2026-03-27
+## [Unreleased]
+
+### Changed (Reporter UI — Connection Settings)
+- **Step text revised:** Step 1 now reads "Connect to Tech Port (TP) and verify SSH access"; Step 2 reads "Enter Tech Port IP below and save as a new profile" — steps stacked vertically for clarity
+- **"SSH Proxy Mode — CNode to Switch"** shortened to **"SSH Proxy Mode"** across all three templates (`reporter.html`, `advanced_ops.html`, `generate.html`)
+
+### Changed (Reporter UI — Select Operation Tile)
+- **Step numbering unified across tiles:** Connection Settings uses Steps 1–2; Select Operation uses Steps 3–4 for a continuous workflow
+- **Step 3** text reads "Click Discovery to add racks, switches, and assign U-heights"; **Step 4** reads "Save to profile and click Run to generate the Report"
+- **Switch Placement Mode toggle removed:** Default to Manual; fallback to Auto if no placements configured. Compact summary section shows placement/manual counts with "Edit Placements" button
+- **Switch Placement Editor modal:** All Discovery, Manual Add, assignment controls, and tables relocated from inline panel into a dedicated modal dialog with Save to Profile / Cancel buttons, Escape / click-outside-to-close, and snapshot/restore for cancel safety
+- **5-step stepper action bar** replaces the flat action bar: sequential workflow (Discovery → Run → View PDF → Download PDF → Download JSON) with connected dot indicators, track line, and ghosted buttons for steps 3-5 until report completes
+- **Update Tools relocated to card header:** Icon-only button with orange notification dot badge; removed from bottom action bar along with Tool Status button
+- **Discovery, +Switch buttons** restyled with section labels and info icons (carried forward from prior session)
+- **Enter key submission** for U Height and Switch IP / Switch Model fields (carried forward from prior session)
+
+### Changed (Reporter UI — Test Suite)
+- **Step 3** instruction added: "Select operations, click Run" — aligns with the unified step numbering
+
+### Changed (Validation Results Page — Report Tuning Tool)
+- **Regenerate PDF** button moved to the far left of the toolbar; Preview and Download buttons now populate to its right after regeneration
+- **Report Tuning Tool label** restyled to match Cluster Filter label format (0.82rem, weight 500, secondary color) for visual consistency
+- **"Report Sections"** heading renamed to **"Add / Remove Report Sections"** with a pencil/edit icon prefix
+
+### Changed (Reporter UI — VAST Logo Progress Tracker)
+- **Dedicated right column** for the progress tracker in both Reporter and Test Suite panels — always visible at 25% opacity when idle, fully opaque during runs
+- **Smaller logo** (180x154px down from 320x274px) to fit the permanent right column without dominating the layout
+- **Brand gradient on completion:** Logo fill transitions from progress cyan to official VAST brand gradient (dark navy → teal → cyan sweep) with a subtle glow animation
+- **Responsive layout:** `panel-flex` uses CSS flexbox (200px right column) with column stacking on mobile
+
+### Fixed (Reporter UI — Deployment Tools Status)
+- **Close behaviors** added for Deployment Tools Status panel: Escape key, click-outside-to-close (in addition to existing X button) — applies to both Reporter and Test Suite panels
+
+### Added (Reporter UI — Granular Progress Tracking)
+- **Backend phase-level progress** for report generation: `JOB_PROGRESS` dict in app.config tracks `percent`, `phase`, and `label` across 7 weighted phases (auth 5%, data_collection 20%, health_check 15%, port_mapping 10%, data_extraction 20%, json_save 5%, pdf_generation 25%) with dynamic weight redistribution when phases are skipped
+- **Backend health check progress:** `HEALTH_JOB_PROGRESS` dict with `progress_callback` on `HealthChecker`; fires after each of the 27 API checks and per-switch SSH checks with cumulative offset tracking across tiers
+- **`_update_progress()` helper** in `app.py` for thread-safe progress writes under `JOB_LOCK` / `HEALTH_JOB_LOCK`
+- **`/generate/status` and `/health/status`** endpoints now include a `progress` field in the JSON response
+- **Frontend weighted segment mapping:** `runReporterChecklist` assigns each operation a start/width percentage range (Pre-Validation weight 10, Report 80, Health 80); polling loops read backend sub-progress and map into the overall 0–100% range
+- **Smooth animation:** `VastProgress._animateTo()` uses `requestAnimationFrame` with ease-in-out curve (200–800ms) to smoothly count between percentage updates instead of jumping
+
+### Changed (Reporter UI — Select Operation Tile Refinements)
+- **Reporter / Test Suite segmented toggle** moved into a dedicated `.op-mode-bar` header bar inside the card with edge-to-edge blue separator line, matching the footer stepper style
+- **Placement summary pills:** Rack count, Switches Placed count, and Open Editor button displayed as compact pills; rack count derived from placed switches when discovery data is not persisted
+- **Step text formatting:** Key action phrases in Steps 1–4 styled in bold accent blue; info icon tooltips updated with physical/network connection guidance
+- **Field label update:** "Tech Port IP or VMS VIP" changed to "Tech Port IP / VMS VIP"
+- **Stepper action bar:** Upgraded to CSS grid layout with 18px dots, 3px borders, and chevron separators for precise alignment
+- **Toggle border fix:** Corrected `var(--border-color)` (undefined) to `var(--border)` on segmented toggle
+- **Info icon tooltips:** Pre-Validation and Generate As-Built Report tooltip overflow fixed by changing `.oneshot-checklist` from `overflow: hidden` to `overflow: visible`
+
+### Changed (Reporter UI — Manual Switch Entry)
+- **Switch Name field** replaces Switch IP for manually added non-VMS switches — allows free-text descriptions, names, or designations instead of requiring an IP address
+- **Updated labels, placeholders, table headers, and validation** to reflect the name-based entry
+
+### Changed (Reporter UI — Defaults and UX)
+- **Generate As-Built Report** checkbox now enabled by default in the Reporter checklist
+- **Info icon appearance time** reduced to 0.5 seconds via `transition-delay` on `.info-icon` hover
+- **Saved Profile dropdown** default message changed to "- Create or Select a profile -"
+
+### Changed (Application Heading)
+- **Navbar heading restyled:** "As-Built Reporter" changed to "asbuilt-reporter" with "asbuilt" in white and "-reporter" in accent cyan, matching the product branding
+
+### Changed (Dashboard — Quick Start Content)
+- **Prerequisites:** "via +Switch" removed; now reads "customer-managed switches can be added manually"
+- **Getting Started:** Rewritten to "Connect directly to a Tech Port or to VMS VIP over the network. Tech Port connections discover VMS CNode automatically." — removed two "If password is not default" bullets
+- **Deployment Workflow — Connection Settings:** Tech Port and Network connection types moved to separate bullet lines for clarity
+- **Deployment Workflow — Discovery & Switch Placement:** Rewritten to "Run Discovery, assign switch U-height. Optionally, use +Switch to add customer-managed switches and assign rack U-height, then Save to Profile."
+- **Deployment Workflow — Run Report:** Rewritten from single paragraph to structured checklist (Pre-Validation, Generate As-Built Report, Health Check) with "Click Run, then monitor progress in Output Results logging console"
+
+### Fixed (Support Tool Workflow — Output Overwriting)
+- **Timestamped archive filenames:** Support tool `.tgz` archives now include `YYYYMMDD_HHMMSS` timestamp in the filename (e.g., `hostname-support_tool_logs_20260321_143022.tgz`), preventing newer runs from overwriting previous results
+- **Glob patterns updated:** `result_bundler.py` and `result_scanner.py` changed from `*support_tool_logs.tgz` to `*support_tool_logs*.tgz` to discover timestamped archives
+
+### Fixed (Reporter UI — Config Sync)
+- **Advanced Configuration settings** (SSH Proxy Jump, Tech Port Mode, Auto-fill Default Passwords) now correctly sync to Reporter Connection Settings Advanced checkboxes at page load, overriding stale localStorage values
+- **Autofill Passwords credential handling:** All user/password settings saved regardless of Autofill state; custom values persist when Autofill is disabled; re-enabling Autofill resets to defaults; user edits take precedence over defaults
+
+### Fixed (Reporter UI — Discovery Timeout)
+- **Discovery API timeout** reduced from ~2 minutes to 15 seconds with a pre-flight connectivity check; graceful error message when cluster IP is unreachable
+
+## [1.5.0] - 2026-03-28
+
+### Added (Advanced Configuration UI)
+- **Advanced Configuration page** (`/config/advanced`): New form-based settings management page replacing the raw YAML editor as the default configuration interface
+  - **Report Tuning Tool** (sticky top toolbar): Select a JSON report file from output directories or upload a new one, apply configuration overrides (formatting, sections), and regenerate a PDF with Preview and Download buttons
+  - **Nine accordion sections:** Report Formatting, Report Data Collection, API Settings, Logging, Output, SSH, Health Check, Advanced Operations, Security — each with typed form controls (text, number, select, toggle) bound to `config.yaml` keys via `data-key` attributes
+  - **Deep-merge save:** Save operation merges form values into existing config rather than replacing the entire file, preventing loss of config keys not represented in the form
+  - **Upload and select workflow:** Browsed JSON files are uploaded to the reports directory, added to the dropdown, and auto-selected
+  - **Reset to Template** button loads default values from `config.yaml.template` without saving
+- **Raw YAML config editor** moved to Developer Mode only (accessible via hamburger menu)
+
+### Changed (Report Formatting — Margin & Content Sizing)
+- **Default margins changed to 0.5"** on all sides (from 1.0") in both `config.yaml.template` and active `config.yaml` — resolves TOC layout issues and narrow table columns at 1.0"
+- **Margin-aware content sizing:** All table `colWidths` and diagram scaling now derive from `self._frame_width` / `self._frame_height` instead of hardcoded `A4[0] - 1.0 * inch`; 9 width calculations updated across report builder methods
+- **Margin clamping:** UI restricts inputs to 0.25"–1.5" with validation warning; backend enforces `MIN_FRAME_W=360` / `MIN_FRAME_H=600` floor with automatic fallback to 0.5" defaults
+- **Rack diagram headroom:** Frame height passed to `RackDiagram` reserves 1.0" for heading/spacer; wrapper table padding zeroed out — prevents `LayoutError` overflow at any valid margin setting
+- **"Report Data Collection"** renamed from "Data Collection" in Advanced Configuration
+
+### Fixed (Report Formatting)
+- **Organization field** now passed through `ReportConfig` and `brand_compliance.create_vast_page_template()` to PDF report footer
+- **Margins** correctly applied via `brand_compliance` frame dimensions instead of ignored `BaseDocTemplate` margin parameters
+- **Include Page Numbers** toggle now conditionally draws page numbers in `brand_compliance` footer
+- **Font Family** selection (Helvetica, Times-Roman, Courier) applied via `_font()` helper that resolves dynamic font variants (bold, italic) for each family
+- **Blank page on page 9** fixed: removed redundant `PageBreak()` in `_create_hardware_inventory` that triggered double page breaks when `total_devices > 15` with rack positions available
+
+### Changed (Health Check — VIP Pools)
+- **VIP Pools:** Status changed from `fail` to `warning` when no VIP pools are configured — an unconfigured VIP pool is informational, not a failure
+- **Render-time fixup for VIP Pools:** Reports regenerated from pre-fix JSON files automatically correct stale `fail` status to `warning` for "No VIP pools configured" and "No enabled VIP pools" messages, with summary counts adjusted
+
+### Fixed (Reporter UI — Config Wiring)
+- **SSH, Health Check, Advanced Operations, and Security** settings configured in Advanced Configuration are now reflected in the Reporter UI at page load
+  - Proxy Jump toggle initialized from `ssh.proxy_jump`
+  - Default credentials toggle from `advanced_operations.autofill_default_passwords`
+  - Switch placement mode from `advanced_operations.default_switch_placement`
+  - vperfsanity default selection from `advanced_operations.vperfsanity_default_selected`
+  - Reporter vs Test Suite mode from `advanced_operations.default_mode`
+
+### Added (Diagnostics)
+- **Prometheus device metrics diagnostic** (`tests/diag_prometheus_metrics.py`): Probes 14 Prometheus metric paths (`devices`, `cnodes`, `cluster`, `network`, etc.), parses and summarizes each, highlights health-relevant metrics, and saves raw text and parsed JSON to `reports/` for evaluation
+
+### Changed (Health Check — Check Tuning & Tier 2 Removal)
+- **Active Alarms:** Status changed from `fail` to `warning` when unresolved critical/major alarms are present — alarms are informational indicators, not hard failures
+- **CNode Status — Management CNode handling:** Inactive CNodes that are the dedicated Management CNode (VMS) no longer cause a failure; check passes with message `"All N CNodes healthy (VMS on cnode-X)"`
+- **Switches in VMS:** Status changed from `warning` to `skipped` when no switches are registered; removed the prescriptive "Add switches in VMS for port mapping functionality" message
+- **Monitoring Config check removed:** Entire check removed — SNMP and syslog API endpoints do not exist in the VAST API; check always returned false results
+- **Tier 2 node SSH checks removed:** All 10 node SSH checks removed (Panic/Alert Logs, Management Ping, Memory Usage, Disk Space, Time Sync, Core Dumps, Network Interfaces, VAST Services, VAST Support Tools, VNet Map) — these are redundant with diagnostics run by `vast_support_tools.py` in the One-Shot test suite, and produced false-positive results when SSH targeted the Management CNode
+- **Render-time fixups for old JSON:** Reports regenerated from pre-fix JSON files automatically correct stale health check results (CNode Status management pass-through, Active Alarms downgrade, Switches in VMS reclassification, Monitoring Config removal, node_ssh row filtering) with summary counts adjusted to match
 
 ### Added (Report — Post Deployment Activities Dynamic Status)
 - **Dynamic status column** in Post Deployment Activities table: status auto-resolves from health check results and cluster data at report generation time
@@ -14,6 +140,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Pending** (orange): Items not yet completed or not auto-detectable (e.g., Change Default Passwords)
 - **Render-time fallback:** Reports regenerated from existing JSON files also resolve status from embedded health check data
 - **`ACCENT_BLUE`** (#1A6FB5) added to brand compliance colors — matches app UI button color
+
+### Added (Rack Diagram — Status Indicators)
+- **Per-device status indicators:** Color-coded shapes drawn on each device in the Physical Rack Layout diagram
+  - **CBox**: 1–4 circles (one per CNode) — green=Active, orange=Inactive, blue=Management CNode (VMS)
+  - **DBox**: 1–4 squares (one per DNode) — green=Active, orange=Inactive
+  - **EBox**: 1 circle (CNode) + 2 squares (DNodes) grouped in a horizontal line
+  - **Switch**: Single dot — green if ACTIVE/ONLINE/OK in Hardware Inventory, orange otherwise; no dot for manually-added switches
+- **Dark pill background** behind each device's indicator row for contrast against hardware images
+- **Status Indicator legend tile** positioned to the left of each rack diagram, centered vertically, explaining circle/square color codes
 
 ### Changed (Rack Diagram — Device Labels)
 - **CBox/DBox labels replaced with serial names:** Rack diagram labels now show the Hardware Inventory Name/Serial Number (e.g., `cbox-S961313X6134067`) instead of generic `CBox-6` / `DBox-1` numbering

@@ -30,7 +30,7 @@ class HealthCheckResult:
     """Single health check outcome."""
 
     check_name: str
-    category: str  # "api" | "node_ssh" | "switch_ssh" | "performance" | "custom"
+    category: str  # "api" | "switch_ssh" | "performance" | "custom"
     status: str  # "pass" | "fail" | "warning" | "skipped" | "error"
     message: str
     details: Optional[Dict[str, Any]] = None
@@ -55,9 +55,8 @@ class HealthCheckReport:
 class HealthChecker:
     """Runs tiered health checks against a VAST cluster.
 
-    Tier 1 -- API checks (23 read-only GET calls)
-    Tier 2 -- Node SSH checks (placeholder, WP-9)
-    Tier 3 -- Switch SSH checks (placeholder, WP-9)
+    Tier 1 -- API checks (read-only GET calls)
+    Tier 3 -- Switch SSH checks
     """
 
     DEFAULT_THRESHOLDS = {
@@ -94,6 +93,7 @@ class HealthChecker:
         cancel_event: Optional[Any] = None,
         logger: Optional[logging.Logger] = None,
         thresholds: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[Any] = None,
     ) -> None:
         self.api_handler = api_handler
         self.ssh_config = ssh_config
@@ -101,6 +101,7 @@ class HealthChecker:
         self.cancel_event = cancel_event
         self.logger = logger or logging.getLogger(__name__)
         self.thresholds = {**self.DEFAULT_THRESHOLDS, **(thresholds or {})}
+        self.progress_callback = progress_callback
         self._cluster_cache: Optional[Dict[str, Any]] = None
         self._original_timeout: Optional[int] = None
         self._original_retries: Optional[int] = None
@@ -302,16 +303,6 @@ class HealthChecker:
                 "Check license status in VAST Management UI > System > License.",
                 "Verify license expiration date and capacity limits.",
                 "Contact VAST Support if license information is unavailable via API.",
-            ],
-        },
-        "Monitoring Config": {
-            "severity": "MEDIUM",
-            "impact": "Incomplete monitoring reduces visibility into cluster health events.",
-            "steps": [
-                "Configure syslog forwarding in VAST Management UI > Monitoring > Syslog.",
-                "Point syslog to your organization's central log aggregator (Splunk, ELK, etc.).",
-                "Verify SNMP traps are reaching your monitoring platform (Nagios, Zabbix, etc.).",
-                "Test alert delivery by generating a test event.",
             ],
         },
         "RAID Rebuild Progress": {
@@ -670,7 +661,6 @@ class HealthChecker:
             self._check_snapshots,
             self._check_quotas,
             self._check_data_protection,
-            self._check_monitoring_config,
             self._check_device_health,
             # Post-install validation checks
             self._check_call_home_status,
@@ -698,6 +688,8 @@ class HealthChecker:
                         duration_seconds=elapsed,
                     )
                 results.append(result)
+                if self.progress_callback:
+                    self.progress_callback(i, len(checks), fn.__name__)
                 if result.status in ("fail", "error"):
                     self.logger.warning(f"Check {fn.__name__} => {result.status}: {result.message}")
         finally:
@@ -1051,15 +1043,22 @@ class HealthChecker:
             total = len(data)
             inactive = []
             disabled = []
+            mgmt_inactive: Optional[str] = None
             for node in data:
                 name = node.get("name", node.get("id", "unknown"))
                 state = str(node.get("state", node.get("status", ""))).upper()
                 if state != "ACTIVE":
-                    inactive.append(name)
+                    if node.get("is_mgmt", False):
+                        mgmt_inactive = str(name)
+                    else:
+                        inactive.append(name)
                 if node.get("enabled") is False:
                     disabled.append(name)
 
-            details = {"total": total, "inactive": inactive, "disabled": disabled}
+            details: Dict[str, Any] = {"total": total, "inactive": inactive, "disabled": disabled}
+            if mgmt_inactive:
+                details["mgmt_cnode"] = mgmt_inactive
+
             issues: List[str] = []
             if inactive:
                 issues.append(f"inactive: {inactive}")
@@ -1076,6 +1075,18 @@ class HealthChecker:
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
                 )
+
+            if mgmt_inactive:
+                return HealthCheckResult(
+                    check_name="CNode Status",
+                    category="api",
+                    status="pass",
+                    message=f"All {total} CNodes healthy (VMS on {mgmt_inactive})",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
             return HealthCheckResult(
                 check_name="CNode Status",
                 category="api",
@@ -1520,7 +1531,7 @@ class HealthChecker:
                 return HealthCheckResult(
                     check_name="Active Alarms",
                     category="api",
-                    status="fail",
+                    status="warning",
                     message=f"{len(critical_alarms)} unresolved critical/major alarm(s)",
                     details=details,
                     timestamp=self._now(),
@@ -1656,7 +1667,7 @@ class HealthChecker:
                 return HealthCheckResult(
                     check_name="VIP Pools",
                     category="api",
-                    status="fail",
+                    status="warning",
                     message="No VIP pools configured",
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
@@ -2293,74 +2304,6 @@ class HealthChecker:
                 duration_seconds=time.time() - start,
             )
 
-    # --- 23. Monitoring Config --------------------------------------------
-
-    def _check_monitoring_config(self) -> HealthCheckResult:
-        start = time.time()
-        try:
-            data = self._get_cluster_data()
-            if not data:
-                return HealthCheckResult(
-                    check_name="Monitoring Config",
-                    category="api",
-                    status="error",
-                    message="Failed to retrieve cluster data",
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            snmp_fields = ["snmp_server", "snmp_community", "snmp_enabled", "snmp_trap_host"]
-            syslog_fields = ["syslog_server", "syslog_enabled", "syslog_host"]
-
-            snmp_configured = any(data.get(f) for f in snmp_fields)
-            syslog_configured = any(data.get(f) for f in syslog_fields)
-
-            if not snmp_configured and not syslog_configured:
-                monitors = self.api_handler._make_api_request("monitors/")
-                if monitors:
-                    if isinstance(monitors, list) and monitors:
-                        snmp_configured = True
-                    elif isinstance(monitors, dict) and monitors:
-                        snmp_configured = True
-
-            details = {"snmp_configured": snmp_configured, "syslog_configured": syslog_configured}
-            missing: List[str] = []
-            if not snmp_configured:
-                missing.append("SNMP")
-            if not syslog_configured:
-                missing.append("Syslog")
-
-            if missing:
-                return HealthCheckResult(
-                    check_name="Monitoring Config",
-                    category="api",
-                    status="warning",
-                    message=f"Monitoring not fully configured: {', '.join(missing)} not set",
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Monitoring Config",
-                category="api",
-                status="pass",
-                message="SNMP and syslog monitoring are configured",
-                details=details,
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Monitoring Config",
-                category="api",
-                status="error",
-                message=f"Check failed: {e}",
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
     # ------------------------------------------------------------------
     # Prometheus metrics parser and device health (WP-10)
     # ------------------------------------------------------------------
@@ -2639,8 +2582,8 @@ class HealthChecker:
                 return HealthCheckResult(
                     check_name="Switches in VMS",
                     category="api",
-                    status="warning",
-                    message="No switches registered. Add switches in VMS for port mapping functionality.",
+                    status="skipped",
+                    message="No switches registered",
                     details=details,
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
@@ -2663,577 +2606,6 @@ class HealthChecker:
                 category="api",
                 status="error",
                 message=f"Check failed: {e}",
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # ------------------------------------------------------------------
-    # Tier 2 -- Node SSH checks
-    # ------------------------------------------------------------------
-
-    def run_node_ssh_checks(self) -> List[HealthCheckResult]:
-        if not self.ssh_config:
-            self.logger.info("SSH config not provided, skipping node SSH checks")
-            return []
-
-        cnode_ip = self._resolve_cnode_ip()
-        if not cnode_ip:
-            self.logger.warning("No CNode IP available for SSH checks")
-            return []
-
-        username = self.ssh_config.get("username", "vastdata")
-        password = self.ssh_config.get("password", "")
-
-        checks = [
-            self._check_panic_alert_logs,
-            self._check_management_ping,
-            self._check_memory_usage,
-            self._check_disk_space,
-            self._check_time_sync,
-            self._check_core_dumps,
-            self._check_network_interfaces,
-            self._check_vast_services,
-            self._check_support_tool,
-            self._check_vnetmap,
-        ]
-
-        results: List[HealthCheckResult] = []
-        for i, fn in enumerate(checks, 1):
-            self._check_cancel()
-            self.logger.info("Running node SSH check %d/%d: %s", i, len(checks), fn.__name__)
-            result = fn(cnode_ip, username, password)
-            results.append(result)
-            if result.status in ("fail", "error"):
-                self.logger.warning("Check %s => %s: %s", fn.__name__, result.status, result.message)
-        return results
-
-    # --- Node SSH Check: Panic/Alert Logs ---------------------------------
-
-    def _check_panic_alert_logs(self, host: str, username: str, password: str) -> HealthCheckResult:
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'dmesg | grep -iE \"PANIC|ALERT|fail\"' 2>/dev/null | tail -20"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            if rc != 0 and not stdout:
-                return HealthCheckResult(
-                    check_name="Panic/Alert Logs",
-                    category="node_ssh",
-                    status="error",
-                    message=f"SSH command failed: {stderr or 'connection error'}",
-                    details={"host": host, "stderr": stderr},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            output = stdout.strip()
-            if output:
-                return HealthCheckResult(
-                    check_name="Panic/Alert Logs",
-                    category="node_ssh",
-                    status="fail",
-                    message="PANIC/ALERT/fail entries found in dmesg",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Panic/Alert Logs",
-                category="node_ssh",
-                status="pass",
-                message="No PANIC/ALERT/fail entries found in dmesg",
-                details={"host": host, "stdout": ""},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Panic/Alert Logs",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Management Ping ----------------------------------
-
-    def _check_management_ping(self, host: str, username: str, password: str) -> HealthCheckResult:
-        start = time.time()
-        max_duration = 60
-        try:
-            mgmt_ips: List[str] = []
-            try:
-                cnodes = self.api_handler._make_api_request("cnodes/")
-                if cnodes and isinstance(cnodes, list):
-                    for node in cnodes:
-                        for fld in ("ipmi_ip", "mgmt_ip", "bmc_ip"):
-                            ip = node.get(fld)
-                            if ip and ip not in mgmt_ips:
-                                mgmt_ips.append(ip)
-            except Exception:
-                pass
-
-            if not mgmt_ips:
-                return HealthCheckResult(
-                    check_name="Management Ping",
-                    category="node_ssh",
-                    status="skipped",
-                    message="No management/IPMI IPs found to ping",
-                    details={"host": host},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            reachable: List[str] = []
-            unreachable: List[str] = []
-            skipped: List[str] = []
-            for ip in mgmt_ips:
-                self._check_cancel()
-                if time.time() - start > max_duration:
-                    skipped.extend([i for i in mgmt_ips if i not in reachable and i not in unreachable])
-                    break
-                rc, _out, _err = run_ssh_command(host, username, password, f"ping -c 1 -W 2 {ip}", timeout=10)
-                if rc == 0:
-                    reachable.append(ip)
-                else:
-                    unreachable.append(ip)
-
-            details = {"host": host, "reachable": reachable, "unreachable": unreachable, "skipped": skipped}
-
-            if skipped:
-                return HealthCheckResult(
-                    check_name="Management Ping",
-                    category="node_ssh",
-                    status="warning",
-                    message=f"Check timed out after {max_duration}s; {len(reachable)} reachable, {len(unreachable)} unreachable, {len(skipped)} skipped",
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            if unreachable and not reachable:
-                return HealthCheckResult(
-                    check_name="Management Ping",
-                    category="node_ssh",
-                    status="fail",
-                    message=f"All {len(unreachable)} management IP(s) unreachable",
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            if unreachable:
-                return HealthCheckResult(
-                    check_name="Management Ping",
-                    category="node_ssh",
-                    status="warning",
-                    message=f"{len(unreachable)} of {len(mgmt_ips)} management IP(s) unreachable: {unreachable}",
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Management Ping",
-                category="node_ssh",
-                status="pass",
-                message=f"All {len(reachable)} management IP(s) reachable",
-                details=details,
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Management Ping",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: VAST Support Tools -------------------------------
-
-    def _check_support_tool(self, host: str, username: str, password: str) -> HealthCheckResult:
-        start = time.time()
-        try:
-            cmd = "vast_support_tools.py --quick-check 2>/dev/null || echo 'Tool not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-            return HealthCheckResult(
-                check_name="VAST Support Tools",
-                category="node_ssh",
-                status="pass",
-                message="Support tools check completed (informational)",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="VAST Support Tools",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: VNet Map -----------------------------------------
-
-    def _check_vnetmap(self, host: str, username: str, password: str) -> HealthCheckResult:
-        start = time.time()
-        try:
-            cmd = "vnetmap.py 2>/dev/null || echo 'vnetmap not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-            return HealthCheckResult(
-                check_name="VNet Map",
-                category="node_ssh",
-                status="pass",
-                message="vnetmap check completed (informational)",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="VNet Map",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Memory Usage ---------------------------------------
-
-    def _check_memory_usage(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check memory usage across cluster nodes."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'free -m | grep Mem' 2>/dev/null | head -10"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            if rc != 0 and not stdout:
-                return HealthCheckResult(
-                    check_name="Memory Usage",
-                    category="node_ssh",
-                    status="error",
-                    message=f"SSH command failed: {stderr or 'connection error'}",
-                    details={"host": host, "stderr": stderr},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            output = stdout.strip() if stdout else ""
-            node_usage = []
-
-            for line in output.split("\n"):
-                if "Mem:" in line:
-                    parts = line.split()
-                    if len(parts) >= 4:
-                        try:
-                            total = int(parts[1]) if parts[1].isdigit() else int(parts[2])
-                            used = int(parts[2]) if parts[2].isdigit() else int(parts[3])
-                            pct = (used / total) * 100 if total > 0 else 0
-                            node_usage.append({"line": line, "usage_pct": round(pct, 1)})
-                        except (ValueError, IndexError):
-                            pass
-
-            # >90% memory usage is expected and normal for VAST clusters
-            return HealthCheckResult(
-                check_name="Memory Usage",
-                category="node_ssh",
-                status="pass",
-                message="Memory usage within expected range",
-                details={"host": host, "node_usage": node_usage, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Memory Usage",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Disk Space -----------------------------------------
-
-    def _check_disk_space(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check disk space on critical filesystems."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'df -h / /var /tmp 2>/dev/null | grep -v Filesystem' 2>/dev/null | head -20"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            if rc != 0 and not stdout:
-                return HealthCheckResult(
-                    check_name="Disk Space",
-                    category="node_ssh",
-                    status="error",
-                    message=f"SSH command failed: {stderr or 'connection error'}",
-                    details={"host": host, "stderr": stderr},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            output = stdout.strip() if stdout else ""
-            high_usage = []
-
-            for line in output.split("\n"):
-                if "%" in line:
-                    parts = line.split()
-                    for part in parts:
-                        if part.endswith("%"):
-                            try:
-                                pct = int(part.rstrip("%"))
-                                if pct > 85:
-                                    high_usage.append({"line": line.strip(), "usage_pct": pct})
-                                    break
-                            except ValueError:
-                                pass
-
-            if high_usage:
-                return HealthCheckResult(
-                    check_name="Disk Space",
-                    category="node_ssh",
-                    status="warning",
-                    message=f"{len(high_usage)} filesystem(s) with >85% usage",
-                    details={"host": host, "high_usage": high_usage, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Disk Space",
-                category="node_ssh",
-                status="pass",
-                message="Disk space within normal limits",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Disk Space",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Time Sync ------------------------------------------
-
-    def _check_time_sync(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check NTP/chrony time synchronization."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'chronyc tracking 2>/dev/null || ntpq -p 2>/dev/null || timedatectl status' 2>/dev/null | head -30"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-            output_lower = output.lower()
-
-            if "not synchronized" in output_lower or "no server" in output_lower:
-                return HealthCheckResult(
-                    check_name="Time Sync",
-                    category="node_ssh",
-                    status="warning",
-                    message="Time sync issues detected",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Time Sync",
-                category="node_ssh",
-                status="pass",
-                message="Time synchronization check completed",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Time Sync",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Core Dumps -----------------------------------------
-
-    def _check_core_dumps(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check for recent core dumps."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'ls -la /var/crash/ 2>/dev/null | tail -5; coredumpctl list --since \"7 days ago\" 2>/dev/null | tail -5' 2>/dev/null"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-            has_cores = False
-
-            for line in output.split("\n"):
-                if "core" in line.lower() or ".dump" in line.lower() or "coredump" in line.lower():
-                    if "No such file" not in line and "total 0" not in line:
-                        has_cores = True
-                        break
-
-            if has_cores:
-                return HealthCheckResult(
-                    check_name="Core Dumps",
-                    category="node_ssh",
-                    status="warning",
-                    message="Core dump files found - investigate recent crashes",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Core Dumps",
-                category="node_ssh",
-                status="pass",
-                message="No recent core dumps found",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Core Dumps",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: Network Interfaces ---------------------------------
-
-    def _check_network_interfaces(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check network interface status."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'ip link show | grep -E \"state DOWN|NO-CARRIER\"' 2>/dev/null | head -10"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-
-            # Ignore expected down interfaces and unconfigured interfaces
-            down_interfaces = []
-            for line in output.split("\n"):
-                line = line.strip()
-                if line and ("state DOWN" in line or "NO-CARRIER" in line):
-                    # Skip virtual/expected interfaces
-                    if any(x in line.lower() for x in ["docker", "veth", "br-", "virbr", "lo:"]):
-                        continue
-                    # Skip unconfigured interfaces (qdisc noop = no driver/config loaded)
-                    if "qdisc noop" in line:
-                        continue
-                    down_interfaces.append(line)
-
-            if down_interfaces:
-                return HealthCheckResult(
-                    check_name="Network Interfaces",
-                    category="node_ssh",
-                    status="warning",
-                    message=f"{len(down_interfaces)} interface(s) DOWN or NO-CARRIER",
-                    details={"host": host, "down_interfaces": down_interfaces, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Network Interfaces",
-                category="node_ssh",
-                status="pass",
-                message="Network interfaces operational",
-                details={"host": host, "stdout": output if output else "All interfaces UP"},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Network Interfaces",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
-    # --- Node SSH Check: VAST Services --------------------------------------
-
-    def _check_vast_services(self, host: str, username: str, password: str) -> HealthCheckResult:
-        """Check VAST service status."""
-        start = time.time()
-        try:
-            cmd = "clush -g cnodes 'systemctl list-units --state=failed vast* 2>/dev/null || systemctl status vast* 2>/dev/null | grep -E \"Active:|failed\"' 2>/dev/null | head -20"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30)
-
-            output = stdout.strip() if stdout else ""
-            output_lower = output.lower()
-
-            if "failed" in output_lower and "0 loaded" not in output_lower:
-                return HealthCheckResult(
-                    check_name="VAST Services",
-                    category="node_ssh",
-                    status="warning",
-                    message="Failed VAST service(s) detected",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="VAST Services",
-                category="node_ssh",
-                status="pass",
-                message="VAST services check completed",
-                details={"host": host, "stdout": output if output else "No failed services"},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="VAST Services",
-                category="node_ssh",
-                status="error",
-                message=f"Check failed: {e}",
-                details={"host": host},
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
@@ -3271,12 +2643,17 @@ class HealthChecker:
         ]
 
         results: List[HealthCheckResult] = []
+        total_ssh_checks = len(switch_ips) * len(checks)
+        ssh_idx = 0
         for switch_ip in switch_ips:
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()
+                ssh_idx += 1
                 self.logger.info("Running switch SSH check %d/%d on %s: %s", i, len(checks), switch_ip, fn.__name__)
                 result = fn(switch_ip, username, password, **jump_kwargs)
                 results.append(result)
+                if self.progress_callback:
+                    self.progress_callback(ssh_idx, total_ssh_checks, f"{fn.__name__}@{switch_ip}")
                 if result.status in ("fail", "error"):
                     self.logger.warning(
                         "Check %s on %s => %s: %s", fn.__name__, switch_ip, result.status, result.message
@@ -3421,7 +2798,7 @@ class HealthChecker:
                 duration_seconds=time.time() - start,
             )
 
-    # --- Switch SSH Check: Config Backup ----------------------------------
+    # --- Switch SSH Check: Config Readability ------------------------------
 
     def _check_switch_config_backup(
         self, host: str, username: str, password: str, **ssh_kwargs: Any
@@ -3433,10 +2810,10 @@ class HealthChecker:
 
             output = stdout.strip() if stdout else ""
             return HealthCheckResult(
-                check_name="Switch Config Backup",
+                check_name="Switch Config Readability",
                 category="switch_ssh",
                 status="pass",
-                message=f"Switch config captured from {host} (informational)",
+                message=f"Switch config readable on {host}",
                 details={"host": host, "stdout": output},
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
@@ -3445,7 +2822,7 @@ class HealthChecker:
             raise
         except Exception as e:
             return HealthCheckResult(
-                check_name="Switch Config Backup",
+                check_name="Switch Config Readability",
                 category="switch_ssh",
                 status="error",
                 message=f"Check failed on {host}: {e}",
@@ -3468,12 +2845,31 @@ class HealthChecker:
 
         results: List[HealthCheckResult] = []
 
+        api_count = 27 if 1 in tiers else 0
+        ssh_count = 0
+        if 3 in tiers and self.switch_ssh_config:
+            switch_ips = self._resolve_switch_ips()
+            ssh_count = len(switch_ips) * 3
+
+        grand_total = api_count + ssh_count
+        original_cb = self.progress_callback
+
+        cumulative_offset = [0]
+
+        def _scoped_cb(idx: int, total: int, name: str) -> None:
+            if original_cb:
+                original_cb(cumulative_offset[0] + idx, grand_total, name)
+
+        self.progress_callback = _scoped_cb
+
         if 1 in tiers:
             results.extend(self.run_api_checks())
-        if 2 in tiers:
-            results.extend(self.run_node_ssh_checks())
+            cumulative_offset[0] = api_count
+
         if 3 in tiers:
             results.extend(self.run_switch_ssh_checks())
+
+        self.progress_callback = original_cb
 
         cluster_data = self._get_cluster_data()
         cluster_name = "Unknown"

@@ -385,7 +385,7 @@ class ResultScanner:
         scripts_dir = self._data_dir / "output" / "scripts"
         if not scripts_dir.exists():
             return
-        for f in scripts_dir.glob("*support_tool_logs.tgz"):
+        for f in scripts_dir.glob("*support_tool_logs*.tgz"):
             cip = sidecar_cluster_ip(f) or ""
             if cluster_ip and cip != cluster_ip:
                 continue

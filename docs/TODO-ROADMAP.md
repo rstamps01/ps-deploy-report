@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-27 (v1.5.0 release prep; rack labels, hardware library, post-deploy dynamic status done; AO-15/AO-19/CFG-1 to complete before release)  
+**Last updated:** 2026-03-30 (v1.5.0 pre-release: granular progress tracking, Dashboard content refresh, support tool fix, CHANGELOG/release notes update)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -129,7 +129,7 @@
 | RFE-1 | Support Bundle Integration | Planned | |
 | RFE-2 | Jeff's Port Mapper Integration | Planned | |
 | RFE-3 | Render Logical Net Diagram only with Port Map option enabled | Planned | |
-| RFE-4 | Health Report Summary | Done | Health Check Module with Tiers 1-3, PDF sections, remediation reports |
+| RFE-4 | Health Report Summary | Done | Health Check Module with Tier 1 (API) & Tier 3 (Switch SSH), PDF sections, remediation reports |
 | RFE-5 | Integrate/Automate Post Deployment Tests | Done | Advanced Operations with 6 workflows (vnetmap, support tools, vperfsanity, log bundle, switch config, network config) |
 | RFE-6 | Container deployment option | Planned | |
 | RFE-7 | Update deployment procedures | Planned | |
@@ -149,7 +149,7 @@
 
 | ID | Item | Notes |
 |------|------|--------|
-| — | *(No items currently in progress)* | |
+| UI-5 | **Full application UI restyle (Phase 1 — Foundation):** Update app.css :root tokens, shared component classes; affects all pages | Planned; ~2 hours estimated |
 
 ## Fixed Issues — State Persistence and One-Shot (pre-release)
 
@@ -162,6 +162,22 @@
 | BUG-5 | **As-Built reports filter into Unsaved Cluster Results:** PDF/JSON not linked to cluster. | Medium | Done | Embed `cluster_ip` in JSON output; write PDF sidecar `.meta.json`; scanner checks sidecar and builds API-name-to-IP map from existing JSON |
 | BUG-6 | **One-Shot default creds use single user for all operations:** admin used everywhere. | High | Done | Global default changed to `support`/`654321`; per-phase credential routing injects `admin`/`123456` only for vperfsanity when default creds active; actionable 403 hint added |
 | BUG-7 | **As-Built report/JSON missing from bundle:** Bundler matched by `cluster_name` in filename but received IP instead. | High | Done | Match via `.meta.json` sidecar `cluster_ip`; collect `asbuilt_json`; auto-resolve cluster name from report JSON; one-shot passes resolved API name |
+
+---
+
+## Planned — UI Enhancement & Restyle (phased)
+
+| ID | Item | Priority | Status | Notes |
+|------|------|----------|--------|--------|
+| UI-1 | **Switch Placement Editor Modal:** Refactor Discovery/Manual Add into modal with Save to Profile, Cancel, snapshot/restore, Escape/click-outside close | High | Done | Implemented in reporter.html; modal with full Discovery, Manual Add, assignment, Save to Profile / Cancel |
+| UI-2 | **5-step stepper action bar:** Sequential workflow bar (Discovery → Run → View → Download PDF → Download JSON) with dot indicators, connecting line, ghosted/active button states | High | Done | CSS grid stepper with 18px dots, chevron separators, ghosted/active states |
+| UI-3 | **Remove Switch Placement Mode toggle:** Default Manual, fallback Auto if no placements; remove toggle HTML/JS/CSS | High | Done | Toggle removed; default Manual with Auto fallback |
+| UI-4 | **Enhanced checklist rows:** Card-style elevated container, right-aligned status tags, post-completion green Passed indicators | Medium | Planned | Part of Phase 1 foundation |
+| UI-5 | **Phase 1 — Foundation restyle:** Update app.css :root tokens, shared components (cards, buttons, forms, tables, toggles, badges); pill segmented controls; cascades to all pages | Medium | Planned | ~2 hours; highest ROI |
+| UI-6 | **VAST Logo Progress Tracker enhancement:** Dedicated right column (always visible, dimmed at rest); granular progress; brand gradient fill on completion (navy → teal) | Medium | Done | Backend phase-level progress (7 weighted phases for report, per-check for health); frontend weighted segment mapping; smooth `_animateTo` animation; both Reporter and Test Suite tiles |
+| UI-7 | **Relocate Update Tools:** Move to card header with orange badge indicator for update-needed state | Medium | Done | Icon-only button with orange notification dot in card header |
+| UI-8 | **Phase 2 — Advanced Ops restyle:** Apply stepper/checklist/modal patterns from Reporter to Advanced Ops page | Low | Planned | ~1-2 hours; largely copy-paste from Reporter |
+| UI-9 | **Phase 3 — Remaining pages:** Polish Dashboard, Results, Library, Docs, Config, Generate, Health pages with foundation styles | Low | Planned | ~2-3 hours; most benefit from Phase 1 automatically |
 
 ---
 
@@ -180,6 +196,27 @@
 | RPT-1 | **Rack diagram serial labels:** CBox/DBox labels replaced with Hardware Inventory Name/Serial Number; DBox deduplication at same U position for Ceres V1 (4x dnodes → 1 label). | Medium | Done — v1.5.0 |
 | RPT-2 | **Post Deployment Activities dynamic status:** Status column auto-resolves to Completed (green), Optional (accent blue), or Pending (orange) from health check results and cluster data. Render-time fallback for existing JSON files. | Medium | Done — v1.5.0 |
 | HWL-1 | **Hardware library additions:** `supermicro_turin_cbox` and `bluefield` entries added to BUILTIN_DEVICES for VMS API model matching. | Low | Done — v1.5.0 |
+| RPT-3 | **Rack diagram status indicators:** Per-device color-coded indicators (CBox: 1–4 CNode dots, DBox: 1–4 DNode squares, EBox: 1 dot + 2 squares, Switch: 1 dot if in HW Inventory). Green=Active, Orange=Inactive, Blue=Management VMS. Dark pill background, legend tile. | Medium | Done — v1.5.0 |
+| HC-1 | **Health check tuning & Tier 2 removal:** Active Alarms→warning, CNode Status management pass-through, Switches in VMS→skipped, Monitoring Config removed (no SNMP/syslog API), Tier 2 node SSH checks removed (redundant with One-Shot `vast_support_tools.py`). Render-time fixups for old JSON. | High | Done — v1.5.0 |
+| DOC-1 | **README.md — Health check tier model:** Removed Tier 2, updated to 2-tier model (26 API + 6 Switch SSH = 32 checks) | High | Done |
+| DOC-2 | **README.md — Advanced Configuration page:** Added row to Web UI table; described 9 sections, Report Tuning Tool, deep-merge save | High | Done |
+| DOC-3 | **README.md — Configuration section update:** Rewrote Configuration section with Advanced Config UI as primary interface, Report Tuning Tool, formatting options | Medium | Done |
+| DOC-4 | **README.md — Report formatting options:** Documented organization, margins, font family, Include TOC/Page Numbers with config keys | Medium | Done |
+| DOC-5 | **README.md — VIP Pools health check behavior:** Added warning status note and render-time fixup description | Low | Done |
+| DOC-6 | **POST-INSTALL-VALIDATION.md — Remove Tier 2 Node SSH section:** Removed Tier 2 table, updated Recommended Sequence, Summary Matrix, and One-Shot section | High | Done |
+| DOC-7 | **POST-INSTALL-VALIDATION.md — Add Advanced Configuration reference:** Added config note to Recommended Sequence with Report Tuning Tool cross-reference | Low | Done |
+| DOC-8 | **ADVANCED-OPERATIONS.md — Tier 2 removal and config page:** Updated Tiers 1-3 → Tier 1 + Tier 3; added Configuration section with Advanced Config and Report Tuning Tool cross-references | Medium | Done |
+| DOC-9 | **RELEASE_NOTES_v1.5.0.md — Add recent changes:** Add to Highlights and New Features: (1) Advanced Configuration UI with Report Tuning Tool; (2) Report formatting fixes (organization, margins, page numbers, font family, blank page on page 9); (3) VIP Pools status changed from fail to warning with render-time fixup; (4) Reporter UI config wiring (SSH, health check, advanced ops settings initialized from config.yaml); (5) Advanced Config deep-merge save prevents config key loss; (6) Prometheus diagnostics script for future metric evaluation. Update Known Limitations: remove AO-15/AO-19 if complete; note pending font-family troubleshooting task. | High | Planned |
+| DOC-10 | **docs/deployment/PORT-MAPPING-GUIDE.md — SSH proxy hop:** Added SSH Proxy Hop section with CNode tunneling details, CLI flag, UI toggle; updated Network Access requirements | Medium | Done |
+| DOC-11 | **docs/development/HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md — Tier 2 removal:** Updated WP-9 to Tier 3 only; marked Tier 2 checks as removed; added post-HC-1 state note with VIP Pools warning and fixup mechanism | Medium | Done |
+| DOC-12 | **docs/deployment/DEPLOYMENT.md — Version and config updates:** Updated Python 3.8+ → 3.10+, added Advanced Config reference, updated footer to v1.5.0 | Low | Done |
+| DOC-13 | **docs/API-REFERENCE.md — Prometheus and monitoring endpoints:** Verify Prometheus metric endpoints (`/api/prometheusmetrics/{path}`) are documented with available paths (devices, cnodes, cluster, network, etc.). Check if monitoring endpoints section references removed SNMP/syslog endpoints and remove if present. Confirm `nb_eth_mtu` field reference in network settings. Update "Last updated" date. | Low | Planned |
+| DOC-14 | **Confluence docs sync (`docs/confluence/`):** Refresh local copies of Confluence design/requirements pages (page 6664028496) before v1.5.0 release using Atlassian MCP tools. Ensure RFE table and version references reflect current state. Directory currently empty — requires initial download or re-sync from Confluence. | Medium | Planned |
+| DOC-15 | **CHANGELOG.md — Verify completeness:** Review v1.5.0 changelog entries against all modified files and features. Ensure no changes from recent sessions (Advanced Configuration, report formatting, VIP Pools, config wiring, Prometheus diagnostics) are missing before release tag. | Low | Planned |
+| TP-1 | **Tech Port Auto-Discovery and API Proxy Tunnel:** Enable the app to connect to any CBox Tech Port (192.168.2.2) and automatically discover and tunnel API calls to VMS, eliminating manual CBox identification. **Feasibility validated on selab-var-202 (2026-03-28):** (1) `find-vms` returns VMS internal IP (172.16.3.4) from any CNode; (2) SSH hop from non-VMS CNode to VMS internal IP works; (3) `ip addr` on VMS CNode returns management IP (10.143.11.202); (4) API calls to management IP from any CNode return HTTP 403 (auth required = reachable); (5) VMS internal IP does NOT serve HTTPS (000) — must use management IP for API tunnel. **Discovery chain:** SSH Tech Port → `find-vms` → SSH hop to VMS internal IP → extract management IP from `ip addr` → paramiko tunnel to management IP:443. Builds on existing `ssh_adapter.py` proxy hop infrastructure (`direct-tcpip` channels). Diagnostic script at `tests/diag_vms_proxy_feasibility.py`. | High | Planned |
+| AO-28 | **Switch config backup in Network Configuration Extraction:** Add a full switch config backup step to the One-Shot Network Configuration Extraction workflow (`src/workflows/network_config_workflow.py`). Run `nv config show` (full output, not head-50) on each switch and save the complete config to a file in the output directory (e.g. `switch_config_<ip>.txt`). Include in the result bundle. The existing Tier 3 health check `_check_switch_config_backup` (now renamed to `Switch Config Readability`) only captures a 50-line snippet for verification — the workflow step should capture the full config for backup/reference purposes. | Medium | Planned |
+| PROM-1 | **Enhanced Prometheus device metrics capture:** Enrich the Device Health (Prometheus) health check to capture per-device structured data in the JSON details: endurance %, temperature, media errors, power-on hours, power cycles, and active/inactive/failed state for all SSDs and NVRAMs. Add warning thresholds (endurance <80%, temperature >55°C SSD / >65°C NVRAM). Currently only aggregate counts are stored; individual device data is discarded after scanning. Diagnostic script at `tests/diag_prometheus_metrics.py`. | Medium | Planned |
+| PROM-2 | **Probe additional Prometheus metric paths (CNode and cluster):** Discover and integrate additional `/api/prometheusmetrics/` paths beyond `devices` (e.g. `cnodes`, `cluster`, `network`, `protocols`, `capacity`). The `devices` path only returns DBox SSD/NVRAM data. CNode metrics (CPU, memory, NIC) may be available at other paths. Use `tests/diag_prometheus_metrics.py` to probe available paths per cluster version. | Low | Planned |
 
 ---
 
@@ -225,11 +262,13 @@
 
 ## Next steps (current focus)
 
-1. **v1.5.0 release:** All pre-release items complete (AO-15, AO-19, CFG-1, NET-1, REL-1, PM-1, CFG-2, RPT-1, RPT-2, HWL-1). QA passed: flake8 clean, black formatted, 730 tests pass, 62% coverage. Merge feature branch to develop, then to main, tag v1.5.0.
-2. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
-3. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release. Currently at 62%+.
-4. Before each release: update this file (status, Last updated, move completed items to Done).
-5. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+1. **Documentation refresh (DOC-1 through DOC-15):** In progress. High-priority items (DOC-1, DOC-2, DOC-3, DOC-4, DOC-5, DOC-6, DOC-7, DOC-8, DOC-10, DOC-11, DOC-12) being completed this session. Remaining: DOC-9 (release notes), DOC-13 (API reference), DOC-14 (Confluence sync), DOC-15 (CHANGELOG verification).
+2. **UI Enhancement Phase (UI-1 through UI-9):** Switch Placement Editor modal, 5-step stepper action bar, and progress tracker complete. Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9). Plan at `.cursor/plans/switch_placement_modal_3d624e42.plan.md`.
+3. **v1.5.0 release:** All pre-release items complete (AO-15, AO-19, CFG-1, NET-1, REL-1, PM-1, CFG-2, RPT-1, RPT-2, RPT-3, HWL-1, HC-1). QA passed: flake8 clean, black formatted, 786 tests pass. Merge feature branch to develop, then to main, tag v1.5.0.
+4. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
+5. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release.
+6. Before each release: update this file (status, Last updated, move completed items to Done).
+7. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
 
 ---
 
