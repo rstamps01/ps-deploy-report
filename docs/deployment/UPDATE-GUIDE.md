@@ -676,5 +676,5 @@ diff ~/config-backup.yaml config/config.yaml.template
 
 ---
 
-**Last Updated**: October 17, 2025
-**Version**: 1.0.0
+**Last Updated**: March 21, 2026
+**Version**: 1.5.0

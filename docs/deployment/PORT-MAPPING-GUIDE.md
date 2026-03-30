@@ -236,7 +236,7 @@ If you run without `--enable-port-mapping`:
 
 ### Q: Does this work with non-Cumulus switches?
 
-**A**: Currently, the port mapper is optimized for Cumulus Linux switches. Support for other switch OSes may be added in the future.
+**A**: Yes. The port mapper auto-detects switch types and supports Cumulus Linux (NVUE and NCLU) and Mellanox/Onyx switches. Switch type detection runs automatically during SSH connection.
 
 ## Examples
 
@@ -287,4 +287,4 @@ echo "Report generated in ./reports/"
 - [Installation Guide](INSTALLATION-GUIDE.md)
 - [Deployment Guide](DEPLOYMENT.md)
 - [Permissions Guide](PERMISSIONS-GUIDE.md)
-- [Troubleshooting Guide](../TROUBLESHOOTING.md)
+- [Troubleshooting](../../README.md#troubleshooting)

@@ -6,7 +6,7 @@ The Advanced Operations module provides step-by-step execution of complex valida
 
 The **Reporter** page (`/reporter`) is the primary user-facing interface for post-install validation workflows. It is accessible to all users without `--dev-mode` and combines:
 
-- **Switch Placement Mode:** Auto/Manual toggle with rack and switch discovery, manual switch IP entry, and placed switches table
+- **Switch Placement Mode:** Auto/Manual toggle with rack and switch discovery, manual switch entry, and placed switches table
 - **Reporter Checklist:** Pre-Validation (recommended), Run Reporter (as-built report generation), and optional Health Check with tier-based logic
 - **One-Shot Mode:** Toggle to select multiple validation operations (vnetmap, support tools, vperfsanity, log bundle, switch config, network config) to run sequentially with auto-bundling
 - **VAST Logo Progress Indicator:** Visual progress with fill animation, percentage, and stopwatch timer
