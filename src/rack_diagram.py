@@ -71,6 +71,8 @@ class RackDiagram:
     DBOX_COLOR = HexColor("#7B68A6")  # Purple for storage
     SWITCH_COLOR = HexColor("#808080")  # Gray for switches
     STATUS_ACTIVE = HexColor("#06d69f")  # Vivid green for active status
+    STATUS_INACTIVE = HexColor("#FF9800")  # Orange for inactive
+    STATUS_MGMT = HexColor("#1A6FB5")  # Blue for management CNode (VMS)
     EMPTY_RACK_COLOR = HexColor("#F2F2F7")  # Light gray for empty space
 
     # Label sizing
@@ -393,6 +395,7 @@ class RackDiagram:
         status: str = "ACTIVE",
         annotation: str = "",
         label_override: str = "",
+        indicators: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """
         Create a visual representation of a device in the rack.
@@ -400,25 +403,23 @@ class RackDiagram:
 
         Args:
             drawing: ReportLab Drawing object
-            device_type: Type of device ("cbox", "dbox", "switch")
+            device_type: Type of device ("cbox", "dbox", "ebox", "switch")
             device_id: Device ID number
             u_position: Top U position where device is mounted
             u_height: Height of device in rack units (1U or 2U)
             model: Hardware model name for image lookup
             status: Device status (ACTIVE, OFFLINE, etc.)
             annotation: Optional text rendered below the label (e.g. placement note)
+            label_override: Override the default label text
+            indicators: List of status indicator specs [{"shape": "dot"|"square", "color": HexColor}]
         """
-        # Calculate position
         start_x = (self.page_width - self.rack_width) / 2
         start_y = self.margin + 0.5 * inch
 
-        # Device starts at u_position and extends downward for u_height units
-        # For 2U device at U17: occupies U17 (top) and U16 (bottom)
         device_bottom_u = u_position - u_height + 1
         device_y = start_y + ((device_bottom_u - 1) * self.u_height)
         device_height = u_height * self.u_height
 
-        # Determine device color and label prefix
         if device_type.lower() == "cbox":
             fill_color = self.CBOX_COLOR
             label_prefix = "CBox"
@@ -426,7 +427,7 @@ class RackDiagram:
             fill_color = self.DBOX_COLOR
             label_prefix = "DBox"
         elif device_type.lower() == "ebox":
-            fill_color = self.DBOX_COLOR  # EBox (enclosure) same as DBox for now
+            fill_color = self.DBOX_COLOR
             label_prefix = "EBox"
         elif device_type.lower() == "switch":
             fill_color = self.SWITCH_COLOR
@@ -435,11 +436,9 @@ class RackDiagram:
             fill_color = colors.gray
             label_prefix = "Device"
 
-        # Check if hardware image is available
         image_path = self._get_hardware_image_path(model) if model else None
 
         if image_path and image_path.exists():
-            # Use hardware image
             try:
                 hw_image = GraphicsImage(
                     start_x,
@@ -450,26 +449,14 @@ class RackDiagram:
                 )
                 drawing.add(hw_image)
                 logger.debug(f"Using hardware image for {device_type}-{device_id}: {image_path}")
-
             except Exception as e:
                 logger.warning(f"Failed to load hardware image {image_path}: {e}, using fallback")
-                # Fall back to rectangle if image fails
                 self._draw_fallback_device(drawing, start_x, device_y, device_height, fill_color)
         else:
-            # Use fallback colored rectangle
             self._draw_fallback_device(drawing, start_x, device_y, device_height, fill_color)
 
-        # Add status indicator (green dot for active)
-        if status.upper() == "ACTIVE" or status.upper() == "ONLINE":
-            status_dot = Circle(
-                start_x + 10,
-                device_y + (device_height / 2),
-                3,
-                fillColor=self.STATUS_ACTIVE,
-                strokeColor=self.BRAND_DARK,
-                strokeWidth=0.5,
-            )
-            drawing.add(status_dot)
+        if indicators is not None:
+            self._draw_status_indicators(drawing, indicators, start_x, device_y, device_height)
 
         # Add label outside rack with connector line
         post_width = 0.08 * self.rack_width
@@ -560,6 +547,173 @@ class RackDiagram:
             fontName="Helvetica-Bold",
         )
         drawing.add(device_icon)
+
+    def _draw_status_indicators(
+        self,
+        drawing: Drawing,
+        indicators: List[Dict[str, Any]],
+        start_x: float,
+        device_y: float,
+        device_height: float,
+    ) -> None:
+        """Draw a row of status indicator shapes (circles/squares) at the left edge of a device.
+
+        Args:
+            drawing: ReportLab Drawing object
+            indicators: List of dicts with keys "shape" ("dot"|"square") and "color" (HexColor)
+            start_x: X position of the rack left edge
+            device_y: Y position of device bottom
+            device_height: Height of device slot in points
+        """
+        if not indicators:
+            return
+        radius = 2.5
+        spacing = 2
+        pad_x = 3
+        pad_y = 2.5
+        total_width = len(indicators) * (radius * 2) + (len(indicators) - 1) * spacing
+        cx_start = start_x + 8 + 0.25 * inch - total_width / 2 + radius
+        cy = device_y + (device_height / 2)
+
+        bg_w = total_width + pad_x * 2
+        bg_h = radius * 2 + pad_y * 2
+        bg_r = bg_h / 2
+        bg = Rect(
+            cx_start - radius - pad_x,
+            cy - radius - pad_y,
+            bg_w,
+            bg_h,
+            fillColor=HexColor("#1a1a1a"),
+            fillOpacity=0.75,
+            strokeWidth=0,
+            rx=bg_r,
+            ry=bg_r,
+        )
+        drawing.add(bg)
+
+        cx = cx_start
+        for ind in indicators:
+            col = ind.get("color", self.STATUS_ACTIVE)
+            if ind.get("shape") == "square":
+                side = radius * 1.6
+                sq = Rect(
+                    cx - side / 2,
+                    cy - side / 2,
+                    side,
+                    side,
+                    fillColor=col,
+                    strokeWidth=0,
+                )
+                drawing.add(sq)
+            else:
+                dot = Circle(
+                    cx,
+                    cy,
+                    radius,
+                    fillColor=col,
+                    strokeWidth=0,
+                )
+                drawing.add(dot)
+            cx += radius * 2 + spacing
+
+    def _draw_status_legend(
+        self,
+        drawing: Drawing,
+    ) -> None:
+        """Draw a status indicator legend tile to the left of the rack diagram, centered vertically."""
+        rack_left = (self.page_width - self.rack_width) / 2
+        start_y = self.margin + 0.5 * inch
+
+        title_fs = 7
+        row_fs = 6.5
+        dot_r = 2.5
+        sq_side = 4
+        line_h = 11
+        legend_w = 105
+        legend_h = 8 * line_h + 6
+
+        legend_x_right = rack_left - 10 - 1 * inch
+        legend_x = legend_x_right - legend_w
+        legend_y = start_y + (self.rack_height - legend_h) / 2 + legend_h
+
+        bg = Rect(
+            legend_x - 4,
+            legend_y - legend_h,
+            legend_w,
+            legend_h,
+            fillColor=HexColor("#FAFAFA"),
+            strokeColor=HexColor("#CCCCCC"),
+            strokeWidth=0.5,
+            rx=4,
+            ry=4,
+        )
+        drawing.add(bg)
+
+        cy = legend_y - 10
+        drawing.add(
+            String(
+                legend_x,
+                cy,
+                "Status Indicators",
+                fontSize=title_fs,
+                fillColor=self.BRAND_DARK,
+                fontName="Helvetica-Bold",
+            )
+        )
+        cy -= 2
+        drawing.add(
+            Line(legend_x - 2, cy, legend_x + legend_w - 8, cy, strokeColor=HexColor("#CCCCCC"), strokeWidth=0.4)
+        )
+
+        rows = [
+            ("dot", self.STATUS_ACTIVE, "Active"),
+            ("dot", self.STATUS_INACTIVE, "Inactive"),
+            ("dot", self.STATUS_MGMT, "Management (VMS)"),
+            ("square", self.STATUS_ACTIVE, "Active"),
+            ("square", self.STATUS_INACTIVE, "Inactive"),
+        ]
+
+        labels_section = [
+            (True, "CNode / Switch"),
+            (False, None),
+            (False, None),
+            (True, "DNode"),
+            (False, None),
+        ]
+
+        for i, ((shape, col, label), (is_header, header_text)) in enumerate(zip(rows, labels_section)):
+            if is_header:
+                cy -= line_h
+                drawing.add(
+                    String(
+                        legend_x + 2,
+                        cy,
+                        str(header_text),
+                        fontSize=6,
+                        fillColor=HexColor("#666666"),
+                        fontName="Helvetica-Oblique",
+                    )
+                )
+
+            cy -= line_h
+            ix = legend_x + 6
+            if shape == "dot":
+                drawing.add(Circle(ix, cy + 2, dot_r, fillColor=col, strokeColor=self.BRAND_DARK, strokeWidth=0.3))
+            else:
+                drawing.add(
+                    Rect(
+                        ix - sq_side / 2,
+                        cy + 2 - sq_side / 2,
+                        sq_side,
+                        sq_side,
+                        fillColor=col,
+                        strokeColor=self.BRAND_DARK,
+                        strokeWidth=0.3,
+                    )
+                )
+            drawing.add(
+                String(ix + 8, cy - 1, label, fontSize=row_fs, fillColor=HexColor("#333333"), fontName="Helvetica")
+            )
 
     def _gather_device_boundaries(
         self,
@@ -818,6 +972,7 @@ class RackDiagram:
         switches: Optional[List[Dict[str, Any]]] = None,
         rack_name: Optional[str] = None,
         eboxes: Optional[List[Dict[str, Any]]] = None,
+        node_status_map: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Drawing, Dict[int, int]]:
         """
         Generate a complete rack diagram with all devices.
@@ -831,6 +986,7 @@ class RackDiagram:
             switches: Optional list of switch dictionaries with 'id', 'model', 'state'
             rack_name: Optional rack name to display on the diagram
             eboxes: Optional list of EBox device dictionaries (use ebox U height in diagram)
+            node_status_map: Optional dict with CNode/DNode status data for indicators
 
         Returns:
             Tuple of:
@@ -838,7 +994,8 @@ class RackDiagram:
                 - Dictionary mapping switch numbers to calculated U positions
         """
         eboxes = eboxes or []
-        # Create drawing
+        nsm = node_status_map or {}
+
         drawing = Drawing(self.page_width, self.page_height)
 
         # Create empty rack background
@@ -873,6 +1030,7 @@ class RackDiagram:
                     switch_positions_map[idx] = u_pos
 
         # Place CBoxes — label with box name/serial from Hardware Inventory
+        cnodes_by_cbox = nsm.get("cnodes_by_cbox", {})
         for cbox in cboxes:
             device_id = cbox.get("id", 0)
             model = cbox.get("model", "")
@@ -890,11 +1048,33 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
+            indicators: Optional[List[Dict[str, Any]]] = None
+            cn_list = cnodes_by_cbox.get(device_id, [])
+            if cn_list:
+                indicators = []
+                for cn in cn_list:
+                    cn_st = str(cn.get("status", "")).upper()
+                    if cn_st == "ACTIVE":
+                        indicators.append({"shape": "dot", "color": self.STATUS_ACTIVE})
+                    elif cn.get("is_mgmt") and cn_st != "ACTIVE":
+                        indicators.append({"shape": "dot", "color": self.STATUS_MGMT})
+                    else:
+                        indicators.append({"shape": "dot", "color": self.STATUS_INACTIVE})
+
             self._create_device_representation(
-                drawing, "cbox", device_id, u_position, u_height, model, status, label_override=box_name
+                drawing,
+                "cbox",
+                device_id,
+                u_position,
+                u_height,
+                model,
+                status,
+                label_override=box_name,
+                indicators=indicators,
             )
 
         # Place DBoxes — label with box name/serial; deduplicate at same U position
+        dnodes_by_dbox = nsm.get("dnodes_by_dbox", {})
         dbox_seen_u: set = set()
         for dbox in dboxes:
             device_id = dbox.get("id", 0)
@@ -917,16 +1097,38 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
+            indicators = None
+            dn_list = dnodes_by_dbox.get(device_id, [])
+            if dn_list:
+                indicators = []
+                for dn in dn_list:
+                    dn_st = str(dn.get("status", "")).upper()
+                    if dn_st == "ACTIVE":
+                        indicators.append({"shape": "square", "color": self.STATUS_ACTIVE})
+                    else:
+                        indicators.append({"shape": "square", "color": self.STATUS_INACTIVE})
+
             self._create_device_representation(
-                drawing, "dbox", device_id, u_position, u_height, model, status, label_override=box_name
+                drawing,
+                "dbox",
+                device_id,
+                u_position,
+                u_height,
+                model,
+                status,
+                label_override=box_name,
+                indicators=indicators,
             )
 
-        # Place EBoxes (enclosures; use ebox U height in Physical Rack Layout)
+        # Place EBoxes — 1 CNode dot + 2 DNode squares per EBox
+        cnode_by_ebox = nsm.get("cnode_by_ebox", {})
+        dnodes_by_ebox = nsm.get("dnodes_by_ebox", {})
         for ebox in eboxes:
             device_id = ebox.get("id", 0)
             model = ebox.get("model", ebox.get("hardware_type", "ebox"))
             rack_position = ebox.get("rack_unit", "")
             status = ebox.get("state", "ACTIVE")
+            box_name = ebox.get("name", "")
 
             if not rack_position:
                 logger.warning(f"EBox-{device_id} has no rack position, skipping")
@@ -938,15 +1140,55 @@ class RackDiagram:
 
             u_height = self._get_device_height_units(model)
 
-            self._create_device_representation(drawing, "ebox", device_id, u_position, u_height, model, status)
+            indicators = None
+            cn_entry = cnode_by_ebox.get(device_id)
+            dn_entries = dnodes_by_ebox.get(device_id, [])
+            if cn_entry or dn_entries:
+                indicators = []
+                if cn_entry:
+                    cn_st = str(cn_entry.get("status", "")).upper()
+                    if cn_st == "ACTIVE":
+                        indicators.append({"shape": "dot", "color": self.STATUS_ACTIVE})
+                    elif cn_entry.get("is_mgmt") and cn_st != "ACTIVE":
+                        indicators.append({"shape": "dot", "color": self.STATUS_MGMT})
+                    else:
+                        indicators.append({"shape": "dot", "color": self.STATUS_INACTIVE})
+                for dn in dn_entries:
+                    dn_st = str(dn.get("status", "")).upper()
+                    if dn_st == "ACTIVE":
+                        indicators.append({"shape": "square", "color": self.STATUS_ACTIVE})
+                    else:
+                        indicators.append({"shape": "square", "color": self.STATUS_INACTIVE})
+
+            self._create_device_representation(
+                drawing,
+                "ebox",
+                device_id,
+                u_position,
+                u_height,
+                model,
+                status,
+                label_override=box_name,
+                indicators=indicators,
+            )
 
         # Place Switches at calculated or explicit positions
+        switch_inv = nsm.get("switch_in_inventory", {})
         if switches:
             for switch_num, switch in enumerate(switches, start=1):
                 model = switch.get("model", "switch")
                 status = switch.get("state", "ACTIVE")
+                sw_name = str(switch.get("id") or switch.get("name") or "").strip()
 
-                # Check if switch has explicit rack_unit position (manual placement)
+                # Build indicator: only for switches in Hardware Inventory
+                sw_indicators: Optional[List[Dict[str, Any]]] = None
+                if sw_name and sw_name in switch_inv:
+                    inv_state = switch_inv[sw_name]
+                    if inv_state in ("ACTIVE", "ONLINE", "OK"):
+                        sw_indicators = [{"shape": "dot", "color": self.STATUS_ACTIVE}]
+                    else:
+                        sw_indicators = [{"shape": "dot", "color": self.STATUS_INACTIVE}]
+
                 explicit_position = switch.get("rack_unit", "")
 
                 if explicit_position:
@@ -957,7 +1199,14 @@ class RackDiagram:
                             f"Placing switch {switch_num} at explicit position U{u_position} (model: {model}, height: {switch_height}U)"
                         )
                         self._create_device_representation(
-                            drawing, "switch", switch_num, u_position, switch_height, model, status
+                            drawing,
+                            "switch",
+                            switch_num,
+                            u_position,
+                            switch_height,
+                            model,
+                            status,
+                            indicators=sw_indicators,
                         )
                 elif switch_positions_map and switch_num in switch_positions_map:
                     u_position = switch_positions_map[switch_num]
@@ -975,12 +1224,16 @@ class RackDiagram:
                         model,
                         status,
                         annotation="Unverified - Auto Switch Placement",
+                        indicators=sw_indicators,
                     )
                 else:
                     logger.warning(
                         f"Switch {switch_num} (model: {model}) has no position in switch_positions_map. "
                         f"Available positions: {switch_positions_map}"
                     )
+
+        if nsm:
+            self._draw_status_legend(drawing)
 
         device_count_msg = f"{len(cboxes)} CBoxes, {len(dboxes)} DBoxes"
         if eboxes:

@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class VnetmapWorkflow:
     """vnetmap validation workflow."""
 
-    name = "vnetmap Validation"
+    name = "VAST vnetmap"
     description = "Validate network topology using vnetmap.py"
     enabled = True
     min_vast_version = "5.0"
@@ -293,12 +293,12 @@ class VnetmapWorkflow:
 
         warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
-        host = self._credentials.get("cluster_ip")
+        api_host = self._credentials.get("tunnel_address") or self._credentials.get("cluster_ip")
         username = self._credentials.get("username", "support")
         password = self._credentials.get("password")
         api_token = self._credentials.get("api_token")
 
-        url = f"https://{host}/api/switches/"
+        url = f"https://{api_host}/api/switches/"
 
         try:
             if api_token:
@@ -371,8 +371,9 @@ class VnetmapWorkflow:
             self.emit("info", f"[CONVERTED] dnodes_ips format: {dnodes_export}")
 
         # Step 4: Get switch IPs from API
+        api_host = self._credentials.get("tunnel_address") or host
         self.emit("info", "")
-        self.emit("info", f"$ curl -k https://{host}/api/switches/")
+        self.emit("info", f"$ curl -k https://{api_host}/api/switches/")
         switch_ips = self._get_switch_ips_from_api()
 
         if switch_ips:
@@ -632,7 +633,8 @@ class VnetmapWorkflow:
         self.emit("info", f"Topology Complete: {'Yes' if results['topology_complete'] else 'No'}")
         self.emit("info", f"Switches Found: {results['switches_found']}")
         self.emit("info", f"Ports Passed: {results['ports_passed']}")
-        self.emit("info", f"Ports Failed: {results['ports_failed']}")
+        fail_level = "warn" if results["ports_failed"] > 0 else "info"
+        self.emit(fail_level, f"Ports Failed: {results['ports_failed']}")
 
         if results["failed_nodes"]:
             self.emit("info", "")

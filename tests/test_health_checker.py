@@ -147,7 +147,7 @@ class TestHealthChecker:
             {"severity": "CRITICAL", "resolved": False, "message": "Disk failure"},
         ]
         result = checker._check_active_alarms()
-        assert result.status == "fail"
+        assert result.status == "warning"
         assert "1 unresolved" in result.message
 
     def test_check_alarms_404(self, checker, mock_api_handler):
@@ -169,7 +169,7 @@ class TestHealthChecker:
     def test_check_vip_pools_empty(self, checker, mock_api_handler):
         mock_api_handler._make_api_request.return_value = []
         result = checker._check_vip_pools()
-        assert result.status == "fail"
+        assert result.status == "warning"
         assert "No VIP pools" in result.message
 
     # --- Capacity ------------------------------------------------------
@@ -518,49 +518,6 @@ class TestCorrelationEngine:
 # ===================================================================
 
 
-class TestSSHTier2Checks:
-    @pytest.fixture
-    def ssh_checker(self, mock_api_handler):
-        ssh_config = {"username": "vastdata", "password": "secret", "cnode_ip": "10.0.0.10"}
-        return HealthChecker(api_handler=mock_api_handler, ssh_config=ssh_config)
-
-    @patch("health_checker.run_ssh_command")
-    def test_management_ping_success(self, mock_ssh, ssh_checker, mock_api_handler):
-        mock_api_handler._make_api_request.return_value = [
-            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
-        ]
-        mock_ssh.return_value = (0, "PING 10.0.0.50 ... 0% packet loss", "")
-        result = ssh_checker._check_management_ping("10.0.0.10", "vastdata", "secret")
-        assert result.status == "pass"
-        assert result.check_name == "Management Ping"
-
-    @patch("health_checker.run_ssh_command")
-    def test_management_ping_timeout(self, mock_ssh, ssh_checker, mock_api_handler):
-        mock_api_handler._make_api_request.return_value = [
-            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
-        ]
-        mock_ssh.side_effect = Exception("timed out")
-        result = ssh_checker._check_management_ping("10.0.0.10", "vastdata", "secret")
-        assert result.status == "error"
-        assert "timed out" in result.message
-
-    def test_management_ping_respects_cancel(self, ssh_checker, mock_api_handler):
-        mock_api_handler._make_api_request.return_value = [
-            {"name": "cnode-1", "ipmi_ip": "10.0.0.50"},
-        ]
-        ssh_checker.cancel_event = threading.Event()
-        ssh_checker.cancel_event.set()
-        with pytest.raises(CancelledError):
-            ssh_checker.run_node_ssh_checks()
-
-    @patch("health_checker.run_ssh_command")
-    def test_node_memory_check_pass(self, mock_ssh, ssh_checker):
-        mock_ssh.return_value = (0, "Mem:          32000       8000      20000        500       4000      23000", "")
-        result = ssh_checker._check_memory_usage("10.0.0.10", "vastdata", "secret")
-        assert result.status == "pass"
-        assert result.check_name == "Memory Usage"
-
-
 # ===================================================================
 # TestSSHTier3Checks
 # ===================================================================
@@ -734,7 +691,7 @@ class TestAPICheckBranches:
         mock_api_handler._make_api_request.return_value = []
         hc = self._make_hc(mock_api_handler, {"name": "c"})
         r = hc._check_switches_registered()
-        assert r.status == "warning"
+        assert r.status == "skipped"
         assert "no switches" in r.message.lower()
 
     def test_check_device_health_no_metrics(self, mock_api_handler):
@@ -747,72 +704,6 @@ class TestAPICheckBranches:
 # ===================================================================
 # WS-B: TestSSHNodeChecks
 # ===================================================================
-
-
-class TestSSHNodeChecks:
-    @pytest.fixture
-    def ssh_hc(self, mock_api_handler):
-        return HealthChecker(
-            api_handler=mock_api_handler,
-            ssh_config={"cnode_ip": "10.0.0.1", "username": "vastdata", "password": "pass"},
-        )
-
-    @patch("health_checker.run_ssh_command")
-    def test_panic_logs_found(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (0, "PANIC in subsystem", "")
-        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
-        assert r.status == "fail"
-
-    @patch("health_checker.run_ssh_command")
-    def test_panic_logs_clean(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (0, "", "")
-        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
-        assert r.status == "pass"
-
-    @patch("health_checker.run_ssh_command")
-    def test_panic_logs_ssh_error(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (1, "", "connection refused")
-        r = ssh_hc._check_panic_alert_logs("10.0.0.1", "vastdata", "pass")
-        assert r.status == "error"
-
-    @patch("health_checker.run_ssh_command")
-    def test_memory_normal(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (
-            0,
-            "Mem:          16000        8000        8000         500        4000        7000",
-            "",
-        )
-        r = ssh_hc._check_memory_usage("10.0.0.1", "vastdata", "pass")
-        assert r.status == "pass"
-
-    @patch("health_checker.run_ssh_command")
-    def test_memory_high_is_expected(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (
-            0,
-            "Mem:          16000       15000        1000         500        4000        1000",
-            "",
-        )
-        r = ssh_hc._check_memory_usage("10.0.0.1", "vastdata", "pass")
-        assert r.status == "pass"
-        assert "expected" in r.message.lower()
-
-    @patch("health_checker.run_ssh_command")
-    def test_disk_space_normal(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (0, "/dev/sda1   100G   40G   60G  40% /\n/dev/sda2   100G   10G   90G  10% /var", "")
-        r = ssh_hc._check_disk_space("10.0.0.1", "vastdata", "pass")
-        assert r.status == "pass"
-
-    @patch("health_checker.run_ssh_command")
-    def test_disk_space_high(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (0, "/dev/sda1   100G   50G   50G  50% /\n/dev/sda2   100G   95G    5G  95% /var", "")
-        r = ssh_hc._check_disk_space("10.0.0.1", "vastdata", "pass")
-        assert r.status == "warning"
-
-    @patch("health_checker.run_ssh_command")
-    def test_network_interfaces_down(self, mock_ssh, ssh_hc):
-        mock_ssh.return_value = (0, "2: eth0: <BROADCAST,MULTICAST> mtu 1500 qdisc mq state DOWN", "")
-        r = ssh_hc._check_network_interfaces("10.0.0.1", "vastdata", "pass")
-        assert r.status == "warning"
 
 
 # ===================================================================

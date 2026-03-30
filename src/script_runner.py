@@ -490,6 +490,13 @@ class ScriptRunner:
         if "ssh check" in ll and "works for" in ll:
             return "info"  # Keep the success message
 
+        # --- Info: zero-count failure summaries are not warnings ---
+        if "failed:" in ll:
+            idx = ll.index("failed:")
+            after = ll[idx + 7:].lstrip()
+            if after.startswith("0"):
+                return "info"
+
         # --- Warn: actual failures the user should know about ---
         if "{error}" in ll and "general exception" in ll:
             return "warn"
@@ -499,6 +506,11 @@ class ScriptRunner:
             return "warn"
         if ll.startswith("172.") and "failed" in ll:
             return "warn"
+        if "failed:" in ll:
+            idx = ll.index("failed:")
+            after = ll[idx + 7:].lstrip()
+            if after and after[0] in "123456789":
+                return "warn"
 
         return "info"
 

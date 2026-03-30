@@ -161,6 +161,26 @@ class VastReportGenerator:
                 self.logger.error("Failed to obtain credentials")
                 return False
 
+            # Tech Port tunnel setup
+            tunnel_address = None
+            if getattr(args, "tech_port", False):
+                from utils.vms_tunnel import VMSTunnel
+
+                node_user = getattr(args, "node_user", "vastdata") or "vastdata"
+                node_password = getattr(args, "node_password", "vastdata") or "vastdata"
+                self.logger.info(
+                    "Tech Port mode: discovering VMS via %s ...", args.cluster_ip
+                )
+                self._tunnel = VMSTunnel(args.cluster_ip, node_user, node_password)
+                self._tunnel.connect()
+                tunnel_address = self._tunnel.local_bind_address
+                self.logger.info(
+                    "VMS discovered: internal=%s, management=%s, tunnel=%s",
+                    self._tunnel.vms_internal_ip,
+                    self._tunnel.vms_management_ip,
+                    tunnel_address,
+                )
+
             # Initialize API handler
             self.api_handler = create_vast_api_handler(
                 cluster_ip=args.cluster_ip,
@@ -168,6 +188,7 @@ class VastReportGenerator:
                 password=password,
                 token=token,
                 config=self.config,
+                tunnel_address=tunnel_address,
             )
             if self.api_handler is None:
                 self.logger.error("Failed to create API handler")
@@ -390,6 +411,9 @@ class VastReportGenerator:
             for cnode_ip in cnode_ips:
                 self.logger.info("Trying CNode %s for port mapping (clush)", cnode_ip)
                 try:
+                    tunnel_addr = getattr(self.api_handler, "_api_host", None)
+                    if tunnel_addr == args.cluster_ip:
+                        tunnel_addr = None
                     port_mapper = ExternalPortMapper(
                         cluster_ip=args.cluster_ip,
                         api_user=self.api_handler.username or "support",
@@ -401,6 +425,7 @@ class VastReportGenerator:
                         switch_user=args.switch_user,
                         switch_password=switch_password,
                         proxy_jump=not args.no_proxy_jump,
+                        tunnel_address=tunnel_addr,
                     )
                     port_mapping_data = port_mapper.collect_port_mapping()
                     if port_mapping_data.get("available"):
@@ -587,6 +612,13 @@ class VastReportGenerator:
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
 
+        try:
+            if hasattr(self, "_tunnel") and self._tunnel:
+                self._tunnel.close()
+                self.logger.info("VMS tunnel closed")
+        except Exception as e:
+            self.logger.error(f"Error closing VMS tunnel: {e}")
+
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
@@ -689,6 +721,14 @@ Examples:
         action="store_true",
         default=False,
         help="Disable SSH proxy hop through CNode (use direct switch connections)",
+    )
+
+    parser.add_argument(
+        "--tech-port",
+        action="store_true",
+        default=False,
+        help="Connect via CBox Tech Port: auto-discover VMS and tunnel API calls. "
+        "Requires --node-user / --node-password for SSH access.",
     )
 
     parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.0")

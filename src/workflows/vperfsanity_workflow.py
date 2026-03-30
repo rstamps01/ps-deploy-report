@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 class VperfsanityWorkflow:
     """vperfsanity performance validation workflow."""
 
-    name = "vperfsanity Performance Test"
+    name = "VAST vperfsanity"
     description = "Run vperfsanity for storage performance validation"
     enabled = True
     min_vast_version = "5.0"

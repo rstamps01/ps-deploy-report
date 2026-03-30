@@ -70,13 +70,30 @@
                             <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
                             <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
                         </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" {{ 'checked' if cfg_proxy_jump else '' }} style="width:auto;">
+                                <span>SSH Proxy Mode</span>
+                                <span class="info-icon" title="Enable when switches are not directly reachable from this machine (e.g., field deployments via tech port). SSH to switches will tunnel through the CNode using node credentials.">&#9432;</span>
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-top:8px;">
+                            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" name="tech_port" id="techPortToggle" {{ 'checked' if cfg_tech_port else '' }} style="width:auto;">
+                                <span>Tech Port Mode</span>
+                                <span class="info-icon" title="Connect via any CBox Tech Port (192.168.2.2). The app auto-discovers VMS and tunnels all API calls through the SSH connection. Requires Node SSH credentials.">&#9432;</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Bottom toolbar: default-creds left, profile actions right -->
                 <div class="conn-settings-toolbar">
                     <div class="conn-settings-toolbar-left">
-                        <span class="default-creds-heading">Global Setting — Autofill Default Passwords</span>
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="default-creds-heading">Autofill Default Passwords — Global Setting</span>
+                            <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH: cumulus / Vastdata1!&#10;Switch SSH (alt): admin / admin">&#9432;</span>
+                        </div>
                         <div class="default-creds-widget">
                             <span class="default-creds-label">Disable</span>
                             <label class="toggle-switch">
@@ -166,7 +183,7 @@
                 </label>
                 <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
                     <input type="checkbox" id="oneShotIncludeHealth" checked>
-                    <span class="oneshot-item-name">Include Health Checks (Tiers 1-3)</span>
+                    <span class="oneshot-item-name">Include Health Checks (Tier 1 &amp; 3)</span>
                     <span class="oneshot-item-badge badge-health">Recommended</span>
                 </label>
             </div>
@@ -294,8 +311,8 @@
 .output-line { margin: 2px 0; white-space: pre-wrap; }
 .output-line .timestamp { color: #888; margin-right: 8px; }
 .output-line.info { color: #e0e0e0; }
-.output-line.warn { color: #ffc107; }
-.output-line.error, .output-line.fail { color: #ff5252; }
+.output-line.warn, .output-line.warning { color: #ff9800; }
+.output-line.error, .output-line.fail, .output-line.critical { color: #f44336; }
 .output-line.success { color: #4caf50; }
 .output-line[data-tier="debug"] { color: #777; font-style: italic; }
 .output-line[data-tier="live"] { color: #b0bec5; }
@@ -355,6 +372,8 @@ var LOG_TIER_KEY = 'advanced_ops_log_tier';
 var SYNC_CURSOR_KEY = 'advanced_ops_sync_cursor';
 var outputPane, pollInterval = null;
 var currentLogTier = 'status';
+
+var CFG_DEFAULTS = {{ cfg_defaults | default({}) | tojson }};
 
 // --- Default credentials ---
 var DEFAULT_CREDENTIALS = {
@@ -460,6 +479,10 @@ function saveUIState() {
             logTier: currentLogTier,
             connSettingsCollapsed: document.getElementById('connSettingsDetails').classList.contains('collapsed-section')
         };
+        var proxyJump = document.getElementById('proxyJumpToggle');
+        if (proxyJump) state.proxy_jump = proxyJump.checked;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort) state.tech_port = techPort.checked;
         var healthEl = document.getElementById('oneShotIncludeHealth');
         if (healthEl) state.includeHealth = healthEl.checked;
         var reportEl = document.getElementById('oneShotIncludeReport');
@@ -467,6 +490,7 @@ function saveUIState() {
         var checks = [];
         document.querySelectorAll('.oneshot-op-checkbox:checked').forEach(function(cb) { checks.push(cb.value); });
         if (checks.length > 0) state.oneShotChecklist = checks;
+        state.cfgDefaults = CFG_DEFAULTS;
         localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
     } catch(e) {}
 }
@@ -509,11 +533,16 @@ async function applySavedUIState(saved) {
         document.getElementById('useDefaultCreds').checked = saved.useDefaultCreds;
         toggleDefaultCredentials();
     }
-    if (saved.includeHealth !== undefined) {
+    var proxyJump = document.getElementById('proxyJumpToggle');
+    if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
+    var techPort = document.getElementById('techPortToggle');
+    if (techPort && saved.tech_port !== undefined) techPort.checked = saved.tech_port;
+    var defaultsChanged = JSON.stringify(saved.cfgDefaults || {}) !== JSON.stringify(CFG_DEFAULTS);
+    if (!defaultsChanged && saved.includeHealth !== undefined) {
         var h = document.getElementById('oneShotIncludeHealth');
         if (h) h.checked = saved.includeHealth;
     }
-    if (saved.includeReport !== undefined) {
+    if (!defaultsChanged && saved.includeReport !== undefined) {
         var r = document.getElementById('oneShotIncludeReport');
         if (r) {
             r.checked = saved.includeReport;
@@ -522,7 +551,7 @@ async function applySavedUIState(saved) {
             else healthRow.classList.add('hidden');
         }
     }
-    if (saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
+    if (!defaultsChanged && saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
         document.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
             cb.checked = saved.oneShotChecklist.indexOf(cb.value) !== -1;
         });
@@ -621,7 +650,14 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
     var tier = entry.log_tier || 'status';
     var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
     var line = document.createElement('div');
-    line.className = 'output-line ' + entry.level;
+    var cls = entry.level;
+    var msgUpper = (entry.message || '').toUpperCase();
+    if (cls === 'info') {
+        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
+        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('FAIL') !== -1) cls = 'error';
+        else if (msgUpper.indexOf('SUCCESS') !== -1 || msgUpper.indexOf('COMPLETED') !== -1) cls = 'success';
+    }
+    line.className = 'output-line ' + cls;
     line.setAttribute('data-tier', tier);
     if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
     line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
@@ -684,6 +720,10 @@ async function loadProfile() {
     var toggle = document.getElementById('useDefaultCreds');
     toggle.checked = p.use_default_creds !== false;
     toggleDefaultCredentials();
+    var pj = document.getElementById('proxyJumpToggle');
+    if (pj) pj.checked = p.proxy_jump !== false;
+    var tp = document.getElementById('techPortToggle');
+    if (tp) tp.checked = !!p.tech_port;
 }
 
 async function saveProfile() {
@@ -698,6 +738,10 @@ async function saveProfile() {
         var el = document.getElementById(formId);
         data[profileKey] = el ? el.value : '';
     }
+    var pj = document.getElementById('proxyJumpToggle');
+    data.proxy_jump = pj ? pj.checked : true;
+    var tpSave = document.getElementById('techPortToggle');
+    data.tech_port = tpSave ? tpSave.checked : false;
     try {
         var resp = await fetch('/profiles', {
             method: 'POST',
@@ -737,6 +781,8 @@ async function deleteProfile() {
 }
 
 function getCredentials() {
+    var pj = document.getElementById('proxyJumpToggle');
+    var tp = document.getElementById('techPortToggle');
     return {
         cluster_ip: document.getElementById('clusterIp').value,
         username: document.getElementById('username').value,
@@ -746,6 +792,8 @@ function getCredentials() {
         switch_user: document.getElementById('switchUser').value,
         switch_password: document.getElementById('switchPassword').value,
         vip_pool: document.getElementById('vipPool').value || 'main',
+        proxy_jump: pj ? pj.checked : true,
+        tech_port: tp ? tp.checked : false,
     };
 }
 
@@ -909,33 +957,46 @@ var oneShotMode = false;
 var oneShotPollInterval = null;
 var oneShotValidated = false;
 
-function toggleOneShotMode() {
+async function toggleOneShotMode() {
     oneShotMode = document.getElementById('modeToggle').checked;
     document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
     document.getElementById('oneShotPanel').style.display = oneShotMode ? '' : 'none';
     document.getElementById('labelStepByStep').classList.toggle('active', !oneShotMode);
     document.getElementById('labelOneShot').classList.toggle('active', oneShotMode);
-    if (oneShotMode) populateOneShotChecklist();
+    if (oneShotMode) await populateOneShotChecklist();
     saveUIState();
 }
 
 async function populateOneShotChecklist() {
     try {
-        var resp = await fetch('/advanced-ops/workflows');
-        var data = await resp.json();
+        var wfResp = await fetch('/advanced-ops/workflows');
+        var wfData = await wfResp.json();
+
+        try {
+            var cfgResp = await fetch('/config/json');
+            var cfg = await cfgResp.json();
+            var liveDefaults = (cfg.advanced_operations || {}).defaults || {};
+            CFG_DEFAULTS = liveDefaults;
+        } catch (e) { /* keep existing CFG_DEFAULTS */ }
+
         var container = document.getElementById('oneShotOpsContainer');
         container.innerHTML = '';
-        data.workflows.forEach(function(wf) {
+        wfData.workflows.forEach(function(wf) {
             if (!wf.enabled) return;
+            var defaultOn = (CFG_DEFAULTS[wf.id] !== undefined) ? CFG_DEFAULTS[wf.id] : true;
             var label = document.createElement('label');
             label.className = 'oneshot-item';
-            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '" checked>' +
+            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (defaultOn ? ' checked' : '') + '>' +
                 '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
             container.appendChild(label);
         });
         container.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
             cb.addEventListener('change', function() { saveUIState(); });
         });
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl && CFG_DEFAULTS.include_report !== undefined) reportEl.checked = CFG_DEFAULTS.include_report;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl && CFG_DEFAULTS.include_health !== undefined) healthEl.checked = CFG_DEFAULTS.include_health;
     } catch (e) {
         outputPane.append('error', 'Failed to load workflows: ' + e.message);
     }
@@ -1247,6 +1308,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Default creds change listener
     document.getElementById('useDefaultCreds').addEventListener('change', function() { saveUIState(); });
+
+    // Proxy Jump / Tech Port change listeners
+    document.getElementById('proxyJumpToggle').addEventListener('change', function() { saveUIState(); });
+    document.getElementById('techPortToggle').addEventListener('change', function() { saveUIState(); });
 
     // Save state on page unload
     window.addEventListener('beforeunload', function() { saveUIState(); });

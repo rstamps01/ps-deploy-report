@@ -37,16 +37,9 @@ These checks run automatically via the **Health Check** module.
 | **Rack/U-Height** | `_check_rack_uheight_config()` | Automated + Reminder |
 | **Switches Registered** | `_check_switches_registered()` | Automated + Reminder |
 
-### Tier 2: Node SSH Checks (10 checks)
-
-| Validation | Health Check | Status |
-|------------|--------------|--------|
-| **Management Ping** | `_check_management_reachability()` | Automated |
-| **Memory/Disk** | `_check_node_memory()` | Automated |
-| **Services Running** | `_check_node_services()` | Automated |
-| **Network Interfaces** | `_check_node_interfaces()` | Automated |
-
 ### Tier 3: Switch SSH Checks (6 checks)
+
+> **Note:** Tier 2 node SSH checks (10 checks) were removed in v1.5.0 — they are redundant with diagnostics run by `vast_support_tools.py` in the One-Shot test suite and produced false-positive results when SSH targeted the Management CNode.
 
 | Validation | Health Check | Status |
 |------------|--------------|--------|
@@ -170,13 +163,15 @@ The **Reporter** page is the primary web interface for standard users (report ge
 
 ### Recommended Sequence
 
-1. **Run Health Check (Tier 1)** - Reporter or Generate → Include Health Check
-2. **Run Health Check (Tier 2+3)** - Enable Port Mapping with SSH credentials
-3. **Review PDF Report** - Check Health Check Results section
-4. **Address Failures** - Follow remediation report guidance
-5. **Run Advanced Operations** - Execute vnetmap, support tools workflows
-6. **Download Results Bundle** - Create validation package
-7. **Complete Manual Checks** - VIP failover, password changes
+1. **Run Health Check (Tier 1)** — Reporter or Generate → Include Health Check
+2. **Run Health Check (Tier 3 — Switch SSH)** — Enable Port Mapping with SSH credentials
+3. **Review PDF Report** — Check Health Check Results section
+4. **Address Failures** — Follow remediation report guidance
+5. **Run Advanced Operations** — Execute vnetmap, support tools workflows
+6. **Download Results Bundle** — Create validation package
+7. **Complete Manual Checks** — VIP failover, password changes
+
+> **Configuration:** Health check tiers, SSH proxy settings, and default credentials are configurable via the **Advanced Configuration** page (`/config/advanced`) or `config.yaml`. Use the **Report Tuning Tool** on the Results page to regenerate reports with different section or formatting settings.
 
 ### Output Artifacts
 
@@ -196,13 +191,12 @@ The **Reporter** page is the primary web interface for standard users (report ge
 
 | Category | Validation | Method | Location |
 |----------|------------|--------|----------|
-| **Infrastructure** | RAID | API Check | Health Check |
-| | Nodes | API Check | Health Check |
-| | DBoxes/CBoxes | API Check | Health Check |
-| | Firmware | API Check | Health Check |
-| **Network** | Management IPs | SSH Check | Health Check |
-| | Interfaces | SSH Check | Health Check |
-| | MLAG | SSH Check | Health Check |
+| **Infrastructure** | RAID | API Check (Tier 1) | Health Check |
+| | Nodes | API Check (Tier 1) | Health Check |
+| | DBoxes/CBoxes | API Check (Tier 1) | Health Check |
+| | Firmware | API Check (Tier 1) | Health Check |
+| **Network** | MLAG | Switch SSH (Tier 3) | Health Check |
+| | NTP | Switch SSH (Tier 3) | Health Check |
 | | Topology | Advanced Ops | vnetmap workflow |
 | **Configuration** | License | API Check | Health Check |
 | | Call Home | API Check | Health Check |
@@ -226,7 +220,7 @@ For comprehensive post-install validation in a single pass, use **One-Shot Mode*
 3. Select all validation workflows and check **Generate As-Built Report**
 4. Run **Pre-Validation** to verify credentials, connectivity, and tool readiness
 5. Click **Start One-Shot** to execute:
-   - Health Checks (Tiers 1-3)
+   - Health Checks (Tier 1 + Tier 3)
    - All selected operations (vnetmap, support tools, vperfsanity, log bundle, switch config, network config)
    - As-Built Report generation
    - Automatic bundling of all results

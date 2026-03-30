@@ -1,168 +1,88 @@
-# VAST As-Built Report Generator Configuration
-# This file contains environment-specific settings for the report generator
-
-# API Configuration
-api:
-  # Connection timeout in seconds
-  timeout: 30
-
-  # Number of retry attempts for failed requests
-  max_retries: 3
-
-  # Delay between retries (exponential backoff base)
-  retry_delay: 2
-
-  # SSL certificate verification (set to false for self-signed certs)
-  verify_ssl: false
-
-  # API version to use (will auto-detect highest supported version)
-  version: "v7"
-
-# Logging Configuration
-logging:
-  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
-  level: "INFO"
-
-  # Log message format
-  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-
-  # Log file settings
-  file_path: "logs/vast_report_generator.log"
-  rotation_size: 10485760 # 10MB in bytes
-  backup_count: 5
-
-  # Operation log settings (One-Shot persistent logs)
-  ops_log_dir: "logs/operations"
-  ops_log_max_bytes: 1073741824  # 1GB
-  ops_log_purge_fraction: 0.25
-
-  # Console color configuration
-  console_colors:
-    DEBUG: "cyan"
-    INFO: "green"
-    WARNING: "yellow"
-    ERROR: "red"
-    CRITICAL: "bold_red"
-
-# Report Configuration
-report:
-  # Company/organization name for report header
-  organization: "VAST Data Professional Services"
-
-  # Report template settings
-  template:
-    # Page size: A4, Letter
-    page_size: "A4"
-
-    # Margins in inches
-    margin_top: 1.0
-    margin_bottom: 1.0
-    margin_left: 1.0
-    margin_right: 1.0
-
-  # PDF generation settings
-  pdf:
-    # Include table of contents
-    include_toc: true
-
-    # Include page numbers
-    include_page_numbers: true
-
-    # Font settings
-    font_family: "Helvetica"
-    font_size: 10
-
-# Output Configuration
-output:
-  # Default output directory (relative to project root)
-  default_directory: "./reports"
-
-  # File naming convention
-  # Available variables: {timestamp}, {cluster_name}, {date}
-  pdf_filename: "vast_report_{cluster_name}_{timestamp}.pdf"
-  json_filename: "vast_data_{cluster_name}_{timestamp}.json"
-
-  # Timestamp format for filenames
-  timestamp_format: "%Y%m%d_%H%M%S"
-
-# Data Collection Configuration
-data_collection:
-  # Sections to include in the report (set to false to skip)
-  # When false, the section heading, description, tables, images,
-  # and TOC entry are all omitted from the PDF output.
-  # JSON export is unaffected — all data is always collected.
-  sections:
-    executive_summary: true
-    cluster_information: true
-    hardware_inventory: true          # includes Physical Rack Layout
-    network_configuration: true
-    switch_configuration: true
-    port_mapping: true                # includes Logical Network Diagram
-    logical_configuration: true
-    security_authentication: true     # includes Data Protection sub-sections
-    data_protection: true             # controls data extraction for protection policies
+advanced_operations:
+  autofill_default_passwords: true
+  default_mode: reporter
+  default_switch_placement: manual
+  defaults:
+    include_health: true
+    include_report: true
+    log_bundle: true
+    network_config: true
+    pre_validation: true
+    support_tool: true
+    switch_config: true
+    vnetmap: true
+    vperfsanity: false
+  reporter_defaults:
     health_check: true
-    post_deployment_activities: true
-
-  # Parallel processing settings
+    pre_validation: true
+    run_reporter: true
+api:
+  max_retries: 3
+  retry_delay: 2
+  timeout: 30
+  verify_ssl: false
+  version: v7
+data_collection:
   concurrent_requests: 5
-
-  # Data validation settings
-  validate_responses: true
-
-  # Handle missing data gracefully
   graceful_degradation: true
-
-# SSH Configuration
-ssh:
-  # Proxy hop through CNode for switch SSH connections (field deployments)
-  # When true, switch SSH connections tunnel through the CNode via paramiko
-  # nested transport, enabling port mapping when switches are only reachable
-  # from inside the cluster network
-  proxy_jump: true
-
-  # SSH connection timeout (seconds)
-  timeout: 60
-
-  # Per-ping timeout for SSH health checks (seconds)
-  ping_timeout: 10
-
-# Health Check Configuration
+  sections:
+    cluster_information: true
+    data_protection: true
+    executive_summary: true
+    hardware_inventory: true
+    health_check: true
+    logical_configuration: true
+    network_configuration: true
+    port_mapping: true
+    post_deployment_activities: true
+    security_authentication: true
+    switch_configuration: true
+  validate_responses: true
 health_check:
-  # Enable health check in report generation
   include_in_report: false
-
-  # Health check tiers (selected dynamically based on available credentials)
-  # Tier 1: API checks (26 checks) — always available
-  # Tier 2: Node SSH checks (10 checks) — requires node SSH credentials
-  # Tier 3: Switch SSH checks (6 checks) — requires switch SSH credentials
   tiers:
     api: true
-    node_ssh: true
     switch_ssh: true
-
-# Advanced Operations Configuration
-advanced_operations:
-  # Default mode for Select Operation toggle (reporter or oneshot)
-  default_mode: "reporter"
-
-  # Default switch placement mode (auto or manual)
-  default_switch_placement: "manual"
-
-  # Auto-fill default credentials (support/654321)
-  autofill_default_passwords: true
-
-  # vperfsanity default selection in One-Shot checklist
-  vperfsanity_default_selected: false
-
-# Security Configuration
+logging:
+  backup_count: 5
+  console_colors:
+    CRITICAL: bold_red
+    DEBUG: cyan
+    ERROR: red
+    INFO: green
+    WARNING: yellow
+  file_path: logs/vast_report_generator.log
+  format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+  level: INFO
+  ops_log_dir: logs/operations
+  ops_log_max_bytes: 1073741824
+  ops_log_purge_fraction: 0.25
+  rotation_size: 10485760
+output:
+  default_directory: ./reports
+  json_filename: vast_data_{cluster_name}_{timestamp}.json
+  pdf_filename: vast_report_{cluster_name}_{timestamp}.pdf
+  timestamp_format: '%Y%m%d_%H%M%S'
+report:
+  organization: VAST Data Professional Services
+  pdf:
+    font_family: Helvetica
+    font_size: 10
+    include_page_numbers: true
+    include_toc: true
+  template:
+    margin_bottom: 0.5
+    margin_left: 0.5
+    margin_right: 0.5
+    margin_top: 0.5
+    page_size: A4
 security:
-  # Credential handling
-  prompt_for_credentials: true
-
-  # Session management
-  session_timeout: 3600 # 1 hour in seconds
-
-  # Data sanitization
-  sanitize_logs: true
   mask_sensitive_data: true
+  prompt_for_credentials: true
+  sanitize_logs: true
+  session_timeout: 3600
+ssh:
+  ping_timeout: 10
+  proxy_jump: true
+  tech_port_mode: true
+  timeout: 60

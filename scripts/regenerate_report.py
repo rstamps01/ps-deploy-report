@@ -25,10 +25,12 @@ import sys
 from pathlib import Path
 from typing import Any, Dict
 
+import yaml
+
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from report_builder import create_report_builder
+from report_builder import ReportConfig, create_report_builder
 from utils.logger import get_logger, setup_logging
 
 
@@ -78,9 +80,17 @@ def regenerate_report(
         cluster_name = processed_data.get("cluster_summary", {}).get("name", "unknown")
         logger.info(f"Loaded data for cluster: {cluster_name}")
 
+        # Load config.yaml for section toggles and report settings
+        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        report_config = None
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as cf:
+                report_config = ReportConfig.from_yaml(yaml.safe_load(cf) or {})
+            logger.info(f"Loaded report config from: {config_path}")
+
         # Initialize report builder
         logger.info("Initializing report builder...")
-        report_builder = create_report_builder()
+        report_builder = create_report_builder(config=report_config)
 
         # Generate PDF report
         logger.info(f"Generating PDF report: {output_path}")
@@ -227,7 +237,12 @@ Examples:
                 },
             },
         }
-        report_builder = create_report_builder()
+        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        health_config = None
+        if config_path.exists():
+            with open(config_path, "r", encoding="utf-8") as cf:
+                health_config = ReportConfig.from_yaml(yaml.safe_load(cf) or {})
+        report_builder = create_report_builder(config=health_config)
         success = report_builder.generate_pdf_report(processed_data, str(output_path))
         if success:
             logger.info(f"Health-only report generated: {output_path}")

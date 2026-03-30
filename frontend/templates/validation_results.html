@@ -58,68 +58,86 @@
     margin-bottom: 20px;
 }
 
-/* Output dir + profile row */
-.vr-dir-profile-row {
+/* Tune bar grid layout */
+.tune-grid {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+}
+.tune-row-top {
     display: flex;
-    gap: 16px;
-    align-items: flex-end;
-    flex-wrap: wrap;
-}
-.vr-dir-group {
-    flex: 1 1 0;
-    min-width: 280px;
-}
-.vr-dir-group label,
-.vr-profile-group label {
-    display: block;
-    font-weight: 500;
-    font-size: 0.875rem;
-    margin-bottom: 0.3rem;
-    color: var(--text-secondary);
-}
-.vr-dir-input-row {
-    display: flex;
-    gap: 6px;
     align-items: center;
+    gap: 0.75rem;
 }
-.vr-dir-input-row input {
-    flex: 1;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
+.tune-top-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.tune-top-left select { flex: 1 1 auto; min-width: 120px; }
+.tune-top-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-left: 12px;
+    border-left: 1px solid var(--border);
+}
+.tune-top-left label,
+.tune-top-right label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.tune-top-right select { min-width: 180px; }
+.tune-row-bottom {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.tune-row-status {
+    border-top: 1px solid var(--border);
+    padding-top: 0.35rem;
+}
+
+/* Report Sections bar on VR page */
+.vr-sections-bar {
+    background: var(--bg-surface);
     border-radius: var(--radius);
-    font-size: 0.9rem;
-    background: var(--bg-input);
-    color: var(--text-primary);
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+    overflow: hidden;
 }
-.vr-dir-input-row input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-subtle);
-}
-.vr-profile-group {
-    flex: 0 1 300px;
-    min-width: 220px;
-}
-.vr-profile-group select {
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.9rem;
-    background: var(--bg-input);
-    color: var(--text-primary);
-    appearance: none;
-    -webkit-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238b949e' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    padding-right: 2rem;
+.vr-sections-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1.25rem;
     cursor: pointer;
+    user-select: none;
 }
-.vr-profile-group select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-subtle);
+.vr-sections-header h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin: 0;
+    color: var(--text-primary);
+}
+.vr-sections-header .chevron {
+    transition: transform 0.2s;
+}
+.vr-sections-bar.open .vr-sections-header .chevron {
+    transform: rotate(180deg);
+}
+.vr-sections-body {
+    display: none;
+    padding: 0.5rem 1.25rem 1rem;
+}
+.vr-sections-bar.open .vr-sections-body {
+    display: block;
 }
 
 /* Results table */
@@ -201,19 +219,20 @@
     <p class="subtitle">Browse and manage Post Deployment Validation results by operation and cluster</p>
 </div>
 
-<!-- Output Directory + Cluster Profile row -->
-<div class="card dir-management-card">
-    <div class="vr-dir-profile-row">
-        <div class="vr-dir-group">
-            <label for="vrOutputDirInput">Output Directory</label>
-            <div class="vr-dir-input-row">
-                <input type="text" id="vrOutputDirInput" value="{{ output_dir }}" readonly>
-                <button type="button" class="btn btn-sm" onclick="openBrowse()">Browse</button>
-                <button class="btn btn-sm btn-primary" onclick="setDir()">Set</button>
-            </div>
+<!-- Report Tuning Tool bar + Cluster Filter -->
+<div class="cfg-tune-bar tune-grid" id="tuneBar">
+    <div class="tune-row-top">
+        <div class="tune-top-left">
+            <label for="tuneJsonSelect">Report Tuning Tool</label>
+            <select id="tuneJsonSelect" title="Select a JSON report file from your output directories">
+                <option value="">-- Select JSON File --</option>
+            </select>
+            <span class="tune-or">or</span>
+            <button type="button" class="btn-browse" onclick="document.getElementById('tuneFileInput').click()">Browse&hellip;</button>
+            <input type="file" id="tuneFileInput" accept=".json">
         </div>
-        <div class="vr-profile-group">
-            <label for="profileFilter">Cluster Profile</label>
+        <div class="tune-top-right">
+            <label for="profileFilter">Cluster Filter</label>
             <select id="profileFilter" onchange="applyFilter()">
                 <option value="">All Clusters</option>
                 {% for name, prof in profiles.items() %}
@@ -223,23 +242,117 @@
             </select>
         </div>
     </div>
+    <div class="tune-row-bottom">
+        <button type="button" class="btn btn-primary" id="btnRegenerate" onclick="regeneratePdf()" style="padding:0.35rem 1rem;font-size:0.82rem;">Regenerate PDF</button>
+        <span id="tuneResultBtns" style="display:inline-flex;gap:6px;"></span>
+    </div>
+    <div class="tune-row-status" id="tuneStatusRow" style="display:none;">
+        <span class="tune-status" id="tuneStatus"></span>
+    </div>
 </div>
 
-<!-- Browse Modal (directory picker) -->
-<div id="browseModal" class="browse-modal-overlay hidden">
-    <div class="browse-modal">
-        <div class="browse-modal-header">
-            <h3>Select Directory</h3>
-            <button type="button" class="browse-modal-close" onclick="closeBrowse()">&times;</button>
+<!-- Report Sections -->
+<div class="vr-sections-bar" id="vrSectionsBar">
+    <div class="vr-sections-header" onclick="this.closest('.vr-sections-bar').classList.toggle('open')">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align:-2px;margin-right:4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Add / Remove Report Sections</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="vr-sections-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Executive Summary <span class="cfg-info-icon" title="Include the Executive Summary section in the PDF report">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.executive_summary"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Cluster Information <span class="cfg-info-icon" title="Include Cluster Information section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.cluster_information"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Hardware Inventory <span class="cfg-info-icon" title="Include Hardware Inventory section (includes Physical Rack Layout)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.hardware_inventory"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Network Configuration <span class="cfg-info-icon" title="Include Network Configuration section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.network_configuration"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Switch Configuration <span class="cfg-info-icon" title="Include Switch Configuration section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.switch_configuration"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Port Mapping <span class="cfg-info-icon" title="Include Port Mapping section (includes Logical Network Diagram)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.port_mapping"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Logical Configuration <span class="cfg-info-icon" title="Include Logical Configuration section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.logical_configuration"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Security &amp; Authentication <span class="cfg-info-icon" title="Include Security &amp; Authentication section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.security_authentication"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Data Protection <span class="cfg-info-icon" title="Controls data extraction for protection policies">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.data_protection"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Health Check <span class="cfg-info-icon" title="Include Health Check results section in the report">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.health_check"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Post-Deployment Activities <span class="cfg-info-icon" title="Include Post-Deployment Activities section">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.sections.post_deployment_activities"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
         </div>
-        <div class="browse-path-bar">
-            <button type="button" class="btn btn-sm" onclick="browseUp()" id="btnBrowseUp" title="Parent directory">&uarr; Up</button>
-            <span id="browseCurrent" class="browse-current-path"></span>
-        </div>
-        <div class="browse-list" id="browseList"></div>
-        <div class="browse-modal-footer">
-            <button type="button" class="btn btn-sm" onclick="closeBrowse()">Cancel</button>
-            <button type="button" class="btn btn-sm btn-primary" onclick="selectBrowsed()">Select This Folder</button>
+        <h4 style="margin:1rem 0 0.5rem;font-size:0.88rem;color:var(--text-secondary);">PDF Options</h4>
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Include TOC <span class="cfg-info-icon" title="Include a Table of Contents page in the PDF report">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="report.pdf.include_toc"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Include Page Numbers <span class="cfg-info-icon" title="Show page numbers in the report footer">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="report.pdf.include_page_numbers"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -396,77 +509,162 @@ async function deleteResult(operation, filename) {
 
 loadResults();
 
-// -- Output Directory: Set --
-async function setDir() {
-    var input = document.getElementById('vrOutputDirInput');
-    var dir = input.value.trim();
-    if (!dir) return;
+// -- Helpers: read/write nested keys --
+function getNestedValue(obj, dotKey) {
+    return dotKey.split('.').reduce(function(o, k){ return o && o[k]; }, obj);
+}
+function setNestedValue(obj, dotKey, val) {
+    var parts = dotKey.split('.');
+    var last = parts.pop();
+    var target = parts.reduce(function(o, k){
+        if (!(k in o)) o[k] = {};
+        return o[k];
+    }, obj);
+    target[last] = val;
+}
+
+function populateForm(cfg) {
+    document.querySelectorAll('[data-key]').forEach(function(el) {
+        var val = getNestedValue(cfg, el.dataset.key);
+        if (val === undefined || val === null) return;
+        if (el.type === 'checkbox') {
+            el.checked = !!val;
+        } else if (el.type === 'number') {
+            el.value = val;
+        } else {
+            el.value = String(val);
+        }
+    });
+}
+
+function collectForm() {
+    var cfg = {};
+    document.querySelectorAll('[data-key]').forEach(function(el) {
+        var val;
+        if (el.type === 'checkbox') {
+            val = el.checked;
+        } else if (el.type === 'number') {
+            val = el.value === '' ? null : Number(el.value);
+        } else {
+            val = el.value;
+        }
+        setNestedValue(cfg, el.dataset.key, val);
+    });
+    return cfg;
+}
+
+async function loadConfig() {
     try {
-        var resp = await fetch('/reports/dirs', {
+        var resp = await fetch('/config/json');
+        var cfg = await resp.json();
+        populateForm(cfg);
+    } catch(e) { /* ignore */ }
+}
+
+// -- Report Tuning Tool --
+var tuneUploadedFile = null;
+
+async function loadJsonFiles() {
+    try {
+        var resp = await fetch('/config/advanced/json-files');
+        var data = await resp.json();
+        var sel = document.getElementById('tuneJsonSelect');
+        sel.innerHTML = '<option value="">-- Select JSON File --</option>';
+        (data.files || []).forEach(function(f) {
+            var opt = document.createElement('option');
+            opt.value = f.dir + '/' + f.name;
+            opt.textContent = f.name + ' (' + f.modified + ')';
+            sel.appendChild(opt);
+        });
+    } catch(e) { /* ignore */ }
+}
+
+document.getElementById('tuneFileInput').addEventListener('change', async function(e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    setTuneStatus('Uploading ' + file.name + '&hellip;');
+
+    var formData = new FormData();
+    formData.append('json_file', file);
+    try {
+        var resp = await fetch('/config/advanced/upload-json', {method: 'POST', body: formData});
+        var data = await resp.json();
+        if (!resp.ok) { setTuneStatus(data.error || 'Upload failed', 'error'); return; }
+
+        await loadJsonFiles();
+        var sel = document.getElementById('tuneJsonSelect');
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value.endsWith('/' + file.name)) { sel.selectedIndex = i; break; }
+        }
+        tuneUploadedFile = null;
+        setTuneStatus('Uploaded &mdash; ' + file.name, 'success');
+    } catch(err) {
+        setTuneStatus('Upload failed', 'error');
+    }
+    this.value = '';
+});
+
+document.getElementById('tuneJsonSelect').addEventListener('change', function() {
+    if (this.value) tuneUploadedFile = null;
+});
+
+function setTuneStatus(msg, cls) {
+    var el = document.getElementById('tuneStatus');
+    var row = document.getElementById('tuneStatusRow');
+    el.className = 'tune-status ' + (cls || '');
+    el.innerHTML = msg;
+    row.style.display = msg ? '' : 'none';
+}
+
+function showResultButtons(pdfPath) {
+    var dlPath = pdfPath.split('/').map(encodeURIComponent).join('/');
+    var wrap = document.getElementById('tuneResultBtns');
+    wrap.innerHTML =
+        '<a href="/config/advanced/download' + dlPath + '" target="_blank" class="btn btn-primary" style="padding:0.3rem 0.75rem;font-size:0.82rem;text-decoration:none;">Preview</a>' +
+        '<a href="/config/advanced/download' + dlPath + '?download=1" class="btn btn-secondary" style="padding:0.3rem 0.75rem;font-size:0.82rem;text-decoration:none;" download>Download</a>';
+}
+
+async function regeneratePdf() {
+    var jsonPath = document.getElementById('tuneJsonSelect').value;
+    if (!jsonPath && !tuneUploadedFile) {
+        setTuneStatus('Select a JSON file first', 'error');
+        return;
+    }
+
+    setTuneStatus('Generating&hellip;');
+    document.getElementById('btnRegenerate').disabled = true;
+    document.getElementById('tuneResultBtns').innerHTML = '';
+
+    try {
+        var formCfg = collectForm();
+        var overrides = {
+            organization: (formCfg.report || {}).organization,
+            template: (formCfg.report || {}).template || {},
+            pdf: (formCfg.report || {}).pdf || {},
+            sections: ((formCfg.data_collection || {}).sections) || {}
+        };
+
+        var resp = await fetch('/config/advanced/tune-report', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({dir: dir})
+            body: JSON.stringify({json_path: jsonPath, report_overrides: overrides})
         });
         var data = await resp.json();
-        if (!resp.ok) { alert(data.error || 'Failed to set directory'); return; }
-        loadResults();
-    } catch (e) { alert('Network error: ' + e.message); }
-}
-
-// -- Directory browser modal --
-var browseCurrentPath = '';
-
-function openBrowse() {
-    document.getElementById('browseModal').classList.remove('hidden');
-    var seed = document.getElementById('vrOutputDirInput').value.trim();
-    browseTo(seed || '');
-}
-
-function closeBrowse() {
-    document.getElementById('browseModal').classList.add('hidden');
-}
-
-function selectBrowsed() {
-    document.getElementById('vrOutputDirInput').value = browseCurrentPath;
-    closeBrowse();
-}
-
-function browseUp() {
-    var el = document.getElementById('browseCurrent');
-    var parent = el.dataset.parent;
-    if (parent) browseTo(parent);
-}
-
-async function browseTo(path) {
-    var list = document.getElementById('browseList');
-    list.innerHTML = '<p style="padding:0.5rem;color:#888">Loading...</p>';
-    try {
-        var url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
-        var resp = await fetch(url);
-        var data = await resp.json();
-        if (!resp.ok) { list.innerHTML = '<p style="padding:0.5rem;color:red">' + (data.error || 'Error') + '</p>'; return; }
-        browseCurrentPath = data.current;
-        var curEl = document.getElementById('browseCurrent');
-        curEl.textContent = data.current;
-        curEl.dataset.parent = data.parent || '';
-        document.getElementById('btnBrowseUp').disabled = !data.parent;
-
-        list.innerHTML = '';
-        if (data.dirs.length === 0) {
-            list.innerHTML = '<p style="padding:0.5rem;color:#888">No subdirectories</p>';
-            return;
+        if (resp.ok) {
+            setTuneStatus(data.pdf_name, 'success');
+            showResultButtons(data.pdf_path);
+            loadResults();
+        } else {
+            setTuneStatus(data.error || 'Generation failed', 'error');
         }
-        for (var i = 0; i < data.dirs.length; i++) {
-            var name = data.dirs[i];
-            var row = document.createElement('div');
-            row.className = 'browse-item';
-            row.textContent = name;
-            row.onclick = (function(n) { return function() { browseTo(data.current + '/' + n); }; })(name);
-            list.appendChild(row);
-        }
-    } catch (e) {
-        list.innerHTML = '<p style="padding:0.5rem;color:red">Network error</p>';
+    } catch(e) {
+        setTuneStatus('Network error', 'error');
+    } finally {
+        document.getElementById('btnRegenerate').disabled = false;
     }
 }
+
+loadConfig();
+loadJsonFiles();
 </script>
 {% endblock %}

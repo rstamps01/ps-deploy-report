@@ -68,25 +68,20 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
-                        <input type="checkbox" name="tiers" value="2" id="tier2"> Tier 2 (Node SSH Checks)
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label class="checkbox-label">
                         <input type="checkbox" name="tiers" value="3" id="tier3"> Tier 3 (Switch SSH Checks)
                     </label>
                 </div>
 
                 <legend>SSH Credentials</legend>
                 <details>
-                    <summary>Node &amp; Switch SSH</summary>
+                    <summary>Switch SSH (Tier 3)</summary>
                     <div class="form-row details-content">
                         <div class="form-group half">
-                            <label for="node_user">Node User</label>
+                            <label for="node_user">Node User (proxy jump)</label>
                             <input type="text" id="node_user" name="node_user" value="vastdata">
                         </div>
                         <div class="form-group half">
-                            <label for="node_password">Node Password</label>
+                            <label for="node_password">Node Password (proxy jump)</label>
                             <input type="password" id="node_password" name="node_password">
                         </div>
                     </div>
@@ -151,23 +146,14 @@
     }
 
     function updateTierCheckboxes() {
-        const nodeUser = document.getElementById("node_user").value.trim();
-        const nodePass = document.getElementById("node_password").value;
         const switchUser = document.getElementById("switch_user").value.trim();
         const switchPass = document.getElementById("switch_password").value;
 
-        const tier2 = document.getElementById("tier2");
         const tier3 = document.getElementById("tier3");
-
-        tier2.disabled = !(nodeUser && nodePass);
         tier3.disabled = !(switchUser && switchPass);
-
-        if (tier2.disabled) tier2.checked = false;
         if (tier3.disabled) tier3.checked = false;
     }
 
-    document.getElementById("node_user").addEventListener("input", updateTierCheckboxes);
-    document.getElementById("node_password").addEventListener("input", updateTierCheckboxes);
     document.getElementById("switch_user").addEventListener("input", updateTierCheckboxes);
     document.getElementById("switch_password").addEventListener("input", updateTierCheckboxes);
     updateTierCheckboxes();
@@ -282,12 +268,7 @@
     form.addEventListener("submit", async function (e) {
         e.preventDefault();
 
-        const tier2 = document.getElementById("tier2");
         const tier3 = document.getElementById("tier3");
-        if (tier2.checked && tier2.disabled) {
-            alert("Tier 2 requires Node User and Node Password.");
-            return;
-        }
         if (tier3.checked && tier3.disabled) {
             alert("Tier 3 requires Switch User and Switch Password.");
             return;

@@ -23,7 +23,7 @@ import platform
 import re
 import shutil
 import subprocess
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -257,6 +257,7 @@ class ExternalPortMapper:
         switch_user: str,
         switch_password: str,
         proxy_jump: bool = True,
+        tunnel_address: Optional[str] = None,
     ):
         """
         Initialize external port mapper.
@@ -272,8 +273,10 @@ class ExternalPortMapper:
             switch_user: SSH username for switches (typically 'cumulus' or 'admin')
             switch_password: SSH password for switches (typically 'Vastdata1!' or 'admin')
             proxy_jump: Route switch SSH through the CNode as a jump host (default True)
+            tunnel_address: Local tunnel endpoint (e.g. '127.0.0.1:54321') for Tech Port mode
         """
         self.cluster_ip = cluster_ip
+        self._api_host = tunnel_address or cluster_ip
         self.api_user = api_user
         self.api_password = api_password
         self.cnode_ip = cnode_ip
@@ -813,7 +816,7 @@ class ExternalPortMapper:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             # Get CNodes
-            url = f"https://{self.cluster_ip}/api/v7/vms/1/network_settings/"
+            url = f"https://{self._api_host}/api/v7/vms/1/network_settings/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code != 200:
@@ -867,7 +870,7 @@ class ExternalPortMapper:
 
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-            url = f"https://{self.cluster_ip}/api/v7/eboxes/"
+            url = f"https://{self._api_host}/api/v7/eboxes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code != 200:
@@ -926,7 +929,7 @@ class ExternalPortMapper:
             node_mapping = {}
 
             # Collect CNodes
-            url = f"https://{self.cluster_ip}/api/v7/cnodes/"
+            url = f"https://{self._api_host}/api/v7/cnodes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code == 200:
@@ -948,7 +951,7 @@ class ExternalPortMapper:
                         self.logger.debug(f"Mapped CNode: {cnode.get('name')} -> EBox {cnode.get('ebox_id')}")
 
             # Collect DNodes
-            url = f"https://{self.cluster_ip}/api/v7/dnodes/"
+            url = f"https://{self._api_host}/api/v7/dnodes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code == 200:

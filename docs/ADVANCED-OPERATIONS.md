@@ -184,7 +184,7 @@ Run multiple operations sequentially in a single pass with automated pre-validat
 
 **Execution Order:**
 - Selected operations run in checklist order
-- As-Built report generation (if selected) runs after all operations; health checks (Tiers 1-3) run within the report phase when the Health Checks checkbox is selected
+- As-Built report generation (if selected) runs after all operations; health checks (Tier 1 + Tier 3) run within the report phase when the Health Checks checkbox is selected
 - Results are automatically bundled into a cluster-scoped ZIP
 
 **Pre-Validation Checks:**
@@ -409,6 +409,12 @@ Switch SSH connections tunnel through the CNode via paramiko nested transport (`
 - **UI Toggle:** "Proxy through CNode" toggle on Generate and Reporter pages; persists in profiles
 - **CLI:** `--no-proxy-jump` flag disables proxy hop for direct-connection environments
 - **Profile Persistence:** Proxy hop setting saved with cluster profiles
+
+---
+
+## Configuration
+
+Health check tiers, SSH proxy settings, default credentials, switch placement mode, and vperfsanity defaults are configurable via the **Advanced Configuration** page (`/config/advanced`) or directly in `config.yaml`. Changes made in Advanced Configuration use deep-merge save — only modified keys are updated. Use the **Report Tuning Tool** on the Results page to regenerate reports with different section toggles or formatting settings without re-running operations.
 
 ---
 

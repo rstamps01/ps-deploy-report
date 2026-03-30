@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 class NetworkConfigWorkflow:
     """Network configuration extraction workflow."""
 
-    name = "Network Configuration Extraction"
+    name = "Network Extraction"
     description = "Extract configure_network.py commands for new node provisioning"
     enabled = True
     min_vast_version = "5.0"

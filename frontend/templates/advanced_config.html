@@ -1,0 +1,598 @@
+{% extends "base.html" %}
+{% block title %}Configuration - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;">
+            <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+        </svg>
+        Advanced Configuration
+    </h1>
+    <p class="subtitle">Manage application settings and test report formatting</p>
+</div>
+
+<!-- Config Sections -->
+<form id="advConfigForm" autocomplete="off">
+
+<!-- Report Formatting -->
+<div class="cfg-section open" data-section="report">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Report Formatting</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Organization <span class="cfg-info-icon" title="Company or organization name displayed in the report header">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="report.organization">
+            </div>
+            <div class="form-group">
+                <label>Page Size <span class="cfg-info-icon" title="PDF page size: A4 (210×297 mm) or Letter (8.5×11 in)">&#9432;</span></label>
+                <select class="form-control" data-key="report.template.page_size">
+                    <option>A4</option><option>Letter</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Margin Top (inches) <span class="cfg-info-icon" title="Top page margin in inches">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="report.template.margin_top" min="0.25" max="1.5" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Margin Bottom (inches) <span class="cfg-info-icon" title="Bottom page margin in inches">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="report.template.margin_bottom" min="0.25" max="1.5" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Margin Left (inches) <span class="cfg-info-icon" title="Left page margin in inches">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="report.template.margin_left" min="0.25" max="1.5" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Margin Right (inches) <span class="cfg-info-icon" title="Right page margin in inches">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="report.template.margin_right" min="0.25" max="1.5" step="0.1">
+            </div>
+            <div class="form-group">
+                <label>Font Family <span class="cfg-info-icon" title="Primary font used in the PDF report">&#9432;</span></label>
+                <select class="form-control" data-key="report.pdf.font_family">
+                    <option>Helvetica</option><option>Times-Roman</option><option>Courier</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Font Size <span class="cfg-info-icon" title="Base font size in points for report body text">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="report.pdf.font_size" min="6" max="18">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API Settings -->
+<div class="cfg-section" data-section="api">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>API Settings</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Timeout (seconds) <span class="cfg-info-icon" title="Connection timeout for API requests in seconds">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="api.timeout" min="1" max="300">
+            </div>
+            <div class="form-group">
+                <label>Max Retries <span class="cfg-info-icon" title="Number of retry attempts for failed API requests">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="api.max_retries" min="0" max="10">
+            </div>
+            <div class="form-group">
+                <label>Retry Delay (seconds) <span class="cfg-info-icon" title="Base delay between retries (exponential backoff)">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="api.retry_delay" min="1" max="30">
+            </div>
+            <div class="form-group">
+                <label>API Version <span class="cfg-info-icon" title="Target API version; the app auto-detects the highest supported version">&#9432;</span></label>
+                <select class="form-control" data-key="api.version">
+                    <option value="v3">v3</option><option value="v4">v4</option><option value="v5">v5</option><option value="v6">v6</option><option value="v7">v7</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Verify SSL <span class="cfg-info-icon" title="Enable SSL certificate verification; disable for self-signed certificates">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="api.verify_ssl"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Validate Responses <span class="cfg-info-icon" title="Validate API response data before processing">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.validate_responses"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Concurrent Requests <span class="cfg-info-icon" title="Maximum parallel API requests during data collection">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="data_collection.concurrent_requests" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label>Graceful Degradation <span class="cfg-info-icon" title="Continue report generation even if some data sections fail to collect">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="data_collection.graceful_degradation"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logging -->
+<div class="cfg-section" data-section="logging">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Logging</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Log Level <span class="cfg-info-icon" title="Minimum severity level for log output">&#9432;</span></label>
+                <select class="form-control" data-key="logging.level">
+                    <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option><option>CRITICAL</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Log Format <span class="cfg-info-icon" title="Python logging format string for log messages">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="logging.format">
+            </div>
+            <div class="form-group">
+                <label>Log File Path <span class="cfg-info-icon" title="Path to the application log file">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="logging.file_path">
+            </div>
+            <div class="form-group">
+                <label>Rotation Size (bytes) <span class="cfg-info-icon" title="Maximum log file size before rotation (default 10 MB)">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="logging.rotation_size" min="1048576">
+            </div>
+            <div class="form-group">
+                <label>Backup Count <span class="cfg-info-icon" title="Number of rotated log files to keep">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="logging.backup_count" min="1" max="20">
+            </div>
+            <div class="form-group">
+                <label>Ops Log Directory <span class="cfg-info-icon" title="Directory for persistent One-Shot operation logs">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="logging.ops_log_dir">
+            </div>
+            <div class="form-group">
+                <label>Ops Log Max Bytes <span class="cfg-info-icon" title="Maximum total size of operation logs before purge (default 1 GB)">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="logging.ops_log_max_bytes" min="1048576">
+            </div>
+            <div class="form-group">
+                <label>Ops Log Purge Fraction <span class="cfg-info-icon" title="Fraction of oldest logs to purge when capacity is reached (0.0–1.0)">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="logging.ops_log_purge_fraction" min="0" max="1" step="0.05">
+            </div>
+        </div>
+        <h4 style="margin:1rem 0 0.5rem;font-size:0.88rem;color:var(--text-secondary);">Console Colors</h4>
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>DEBUG</label>
+                <select class="form-control" data-key="logging.console_colors.DEBUG">
+                    <option>cyan</option><option>green</option><option>yellow</option><option>red</option><option>bold_red</option><option>white</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>INFO</label>
+                <select class="form-control" data-key="logging.console_colors.INFO">
+                    <option>cyan</option><option>green</option><option>yellow</option><option>red</option><option>bold_red</option><option>white</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>WARNING</label>
+                <select class="form-control" data-key="logging.console_colors.WARNING">
+                    <option>cyan</option><option>green</option><option>yellow</option><option>red</option><option>bold_red</option><option>white</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>ERROR</label>
+                <select class="form-control" data-key="logging.console_colors.ERROR">
+                    <option>cyan</option><option>green</option><option>yellow</option><option>red</option><option>bold_red</option><option>white</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>CRITICAL</label>
+                <select class="form-control" data-key="logging.console_colors.CRITICAL">
+                    <option>cyan</option><option>green</option><option>yellow</option><option>red</option><option>bold_red</option><option>white</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Output -->
+<div class="cfg-section" data-section="output">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Output</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Default Directory <span class="cfg-info-icon" title="Default output directory for generated reports (relative to project root)">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="output.default_directory">
+            </div>
+            <div class="form-group">
+                <label>PDF Filename Template <span class="cfg-info-icon" title="Filename pattern for PDF reports. Variables: {timestamp}, {cluster_name}, {date}">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="output.pdf_filename">
+            </div>
+            <div class="form-group">
+                <label>JSON Filename Template <span class="cfg-info-icon" title="Filename pattern for JSON data exports. Variables: {timestamp}, {cluster_name}, {date}">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="output.json_filename">
+            </div>
+            <div class="form-group">
+                <label>Timestamp Format <span class="cfg-info-icon" title="Python strftime format string used in filenames">&#9432;</span></label>
+                <input type="text" class="form-control" data-key="output.timestamp_format">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SSH -->
+<div class="cfg-section" data-section="ssh">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>SSH</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>SSH Proxy Mode <span class="cfg-info-icon" title="Tunnel switch SSH through a CNode when switches are not directly reachable (field deployments)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="ssh.proxy_jump"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Tech Port Mode <span class="cfg-info-icon" title="Default state for Tech Port Mode checkbox. When enabled, the app SSHs into the CNode, discovers the VMS management IP, and tunnels all API calls through the SSH connection.">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="ssh.tech_port_mode"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>SSH Timeout (seconds) <span class="cfg-info-icon" title="Connection timeout for SSH sessions">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="ssh.timeout" min="5" max="300">
+            </div>
+            <div class="form-group">
+                <label>Ping Timeout (seconds) <span class="cfg-info-icon" title="Per-ping timeout used during SSH health checks">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="ssh.ping_timeout" min="1" max="60">
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Health Check -->
+<div class="cfg-section" data-section="health_check">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Health Check</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Include in Report <span class="cfg-info-icon" title="Automatically run health checks during report generation">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="health_check.include_in_report"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Tier 1: API Checks <span class="cfg-info-icon" title="Enable Tier 1 API-based health checks (always available)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="health_check.tiers.api"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Tier 3: Switch SSH <span class="cfg-info-icon" title="Enable Tier 3 Switch SSH health checks (requires switch SSH credentials)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="health_check.tiers.switch_ssh"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Advanced Operations -->
+<div class="cfg-section" data-section="advanced_operations">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Advanced Operations</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Default Mode <span class="cfg-info-icon" title="Default mode for the Select Operation toggle on the Reporter page">&#9432;</span></label>
+                <select class="form-control" data-key="advanced_operations.default_mode">
+                    <option value="reporter">Reporter</option><option value="oneshot">Test Suite</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Default Switch Placement <span class="cfg-info-icon" title="Default switch placement mode: auto-detect or manual assignment">&#9432;</span></label>
+                <select class="form-control" data-key="advanced_operations.default_switch_placement">
+                    <option value="auto">Auto</option><option value="manual">Manual</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Auto-fill Default Passwords <span class="cfg-info-icon" title="Pre-fill default credentials (support/654321) when creating new profiles">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.autofill_default_passwords"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+        </div>
+        <h4 style="margin: 16px 0 8px; color: #00d4ff; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Reporter Default Selections</h4>
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Pre-Validation <span class="cfg-info-icon" title="Pre-select Pre-Validation on the Reporter tile (verify credentials, VMS access, rack config, switch config, SSH)">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.reporter_defaults.pre_validation"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Generate As-Built Report <span class="cfg-info-icon" title="Pre-select Generate As-Built Report on the Reporter tile">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.reporter_defaults.run_reporter"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Health Check <span class="cfg-info-icon" title="Pre-select Health Check on the Reporter tile">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.reporter_defaults.health_check"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+        </div>
+        <h4 style="margin: 16px 0 8px; color: #00d4ff; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;">Test Suite Default Selections</h4>
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>VAST vnetmap <span class="cfg-info-icon" title="Pre-select VAST vnetmap topology validation in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.vnetmap"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>VAST Support Tools <span class="cfg-info-icon" title="Pre-select VAST Support Tools inspection in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.support_tool"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>VMS Log Bundle <span class="cfg-info-icon" title="Pre-select VMS Log Bundle collection in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.log_bundle"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Switch Extraction <span class="cfg-info-icon" title="Pre-select Switch Configuration Extraction in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.switch_config"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Network Extraction <span class="cfg-info-icon" title="Pre-select Network Configuration Extraction in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.network_config"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>vperfsanity <span class="cfg-info-icon" title="Pre-select vperfsanity performance validation in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.vperfsanity"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Pre-Validation <span class="cfg-info-icon" title="Pre-select Pre-Validation (Re-Validation) in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.pre_validation"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Generate As-Built Report <span class="cfg-info-icon" title="Pre-select Generate As-Built Report in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.include_report"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Include Health Checks <span class="cfg-info-icon" title="Pre-select Include Health Checks in the Test Suite checklist">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="advanced_operations.defaults.include_health"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Selected</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Security -->
+<div class="cfg-section" data-section="security">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Security</h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>Prompt for Credentials <span class="cfg-info-icon" title="Require credentials to be entered interactively rather than stored">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="security.prompt_for_credentials"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Session Timeout (seconds) <span class="cfg-info-icon" title="Time in seconds before an idle session expires (default 3600 = 1 hour)">&#9432;</span></label>
+                <input type="number" class="form-control" data-key="security.session_timeout" min="60" max="86400">
+            </div>
+            <div class="form-group">
+                <label>Sanitize Logs <span class="cfg-info-icon" title="Filter sensitive data (passwords, tokens) from log output">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="security.sanitize_logs"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Mask Sensitive Data <span class="cfg-info-icon" title="Replace sensitive values with masked placeholders in output">&#9432;</span></label>
+                <div class="cfg-toggle-row">
+                    <label class="toggle-switch"><input type="checkbox" data-key="security.mask_sensitive_data"><span class="toggle-slider"></span></label>
+                    <span class="toggle-label">Enabled</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="cfg-actions">
+    <button type="button" class="btn btn-primary" id="btnCfgSave" onclick="saveConfig()">Save</button>
+    <button type="button" class="btn btn-secondary" id="btnCfgCancel" onclick="loadConfig()">Cancel</button>
+    <button type="button" class="btn btn-secondary" id="btnCfgReset" onclick="resetTemplate()">Reset Template</button>
+    <span id="cfgStatus" class="config-status" style="margin-left:8px;"></span>
+</div>
+
+</form>
+
+<script>
+(function(){
+    /* ---- Accordion ---- */
+    window.toggleSection = function(header) {
+        header.closest('.cfg-section').classList.toggle('open');
+    };
+
+    /* ---- Helpers: read/write nested keys ---- */
+    function getNestedValue(obj, dotKey) {
+        return dotKey.split('.').reduce(function(o, k){ return o && o[k]; }, obj);
+    }
+    function setNestedValue(obj, dotKey, val) {
+        var parts = dotKey.split('.');
+        var last = parts.pop();
+        var target = parts.reduce(function(o, k){
+            if (!(k in o)) o[k] = {};
+            return o[k];
+        }, obj);
+        target[last] = val;
+    }
+
+    /* ---- Populate form from config object ---- */
+    function populateForm(cfg) {
+        document.querySelectorAll('[data-key]').forEach(function(el) {
+            var val = getNestedValue(cfg, el.dataset.key);
+            if (val === undefined || val === null) return;
+            if (el.type === 'checkbox') {
+                el.checked = !!val;
+            } else if (el.type === 'number') {
+                el.value = val;
+            } else {
+                el.value = String(val);
+            }
+        });
+    }
+
+    /* ---- Collect form into config object ---- */
+    function collectForm() {
+        var cfg = {};
+        document.querySelectorAll('[data-key]').forEach(function(el) {
+            var val;
+            if (el.type === 'checkbox') {
+                val = el.checked;
+            } else if (el.type === 'number') {
+                val = el.value === '' ? null : Number(el.value);
+            } else {
+                val = el.value;
+            }
+            setNestedValue(cfg, el.dataset.key, val);
+        });
+        return cfg;
+    }
+
+    /* ---- Load config from server ---- */
+    window.loadConfig = async function() {
+        try {
+            var resp = await fetch('/config/json');
+            var cfg = await resp.json();
+            populateForm(cfg);
+            showStatus('Configuration loaded', 'success');
+        } catch(e) {
+            showStatus('Failed to load configuration', 'error');
+        }
+    };
+
+    /* ---- Deep-merge helper (form values into existing config) ---- */
+    function deepMerge(target, source) {
+        var out = {};
+        var key;
+        for (key in target) {
+            if (Object.prototype.hasOwnProperty.call(target, key)) {
+                out[key] = target[key];
+            }
+        }
+        for (key in source) {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+            var sv = source[key];
+            if (sv && typeof sv === 'object' && !Array.isArray(sv) &&
+                out[key] && typeof out[key] === 'object' && !Array.isArray(out[key])) {
+                out[key] = deepMerge(out[key], sv);
+            } else {
+                out[key] = sv;
+            }
+        }
+        return out;
+    }
+
+    /* ---- Save config ---- */
+    window.saveConfig = async function() {
+        var formCfg = collectForm();
+        try {
+            var existing = await fetch('/config/json').then(function(r){ return r.json(); });
+            var merged = deepMerge(existing, formCfg);
+            var resp = await fetch('/config/json', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(merged)
+            });
+            var data = await resp.json();
+            if (resp.ok) {
+                showStatus('Saved — settings take effect on the next operation', 'success');
+            } else {
+                showStatus(data.error || 'Save failed', 'error');
+            }
+        } catch(e) {
+            showStatus('Network error', 'error');
+        }
+    };
+
+    /* ---- Reset to template ---- */
+    window.resetTemplate = async function() {
+        if (!confirm('Reset all settings to the default template values? (You must click Save to persist.)')) return;
+        try {
+            var resp = await fetch('/config/template/json');
+            var cfg = await resp.json();
+            populateForm(cfg);
+            showStatus('Reset to template defaults (not yet saved)', 'success');
+        } catch(e) {
+            showStatus('Failed to load template', 'error');
+        }
+    };
+
+    /* ---- Status indicator ---- */
+    function showStatus(msg, cls) {
+        var el = document.getElementById('cfgStatus');
+        el.textContent = msg;
+        el.className = 'config-status ' + (cls || '');
+        clearTimeout(el._t);
+        el._t = setTimeout(function(){ el.textContent = ''; }, 5000);
+    }
+
+    /* ---- Init ---- */
+    loadConfig();
+})();
+</script>
+{% endblock %}

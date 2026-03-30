@@ -112,6 +112,8 @@ class OneShotRunner:
         self._use_default_creds = use_default_creds
         self._state = OneShotState()
         self._lock = threading.Lock()
+        self._tunnel = None
+        self._tunnel_address: Optional[str] = None
 
     _SUPPORT_CREDS = {"username": "support", "password": "654321"}
     _ADMIN_CREDS = {"username": "admin", "password": "123456"}
@@ -141,6 +143,13 @@ class OneShotRunner:
         if self._use_default_creds and op_id == "vperfsanity":
             creds["username"] = self._ADMIN_CREDS["username"]
             creds["password"] = self._ADMIN_CREDS["password"]
+        if self._tunnel_address:
+            creds["tunnel_address"] = self._tunnel_address
+        if self._tunnel:
+            if self._tunnel.vms_internal_ip:
+                creds["vms_internal_ip"] = self._tunnel.vms_internal_ip
+            if self._tunnel.vms_management_ip:
+                creds["vms_management_ip"] = self._tunnel.vms_management_ip
         return creds
 
     # ------------------------------------------------------------------
@@ -222,6 +231,9 @@ class OneShotRunner:
         self._emit("info", "=" * 65)
 
         try:
+            if self._credentials.get("tech_port"):
+                self._setup_tunnel()
+
             self._check_cancel()
             checks.append(self._validate_credentials())
             self._check_cancel()
@@ -256,6 +268,8 @@ class OneShotRunner:
                 )
         except _OneShotCancelled:
             checks.append(ValidationCheck("Cancelled", "fail", "Pre-validation cancelled by user.", ""))
+        finally:
+            self._teardown_tunnel()
 
         results = [{"name": c.name, "status": c.status, "message": c.message, "category": c.category} for c in checks]
 
@@ -304,6 +318,10 @@ class OneShotRunner:
         cluster_ip = self._credentials.get("cluster_ip", "").strip()
         if not cluster_ip:
             return ValidationCheck("Cluster API", "fail", "No cluster IP to test.", "connectivity")
+
+        if self._credentials.get("tech_port"):
+            return self._validate_tech_port_discovery(cluster_ip)
+
         try:
             url = f"https://{cluster_ip}/api/clusters/"
             resp = _requests_lib.get(url, timeout=10, verify=False)  # noqa: S501
@@ -316,6 +334,41 @@ class OneShotRunner:
             )
         except Exception as exc:
             return ValidationCheck("Cluster API", "fail", f"Cannot reach cluster API: {exc}", "connectivity")
+
+    def _validate_tech_port_discovery(self, cluster_ip: str) -> "ValidationCheck":
+        """In Tech Port mode, verify VMS discovery instead of direct API access."""
+        if self._tunnel and self._tunnel_address:
+            return ValidationCheck(
+                "Cluster API", "pass",
+                f"Tech Port: VMS discovered (internal={self._tunnel.vms_internal_ip}, "
+                f"management={self._tunnel.vms_management_ip}), tunnel={self._tunnel_address}.",
+                "connectivity",
+            )
+        node_user = self._credentials.get("node_user", "vastdata")
+        node_password = self._credentials.get("node_password", "")
+        if not node_password:
+            return ValidationCheck(
+                "Cluster API", "fail",
+                "Tech Port mode requires Node SSH password for VMS discovery.",
+                "connectivity",
+            )
+        try:
+            from utils.vms_tunnel import discover_vms_management_ip
+
+            vms_internal, vms_mgmt = discover_vms_management_ip(
+                cluster_ip, node_user, node_password, timeout=15,
+            )
+            return ValidationCheck(
+                "Cluster API", "pass",
+                f"Tech Port: VMS discovered (internal={vms_internal}, management={vms_mgmt}).",
+                "connectivity",
+            )
+        except Exception as exc:
+            return ValidationCheck(
+                "Cluster API", "fail",
+                f"Tech Port: VMS discovery failed: {exc}",
+                "connectivity",
+            )
 
     def _validate_node_ssh(self) -> ValidationCheck:
         cluster_ip = self._credentials.get("cluster_ip", "").strip()
@@ -363,6 +416,7 @@ class OneShotRunner:
                 password=self._credentials.get("password"),
                 token=self._credentials.get("api_token"),
                 config=_VALIDATION_API_CONFIG,
+                tunnel_address=self._tunnel_address,
             )
             api.authenticate()
             switches = api._make_api_request("switches/") or []
@@ -506,6 +560,9 @@ class OneShotRunner:
         logging.getLogger().addHandler(log_handler)
 
         try:
+            if self._credentials.get("tech_port"):
+                self._setup_tunnel()
+
             # Phase 1: Selected Operations
             self._run_operations()
 
@@ -594,7 +651,34 @@ class OneShotRunner:
                 self._emit("warn", f"Failed to save operation log: {log_exc}")
             return {"status": "error", "error": str(exc)}
         finally:
+            self._teardown_tunnel()
             logging.getLogger().removeHandler(log_handler)
+
+    def _setup_tunnel(self) -> None:
+        """Establish the VMS tunnel for Tech Port mode."""
+        from utils.vms_tunnel import VMSTunnel
+
+        cluster_ip = self._credentials["cluster_ip"]
+        node_user = self._credentials.get("node_user", "vastdata")
+        node_password = self._credentials.get("node_password", "vastdata")
+        self._emit("info", f"Tech Port mode: discovering VMS via {cluster_ip}...")
+        self._tunnel = VMSTunnel(cluster_ip, node_user, node_password)
+        self._tunnel.connect()
+        self._tunnel_address = self._tunnel.local_bind_address
+        self._emit(
+            "info",
+            f"VMS discovered: internal={self._tunnel.vms_internal_ip}, "
+            f"management={self._tunnel.vms_management_ip}, tunnel={self._tunnel_address}",
+        )
+
+    def _teardown_tunnel(self) -> None:
+        if self._tunnel is not None:
+            try:
+                self._tunnel.close()
+            except Exception:
+                pass
+            self._tunnel = None
+            self._tunnel_address = None
 
     # ------------------------------------------------------------------
     # Phase: Health Checks
@@ -627,6 +711,7 @@ class OneShotRunner:
                 password=api_creds["password"],
                 token=self._credentials.get("api_token"),
                 config=config,
+                tunnel_address=self._tunnel_address,
             )
             api.authenticate()
 
@@ -648,6 +733,12 @@ class OneShotRunner:
                     "username": self._credentials.get("switch_user", "cumulus"),
                     "password": switch_pw,
                 }
+                if self._tunnel_address:
+                    switch_ssh_config["proxy_jump"] = {
+                        "host": self._credentials.get("cluster_ip"),
+                        "username": self._credentials.get("node_user", "vastdata"),
+                        "password": self._credentials.get("node_password"),
+                    }
                 tiers.append(3)
 
             checker = HealthChecker(
@@ -798,6 +889,7 @@ class OneShotRunner:
                 password=api_creds["password"],
                 token=self._credentials.get("api_token"),
                 config=config,
+                tunnel_address=self._tunnel_address,
             )
             self._emit("info", "Authenticating with cluster API...")
             api.authenticate()
@@ -833,6 +925,12 @@ class OneShotRunner:
                             "username": self._credentials.get("switch_user", "cumulus"),
                             "password": switch_pw,
                         }
+                        if self._tunnel_address:
+                            sw_cfg["proxy_jump"] = {
+                                "host": self._credentials.get("cluster_ip"),
+                                "username": self._credentials.get("node_user", "vastdata"),
+                                "password": self._credentials.get("node_password"),
+                            }
                         tiers.append(3)
 
                     tier_desc = f"Tier {', '.join(str(t) for t in tiers)}"
@@ -857,6 +955,13 @@ class OneShotRunner:
 
                     raw_data["health_check_results"] = checker.to_dict(hc_report)
 
+                    try:
+                        from utils import get_data_dir
+
+                        checker.save_json(hc_report, output_dir=str(get_data_dir() / "output"))
+                    except Exception as save_exc:
+                        self._emit("warn", f"Could not save standalone health JSON: {save_exc}")
+
                     summary = hc_report.summary
                     self._emit(
                         "info",
@@ -880,18 +985,23 @@ class OneShotRunner:
                     switches = switch_inventory.get("switches", [])
                     switch_ips = [sw.get("mgmt_ip") for sw in switches if sw.get("mgmt_ip")]
 
-                    cnodes_network = raw_data.get("cnodes_network", [])
-                    cnode_ips = []
-                    for cn in cnodes_network:
-                        ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
-                        if ip and ip != "Unknown" and ip not in cnode_ips:
-                            cnode_ips.append(ip)
-                    if not cnode_ips:
-                        hardware = raw_data.get("hardware", {})
-                        for cn in hardware.get("cnodes", []):
+                    if self._tunnel_address:
+                        entry_ip = self._credentials.get("cluster_ip")
+                        cnode_ips = [entry_ip] if entry_ip else []
+                        self._emit("info", f"Tech Port mode: using entry CNode {entry_ip} for port mapping")
+                    else:
+                        cnodes_network = raw_data.get("cnodes_network", [])
+                        cnode_ips = []
+                        for cn in cnodes_network:
                             ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
                             if ip and ip != "Unknown" and ip not in cnode_ips:
                                 cnode_ips.append(ip)
+                        if not cnode_ips:
+                            hardware = raw_data.get("hardware", {})
+                            for cn in hardware.get("cnodes", []):
+                                ip = cn.get("mgmt_ip") or cn.get("ipmi_ip")
+                                if ip and ip != "Unknown" and ip not in cnode_ips:
+                                    cnode_ips.append(ip)
 
                     if switch_ips and cnode_ips:
                         for cnode_ip in cnode_ips:
@@ -907,6 +1017,7 @@ class OneShotRunner:
                                     switch_user=self._credentials.get("switch_user", "cumulus"),
                                     switch_password=switch_pw,
                                     proxy_jump=bool(self._credentials.get("proxy_jump", True)),
+                                    tunnel_address=self._tunnel_address,
                                 )
                                 result = mapper.collect_port_mapping()
                                 if result.get("available"):

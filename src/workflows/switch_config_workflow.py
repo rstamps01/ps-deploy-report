@@ -23,7 +23,7 @@ logger = get_logger(__name__)
 class SwitchConfigWorkflow:
     """Switch configuration extraction workflow."""
 
-    name = "Switch Configuration Extraction"
+    name = "Switch Extraction"
     description = "Extract and save switch configuration for backup or replacement"
     enabled = True
     min_vast_version = "5.0"
@@ -82,6 +82,16 @@ class SwitchConfigWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _jump_kwargs(self) -> Dict[str, Any]:
+        """Return jump-host SSH kwargs when Tech Port mode is active."""
+        if self._credentials.get("tunnel_address"):
+            return {
+                "jump_host": self._credentials.get("cluster_ip"),
+                "jump_user": self._credentials.get("node_user", "vastdata"),
+                "jump_password": self._credentials.get("node_password"),
+            }
+        return {}
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -139,12 +149,12 @@ class SwitchConfigWorkflow:
 
         warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
-        host = self._credentials.get("cluster_ip")
+        api_host = self._credentials.get("tunnel_address") or self._credentials.get("cluster_ip")
         username = self._credentials.get("username", "admin")
         password = self._credentials.get("password")
 
         # Try /api/switches/ (works on most versions)
-        url = f"https://{host}/api/switches/"
+        url = f"https://{api_host}/api/switches/"
         self.emit("info", f"$ curl -k -u {username}:*** {url}")
 
         try:
@@ -169,7 +179,7 @@ class SwitchConfigWorkflow:
         except requests.exceptions.HTTPError as e:
             self.emit("warn", f"API returned HTTP {e.response.status_code}")
             # If /api/switches/ fails, try /api/v1/switches/
-            url_v1 = f"https://{host}/api/v1/switches/"
+            url_v1 = f"https://{api_host}/api/v1/switches/"
             self.emit("info", f"Trying fallback: {url_v1}")
             try:
                 response = requests.get(url_v1, auth=(username, password), verify=False, timeout=30)
@@ -203,6 +213,7 @@ class SwitchConfigWorkflow:
             "which nv 2>/dev/null && echo HAS_NV; which net 2>/dev/null && echo HAS_NET; cat /etc/lsb-release 2>/dev/null || true",
             timeout=10,
             login_shell=True,
+            **self._jump_kwargs(),
         )
         if rc == 0 and stdout:
             probe = stdout.upper()
@@ -217,7 +228,7 @@ class SwitchConfigWorkflow:
                 return "cumulus_linux"
 
         # Probe: 'show version' via interactive SSH for Onyx/MLNX-OS detection
-        rc, stdout, stderr = run_interactive_ssh(ip, user, password, "show version", timeout=15)
+        rc, stdout, stderr = run_interactive_ssh(ip, user, password, "show version", timeout=15, **self._jump_kwargs())
         if rc == 0 and stdout:
             version_upper = stdout.upper()
             if "MLNX-OS" in version_upper or "ONYX" in version_upper:
@@ -276,12 +287,16 @@ class SwitchConfigWorkflow:
             self.emit("info", f"$ ssh {switch_user}@{ip} hostname")
 
             # Try standard SSH first
-            rc, stdout, stderr = run_ssh_command(ip, switch_user, switch_password, "hostname", timeout=15)
+            rc, stdout, stderr = run_ssh_command(
+                ip, switch_user, switch_password, "hostname", timeout=15, **self._jump_kwargs()
+            )
 
             if rc != 0:
                 # Try interactive SSH for Onyx switches
                 self.emit("info", f"  Standard SSH failed, trying interactive (Onyx)...")
-                rc, stdout, stderr = run_interactive_ssh(ip, switch_user, switch_password, "show version", timeout=15)
+                rc, stdout, stderr = run_interactive_ssh(
+                    ip, switch_user, switch_password, "show version", timeout=15, **self._jump_kwargs()
+                )
 
             if rc == 0:
                 hostname = stdout.strip().split("\n")[0] if stdout else ip
@@ -358,12 +373,18 @@ class SwitchConfigWorkflow:
                 self.emit("info", f"$ ssh {switch_user}@{ip} '{cmd}'")
 
                 if switch_type.startswith("cumulus"):
-                    rc, stdout, stderr = run_ssh_command(ip, switch_user, switch_password, cmd, timeout=30)
+                    rc, stdout, stderr = run_ssh_command(
+                        ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                    )
                 else:
                     # Onyx/MLNX-OS require interactive SSH (enable mode)
-                    rc, stdout, stderr = run_interactive_ssh(ip, switch_user, switch_password, cmd, timeout=30)
+                    rc, stdout, stderr = run_interactive_ssh(
+                        ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                    )
                     if rc != 0:
-                        rc, stdout, stderr = run_ssh_command(ip, switch_user, switch_password, cmd, timeout=30)
+                        rc, stdout, stderr = run_ssh_command(
+                            ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                        )
 
                 if rc == 0 and stdout:
                     switch_config["commands"][cmd] = stdout

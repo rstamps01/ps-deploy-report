@@ -66,11 +66,11 @@ class TestDashboardRoute(unittest.TestCase):
     def test_dashboard_quick_start_content(self):
         resp = self.client.get("/")
         self.assertIn(b"Quick Start", resp.data)
-        self.assertIn(b"What You Need", resp.data)
-        self.assertIn(b"Connect to Cluster", resp.data)
-        self.assertIn(b"Configure Switches", resp.data)
-        self.assertIn(b"Run Reporter", resp.data)
-        self.assertIn(b"Review Results", resp.data)
+        self.assertIn(b"Prerequisites", resp.data)
+        self.assertIn(b"Getting Started", resp.data)
+        self.assertIn(b"Connection Settings", resp.data)
+        self.assertIn(b"Run Report", resp.data)
+        self.assertIn(b"Review", resp.data)
 
     def test_dashboard_status_api(self):
         resp = self.client.get("/api/dashboard/status")
@@ -833,7 +833,7 @@ class TestAdvancedOpsRoutes(unittest.TestCase):
     def test_workflows_list_returns_json(self, mock_get_mgr):
         mock_mgr = MagicMock()
         mock_mgr.get_workflows.return_value = [
-            {"id": "vnetmap", "name": "vnetmap Validation", "description": "Test", "step_count": 7, "enabled": True}
+            {"id": "vnetmap", "name": "VAST vnetmap", "description": "Test", "step_count": 7, "enabled": True}
         ]
         mock_get_mgr.return_value = mock_mgr
         resp = self.client.get("/advanced-ops/workflows")

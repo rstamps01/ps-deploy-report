@@ -192,6 +192,7 @@ class VastApiHandler:
         password: Optional[str] = None,
         token: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        tunnel_address: Optional[str] = None,
     ):
         """
         Initialize the VAST API handler.
@@ -202,9 +203,14 @@ class VastApiHandler:
             password (str, optional): Password for authentication
             token (str, optional): API token for authentication
             config (Dict[str, Any], optional): Configuration dictionary
+            tunnel_address (str, optional): ``host:port`` of a local VMS tunnel
+                (e.g. ``127.0.0.1:54321``).  When provided, all API requests
+                are routed through this address instead of *cluster_ip*.
+                *cluster_ip* is preserved for metadata / reporting.
         """
         self.logger = get_logger(__name__)
         self.cluster_ip = cluster_ip
+        self._api_host = tunnel_address or cluster_ip
         self.username = username
         self.password = password
         self.token = token
@@ -216,6 +222,13 @@ class VastApiHandler:
         self.max_retries = self.api_config.get("max_retries", 3)
         self.retry_delay = self.api_config.get("retry_delay", 2)
         self.verify_ssl = self.api_config.get("verify_ssl", True)
+
+        if tunnel_address and self.verify_ssl:
+            self.verify_ssl = False
+            self.logger.info(
+                "SSL verification auto-disabled for tunnel (cert won't match %s)",
+                tunnel_address,
+            )
 
         self.logger.debug(f"API config loaded: {self.api_config}")
         self.logger.debug(f"SSL verification setting: {self.verify_ssl}")
@@ -298,7 +311,7 @@ class VastApiHandler:
         for version in api_versions:
             try:
                 # Test the version by making a simple API call
-                test_url = f"https://{self.cluster_ip}/api/{version}/vms/"
+                test_url = f"https://{self._api_host}/api/{version}/vms/"
                 self.logger.debug(f"Testing API version {version} with URL: {test_url}")
 
                 response = self.session.get(
@@ -331,7 +344,7 @@ class VastApiHandler:
         """
         self.api_version = version
         self.detected_api_version = version
-        self.base_url = f"https://{self.cluster_ip}/api/{version}/"
+        self.base_url = f"https://{self._api_host}/api/{version}/"
         self.logger.info(f"Using API version: {version}")
 
     def authenticate(self) -> bool:
@@ -1887,29 +1900,11 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting monitoring configuration")
 
-            monitoring_data = {}
-
-            # SNMP configuration (if available via API)
-            snmp_data = self._make_api_request("snmp/")
-            if snmp_data:
-                monitoring_data["snmp"] = snmp_data
-                self.logger.debug("Retrieved SNMP configuration")
-            else:
-                self.logger.debug("SNMP not configured on this cluster (optional)")
-                monitoring_data["snmp"] = None
-
-            # Syslog configuration (if available via API)
-            syslog_data = self._make_api_request("syslog/")
-            if syslog_data:
-                monitoring_data["syslog"] = syslog_data
-                self.logger.debug("Retrieved syslog configuration")
-            else:
-                self.logger.debug("Syslog not configured on this cluster (optional)")
-                monitoring_data["syslog"] = None
-
-            # Note: alerts/ endpoint is not documented in official VAST API
-            # Active alarms are retrieved via /api/alarms/ in health_checker.py
-            monitoring_data["alerts"] = None
+            monitoring_data: Dict[str, Any] = {
+                "snmp": None,
+                "syslog": None,
+                "alerts": None,
+            }
 
             self.logger.info("Monitoring configuration collection completed")
             return monitoring_data
@@ -2179,7 +2174,7 @@ class VastApiHandler:
 
             # The switches endpoint is only available in v1 API
             # Construct the full v1 API URL
-            base_url = f"https://{self.cluster_ip}/api/v1"
+            base_url = f"https://{self._api_host}/api/v1"
             switches_url = f"{base_url}/switches/"
 
             response = self.session.get(switches_url, verify=False, timeout=self.timeout)
@@ -2214,7 +2209,7 @@ class VastApiHandler:
 
             # The ports endpoint is only available in v1 API
             # Construct the full v1 API URL
-            base_url = f"https://{self.cluster_ip}/api/v1"
+            base_url = f"https://{self._api_host}/api/v1"
             ports_url = f"{base_url}/ports/"
 
             response = self.session.get(ports_url, verify=False, timeout=self.timeout)
@@ -2433,7 +2428,7 @@ class VastApiHandler:
         Uses requests.get directly since response is text, not JSON.
         Returns empty string on failure."""
         try:
-            url = f"https://{self.cluster_ip}/api/prometheusmetrics/{metric_path}"
+            url = f"https://{self._api_host}/api/prometheusmetrics/{metric_path}"
             self.logger.info(f"Fetching Prometheus metrics: {metric_path}")
             response = self.session.get(url, verify=self.verify_ssl, timeout=self.timeout)
             if response.status_code == 200:
@@ -2663,6 +2658,7 @@ def create_vast_api_handler(
     password: Optional[str] = None,
     token: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
+    tunnel_address: Optional[str] = None,
 ) -> VastApiHandler:
     """
     Create and return a configured VastApiHandler instance.
@@ -2673,11 +2669,13 @@ def create_vast_api_handler(
         password (str, optional): Password for authentication
         token (str, optional): API token for authentication
         config (Dict[str, Any], optional): Configuration dictionary
+        tunnel_address (str, optional): Local tunnel endpoint (``host:port``)
+            when using Tech Port mode
 
     Returns:
         VastApiHandler: Configured API handler instance
     """
-    return VastApiHandler(cluster_ip, username, password, token, config)
+    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address)
 
 
 if __name__ == "__main__":

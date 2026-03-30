@@ -150,8 +150,15 @@
                     <div class="form-group" style="margin-top:12px;">
                         <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                             <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" checked style="width:auto;">
-                            <span>Proxy switch SSH through CNode</span>
+                            <span>SSH Proxy Mode</span>
                             <span class="info-icon" title="Enable when switches are not directly reachable from this machine (e.g., field deployments via tech port). SSH to switches will tunnel through the CNode using node credentials.">&#9432;</span>
+                        </label>
+                    </div>
+                    <div class="form-group" style="margin-top:8px;">
+                        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                            <input type="checkbox" name="tech_port" id="techPortToggle" style="width:auto;">
+                            <span>Tech Port Mode</span>
+                            <span class="info-icon" title="Connect via any CBox Tech Port (192.168.2.2). The app auto-discovers VMS and tunnels all API calls through the SSH connection. Requires Node SSH credentials.">&#9432;</span>
                         </label>
                     </div>
                 </div>
@@ -221,9 +228,9 @@ function updateHealthCheckHint() {
     const hint = document.getElementById('healthCheckHint');
     if (hint) {
         if (portMappingEnabled) {
-            hint.textContent = 'Full checks enabled: API + Node SSH + Switch SSH (Tier 1-3)';
+            hint.textContent = 'Full checks enabled: API + Switch SSH (Tier 1 & 3)';
         } else {
-            hint.textContent = 'API checks only. Enable Port Mapping with SSH credentials for full Node & Switch checks.';
+            hint.textContent = 'API checks only. Enable Port Mapping with SSH credentials for Switch SSH checks.';
         }
     }
 }
@@ -271,6 +278,8 @@ async function loadProfile() {
     }
     const pj = document.getElementById('proxyJumpToggle');
     if (pj) pj.checked = p.proxy_jump !== false;
+    const tp = document.getElementById('techPortToggle');
+    if (tp) tp.checked = !!p.tech_port;
     toggleAuth();
 }
 
@@ -289,6 +298,8 @@ async function saveProfile() {
     data.enable_port_mapping = pm ? pm.checked : false;
     const pj = document.getElementById('proxyJumpToggle');
     data.proxy_jump = pj ? pj.checked : true;
+    const tpSave = document.getElementById('techPortToggle');
+    data.tech_port = tpSave ? tpSave.checked : false;
     try {
         const resp = await fetch('/profiles', {
             method: 'POST',

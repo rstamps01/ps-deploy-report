@@ -78,8 +78,10 @@ class ReportConfig:
     heading_font_size: int = 12
     line_spacing: float = 1.2
     include_toc: bool = True
+    include_page_numbers: bool = True
     include_timestamp: bool = True
     include_enhanced_features: bool = True
+    organization: str = "VAST Professional Services"
     sections: Dict[str, bool] = field(default_factory=dict)
 
     def section_enabled(self, key: str) -> bool:
@@ -114,8 +116,10 @@ class ReportConfig:
         _set("heading_font_size", pdf.get("heading_font_size", report.get("heading_font_size")), int)
         _set("line_spacing", report.get("line_spacing"), float)
         _set("include_toc", pdf.get("include_toc", report.get("include_toc")), bool)
+        _set("include_page_numbers", pdf.get("include_page_numbers", report.get("include_page_numbers")), bool)
         _set("include_timestamp", report.get("include_timestamp"), bool)
         _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
+        _set("organization", report.get("organization"), str)
 
         dc = config.get("data_collection", {})
         raw_sections = dc.get("sections", {})
@@ -198,6 +202,20 @@ class VastReportBuilder:
         self.brand_compliance = create_vast_brand_compliance()
 
         self.logger.info("Report builder initialized with VAST brand compliance")
+
+    def _font(self, variant: str = "normal") -> str:
+        """Return the ReportLab font name for the configured font family.
+
+        Variant is one of: normal, bold, italic, bold-italic.
+        """
+        base = self.config.font_name
+        _MAP = {
+            "Helvetica": {"normal": "Helvetica", "bold": "Helvetica-Bold", "italic": "Helvetica-Oblique", "bold-italic": "Helvetica-BoldOblique"},
+            "Times-Roman": {"normal": "Times-Roman", "bold": "Times-Bold", "italic": "Times-Italic", "bold-italic": "Times-BoldItalic"},
+            "Courier": {"normal": "Courier", "bold": "Courier-Bold", "italic": "Courier-Oblique", "bold-italic": "Courier-BoldOblique"},
+        }
+        family = _MAP.get(base, _MAP["Helvetica"])
+        return family.get(variant, family["normal"])
 
     def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
@@ -372,6 +390,7 @@ class VastReportBuilder:
                     health_data,
                     page_tracker,
                     "health_check" if is_first_pass else None,
+                    processed_data=processed_data,
                 )
             )
             story.append(PageBreak())
@@ -464,7 +483,22 @@ class VastReportBuilder:
                 "completeness": processed_data.get("metadata", {}).get("overall_completeness", 0.0),
                 "mgmt_vip": processed_data.get("cluster_summary", {}).get("mgmt_vip", "Unknown"),
             }
-            page_template = self.brand_compliance.create_vast_page_template(generation_info, page_size=page_size)
+            page_template = self.brand_compliance.create_vast_page_template(
+                generation_info,
+                page_size=page_size,
+                margins={
+                    "margin_left": self.config.margin_left,
+                    "margin_right": self.config.margin_right,
+                    "margin_top": self.config.margin_top,
+                    "margin_bottom": self.config.margin_bottom,
+                },
+                organization=getattr(self.config, "organization", None),
+                include_page_numbers=getattr(self.config, "include_page_numbers", True),
+            )
+
+            em = self.brand_compliance.effective_margins
+            self._frame_width = page_size[0] - em["left"] - em["right"]
+            self._frame_height = page_size[1] - em["top"] - em["bottom"]
 
             # Create document with page template
             from reportlab.platypus import BaseDocTemplate
@@ -482,10 +516,10 @@ class VastReportBuilder:
                 temp_doc = BaseDocTemplate(
                     temp_path,
                     pagesize=page_size,
-                    rightMargin=self.config.margin_right * inch,
-                    leftMargin=self.config.margin_left * inch,
-                    topMargin=self.config.margin_top * inch,
-                    bottomMargin=self.config.margin_bottom * inch,
+                    rightMargin=em["right"],
+                    leftMargin=em["left"],
+                    topMargin=em["top"],
+                    bottomMargin=em["bottom"],
                 )
                 temp_doc.addPageTemplates([page_template])
 
@@ -517,10 +551,10 @@ class VastReportBuilder:
             doc = BaseDocTemplate(
                 output_path,
                 pagesize=page_size,
-                rightMargin=self.config.margin_right * inch,
-                leftMargin=self.config.margin_left * inch,
-                topMargin=self.config.margin_top * inch,
-                bottomMargin=self.config.margin_bottom * inch,
+                rightMargin=em["right"],
+                leftMargin=em["left"],
+                topMargin=em["top"],
+                bottomMargin=em["bottom"],
             )
             doc.addPageTemplates([page_template])
 
@@ -677,7 +711,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -694,7 +728,7 @@ class VastReportBuilder:
             return content
 
         # Read TOC data from Excel (A1:C60)
-        available_width = A4[0] - 1.0 * inch
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         for row in range(1, 61):
@@ -765,15 +799,15 @@ class VastReportBuilder:
 
             # Set font properties (use Excel formatting if available)
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = text_color_excel if text_color_excel else self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = text_size_excel if text_size_excel else (self.config.font_size - 1)
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = text_color if text_color else self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = text_size
                 extra_space = 3
             else:
-                text_font = "Helvetica-Oblique" if is_italic_excel else "Helvetica"
+                text_font = self._font("italic") if is_italic_excel else self._font()
                 text_color = text_color_excel if text_color_excel else colors.HexColor("#000000")
                 text_size = text_size_excel if text_size_excel else (self.config.font_size - 2)
                 page_font = text_font
@@ -802,7 +836,7 @@ class VastReportBuilder:
                 spacing_buffer = 0.1 * inch
                 available_for_dots = available_width - text_width - page_width - spacing_buffer
 
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(available_for_dots / dot_width)
                     num_dots = max(3, num_dots)
@@ -909,7 +943,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -1003,7 +1037,7 @@ class VastReportBuilder:
                 filtered_structure.append(entry)
 
         # Build TOC table with calculated dot leaders
-        available_width = A4[0] - 1.0 * inch
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them
@@ -1033,18 +1067,18 @@ class VastReportBuilder:
 
             # Create styles for text and page number
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = self.config.font_size - 1
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = self.config.font_size - 1
                 extra_space = 0 if idx == 0 else 12
             else:
-                text_font = "Helvetica"
+                text_font = self._font()
                 text_color = colors.HexColor("#000000")
                 text_size = self.config.font_size - 2
-                page_font = "Helvetica"
+                page_font = self._font()
                 page_color = colors.HexColor("#000000")
                 page_size = self.config.font_size - 2
                 extra_space = 0
@@ -1080,7 +1114,7 @@ class VastReportBuilder:
                     dot_leader_length = 4.75 * inch
 
                 # Calculate how many dots fit in the specified space
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(dot_leader_length / dot_width)
                     num_dots = max(3, num_dots)
@@ -1161,7 +1195,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -1240,7 +1274,7 @@ class VastReportBuilder:
         # Build TOC table with calculated dot leaders for perfect alignment
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        available_width = A4[0] - 1.0 * inch  # Page width minus margins
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them (to separate section groups)
@@ -1265,19 +1299,19 @@ class VastReportBuilder:
 
             # Create styles for text and page number
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = self.config.font_size - 1  # Slightly smaller for compact view
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = self.config.font_size - 1
                 # More space before main sections (except first one) to separate from subsections above
                 extra_space = 0 if idx == 0 else 12
             else:
-                text_font = "Helvetica"
+                text_font = self._font()
                 text_color = colors.HexColor("#000000")
                 text_size = self.config.font_size - 2  # Smaller for subsections
-                page_font = "Helvetica"
+                page_font = self._font()
                 page_color = colors.HexColor("#000000")
                 page_size = self.config.font_size - 2
                 extra_space = 0
@@ -1313,7 +1347,7 @@ class VastReportBuilder:
                     dot_leader_length = 4.75 * inch  # Default for all other entries
 
                 # Calculate how many dots fit in the specified space
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(dot_leader_length / dot_width)
                     num_dots = max(3, num_dots)  # Minimum 3 dots
@@ -1538,13 +1572,13 @@ class VastReportBuilder:
         ebox_list = list(eboxes.values())
 
         def ebox_sort_key(e: Dict[str, Any]) -> tuple:
-            eid = e.get("id")
-            if eid is None:
-                return (True, 0)
+            rack = e.get("rack_name") or "Unknown"
+            ru = e.get("rack_unit") or ""
             try:
-                return (False, int(eid)) if str(eid).isdigit() else (False, 0)
+                u_val = int(ru.upper().replace("U", ""))
             except (TypeError, ValueError):
-                return (False, 0)
+                u_val = 0
+            return (rack, -u_val)
 
         ebox_list.sort(key=ebox_sort_key)
         all_rows: List[List[str]] = []
@@ -1579,7 +1613,11 @@ class VastReportBuilder:
                 all_rows.append([rack_name, "", "N/A", "Unknown", rack_unit])
 
             # Up to 2 DNode rows (no Model value; Status = ACTIVE/FAILED from API)
-            matching_dnodes = [d for d in dnodes if d.get("ebox_id") == ebox_id]
+            matching_dnodes = sorted(
+                [d for d in dnodes if d.get("ebox_id") == ebox_id],
+                key=lambda d: d.get("name") or "",
+                reverse=True,
+            )
             for d in matching_dnodes[:2]:
                 dnode_name = d.get("name") or f"dnode-{d.get('id', 'Unknown')}"
                 dnode_state = d.get("status") or d.get("state") or ""
@@ -1869,36 +1907,35 @@ class VastReportBuilder:
         if not all_rows:
             return []
 
-        # Sort all rows by rack name first, then by hardware type (CBox, DBox, Switch)
-        # For CBoxes/DBoxes, sort by CNode/DNode name; for switches, use Name/Serial Number column
-        def sort_key(row):
-            rack_name = row[0] or "Unknown"
-            node_col = row[1] or ""  # CNode/DNode column
-            name_col = row[3] or ""  # Name/Serial Number column
+        def _parse_u(val: str) -> int:
+            """Parse 'U24' → 24, return 0 on failure."""
+            try:
+                return int(str(val).upper().replace("U", ""))
+            except (TypeError, ValueError):
+                return 0
 
-            # Determine hardware type based on CNode/DNode column content
+        def _dev_order(row) -> int:
+            """Device-type priority: CBox/EBox=0, CNode=1, DNode=2, DBox(no-node)=3, Switch=4."""
+            node_col = row[1] or ""
+            name_col = row[3] or ""
             if node_col == "EBox":
-                hw_type = "C"  # EBox
-                sort_value = name_col
-            elif node_col and node_col != "N/A":
-                # Check if it's a CNode or DNode by the prefix
-                if node_col.startswith("cnode-"):
-                    hw_type = "A"  # CBox
-                elif node_col.startswith("dnode-"):
-                    hw_type = "B"  # DBox
-                else:
-                    hw_type = "A"  # Default to CBox for unknown node types
-                sort_value = node_col  # Sort by node name
-            elif name_col and (name_col.startswith("dbox-") or "DB-" in name_col):
-                hw_type = "B"  # DBox (no nodes found)
-                sort_value = name_col
-            else:
-                hw_type = "D"  # Switch
-                sort_value = name_col
+                return 0
+            if node_col.startswith("cnode-"):
+                return 1
+            if node_col.startswith("dnode-"):
+                return 2
+            if name_col.startswith("cbox-") or name_col.startswith("CB-"):
+                return 0
+            if name_col.startswith("dbox-") or "DB-" in name_col:
+                return 0
+            if node_col == "N/A":
+                return 3
+            return 4
 
-            return (rack_name, hw_type, sort_value or "")
-
-        all_rows.sort(key=sort_key)
+        # Two-pass stable sort: name descending first, then primary criteria ascending.
+        # Python's stable sort preserves name order within identical primary keys.
+        all_rows.sort(key=lambda r: (r[3] or r[1] or ""), reverse=True)
+        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[5] or ""), _dev_order(r)))
 
         # Create table with VAST styling
         return cast(
@@ -2339,15 +2376,9 @@ class VastReportBuilder:
             )
             content.extend(inventory_elements)
 
-            # Add page break if we have many devices to prevent layout issues
-            total_devices = len(cboxes) + len(dboxes) + len(eboxes) + len(switches)
-            if total_devices > 15:  # Threshold for large inventories
-                content.append(PageBreak())
-
-        # Add Physical Rack Layout - force to start at top of Page 6
+        # Add Physical Rack Layout
         rack_positions = hardware.get("rack_positions_available", False)
         if rack_positions:
-            # Force page break to move heading to top of Page 6
             content.append(PageBreak())
 
             # Note: Section heading will be combined with first rack heading
@@ -2449,6 +2480,7 @@ class VastReportBuilder:
                                 break
                         ebox_data = {
                             "id": ebox_info.get("id"),
+                            "name": ebox_info.get("name", ""),
                             "model": model_key,
                             "hardware_type": model_key,
                             "rack_unit": rack_unit,
@@ -2495,6 +2527,52 @@ class VastReportBuilder:
                         self.logger.info(f"Auto: assigned {len(switches_data)} switches to rack '{target_rack}'")
                     else:
                         self.logger.warning(f"Switch target rack '{target_rack}' not found in racks_data")
+
+                # Build node_status_map for rack diagram status indicators
+                hw_cnodes_all = hardware.get("cnodes") or []
+                hw_dnodes_all = hardware.get("dnodes") or []
+                hw_switches_inv = hardware.get("switches") or []
+
+                cnodes_by_cbox: dict[int, list[dict[str, Any]]] = {}
+                cnode_by_ebox: dict[int, dict[str, Any]] = {}
+                dnodes_by_dbox: dict[int, list[dict[str, Any]]] = {}
+                dnodes_by_ebox: dict[int, list[dict[str, Any]]] = {}
+                switch_in_inventory: dict[str, str] = {}
+
+                for cn in hw_cnodes_all:
+                    cn_status = str(cn.get("status") or cn.get("state") or "ACTIVE").upper()
+                    cn_is_mgmt = bool(cn.get("is_mgmt", False))
+                    entry = {"status": cn_status, "is_mgmt": cn_is_mgmt}
+                    cbox_id = cn.get("cbox_id")
+                    ebox_id = cn.get("ebox_id")
+                    if cbox_id is not None:
+                        cnodes_by_cbox.setdefault(cbox_id, []).append(entry)
+                    if ebox_id is not None:
+                        cnode_by_ebox[ebox_id] = entry
+
+                for dn in hw_dnodes_all:
+                    dn_status = str(dn.get("status") or dn.get("state") or "ACTIVE").upper()
+                    entry = {"status": dn_status}
+                    dbox_id = dn.get("dbox_id")
+                    ebox_id = dn.get("ebox_id")
+                    if dbox_id is not None:
+                        dnodes_by_dbox.setdefault(dbox_id, []).append(entry)
+                    if ebox_id is not None:
+                        dnodes_by_ebox.setdefault(ebox_id, []).append(entry)
+
+                for sw in hw_switches_inv:
+                    sw_name = str(sw.get("name") or "").strip()
+                    sw_state = str(sw.get("state") or sw.get("status") or "ACTIVE").upper()
+                    if sw_name:
+                        switch_in_inventory[sw_name] = sw_state
+
+                node_status_map: dict[str, Any] = {
+                    "cnodes_by_cbox": cnodes_by_cbox,
+                    "cnode_by_ebox": cnode_by_ebox,
+                    "dnodes_by_dbox": dnodes_by_dbox,
+                    "dnodes_by_ebox": dnodes_by_ebox,
+                    "switch_in_inventory": switch_in_inventory,
+                }
 
                 # Generate one diagram per rack
                 if racks_data:
@@ -2558,7 +2636,14 @@ class VastReportBuilder:
                             rack_height_u = rack_height_map.get(rack_name, 42)
 
                             # Create rack diagram generator with appropriate rack height
+                            # Reserve headroom for the heading, spacer, and table padding
+                            # that share the page with the diagram
+                            fw = getattr(self, "_frame_width", 7.27 * inch)
+                            fh = getattr(self, "_frame_height", 8.5 * inch)
+                            rack_page_h = fh - 1.0 * inch
                             rack_gen = RackDiagram(
+                                page_width=fw,
+                                page_height=rack_page_h,
                                 rack_height_u=rack_height_u,
                                 library_path=self.library_path,
                                 user_images_dir=self.user_images_dir,
@@ -2568,13 +2653,13 @@ class VastReportBuilder:
                             diagram_dboxes = [] if is_ebox_cluster else rack_dboxes
                             diagram_eboxes = rack_eboxes if is_ebox_cluster else []
 
-                            # Generate rack diagram with rack name
                             rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
                                 rack_cboxes,
                                 diagram_dboxes,
                                 rack_switches,
                                 rack_name=rack_name,
                                 eboxes=diagram_eboxes,
+                                node_status_map=node_status_map,
                             )
 
                             # Add rack name heading before diagram
@@ -2604,17 +2689,20 @@ class VastReportBuilder:
                             # Center the rack diagram on the page using a table
                             from reportlab.platypus import Table as RLTable
 
-                            # Use letter page width (8.5 inches)
-                            page_width = 8.5 * inch
+                            fw = getattr(self, "_frame_width", 7.5 * inch)
                             rack_table = RLTable(
                                 [[rack_drawing]],
-                                colWidths=[page_width - (2 * 0.5 * inch)],  # Page width minus margins
+                                colWidths=[fw],
                             )
                             rack_table.setStyle(
                                 TableStyle(
                                     [
                                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                                         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                                     ]
                                 )
                             )
@@ -2964,8 +3052,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             table = Table(
                 table_data,
                 colWidths=[
@@ -2987,7 +3074,7 @@ class VastReportBuilder:
                         ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
                         ("FONTSIZE", (0, 0), (-1, 0), 8),
                         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                         ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
@@ -3074,8 +3161,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             table = Table(
                 table_data,
                 colWidths=[
@@ -3097,7 +3183,7 @@ class VastReportBuilder:
                         ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, -1), self._font("bold")),
                         ("FONTSIZE", (0, 0), (-1, 0), 8),
                         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                         ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
@@ -3608,18 +3694,8 @@ class VastReportBuilder:
                 # Embed the generated diagram (PNG)
                 try:
                     # Calculate available space on page
-                    if self.config.page_size == "Letter":
-                        page_width = 8.5 * inch
-                        page_height = 11 * inch
-                    else:  # A4
-                        page_width = 8.27 * inch
-                        page_height = 11.69 * inch
-
-                    # Account for margins and header/footer
-                    available_width = page_width - (2 * 0.5 * inch)
-                    available_height = page_height - (2 * 0.75 * inch)  # Top and bottom margins
-
-                    # Reserve space for heading and spacing (approximately 1 inch)
+                    available_width = getattr(self, "_frame_width", 7.5 * inch)
+                    available_height = getattr(self, "_frame_height", 10.19 * inch)
                     max_diagram_height = available_height - 1.5 * inch
 
                     # Get actual image dimensions to calculate aspect ratio
@@ -4218,7 +4294,7 @@ class VastReportBuilder:
 
                 # Create custom port summary table with specific column widths
                 # Port Count: 15%, Speed: 15%, Port Numbers: 70%
-                page_width = A4[0] - 1.0 * inch
+                page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
                 col_widths = [
                     page_width * 0.15,  # Port Count (matches Speed column)
                     page_width * 0.15,  # Speed (reduced by 50%)
@@ -4712,11 +4788,104 @@ class VastReportBuilder:
     # Health Check & Post-Deployment Validation sections
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _fixup_health_results(
+        health_data: Dict[str, Any],
+        processed_data: Optional[Dict[str, Any]],
+    ) -> None:
+        """Correct stale health-check results from older JSON exports.
+
+        Applies render-time patches so reports regenerated from pre-fix JSON
+        files reflect current check logic without requiring a new live run.
+        """
+        results = health_data.get("results")
+        if not results:
+            return
+
+        summary = health_data.get("summary")
+
+        node_ssh = [r for r in results if r.get("category") == "node_ssh"]
+        if node_ssh:
+            kept = [r for r in results if r.get("category") != "node_ssh"]
+            health_data["results"] = kept
+            results = kept
+            if summary:
+                for r in node_ssh:
+                    bucket = r.get("status", "error")
+                    if bucket in summary:
+                        summary[bucket] = max(0, summary[bucket] - 1)
+                summary["total"] = sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))
+
+        cluster_summary = (processed_data or {}).get("cluster_summary", {})
+        mgmt_cnode = cluster_summary.get("mgmt_cnode", "")
+
+        hw = (processed_data or {}).get("hardware_inventory", {})
+        cnodes_list = hw.get("cnodes") or []
+        mgmt_names: set = set()
+        if mgmt_cnode:
+            mgmt_names.add(mgmt_cnode)
+        for cn in cnodes_list:
+            if cn.get("is_mgmt"):
+                mgmt_names.add(cn.get("name", ""))
+
+        for r in results:
+            name = r.get("check_name", "")
+            status = r.get("status", "")
+
+            if name == "CNode Status" and status == "fail" and mgmt_names:
+                msg = r.get("message", "")
+                inactive = r.get("details", {}).get("inactive", [])
+                only_mgmt = inactive and all(n in mgmt_names for n in inactive)
+                disabled = r.get("details", {}).get("disabled", [])
+                if only_mgmt and not disabled:
+                    total = r.get("details", {}).get("total", len(inactive))
+                    mgmt_label = inactive[0] if inactive else mgmt_cnode
+                    r["status"] = "pass"
+                    r["message"] = f"All {total} CNodes healthy (VMS on {mgmt_label})"
+                    if summary:
+                        summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                        summary["pass"] = summary.get("pass", 0) + 1
+
+            elif name == "Active Alarms" and status == "fail":
+                r["status"] = "warning"
+                if summary:
+                    summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                    summary["warning"] = summary.get("warning", 0) + 1
+
+            elif name == "Switches in VMS" and status == "warning":
+                msg = r.get("message", "")
+                if "No switches registered" in msg or "no switches" in msg.lower():
+                    r["status"] = "skipped"
+                    r["message"] = "No switches registered"
+                    if summary:
+                        summary["warning"] = max(0, summary.get("warning", 1) - 1)
+                        summary["skipped"] = summary.get("skipped", 0) + 1
+
+            elif name == "Monitoring Config":
+                r["status"] = "skipped"
+                r["message"] = "Check removed — API endpoints unavailable"
+                if summary and status != "skipped":
+                    old_bucket = status if status in ("pass", "fail", "warning", "error") else "error"
+                    summary[old_bucket] = max(0, summary.get(old_bucket, 1) - 1)
+                    summary["skipped"] = summary.get("skipped", 0) + 1
+
+            elif name == "Switch Config Backup":
+                r["check_name"] = "Switch Config Readability"
+
+            elif name == "VIP Pools" and status == "fail":
+                msg = r.get("message", "")
+                if "No VIP pools configured" in msg or "No enabled VIP pools" in msg:
+                    r["status"] = "warning"
+                    if summary:
+                        summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                        summary["warning"] = summary.get("warning", 0) + 1
+
     def _create_health_check_section(
         self,
         health_data: Dict[str, Any],
         page_tracker: Optional[Dict[str, int]] = None,
         section_key: Optional[str] = None,
+        processed_data: Optional[Dict[str, Any]] = None,
     ) -> List[Any]:
         """Create the Cluster Health Check Results section.
 
@@ -4724,10 +4893,12 @@ class VastReportBuilder:
             health_data: Health check results dict with 'summary' and 'results' keys.
             page_tracker: Optional page tracker for TOC page capture.
             section_key: Section key for PageMarker registration.
+            processed_data: Full report data for render-time corrections on stale JSON.
 
         Returns:
             List of flowables for the section.
         """
+        self._fixup_health_results(health_data, processed_data)
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
@@ -4789,7 +4960,7 @@ class VastReportBuilder:
                 self._safe_table_value(summary.get("total", 0)),
             ]
 
-            page_width = A4[0] - 1.0 * inch
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_width = page_width / len(summary_headers)
             summary_table = Table(
                 [summary_headers, summary_row],
@@ -4800,7 +4971,7 @@ class VastReportBuilder:
             cell_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
                 ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -4843,7 +5014,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            page_width = A4[0] - 1.0 * inch
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_widths = [
                 page_width * 0.22,  # Check Name
                 page_width * 0.12,  # Category
@@ -4856,7 +5027,7 @@ class VastReportBuilder:
             detail_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
                 ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -4974,7 +5145,7 @@ class VastReportBuilder:
             cell_style_bold = ParagraphStyle(
                 "ChecklistCellBold",
                 parent=cell_style,
-                fontName="Helvetica-Bold",
+                fontName=self._font("bold"),
             )
             cell_style_center = ParagraphStyle(
                 "ChecklistCellCenter",
@@ -4984,7 +5155,7 @@ class VastReportBuilder:
             header_style_cell = ParagraphStyle(
                 "ChecklistHeader",
                 parent=cell_style,
-                fontName="Helvetica-Bold",
+                fontName=self._font("bold"),
                 textColor=self.brand_compliance.colors.PURE_WHITE,
             )
 
@@ -5012,7 +5183,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            page_width = A4[0] - 1.0 * inch
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_widths = [page_width * 0.25, page_width * 0.55, page_width * 0.20]
 
             checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)

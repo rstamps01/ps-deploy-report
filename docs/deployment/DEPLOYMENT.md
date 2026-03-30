@@ -17,7 +17,7 @@ This guide provides comprehensive instructions for deploying the VAST As-Built R
 
 ### Prerequisites
 
-- Python 3.8+ installed
+- Python 3.10+ installed (3.12 recommended)
 - Network access to VAST Management Service
 - Valid VAST cluster credentials
 
@@ -89,8 +89,8 @@ This guide provides comprehensive instructions for deploying the VAST As-Built R
 4. **Configure Application**
    ```bash
    sudo -u vast-asbuilt-reporter cp config/config.yaml.template config/config.yaml
-   sudo -u vast-asbuilt-reporter nano config/config.yaml
    ```
+   Use the **Advanced Configuration** page (`/config/advanced`) in the web UI for form-based settings management, or edit `config.yaml` directly. The **Report Tuning Tool** on the Results page allows PDF regeneration from saved JSON with section and formatting overrides.
 
 5. **Set Up Logging**
    ```bash
@@ -525,6 +525,6 @@ sudo systemctl restart vast-asbuilt-reporter
 
 ---
 
-**Last Updated**: September 27, 2025
-**Version**: 1.0.0-dev
-**Compatibility**: VAST 5.3+, Python 3.8+
+**Last Updated**: March 29, 2026
+**Version**: 1.5.0
+**Compatibility**: VAST 5.3+, Python 3.10+

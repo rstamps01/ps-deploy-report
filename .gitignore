@@ -214,3 +214,9 @@ logs/*.log.[0-9]*
 
 # External code reviews (not part of this project)
 docs/JeffsPortMapperReview/
+
+# asbuilt-analyzer web frontend (local only — not published to GitHub)
+tools/analyzer_web.py
+tools/static/analyzer/
+tools/templates/analyzer/
+tools/tracer/alert_engine.py

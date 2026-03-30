@@ -3,7 +3,9 @@
 **Purpose:** Complete implementation specification for the Cluster Deployment Health Check module. Designed for delegation to cost-efficient AI agents with minimal context overhead.
 
 **Plan Reference:** `.cursor/plans/health_check_module_1c149000.plan.md`
-**Last Updated:** 2026-03-19
+**Last Updated:** 2026-03-29
+
+> **Post-HC-1 State:** All Tier 2 node SSH checks (10 checks) have been removed as of v1.5.0 — they were redundant with `vast_support_tools.py` diagnostics in the One-Shot test suite and produced false-positive results when SSH targeted the Management CNode. The health check module now implements a 2-tier model: Tier 1 (26 API checks) + Tier 3 (6 switch SSH checks) = 32 total checks. VIP Pools status uses `warning` (not `fail`) for unconfigured pools. Render-time fixups in `_fixup_health_results` auto-correct stale results when regenerating reports from older JSON files.
 
 ---
 
@@ -744,7 +746,9 @@ When provided with a full `vast_data_*.json` that contains `health_check_results
 
 ---
 
-## WP-9: SSH Health Checks (Tier 2-3)
+## WP-9: SSH Health Checks (Tier 3 Only)
+
+> **HC-1 Update:** All Tier 2 node SSH checks (items 1–5 below) have been removed. They are now handled by `vast_support_tools.py` in the One-Shot test suite. Only Tier 3 switch SSH checks (items 6–8) remain in the health check module. Total checks: 32 (26 API + 6 switch SSH).
 
 **Model:** T2 (Standard)
 **Modifies:** `src/health_checker.py` (created in WP-1)
@@ -757,19 +761,21 @@ When provided with a full `vast_data_*.json` that contains `health_check_results
 
 ### Implementation Specification
 
-**`run_node_ssh_checks()` methods:**
+**`run_node_ssh_checks()` — REMOVED (HC-1)**
 
-1. `_check_panic_alert_logs` -- SSH to first CNode, run `clush -g cnodes '/vast/data/logdocker.sh | egrep "PANIC|ALERT|fail"' | grep $(date +%Y-%m-%d)`. Pass if empty output.
-2. `_check_management_ping` -- SSH to first CNode, ping all IPMI/mgmt IPs from `vms/1/network_settings/`. Report reachability.
-3. `_check_support_tool` -- SSH to CNode, download `vast_support_tools.py`, run inside VAST container, capture output. Parse for CRITICAL findings.
-4. `_check_vms_log_bundle` -- SSH to CNode, `tar cvfz` VMS logs, report success/failure.
-5. `_check_vnetmap` -- SSH to CNode, run `vnetmap.py` with switch IPs and node IPs. Parse output with `VNetMapParser`.
+~~The following Tier 2 checks were removed in v1.5.0 — redundant with One-Shot `vast_support_tools.py`:~~
 
-**`run_switch_ssh_checks()` methods:**
+1. ~~`_check_panic_alert_logs`~~
+2. ~~`_check_management_ping`~~
+3. ~~`_check_support_tool`~~
+4. ~~`_check_vms_log_bundle`~~
+5. ~~`_check_vnetmap`~~
+
+**`run_switch_ssh_checks()` methods (Tier 3 — active):**
 
 6. `_check_mlag_status` -- SSH to each switch, `nv show mlag`, parse for `peer-alive: True` and `backup-active: True`.
 7. `_check_switch_ntp` -- SSH to each switch, `ntpq -p`, verify peers reachable.
-8. `_check_switch_config_backup` -- SSH to each switch, `nv config show`, capture for documentation.
+8. `_check_switch_config_backup` -- SSH to each switch, `nv config show`, capture for documentation (renamed to "Switch Config Readability" — captures 50-line snippet for verification only).
 
 **SSH config structure:**
 

@@ -20,9 +20,18 @@ To enable port mapping collection, you need SSH access to:
 
 ### Network Access
 
-- SSH connectivity from your workstation to:
-  - At least one VAST CNode
-  - All cluster switches
+- SSH connectivity from your workstation to at least one VAST CNode
+- Switch SSH is tunneled through the CNode by default (SSH proxy hop), so direct switch access from your workstation is **not required**
+
+### SSH Proxy Hop (default: ON)
+
+By default, switch SSH connections tunnel through the CNode via paramiko nested transport (`direct-tcpip` channel). This enables port mapping when switches are only reachable from inside the cluster network — the typical scenario for Tech Port field deployments.
+
+- **UI toggle:** "Proxy through CNode" on the Generate and Reporter pages (default: ON)
+- **CLI flag:** `--no-proxy-jump` disables proxy hop for environments with direct switch access
+- **Profile persistence:** The proxy hop setting is saved with cluster profiles
+
+When proxy hop is enabled, only CNode SSH access is required from your workstation. The application handles the hop to switches automatically.
 
 ## Usage
 
