@@ -49,12 +49,12 @@ def flask_server(tmp_path_factory):
     profiles_path = tmpdir / "cluster_profiles.json"
     profiles_path.write_text("{}")
 
-    app = create_flask_app()
+    app = create_flask_app(config={"DEVELOPER_MODE": True})
     app.config["TESTING"] = True
     app.config["DEFAULT_OUTPUT_DIR"] = str(reports_dir)
     app.config["OUTPUT_DIRS"] = {str(reports_dir)}
     app.config["CONFIG_PATH"] = str(config_dst)
-    app.config["CONFIG_TEMPLATE_PATH"] = str(template_dst)
+    app.config["CONFIG_TEMPLATE"] = str(template_dst)
     app.config["PROFILES_PATH"] = str(profiles_path)
 
     port = _free_port()
@@ -101,18 +101,20 @@ class TestPageLoads:
 
     def test_reports_page_loads(self, flask_server, page):
         page.goto(f"{flask_server['url']}/reports")
-        page.wait_for_selector("text=Reports")
+        page.wait_for_selector("h1:has-text('Reports')")
 
     def test_config_page_loads(self, flask_server, page):
         page.goto(f"{flask_server['url']}/config")
-        page.wait_for_selector("text=Configuration")
+        page.wait_for_selector("h1:has-text('Configuration')")
 
     def test_nav_links_work(self, flask_server, page):
         page.goto(flask_server["url"])
         links = page.query_selector_all("nav a, .sidebar a, a.nav-link")
         hrefs = [anchor.get_attribute("href") for anchor in links if anchor.get_attribute("href")]
-        expected = {"/", "/generate", "/reports", "/config"}
-        assert expected.issubset(set(hrefs)), f"Missing nav links. Found: {hrefs}"
+        primary = {"/", "/reporter", "/library", "/docs"}
+        assert primary.issubset(set(hrefs)), f"Missing primary nav links. Found: {hrefs}"
+        hamburger = {"/config/advanced", "/generate", "/reports"}
+        assert hamburger.issubset(set(hrefs)), f"Missing hamburger nav links. Found: {hrefs}"
 
 
 # ---------------------------------------------------------------------------
