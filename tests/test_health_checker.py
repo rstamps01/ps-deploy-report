@@ -694,7 +694,15 @@ class TestAPICheckBranches:
 
     def test_check_call_home_via_callhomeconfigs_registered(self, mock_api_handler):
         """Primary path: callhomeconfigs/ returns cloud_registered=True."""
-        cfg = [{"cloud_registered": True, "log_enabled": True, "bundle_enabled": False, "cloud_enabled": False, "customer": "AcmeCo"}]
+        cfg = [
+            {
+                "cloud_registered": True,
+                "log_enabled": True,
+                "bundle_enabled": False,
+                "cloud_enabled": False,
+                "customer": "AcmeCo",
+            }
+        ]
         mock_api_handler._make_api_request.return_value = cfg
         hc = self._make_hc(mock_api_handler, {"name": "c"})
         r = hc._check_call_home_status()
@@ -888,10 +896,7 @@ class TestSwitchCheckMethods:
 
     @patch("health_checker.run_interactive_ssh")
     def test_mlag_onyx_oper_down(self, mock_pty, sw_checker):
-        onyx_output = (
-            "Admin status: Enabled\n"
-            "Operational status: Down\n"
-        )
+        onyx_output = "Admin status: Enabled\n" "Operational status: Down\n"
         mock_pty.return_value = (0, onyx_output, "")
         r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
         assert r.status == "fail"
@@ -899,10 +904,7 @@ class TestSwitchCheckMethods:
 
     @patch("health_checker.run_interactive_ssh")
     def test_mlag_onyx_admin_disabled(self, mock_pty, sw_checker):
-        onyx_output = (
-            "Admin status: Disabled\n"
-            "Operational status: Down\n"
-        )
+        onyx_output = "Admin status: Disabled\n" "Operational status: Down\n"
         mock_pty.return_value = (0, onyx_output, "")
         r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
         assert r.status == "fail"
@@ -990,7 +992,7 @@ class TestSwitchCheckMethods:
 
     @patch("health_checker.run_interactive_ssh")
     def test_switch_config_onyx_readable(self, mock_pty, sw_checker):
-        mock_pty.return_value = (0, "## Running database \"initial\"\nno cli default prefix-mode enabled", "")
+        mock_pty.return_value = (0, '## Running database "initial"\nno cli default prefix-mode enabled', "")
         r = sw_checker._check_switch_config_backup("10.0.1.1", "admin", "secret", switch_os="onyx")
         assert r.status == "pass"
         assert "readable" in r.message.lower()
@@ -1020,14 +1022,28 @@ class TestSwitchCheckMethods:
 class TestSwitchResultConsolidation:
     def test_consolidate_identical_mlag_pass(self):
         results = [
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
-                              {"host": "10.0.0.1", "peer_alive": True, "backup_active": True}, "t"),
-            HealthCheckResult("Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.1",
-                              {"host": "10.0.0.1"}, "t"),
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.2",
-                              {"host": "10.0.0.2", "peer_alive": True, "backup_active": True}, "t"),
-            HealthCheckResult("Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.2",
-                              {"host": "10.0.0.2"}, "t"),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "pass",
+                "MLAG healthy on 10.0.0.1",
+                {"host": "10.0.0.1", "peer_alive": True, "backup_active": True},
+                "t",
+            ),
+            HealthCheckResult(
+                "Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.1", {"host": "10.0.0.1"}, "t"
+            ),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "pass",
+                "MLAG healthy on 10.0.0.2",
+                {"host": "10.0.0.2", "peer_alive": True, "backup_active": True},
+                "t",
+            ),
+            HealthCheckResult(
+                "Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.2", {"host": "10.0.0.2"}, "t"
+            ),
         ]
         out = HealthChecker._consolidate_switch_results(results)
         mlag_entries = [r for r in out if r.check_name == "MLAG Status"]
@@ -1040,10 +1056,22 @@ class TestSwitchResultConsolidation:
 
     def test_consolidate_different_mlag_keeps_both(self):
         results = [
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
-                              {"host": "10.0.0.1", "peer_alive": True, "backup_active": True}, "t"),
-            HealthCheckResult("MLAG Status", "switch_ssh", "fail", "MLAG issue on 10.0.0.2",
-                              {"host": "10.0.0.2", "peer_alive": False, "backup_active": True}, "t"),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "pass",
+                "MLAG healthy on 10.0.0.1",
+                {"host": "10.0.0.1", "peer_alive": True, "backup_active": True},
+                "t",
+            ),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "fail",
+                "MLAG issue on 10.0.0.2",
+                {"host": "10.0.0.2", "peer_alive": False, "backup_active": True},
+                "t",
+            ),
         ]
         out = HealthChecker._consolidate_switch_results(results)
         mlag_entries = [r for r in out if r.check_name == "MLAG Status"]
@@ -1051,24 +1079,40 @@ class TestSwitchResultConsolidation:
 
     def test_consolidate_single_switch_unchanged(self):
         results = [
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
-                              {"host": "10.0.0.1"}, "t"),
-            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1",
-                              {"host": "10.0.0.1"}, "t"),
+            HealthCheckResult(
+                "MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1", {"host": "10.0.0.1"}, "t"
+            ),
+            HealthCheckResult(
+                "Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1", {"host": "10.0.0.1"}, "t"
+            ),
         ]
         out = HealthChecker._consolidate_switch_results(results)
         assert len(out) == 2
 
     def test_consolidate_ntp_warning_both_switches(self):
         results = [
-            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1",
-                              {"host": "10.0.0.1"}, "t"),
-            HealthCheckResult("Switch Config Readability", "switch_ssh", "pass",
-                              "Switch config readable on 10.0.0.1", {"host": "10.0.0.1"}, "t"),
-            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.2",
-                              {"host": "10.0.0.2"}, "t"),
-            HealthCheckResult("Switch Config Readability", "switch_ssh", "pass",
-                              "Switch config readable on 10.0.0.2", {"host": "10.0.0.2"}, "t"),
+            HealthCheckResult(
+                "Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1", {"host": "10.0.0.1"}, "t"
+            ),
+            HealthCheckResult(
+                "Switch Config Readability",
+                "switch_ssh",
+                "pass",
+                "Switch config readable on 10.0.0.1",
+                {"host": "10.0.0.1"},
+                "t",
+            ),
+            HealthCheckResult(
+                "Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.2", {"host": "10.0.0.2"}, "t"
+            ),
+            HealthCheckResult(
+                "Switch Config Readability",
+                "switch_ssh",
+                "pass",
+                "Switch config readable on 10.0.0.2",
+                {"host": "10.0.0.2"},
+                "t",
+            ),
         ]
         out = HealthChecker._consolidate_switch_results(results)
         ntp_entries = [r for r in out if r.check_name == "Switch NTP"]
@@ -1081,12 +1125,22 @@ class TestSwitchResultConsolidation:
 
     def test_consolidate_onyx_mlag_pass(self):
         results = [
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass",
-                              "MLAG healthy on 10.0.0.1: operational status Up",
-                              {"host": "10.0.0.1", "switch_os": "onyx", "admin_enabled": True, "oper_up": True}, "t"),
-            HealthCheckResult("MLAG Status", "switch_ssh", "pass",
-                              "MLAG healthy on 10.0.0.2: operational status Up",
-                              {"host": "10.0.0.2", "switch_os": "onyx", "admin_enabled": True, "oper_up": True}, "t"),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "pass",
+                "MLAG healthy on 10.0.0.1: operational status Up",
+                {"host": "10.0.0.1", "switch_os": "onyx", "admin_enabled": True, "oper_up": True},
+                "t",
+            ),
+            HealthCheckResult(
+                "MLAG Status",
+                "switch_ssh",
+                "pass",
+                "MLAG healthy on 10.0.0.2: operational status Up",
+                {"host": "10.0.0.2", "switch_os": "onyx", "admin_enabled": True, "oper_up": True},
+                "t",
+            ),
         ]
         out = HealthChecker._consolidate_switch_results(results)
         assert len(out) == 1

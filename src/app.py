@@ -798,6 +798,7 @@ def _register_routes(app: Flask) -> None:
         app.config["ONESHOT_CANCEL"].clear()
 
         from advanced_ops import get_advanced_ops_manager
+
         get_advanced_ops_manager()._output_buffer.clear()
 
         runner = OneShotRunner(
@@ -1484,11 +1485,10 @@ def _register_routes(app: Flask) -> None:
                 result["filename"] = vnetmap_file.name
                 result["created_at"] = _parse_vnetmap_timestamp(vnetmap_file.name)
 
-            reports = _find_report_jsons_for_cluster(
-                cluster_ip, app.config["DEFAULT_OUTPUT_DIR"]
-            )
+            reports = _find_report_jsons_for_cluster(cluster_ip, app.config["DEFAULT_OUTPUT_DIR"])
             if len(reports) >= 2:
                 import json as _json
+
                 with open(reports[0]) as f:
                     newest = _json.load(f)
                 with open(reports[1]) as f:
@@ -1678,9 +1678,14 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         has_ports = bool(params.get("enable_port_mapping"))
         has_vnetmap = bool(params.get("run_vnetmap"))
         phase_weights = {
-            "auth": 5, "vnetmap": 15, "data_collection": 15,
-            "health_check": 12, "port_mapping": 8,
-            "data_extraction": 15, "json_save": 5, "pdf_generation": 25,
+            "auth": 5,
+            "vnetmap": 15,
+            "data_collection": 15,
+            "health_check": 12,
+            "port_mapping": 8,
+            "data_extraction": 15,
+            "json_save": 5,
+            "pdf_generation": 25,
         }
         if not has_vnetmap:
             phase_weights["vnetmap"] = 0
@@ -1693,7 +1698,16 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         total_weight = sum(phase_weights.values())
         cumulative = 0
         phase_start = {}
-        for p in ["auth", "vnetmap", "data_collection", "health_check", "port_mapping", "data_extraction", "json_save", "pdf_generation"]:
+        for p in [
+            "auth",
+            "vnetmap",
+            "data_collection",
+            "health_check",
+            "port_mapping",
+            "data_extraction",
+            "json_save",
+            "pdf_generation",
+        ]:
             phase_start[p] = int(cumulative * 100 / total_weight)
             cumulative += phase_weights[p]
 
@@ -1771,16 +1785,18 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         getattr(_logging, level.upper(), _logging.INFO), msg
                     )
                 )
-                vnetmap_wf.set_credentials({
-                    "cluster_ip": params["cluster_ip"],
-                    "node_user": params.get("node_user", "vastdata"),
-                    "node_password": params.get("node_password", ""),
-                    "switch_user": params.get("switch_user", ""),
-                    "switch_password": params.get("switch_password", ""),
-                    "username": params.get("username", ""),
-                    "password": params.get("password", ""),
-                    "api_token": params.get("token", ""),
-                })
+                vnetmap_wf.set_credentials(
+                    {
+                        "cluster_ip": params["cluster_ip"],
+                        "node_user": params.get("node_user", "vastdata"),
+                        "node_password": params.get("node_password", ""),
+                        "switch_user": params.get("switch_user", ""),
+                        "switch_password": params.get("switch_password", ""),
+                        "username": params.get("username", ""),
+                        "password": params.get("password", ""),
+                        "api_token": params.get("token", ""),
+                    }
+                )
                 ok, prereq_msg = vnetmap_wf.validate_prerequisites()
                 if not ok:
                     job_logger.warning("Vnetmap prerequisites not met (%s) — skipping", prereq_msg)
@@ -1791,7 +1807,8 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         if not step_result.get("success"):
                             job_logger.warning(
                                 "Vnetmap step %d failed: %s — continuing without fresh vnetmap",
-                                step_id, step_result.get("message"),
+                                step_id,
+                                step_result.get("message"),
                             )
                             break
                     else:
@@ -1801,7 +1818,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Collect data
         _check_cancel(app)
-        _update_progress(app, "JOB_PROGRESS", "data_collection", phase_start["data_collection"], "Collecting cluster data...")
+        _update_progress(
+            app, "JOB_PROGRESS", "data_collection", phase_start["data_collection"], "Collecting cluster data..."
+        )
         job_logger.info("Collecting cluster data...")
         raw_data = api_handler.get_all_data()
         if not raw_data:
@@ -1871,7 +1890,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Optional port mapping — prefer vnetmap output, fall back to SSH
         _check_cancel(app)
-        _update_progress(app, "JOB_PROGRESS", "port_mapping", phase_start["port_mapping"], "Collecting port mapping data...")
+        _update_progress(
+            app, "JOB_PROGRESS", "port_mapping", phase_start["port_mapping"], "Collecting port mapping data..."
+        )
         use_vnetmap = False
         if params.get("enable_port_mapping"):
             vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"])
@@ -1885,9 +1906,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     if vnetmap_result.get("available") and vnetmap_result.get("topology"):
                         raw_data["port_mapping_vnetmap"] = vnetmap_result
                         use_vnetmap = True
-                        job_logger.info(
-                            "Vnetmap data parsed: %d connections", len(vnetmap_result["topology"])
-                        )
+                        job_logger.info("Vnetmap data parsed: %d connections", len(vnetmap_result["topology"]))
                     else:
                         job_logger.warning(
                             "Vnetmap file found but parsing failed: %s — falling back to SSH",
@@ -1903,15 +1922,17 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     raw_data["port_mapping_external"] = port_data
                     job_logger.info("Port mapping data collected successfully")
                 else:
-                    job_logger.warning("Port mapping collection failed — check SSH credentials and network connectivity")
+                    job_logger.warning(
+                        "Port mapping collection failed — check SSH credentials and network connectivity"
+                    )
 
         # Process data
         _check_cancel(app)
-        _update_progress(app, "JOB_PROGRESS", "data_extraction", phase_start["data_extraction"], "Processing collected data...")
-        job_logger.info("Processing collected data...")
-        use_ext = bool(
-            not use_vnetmap and params.get("enable_port_mapping") and "port_mapping_external" in raw_data
+        _update_progress(
+            app, "JOB_PROGRESS", "data_extraction", phase_start["data_extraction"], "Processing collected data..."
         )
+        job_logger.info("Processing collected data...")
+        use_ext = bool(not use_vnetmap and params.get("enable_port_mapping") and "port_mapping_external" in raw_data)
         processed_data = data_extractor.extract_all_data(
             raw_data, use_external_port_mapping=use_ext, use_vnetmap=use_vnetmap
         )
@@ -1940,7 +1961,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         job_logger.info("JSON saved: %s", json_path.name)
 
         _check_cancel(app)
-        _update_progress(app, "JOB_PROGRESS", "pdf_generation", phase_start["pdf_generation"], "Generating PDF report...")
+        _update_progress(
+            app, "JOB_PROGRESS", "pdf_generation", phase_start["pdf_generation"], "Generating PDF report..."
+        )
         pdf_path = output_dir / f"vast_asbuilt_report_{cluster_name}_{timestamp}.pdf"
         if not report_builder.generate_pdf_report(processed_data, str(pdf_path)):
             raise RuntimeError("PDF generation failed")
@@ -2015,20 +2038,26 @@ def _extract_hardware_fingerprint(report_json: dict) -> dict:
 
 
 def _compare_hardware_fingerprints(
-    old: dict, new: dict,
+    old: dict,
+    new: dict,
 ) -> tuple:
     """Compare two hardware fingerprints and return (changed, summary_list)."""
     changes: list = []
     for key, label in [
-        ("cbox_count", "CBox"), ("dbox_count", "DBox"),
-        ("cnode_count", "CNode"), ("dnode_count", "DNode"),
-        ("switch_count", "Switch"), ("ebox_count", "EBox"),
+        ("cbox_count", "CBox"),
+        ("dbox_count", "DBox"),
+        ("cnode_count", "CNode"),
+        ("dnode_count", "DNode"),
+        ("switch_count", "Switch"),
+        ("ebox_count", "EBox"),
     ]:
         if old.get(key) != new.get(key):
             changes.append(f"{label} count changed: {old.get(key)} \u2192 {new.get(key)}")
     for key, label in [
-        ("cnode_ips", "CNode"), ("dnode_ips", "DNode"),
-        ("switch_ips", "Switch"), ("ebox_ips", "EBox"),
+        ("cnode_ips", "CNode"),
+        ("dnode_ips", "DNode"),
+        ("switch_ips", "Switch"),
+        ("ebox_ips", "EBox"),
     ]:
         added = set(new.get(key, [])) - set(old.get(key, []))
         removed = set(old.get(key, [])) - set(new.get(key, []))
@@ -2064,6 +2093,7 @@ def _parse_vnetmap_timestamp(filename: str) -> str:
     -> ``2026-03-30 03:07:28``
     """
     import re as _re
+
     m = _re.search(r"_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})", filename)
     if m:
         return f"{m.group(1)}-{m.group(2)}-{m.group(3)} {m.group(4)}:{m.group(5)}:{m.group(6)}"
@@ -2086,7 +2116,7 @@ def _find_latest_vnetmap_output(cluster_ip: str) -> Optional[Path]:
 
     exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
     if exact:
-        return exact[0]
+        return Path(exact[0])
 
     logger.info("No vnetmap output file found for cluster %s", cluster_ip)
     return None
@@ -2176,9 +2206,7 @@ def _collect_port_mapping_web(
                 if result.get("port_map"):
                     last_partial = result
                 if "cannot reach switch" in (last_error or "").lower():
-                    logger.warning(
-                        "Switch unreachable from CNode %s — not retrying remaining CNodes", cnode_ip
-                    )
+                    logger.warning("Switch unreachable from CNode %s — not retrying remaining CNodes", cnode_ip)
                     break
             except Exception as e:
                 last_error = _safe_str(e)
@@ -2257,7 +2285,9 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
 
         def _health_progress_callback(check_idx: int, total: int, check_name: str) -> None:
             pct = 10 + int(check_idx * 85 / max(total, 1))
-            _update_progress(app, "HEALTH_JOB_PROGRESS", "checks", min(pct, 95), f"Check {check_idx}/{total}: {check_name}")
+            _update_progress(
+                app, "HEALTH_JOB_PROGRESS", "checks", min(pct, 95), f"Check {check_idx}/{total}: {check_name}"
+            )
 
         checker = HealthChecker(
             api_handler=api_handler,

@@ -105,50 +105,89 @@ class TestExtractHardwareFingerprint:
 # ---------------------------------------------------------------------------
 class TestCompareHardwareFingerprints:
     def test_identical(self):
-        fp = {"cbox_count": 2, "dbox_count": 1, "cnode_count": 2, "dnode_count": 2,
-              "switch_count": 2, "ebox_count": 0,
-              "cnode_ips": ["10.0.0.1", "10.0.0.2"],
-              "dnode_ips": ["10.0.1.1", "10.0.1.2"],
-              "switch_ips": ["10.0.2.1", "10.0.2.2"],
-              "ebox_ips": []}
+        fp = {
+            "cbox_count": 2,
+            "dbox_count": 1,
+            "cnode_count": 2,
+            "dnode_count": 2,
+            "switch_count": 2,
+            "ebox_count": 0,
+            "cnode_ips": ["10.0.0.1", "10.0.0.2"],
+            "dnode_ips": ["10.0.1.1", "10.0.1.2"],
+            "switch_ips": ["10.0.2.1", "10.0.2.2"],
+            "ebox_ips": [],
+        }
         changed, summary = _compare_hardware_fingerprints(fp, fp)
         assert not changed
         assert summary == []
 
     def test_count_change(self):
-        old = {"cbox_count": 2, "dbox_count": 1, "cnode_count": 2, "dnode_count": 2,
-               "switch_count": 2, "ebox_count": 0,
-               "cnode_ips": [], "dnode_ips": [], "switch_ips": [], "ebox_ips": []}
+        old = {
+            "cbox_count": 2,
+            "dbox_count": 1,
+            "cnode_count": 2,
+            "dnode_count": 2,
+            "switch_count": 2,
+            "ebox_count": 0,
+            "cnode_ips": [],
+            "dnode_ips": [],
+            "switch_ips": [],
+            "ebox_ips": [],
+        }
         new = dict(old, cnode_count=4)
         changed, summary = _compare_hardware_fingerprints(old, new)
         assert changed
         assert any("CNode count changed" in s for s in summary)
 
     def test_ip_added(self):
-        old = {"cbox_count": 1, "dbox_count": 0, "cnode_count": 1, "dnode_count": 0,
-               "switch_count": 1, "ebox_count": 0,
-               "cnode_ips": ["10.0.0.1"], "dnode_ips": [],
-               "switch_ips": ["10.0.2.1"], "ebox_ips": []}
+        old = {
+            "cbox_count": 1,
+            "dbox_count": 0,
+            "cnode_count": 1,
+            "dnode_count": 0,
+            "switch_count": 1,
+            "ebox_count": 0,
+            "cnode_ips": ["10.0.0.1"],
+            "dnode_ips": [],
+            "switch_ips": ["10.0.2.1"],
+            "ebox_ips": [],
+        }
         new = dict(old, switch_count=2, switch_ips=["10.0.2.1", "10.0.2.2"])
         changed, summary = _compare_hardware_fingerprints(old, new)
         assert changed
         assert any("New Switch detected: 10.0.2.2" in s for s in summary)
 
     def test_ip_removed(self):
-        old = {"cbox_count": 2, "dbox_count": 0, "cnode_count": 2, "dnode_count": 0,
-               "switch_count": 1, "ebox_count": 0,
-               "cnode_ips": ["10.0.0.1", "10.0.0.2"], "dnode_ips": [],
-               "switch_ips": [], "ebox_ips": []}
+        old = {
+            "cbox_count": 2,
+            "dbox_count": 0,
+            "cnode_count": 2,
+            "dnode_count": 0,
+            "switch_count": 1,
+            "ebox_count": 0,
+            "cnode_ips": ["10.0.0.1", "10.0.0.2"],
+            "dnode_ips": [],
+            "switch_ips": [],
+            "ebox_ips": [],
+        }
         new = dict(old, cnode_count=1, cnode_ips=["10.0.0.1"])
         changed, summary = _compare_hardware_fingerprints(old, new)
         assert changed
         assert any("CNode removed: 10.0.0.2" in s for s in summary)
 
     def test_ebox_change(self):
-        old = {"cbox_count": 0, "dbox_count": 0, "cnode_count": 0, "dnode_count": 0,
-               "switch_count": 0, "ebox_count": 2,
-               "cnode_ips": [], "dnode_ips": [], "switch_ips": [],
-               "ebox_ips": ["10.0.3.1", "10.0.3.2"]}
+        old = {
+            "cbox_count": 0,
+            "dbox_count": 0,
+            "cnode_count": 0,
+            "dnode_count": 0,
+            "switch_count": 0,
+            "ebox_count": 2,
+            "cnode_ips": [],
+            "dnode_ips": [],
+            "switch_ips": [],
+            "ebox_ips": ["10.0.3.1", "10.0.3.2"],
+        }
         new = dict(old, ebox_count=3, ebox_ips=["10.0.3.1", "10.0.3.2", "10.0.3.3"])
         changed, summary = _compare_hardware_fingerprints(old, new)
         assert changed
@@ -202,6 +241,7 @@ class TestVnetmapStatusEndpoint:
     @pytest.fixture()
     def client(self):
         from app import create_flask_app
+
         app = create_flask_app()
         app.config["TESTING"] = True
         with app.test_client() as c:

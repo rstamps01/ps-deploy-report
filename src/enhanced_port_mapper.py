@@ -93,11 +93,7 @@ class EnhancedPortMapper:
                 if hostname not in host_meta:
                     host_meta[hostname] = {"box_name": box_name}
 
-                is_dnode = (
-                    node_type_raw == "dnode"
-                    or "enp3" in interface
-                    or "dnode" in hn_lower or "-dn-" in hn_lower
-                )
+                is_dnode = node_type_raw == "dnode" or "enp3" in interface or "dnode" in hn_lower or "-dn-" in hn_lower
 
                 if is_dnode:
                     dnode_hosts.setdefault(hostname, []).append(node_ip)
@@ -132,7 +128,13 @@ class EnhancedPortMapper:
                         "dbox_num": dbox_num,
                         "hostname": hostname,
                     }
-                logger.debug("Mapped DNode %d (DBox %d, %s) from external data: %s", idx, dbox_num, hostname, dnode_hosts[hostname])
+                logger.debug(
+                    "Mapped DNode %d (DBox %d, %s) from external data: %s",
+                    idx,
+                    dbox_num,
+                    hostname,
+                    dnode_hosts[hostname],
+                )
 
         # Supplement with API data if we didn't get enough nodes from external map
         if len(self.cnode_map) < len(self.cnodes):
@@ -231,17 +233,11 @@ class EnhancedPortMapper:
         """
         self.switch_map = {}
 
-        port_map_switch_ips = {
-            e.get("switch_ip") for e in self.external_port_map if e.get("switch_ip")
-        }
+        port_map_switch_ips = {e.get("switch_ip") for e in self.external_port_map if e.get("switch_ip")}
 
-        leaf_switches = [
-            sw for sw in self.switches
-            if sw.get("mgmt_ip") in port_map_switch_ips
-        ]
+        leaf_switches = [sw for sw in self.switches if sw.get("mgmt_ip") in port_map_switch_ips]
         spine_switches = [
-            sw for sw in self.switches
-            if sw.get("mgmt_ip") and sw.get("mgmt_ip") not in port_map_switch_ips
+            sw for sw in self.switches if sw.get("mgmt_ip") and sw.get("mgmt_ip") not in port_map_switch_ips
         ]
         if not leaf_switches:
             leaf_switches = list(self.switches)
@@ -286,7 +282,8 @@ class EnhancedPortMapper:
 
         logger.info(
             "Built switch map: %d leaf, %d spine",
-            len(sorted_leaves), len(sorted_spines),
+            len(sorted_leaves),
+            len(sorted_spines),
         )
 
     def generate_node_designation(self, node_ip: str, network: str, hostname: str = None) -> Tuple[str, str]:

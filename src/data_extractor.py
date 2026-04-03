@@ -1664,8 +1664,12 @@ class VastDataExtractor:
                 topology = vnetmap_result.get("topology", [])
 
                 enhanced_mapper = EnhancedPortMapper(
-                    cboxes=cboxes, dboxes=dboxes, cnodes=cnodes,
-                    dnodes=dnodes, switches=switches, eboxes=eboxes,
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
+                    eboxes=eboxes,
                     external_port_map=topology,
                 )
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(topology)
@@ -1685,8 +1689,11 @@ class VastDataExtractor:
                 external_data = raw_data["port_mapping_external"]
 
                 enhanced_mapper = EnhancedPortMapper(
-                    cboxes=cboxes, dboxes=dboxes, cnodes=cnodes,
-                    dnodes=dnodes, switches=switches,
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
                     external_port_map=external_data["port_map"],
                     eboxes=eboxes,
                 )
@@ -1702,16 +1709,18 @@ class VastDataExtractor:
                         sw2_designation = enhanced_mapper.generate_switch_designation(
                             ipl["switch2_ip"], ipl["switch2_port"]
                         )
-                        ipl_formatted.append({
-                            "switch_designation": sw1_designation,
-                            "node_designation": sw2_designation,
-                            "notes": "IPL",
-                            "connection_type": "IPL",
-                            "switch1_ip": ipl["switch1_ip"],
-                            "switch2_ip": ipl["switch2_ip"],
-                            "switch1_port": ipl["switch1_port"],
-                            "switch2_port": ipl["switch2_port"],
-                        })
+                        ipl_formatted.append(
+                            {
+                                "switch_designation": sw1_designation,
+                                "node_designation": sw2_designation,
+                                "notes": "IPL",
+                                "connection_type": "IPL",
+                                "switch1_ip": ipl["switch1_ip"],
+                                "switch2_ip": ipl["switch2_ip"],
+                                "switch1_port": ipl["switch1_port"],
+                                "switch2_port": ipl["switch2_port"],
+                            }
+                        )
 
             # --- Path 3: Static vnetmap file (legacy fallback) ---
             else:
@@ -1745,8 +1754,12 @@ class VastDataExtractor:
                     )
 
                 enhanced_mapper = EnhancedPortMapper(
-                    cboxes=cboxes, dboxes=dboxes, cnodes=cnodes,
-                    dnodes=dnodes, switches=switches, eboxes=eboxes,
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
+                    eboxes=eboxes,
                 )
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(vnetmap_data["topology"])
                 data_source = "vnetmap file (static)"
@@ -1759,20 +1772,22 @@ class VastDataExtractor:
                 port_name = port.get("name", "")
                 speed = port.get("speed", "")
                 if enhanced_mapper.is_ipl_port(port_name, speed):
-                    ipl_ports.append({
-                        "port": port_name,
-                        "switch": port.get("switch", "Unknown"),
-                        "speed": speed,
-                        "state": port.get("state", "Unknown"),
-                        "mtu": port.get("mtu", "Unknown"),
-                    })
+                    ipl_ports.append(
+                        {
+                            "port": port_name,
+                            "switch": port.get("switch", "Unknown"),
+                            "speed": speed,
+                            "state": port.get("state", "Unknown"),
+                            "mtu": port.get("mtu", "Unknown"),
+                        }
+                    )
 
             # Organize port map by switch
+            connections_by_switch: Dict[str, Any] = {}
             if parser:
                 connections_by_switch = parser.get_connections_by_switch()
                 cross_connection_summary = parser.get_cross_connection_summary()
             else:
-                connections_by_switch: Dict[str, Any] = {}
                 for conn in enhanced_data["port_map"]:
                     switch = conn.get("switch_designation", "Unknown")
                     if switch not in connections_by_switch:
@@ -1787,9 +1802,7 @@ class VastDataExtractor:
             total_ipl_connections = (
                 external_data.get("total_ipl_connections", 0) if external_data else len(ipl_formatted)
             )
-            total_ipl_ports = (
-                external_data.get("total_ipl_ports", len(ipl_ports)) if external_data else len(ipl_ports)
-            )
+            total_ipl_ports = external_data.get("total_ipl_ports", len(ipl_ports)) if external_data else len(ipl_ports)
 
             processed_data = {
                 "available": True,
@@ -1846,9 +1859,7 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def _format_lldp_ipl(
-        self, lldp_neighbors: List[Dict[str, Any]], mapper: Any
-    ) -> List[Dict[str, Any]]:
+    def _format_lldp_ipl(self, lldp_neighbors: List[Dict[str, Any]], mapper: Any) -> List[Dict[str, Any]]:
         """Format LLDP neighbor data into IPL connection entries."""
         ipl_formatted: List[Dict[str, Any]] = []
         for neighbor in lldp_neighbors:
@@ -1860,16 +1871,18 @@ class VastDataExtractor:
                 continue
             sw1_des = mapper.generate_switch_designation(sw1_ip, sw1_port)
             sw2_des = mapper.generate_switch_designation(sw2_ip, sw2_port)
-            ipl_formatted.append({
-                "switch_designation": sw1_des,
-                "node_designation": sw2_des,
-                "notes": "IPL",
-                "connection_type": "IPL",
-                "switch1_ip": sw1_ip,
-                "switch2_ip": sw2_ip,
-                "switch1_port": sw1_port,
-                "switch2_port": sw2_port,
-            })
+            ipl_formatted.append(
+                {
+                    "switch_designation": sw1_des,
+                    "node_designation": sw2_des,
+                    "notes": "IPL",
+                    "connection_type": "IPL",
+                    "switch1_ip": sw1_ip,
+                    "switch2_ip": sw2_ip,
+                    "switch1_port": sw1_port,
+                    "switch2_port": sw2_port,
+                }
+            )
         return ipl_formatted
 
     def _infer_ipl_from_switch_pair(self, mapper: Any) -> List[Dict[str, Any]]:
@@ -1890,19 +1903,24 @@ class VastDataExtractor:
 
         self.logger.info(
             "Inferred IPL between %s (%s) and %s (%s)",
-            sw1_des, sw1_ip, sw2_des, sw2_ip,
+            sw1_des,
+            sw1_ip,
+            sw2_des,
+            sw2_ip,
         )
 
-        return [{
-            "switch_designation": sw1_des,
-            "node_designation": sw2_des,
-            "notes": "IPL (inferred)",
-            "connection_type": "IPL",
-            "switch1_ip": sw1_ip,
-            "switch2_ip": sw2_ip,
-            "switch1_port": "",
-            "switch2_port": "",
-        }]
+        return [
+            {
+                "switch_designation": sw1_des,
+                "node_designation": sw2_des,
+                "notes": "IPL (inferred)",
+                "connection_type": "IPL",
+                "switch1_ip": sw1_ip,
+                "switch2_ip": sw2_ip,
+                "switch1_port": "",
+                "switch2_port": "",
+            }
+        ]
 
     def extract_all_data(
         self,

@@ -176,9 +176,7 @@ class VastReportGenerator:
 
                 node_user = getattr(args, "node_user", "vastdata") or "vastdata"
                 node_password = getattr(args, "node_password", "vastdata") or "vastdata"
-                self.logger.info(
-                    "Tech Port mode: discovering VMS via %s ...", args.cluster_ip
-                )
+                self.logger.info("Tech Port mode: discovering VMS via %s ...", args.cluster_ip)
                 self._tunnel = VMSTunnel(args.cluster_ip, node_user, node_password)
                 self._tunnel.connect()
                 tunnel_address = self._tunnel.local_bind_address

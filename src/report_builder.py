@@ -84,12 +84,14 @@ class ReportConfig:
     include_enhanced_features: bool = True
     organization: str = "VAST Professional Services"
     sections: Dict[str, bool] = field(default_factory=dict)
-    network_diagram: Dict[str, Any] = field(default_factory=lambda: {
-        "mode": "detailed",
-        "show_port_labels": False,
-        "device_icons": "flat",
-        "orientation": "portrait",
-    })
+    network_diagram: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "mode": "detailed",
+            "show_port_labels": False,
+            "device_icons": "flat",
+            "orientation": "portrait",
+        }
+    )
 
     def section_enabled(self, key: str) -> bool:
         """Return whether a report section should be rendered (default True)."""
@@ -221,9 +223,24 @@ class VastReportBuilder:
         """
         base = self.config.font_name
         _MAP = {
-            "Helvetica": {"normal": "Helvetica", "bold": "Helvetica-Bold", "italic": "Helvetica-Oblique", "bold-italic": "Helvetica-BoldOblique"},
-            "Times-Roman": {"normal": "Times-Roman", "bold": "Times-Bold", "italic": "Times-Italic", "bold-italic": "Times-BoldItalic"},
-            "Courier": {"normal": "Courier", "bold": "Courier-Bold", "italic": "Courier-Oblique", "bold-italic": "Courier-BoldOblique"},
+            "Helvetica": {
+                "normal": "Helvetica",
+                "bold": "Helvetica-Bold",
+                "italic": "Helvetica-Oblique",
+                "bold-italic": "Helvetica-BoldOblique",
+            },
+            "Times-Roman": {
+                "normal": "Times-Roman",
+                "bold": "Times-Bold",
+                "italic": "Times-Italic",
+                "bold-italic": "Times-BoldItalic",
+            },
+            "Courier": {
+                "normal": "Courier",
+                "bold": "Courier-Bold",
+                "italic": "Courier-Oblique",
+                "bold-italic": "Courier-BoldOblique",
+            },
         }
         family = _MAP.get(base, _MAP["Helvetica"])
         return family.get(variant, family["normal"])
@@ -252,9 +269,7 @@ class VastReportBuilder:
             self.logger.error(f"Error generating PDF report: {e}")
             return False
 
-    def _create_landscape_template(
-        self, portrait_size: tuple, margins: Dict[str, float]
-    ) -> Any:
+    def _create_landscape_template(self, portrait_size: tuple, margins: Dict[str, float]) -> Any:
         """Build a landscape PageTemplate for wide diagrams."""
         from reportlab.platypus import Frame, PageTemplate
 
@@ -266,11 +281,14 @@ class VastReportBuilder:
         bottom = margins.get("bottom", 54)
 
         frame = Frame(
-            left, bottom,
+            left,
+            bottom,
             landscape_w - left - right,
             landscape_h - top - bottom,
-            leftPadding=0, bottomPadding=0,
-            rightPadding=0, topPadding=0,
+            leftPadding=0,
+            bottomPadding=0,
+            rightPadding=0,
+            topPadding=0,
         )
         return PageTemplate(
             id="landscape",
@@ -3813,6 +3831,7 @@ class VastReportBuilder:
                     img = Image(str(gp), width=target_width, height=target_height)
 
                     from reportlab.platypus import Table as RLTable
+
                     image_table = RLTable(
                         [[img]],
                         colWidths=[available_width],
@@ -3940,19 +3959,24 @@ class VastReportBuilder:
         full_col_weights = [5, 3, 1.2, 2.5, 2, 3.5, 0.8]
         full_data = []
         for e in sorted(port_map, key=lambda x: (x.get("node_hostname", ""), x.get("network", ""))):
-            full_data.append([
-                e.get("node_hostname", ""),
-                e.get("switch_ip", ""),
-                e.get("port", ""),
-                e.get("node_ip", ""),
-                e.get("interface", ""),
-                e.get("mac", "") or "",
-                e.get("network", ""),
-            ])
+            full_data.append(
+                [
+                    e.get("node_hostname", ""),
+                    e.get("switch_ip", ""),
+                    e.get("port", ""),
+                    e.get("node_ip", ""),
+                    e.get("interface", ""),
+                    e.get("mac", "") or "",
+                    e.get("network", ""),
+                ]
+            )
 
         full_topo_elements = self.brand_compliance.create_vast_table(
-            full_data, "Full Topology", full_headers,
-            col_widths=full_col_weights, compact=True,
+            full_data,
+            "Full Topology",
+            full_headers,
+            col_widths=full_col_weights,
+            compact=True,
         )
         content.extend(full_topo_elements)
 
@@ -3976,22 +4000,25 @@ class VastReportBuilder:
             sw_headers = ["Node", "Port", "Data IP", "Interface", "MAC", "Net"]
             sw_data = []
             for e in sorted(entries, key=lambda x: (x.get("node_hostname", ""), x.get("port", ""))):
-                sw_data.append([
-                    e.get("node_hostname", ""),
-                    e.get("port", ""),
-                    e.get("node_ip", ""),
-                    e.get("interface", ""),
-                    e.get("mac", "") or "",
-                    e.get("network", ""),
-                ])
+                sw_data.append(
+                    [
+                        e.get("node_hostname", ""),
+                        e.get("port", ""),
+                        e.get("node_ip", ""),
+                        e.get("interface", ""),
+                        e.get("mac", "") or "",
+                        e.get("network", ""),
+                    ]
+                )
 
             subnet_display = ", ".join(subnets) if subnets else ""
-            sw_title = (
-                f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
-            )
+            sw_title = f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
             sw_elements = self.brand_compliance.create_vast_table(
-                sw_data, sw_title, sw_headers,
-                col_widths=sw_col_weights, compact=True,
+                sw_data,
+                sw_title,
+                sw_headers,
+                col_widths=sw_col_weights,
+                compact=True,
             )
             content.extend(sw_elements)
 
@@ -4093,9 +4120,7 @@ class VastReportBuilder:
 
         # Only number switches that actually appear in the port map (leaf switches)
         port_map_switch_ips = {e["switch_ip"] for e in port_map if e.get("switch_ip")}
-        leaf_switches = [
-            sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips
-        ]
+        leaf_switches = [sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips]
         if not leaf_switches:
             leaf_switches = list(switches)
         leaf_switches.sort(key=lambda s: s.get("mgmt_ip", ""))
@@ -4185,11 +4210,13 @@ class VastReportBuilder:
                 seen_connections.add(conn_key)
 
                 port_name_raw = conn.get("port", "")
-                speed = switch_port_speed_lookup.get(switch_ip, {}).get(
-                    port_name_raw, switch_port_speed_lookup.get(switch_ip, {}).get(
-                        conn.get("original_port", ""), ""
+                speed = (
+                    switch_port_speed_lookup.get(switch_ip, {}).get(
+                        port_name_raw,
+                        switch_port_speed_lookup.get(switch_ip, {}).get(conn.get("original_port", ""), ""),
                     )
-                ) or "Unknown"
+                    or "Unknown"
+                )
 
                 # Use notes from port map entry
                 # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
@@ -4216,21 +4243,25 @@ class VastReportBuilder:
                     ipl_note = ipl_conn.get("notes", "IPL")
 
                     if switch_num == 1:
-                        table_data.append([
-                            sw_des or "SWA",
-                            peer_des or "SWB",
-                            "A/B",
-                            "",
-                            ipl_note,
-                        ])
+                        table_data.append(
+                            [
+                                sw_des or "SWA",
+                                peer_des or "SWB",
+                                "A/B",
+                                "",
+                                ipl_note,
+                            ]
+                        )
                     elif switch_num == 2:
-                        table_data.append([
-                            peer_des or "SWB",
-                            sw_des or "SWA",
-                            "A/B",
-                            "",
-                            ipl_note,
-                        ])
+                        table_data.append(
+                            [
+                                peer_des or "SWB",
+                                sw_des or "SWA",
+                                "A/B",
+                                "",
+                                ipl_note,
+                            ]
+                        )
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"

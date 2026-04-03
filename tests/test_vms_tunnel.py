@@ -20,7 +20,6 @@ from utils.vms_tunnel import (
 )
 from api_handler import VastApiHandler, create_vast_api_handler
 
-
 # ---------------------------------------------------------------------------
 # parse_find_vms_output
 # ---------------------------------------------------------------------------
@@ -270,6 +269,7 @@ class TestVMSTunnel:
                 sock.connect(("127.0.0.1", tunnel.local_port))
                 sock.sendall(b"GET /api/clusters/ HTTP/1.1\r\n\r\n")
                 import time
+
                 time.sleep(0.2)
             finally:
                 sock.close()

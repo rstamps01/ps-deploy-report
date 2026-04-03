@@ -351,7 +351,11 @@ class TestEnhancedPortMapper(unittest.TestCase):
             },
         ]
         mapper = EnhancedPortMapper(
-            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            cboxes=[],
+            dboxes=[],
+            cnodes=[],
+            dnodes=[],
+            switches=[],
             external_port_map=external_port_map,
         )
         self.assertIn("172.16.128.1", mapper.cnode_map)
@@ -388,7 +392,11 @@ class TestEnhancedPortMapper(unittest.TestCase):
             },
         ]
         mapper = EnhancedPortMapper(
-            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            cboxes=[],
+            dboxes=[],
+            cnodes=[],
+            dnodes=[],
+            switches=[],
             external_port_map=external_port_map,
         )
         dbox_nums = {ip: info["dbox_num"] for ip, info in mapper.dnode_map.items()}
@@ -416,7 +424,11 @@ class TestEnhancedPortMapper(unittest.TestCase):
             },
         ]
         mapper = EnhancedPortMapper(
-            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            cboxes=[],
+            dboxes=[],
+            cnodes=[],
+            dnodes=[],
+            switches=[],
             external_port_map=external_port_map,
         )
         self.assertIn("172.16.0.1", mapper.dnode_map)
@@ -442,7 +454,10 @@ class TestEnhancedPortMapper(unittest.TestCase):
             },
         ]
         mapper = EnhancedPortMapper(
-            cboxes=[], dboxes=[], cnodes=[], dnodes=[],
+            cboxes=[],
+            dboxes=[],
+            cnodes=[],
+            dnodes=[],
             switches=[{"mgmt_ip": "10.0.0.201", "name": "sw-A"}],
             external_port_map=external_port_map,
         )

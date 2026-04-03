@@ -403,7 +403,7 @@ class ScriptRunner:
     ) -> bool:
         """SCP transfer using paramiko SFTP."""
         try:
-            import paramiko
+            import paramiko  # type: ignore[import-untyped]
         except ImportError:
             logger.error("paramiko not installed")
             return False
@@ -494,7 +494,7 @@ class ScriptRunner:
         # --- Info: zero-count failure summaries are not warnings ---
         if "failed:" in ll:
             idx = ll.index("failed:")
-            after = ll[idx + 7:].lstrip()
+            after = ll[idx + 7 :].lstrip()
             if after.startswith("0"):
                 return "info"
 
@@ -509,7 +509,7 @@ class ScriptRunner:
             return "warn"
         if "failed:" in ll:
             idx = ll.index("failed:")
-            after = ll[idx + 7:].lstrip()
+            after = ll[idx + 7 :].lstrip()
             if after and after[0] in "123456789":
                 return "warn"
 

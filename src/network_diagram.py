@@ -361,8 +361,7 @@ class NetworkDiagramGenerator:
                     if "f0" in interface or "f1" in interface:
                         is_primary = True
                     elif is_dnode and any(
-                        interface.startswith(p)
-                        for p in ("ens3", "ens14", "enp65s0", "enp94s0", "enp3s0")
+                        interface.startswith(p) for p in ("ens3", "ens14", "enp65s0", "enp94s0", "enp3s0")
                     ):
                         is_primary = True
 

@@ -33,6 +33,7 @@ if platform.system() == "Darwin":
 
 try:
     import svgwrite as _svgwrite
+
     _SVGWRITE_AVAILABLE = True
 except ImportError:
     _svgwrite = None  # type: ignore[assignment]
@@ -41,6 +42,7 @@ except ImportError:
 _CAIROSVG_AVAILABLE = False
 try:
     import cairosvg as _cairosvg  # noqa: F401
+
     _CAIROSVG_AVAILABLE = True
 except (ImportError, OSError):
     pass
@@ -48,9 +50,9 @@ except (ImportError, OSError):
 # ---------------------------------------------------------------------------
 # Color palette (B7)
 # ---------------------------------------------------------------------------
-COLOR_NETWORK_A = "#0F9D58"   # teal-green
-COLOR_NETWORK_B = "#4285F4"   # deep blue
-COLOR_IPL = "#7B1FA2"         # purple
+COLOR_NETWORK_A = "#0F9D58"  # teal-green
+COLOR_NETWORK_B = "#4285F4"  # deep blue
+COLOR_IPL = "#7B1FA2"  # purple
 COLOR_SPINE_FABRIC = "#757575"  # gray
 COLOR_DEVICE_STROKE = "#2F2042"
 COLOR_CBOX_FILL = "#c8e6f8"
@@ -72,21 +74,21 @@ SWITCH_W = 110
 SWITCH_H = 32
 SWITCH_GAP = 24
 RACK_PAD_X = 16
-RACK_PAD_TOP = 40          # space for rack header text
+RACK_PAD_TOP = 40  # space for rack header text
 RACK_PAD_BOTTOM = 12
-RACK_GAP = 30              # horizontal gap between rack columns
+RACK_GAP = 30  # horizontal gap between rack columns
 SPINE_ROW_H = 60
-SPINE_GAP = 40              # gap between spine tier and racks
+SPINE_GAP = 40  # gap between spine tier and racks
 LEGEND_H = 36
 TITLE_H = 36
 MARGIN = 30
-BEND_R = 6                  # radius for rounded corners on connections
-CONN_OFFSET_A = 8           # left-edge offset for Network A connections
-CONN_OFFSET_B = 8           # right-edge offset for Network B connections
+BEND_R = 6  # radius for rounded corners on connections
+CONN_OFFSET_A = 8  # left-edge offset for Network A connections
+CONN_OFFSET_B = 8  # right-edge offset for Network B connections
 
 # Portrait Letter (8.5 x 11 in) in points
-PORTRAIT_W = 8.5 * 72       # 612
-PORTRAIT_H = 11 * 72        # 792
+PORTRAIT_W = 8.5 * 72  # 612
+PORTRAIT_H = 11 * 72  # 792
 
 # Max racks per page before splitting (portrait fits 2 side-by-side)
 MAX_RACKS_PER_PAGE = 2
@@ -95,8 +97,7 @@ MAX_RACKS_PER_PAGE = 2
 # Inline flat-icon SVG path data (B5)
 # ---------------------------------------------------------------------------
 ICON_SERVER = (
-    "M3,2 h18 a1,1 0 0,1 1,1 v6 a1,1 0 0,1 -1,1 H3 a1,1 0 0,1 -1,-1 V3 "
-    "a1,1 0 0,1 1,-1 Z M5,5 h2 v2 H5Z M9,5.5 h10"
+    "M3,2 h18 a1,1 0 0,1 1,1 v6 a1,1 0 0,1 -1,1 H3 a1,1 0 0,1 -1,-1 V3 " "a1,1 0 0,1 1,-1 Z M5,5 h2 v2 H5Z M9,5.5 h10"
 )
 ICON_STORAGE = (
     "M3,2 h18 a1,1 0 0,1 1,1 v6 a1,1 0 0,1 -1,1 H3 a1,1 0 0,1 -1,-1 V3 "
@@ -114,8 +115,12 @@ ICON_SWITCH = (
 # Helper: orthogonal path with rounded corners
 # ---------------------------------------------------------------------------
 def _ortho_path(
-    x1: float, y1: float, x2: float, y2: float,
-    mid_y: Optional[float] = None, r: float = BEND_R,
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    mid_y: Optional[float] = None,
+    r: float = BEND_R,
 ) -> str:
     """Build an SVG ``d`` attribute for a vertical-horizontal-vertical path.
 
@@ -130,9 +135,11 @@ def _ortho_path(
     dy2 = 1 if y2 > mid_y else -1
     dx = 1 if x2 > x1 else -1
 
-    r = min(r, abs(mid_y - y1) / 2, abs(y2 - mid_y) / 2, abs(x2 - x1) / 2) if (
-        abs(mid_y - y1) > 0 and abs(y2 - mid_y) > 0 and abs(x2 - x1) > 0
-    ) else 0
+    r = (
+        min(r, abs(mid_y - y1) / 2, abs(y2 - mid_y) / 2, abs(x2 - x1) / 2)
+        if (abs(mid_y - y1) > 0 and abs(y2 - mid_y) > 0 and abs(x2 - x1) > 0)
+        else 0
+    )
 
     if r < 1 or x1 == x2:
         return f"M{x1},{y1} L{x1},{mid_y} L{x2},{mid_y} L{x2},{y2}"
@@ -158,7 +165,8 @@ def _ortho_path(
 
 
 def _rounded_polyline(
-    points: List[Tuple[float, float]], r: float = BEND_R,
+    points: List[Tuple[float, float]],
+    r: float = BEND_R,
 ) -> str:
     """Build an SVG path through axis-aligned waypoints with rounded corners.
 
@@ -226,6 +234,7 @@ class RackCentricDiagramGenerator:
         self.assets_path = Path(assets_path)
         self._library_path = library_path
         self._user_images_dir = user_images_dir
+        self._use_gradients = _CAIROSVG_AVAILABLE
 
     # ------------------------------------------------------------------
     # Data enrichment
@@ -242,7 +251,7 @@ class RackCentricDiagramGenerator:
         entries; boxes (cboxes/dboxes) carry rack placement info.  This
         method produces a unified device list suitable for rendering.
         """
-        box_by_rack_id = {}
+        box_by_rack_id: Dict[Any, List[Dict[str, Any]]] = {}
         for bx in boxes:
             rid = bx.get("rack_id")
             if rid is not None:
@@ -353,17 +362,23 @@ class RackCentricDiagramGenerator:
         )
         logger.info(
             "Devices: %d top (CNodes/CBoxes), %d bottom (DNodes/DBoxes)",
-            len(top_devices), len(bottom_devices),
+            len(top_devices),
+            len(bottom_devices),
         )
         logger.info(
             "Port map: %d connections across %d switch IPs",
-            len(port_map), len(port_map_switch_ips),
+            len(port_map),
+            len(port_map_switch_ips),
         )
 
         # ----- rack grouping -----
         racks = self._build_rack_groups(
-            top_devices, bottom_devices, leaf_switches, port_map,
-            manual_placements, bottom_label,
+            top_devices,
+            bottom_devices,
+            leaf_switches,
+            port_map,
+            manual_placements,
+            bottom_label,
         )
         if not racks:
             logger.warning("No rack groups could be formed — falling back to single rack")
@@ -375,7 +390,7 @@ class RackCentricDiagramGenerator:
         # ----- paginate -----
         pages: List[List[Dict[str, Any]]] = []
         for i in range(0, len(racks), MAX_RACKS_PER_PAGE):
-            pages.append(racks[i: i + MAX_RACKS_PER_PAGE])
+            pages.append(racks[i : i + MAX_RACKS_PER_PAGE])
 
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -384,9 +399,14 @@ class RackCentricDiagramGenerator:
         total_pages = len(pages)
         for page_idx, page_racks in enumerate(pages):
             svg_content = self._render_page(
-                svgwrite, page_racks, spine_switches, ipl_conns,
-                port_map, switches,
-                page_num=page_idx + 1, total_pages=total_pages,
+                svgwrite,
+                page_racks,
+                spine_switches,
+                ipl_conns,
+                port_map,
+                switches,
+                page_num=page_idx + 1,
+                total_pages=total_pages,
             )
             png_path = out_dir / f"network_topology_p{page_idx + 1}.png"
             self._svg_to_png(svg_content, str(png_path))
@@ -409,9 +429,7 @@ class RackCentricDiagramGenerator:
         bottom_label: str,
     ) -> List[Dict[str, Any]]:
         """Group devices into racks using API rack_name, falling back to profile."""
-        rack_map: Dict[str, Dict[str, List[Any]]] = defaultdict(
-            lambda: {"cboxes": [], "bottom": [], "switches": []}
-        )
+        rack_map: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: {"cboxes": [], "bottom": [], "switches": []})
 
         # --- API rack_name ---
         for cb in cboxes:
@@ -424,9 +442,7 @@ class RackCentricDiagramGenerator:
         # If everything landed in "Default" and we have manual_placements, use those
         all_default = list(rack_map.keys()) == ["Default"]
         if all_default and manual_placements:
-            rack_map = self._apply_manual_placements(
-                cboxes, bottom_devices, manual_placements
-            )
+            rack_map = self._apply_manual_placements(cboxes, bottom_devices, manual_placements)
 
         # --- Assign switches to racks by topology ---
         switch_rack = self._assign_switches_to_racks(switches, port_map, rack_map)
@@ -438,19 +454,19 @@ class RackCentricDiagramGenerator:
         results: List[Dict[str, Any]] = []
         for rn in sorted(rack_map.keys()):
             data = rack_map[rn]
-            results.append({
-                "rack_name": rn,
-                "cboxes": data["cboxes"],
-                "bottom_devices": data["bottom"],
-                "switches": data["switches"],
-                "bottom_label": bottom_label,
-            })
+            results.append(
+                {
+                    "rack_name": rn,
+                    "cboxes": data["cboxes"],
+                    "bottom_devices": data["bottom"],
+                    "switches": data["switches"],
+                    "bottom_label": bottom_label,
+                }
+            )
 
         return results
 
-    def _default_rack(
-        self, cboxes: list, bottom_devices: list, switches: list, bottom_label: str
-    ) -> Dict[str, Any]:
+    def _default_rack(self, cboxes: list, bottom_devices: list, switches: list, bottom_label: str) -> Dict[str, Any]:
         return {
             "rack_name": "Rack 1",
             "cboxes": cboxes,
@@ -460,11 +476,12 @@ class RackCentricDiagramGenerator:
         }
 
     def _apply_manual_placements(
-        self, cboxes: list, bottom_devices: list, placements: Dict[str, Any],
+        self,
+        cboxes: list,
+        bottom_devices: list,
+        placements: Dict[str, Any],
     ) -> Dict[str, Dict[str, list]]:
-        rack_map: Dict[str, Dict[str, list]] = defaultdict(
-            lambda: {"cboxes": [], "bottom": [], "switches": []}
-        )
+        rack_map: Dict[str, Dict[str, list]] = defaultdict(lambda: {"cboxes": [], "bottom": [], "switches": []})
         placed_cb = set()
         placed_bd = set()
 
@@ -536,9 +553,7 @@ class RackCentricDiagramGenerator:
 
         return result
 
-    def _detect_spines(
-        self, switches: List[Dict[str, Any]], racks: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def _detect_spines(self, switches: List[Dict[str, Any]], racks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Identify spine switches (those not assigned as rack-local leaves)."""
         leaf_ids = set()
         for rack in racks:
@@ -565,17 +580,10 @@ class RackCentricDiagramGenerator:
         num_racks = len(racks)
 
         # Calculate rack column dimensions
-        max_devs = max(
-            (len(r["cboxes"]) + len(r["bottom_devices"]) for r in racks), default=4
-        )
+        max_devs = max((len(r["cboxes"]) + len(r["bottom_devices"]) for r in racks), default=4)
         has_bottom_devs = any(r["bottom_devices"] for r in racks)
         separator_space = DEVICE_GAP * 4 if has_bottom_devs else 0
-        rack_inner_h = (
-            SWITCH_H + SWITCH_GAP
-            + max_devs * (DEVICE_H + DEVICE_GAP)
-            + DEVICE_GAP * 2
-            + separator_space
-        )
+        rack_inner_h = SWITCH_H + SWITCH_GAP + max_devs * (DEVICE_H + DEVICE_GAP) + DEVICE_GAP * 2 + separator_space
         rack_w = DEVICE_W + 2 * RACK_PAD_X
         rack_h = RACK_PAD_TOP + rack_inner_h + RACK_PAD_BOTTOM
 
@@ -586,9 +594,7 @@ class RackCentricDiagramGenerator:
             2 * MARGIN + num_racks * rack_w + (num_racks - 1) * RACK_GAP,
             PORTRAIT_W,
         )
-        total_h = (
-            MARGIN + TITLE_H + spine_section + rack_h + LEGEND_H + MARGIN
-        )
+        total_h = MARGIN + TITLE_H + spine_section + rack_h + LEGEND_H + MARGIN
 
         dwg = svgwrite.Drawing(size=(f"{total_w}px", f"{total_h}px"))
         dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
@@ -601,19 +607,25 @@ class RackCentricDiagramGenerator:
 
         # Title
         title_y = MARGIN + 20
-        dwg.add(dwg.text(
-            "Logical Network Topology",
-            insert=(total_w / 2, title_y),
-            text_anchor="middle",
-            font_size="18px",
-            font_family="Helvetica, Arial, sans-serif",
-            font_weight="bold",
-            fill=COLOR_TEXT,
-        ))
-        dwg.add(dwg.line(
-            start=(MARGIN, title_y + 8), end=(total_w - MARGIN, title_y + 8),
-            stroke="#e0e0e0", stroke_width=1,
-        ))
+        dwg.add(
+            dwg.text(
+                "Logical Network Topology",
+                insert=(total_w / 2, title_y),
+                text_anchor="middle",
+                font_size="18px",
+                font_family="Helvetica, Arial, sans-serif",
+                font_weight="bold",
+                fill=COLOR_TEXT,
+            )
+        )
+        dwg.add(
+            dwg.line(
+                start=(MARGIN, title_y + 8),
+                end=(total_w - MARGIN, title_y + 8),
+                stroke="#e0e0e0",
+                stroke_width=1,
+            )
+        )
 
         content_y = MARGIN + TITLE_H
 
@@ -621,13 +633,16 @@ class RackCentricDiagramGenerator:
         spine_positions: Dict[str, Tuple[float, float]] = {}
         if has_spine:
             tier_label_y = content_y + 4
-            dwg.add(dwg.text(
-                "Spine Switches",
-                insert=(total_w / 2, tier_label_y),
-                text_anchor="middle", font_size="9px",
-                font_family="Helvetica, Arial, sans-serif",
-                fill=COLOR_SPINE_FABRIC,
-            ))
+            dwg.add(
+                dwg.text(
+                    "Spine Switches",
+                    insert=(total_w / 2, tier_label_y),
+                    text_anchor="middle",
+                    font_size="9px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    fill=COLOR_SPINE_FABRIC,
+                )
+            )
 
             sx_start = (total_w - len(spines) * (SWITCH_W + 40)) / 2
             for i, sp in enumerate(spines):
@@ -635,25 +650,32 @@ class RackCentricDiagramGenerator:
                 sy = content_y + 10
                 hostname = sp.get("hostname", f"Spine-{i+1}")
                 self._draw_switch_node(
-                    dwg, sx, sy, SWITCH_W, SWITCH_H,
-                    f"SP{i+1}", hostname,
-                    "url(#grad_spine)", COLOR_DEVICE_STROKE,
+                    dwg,
+                    sx,
+                    sy,
+                    SWITCH_W,
+                    SWITCH_H,
+                    f"SP{i+1}",
+                    hostname,
+                    self._fill("grad_spine"),
+                    COLOR_DEVICE_STROKE,
                 )
-                spine_positions[sp.get("mgmt_ip", f"spine_{i}")] = (
-                    sx + SWITCH_W / 2, sy + SWITCH_H
-                )
+                spine_positions[sp.get("mgmt_ip", f"spine_{i}")] = (sx + SWITCH_W / 2, sy + SWITCH_H)
 
             if len(spines) >= 2:
                 ips = list(spine_positions.keys())
                 p1 = spine_positions[ips[0]]
                 p2 = spine_positions[ips[-1]]
                 mid_y_fab = p1[1] - SWITCH_H / 2
-                dwg.add(dwg.line(
-                    start=(p1[0] + SWITCH_W / 2 + 4, mid_y_fab),
-                    end=(p2[0] - SWITCH_W / 2 - 4, mid_y_fab),
-                    stroke=COLOR_SPINE_FABRIC, stroke_width=1.5,
-                    stroke_dasharray="6,3",
-                ))
+                dwg.add(
+                    dwg.line(
+                        start=(p1[0] + SWITCH_W / 2 + 4, mid_y_fab),
+                        end=(p2[0] - SWITCH_W / 2 - 4, mid_y_fab),
+                        stroke=COLOR_SPINE_FABRIC,
+                        stroke_width=1.5,
+                        stroke_dasharray="6,3",
+                    )
+                )
 
             content_y += SPINE_ROW_H + SPINE_GAP
 
@@ -667,19 +689,29 @@ class RackCentricDiagramGenerator:
             ry = content_y
 
             # Rack background
-            dwg.add(dwg.rect(
-                insert=(rx, ry), size=(rack_w, rack_h),
-                rx=6, ry=6,
-                fill=COLOR_RACK_BG, stroke="#e0e0e0", stroke_width=1,
-            ))
+            dwg.add(
+                dwg.rect(
+                    insert=(rx, ry),
+                    size=(rack_w, rack_h),
+                    rx=6,
+                    ry=6,
+                    fill=COLOR_RACK_BG,
+                    stroke="#e0e0e0",
+                    stroke_width=1,
+                )
+            )
             # Rack header
-            dwg.add(dwg.text(
-                rack["rack_name"],
-                insert=(rx + rack_w / 2, ry + 16),
-                text_anchor="middle", font_size="11px",
-                font_family="Helvetica, Arial, sans-serif",
-                font_weight="bold", fill=COLOR_RACK_HEADER,
-            ))
+            dwg.add(
+                dwg.text(
+                    rack["rack_name"],
+                    insert=(rx + rack_w / 2, ry + 16),
+                    text_anchor="middle",
+                    font_size="11px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    font_weight="bold",
+                    fill=COLOR_RACK_HEADER,
+                )
+            )
 
             # Local leaf switches at top of rack
             rack_switches = rack.get("switches", [])
@@ -690,9 +722,15 @@ class RackCentricDiagramGenerator:
                 designation = "SWA" if si == 0 else "SWB"
                 hostname = sw.get("hostname", "") if isinstance(sw, dict) else ""
                 self._draw_switch_node(
-                    dwg, sx, sw_y, sw_pair_w, SWITCH_H,
-                    designation, hostname,
-                    "url(#grad_switch)", COLOR_DEVICE_STROKE,
+                    dwg,
+                    sx,
+                    sw_y,
+                    sw_pair_w,
+                    SWITCH_H,
+                    designation,
+                    hostname,
+                    self._fill("grad_switch"),
+                    COLOR_DEVICE_STROKE,
                 )
                 mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
                 switch_centers[mgmt_ip] = (sx + sw_pair_w / 2, sw_y + SWITCH_H)
@@ -707,32 +745,50 @@ class RackCentricDiagramGenerator:
                     c0 = switch_centers[ip0]
                     c1 = switch_centers[ip1]
                     ipl_y = sw_y + SWITCH_H / 2
-                    dwg.add(dwg.line(
-                        start=(c0[0] + sw_pair_w / 2 + 2, ipl_y),
-                        end=(c1[0] - sw_pair_w / 2 - 2, ipl_y),
-                        stroke=COLOR_IPL, stroke_width=2,
-                    ))
+                    dwg.add(
+                        dwg.line(
+                            start=(c0[0] + sw_pair_w / 2 + 2, ipl_y),
+                            end=(c1[0] - sw_pair_w / 2 - 2, ipl_y),
+                            stroke=COLOR_IPL,
+                            stroke_width=2,
+                        )
+                    )
                     mid_ipl_x = (c0[0] + c1[0]) / 2
                     # IPL badge
                     bw, bh = 28, 14
-                    dwg.add(dwg.rect(
-                        insert=(mid_ipl_x - bw / 2, ipl_y - bh / 2),
-                        size=(bw, bh), rx=7, ry=7,
-                        fill="white", stroke=COLOR_IPL, stroke_width=1,
-                    ))
-                    dwg.add(dwg.text(
-                        "IPL", insert=(mid_ipl_x, ipl_y + 4),
-                        text_anchor="middle", font_size="8px",
-                        font_family="Helvetica, Arial, sans-serif",
-                        font_weight="bold", fill=COLOR_IPL,
-                    ))
+                    dwg.add(
+                        dwg.rect(
+                            insert=(mid_ipl_x - bw / 2, ipl_y - bh / 2),
+                            size=(bw, bh),
+                            rx=7,
+                            ry=7,
+                            fill="white",
+                            stroke=COLOR_IPL,
+                            stroke_width=1,
+                        )
+                    )
+                    dwg.add(
+                        dwg.text(
+                            "IPL",
+                            insert=(mid_ipl_x, ipl_y + 4),
+                            text_anchor="middle",
+                            font_size="8px",
+                            font_family="Helvetica, Arial, sans-serif",
+                            font_weight="bold",
+                            fill=COLOR_IPL,
+                        )
+                    )
 
             # Separator line
             sep_y = sw_y + SWITCH_H + SWITCH_GAP / 2
-            dwg.add(dwg.line(
-                start=(rx + 8, sep_y), end=(rx + rack_w - 8, sep_y),
-                stroke="#e0e0e0", stroke_width=0.5,
-            ))
+            dwg.add(
+                dwg.line(
+                    start=(rx + 8, sep_y),
+                    end=(rx + rack_w - 8, sep_y),
+                    stroke="#e0e0e0",
+                    stroke_width=0.5,
+                )
+            )
 
             # CBoxes
             dev_y = sep_y + DEVICE_GAP
@@ -740,14 +796,28 @@ class RackCentricDiagramGenerator:
             for ci, cb in enumerate(rack["cboxes"]):
                 cb_name = cb.get("name", f"CB{ci+1}") if isinstance(cb, dict) else f"CB{ci+1}"
                 self._draw_device_node(
-                    dwg, dev_x, dev_y, DEVICE_W, DEVICE_H,
-                    cb_name, "url(#grad_cbox)", COLOR_DEVICE_STROKE,
+                    dwg,
+                    dev_x,
+                    dev_y,
+                    DEVICE_W,
+                    DEVICE_H,
+                    cb_name,
+                    self._fill("grad_cbox"),
+                    COLOR_DEVICE_STROKE,
                     icon="server",
                 )
 
                 self._draw_device_connections(
-                    dwg, cb, dev_x, dev_y, DEVICE_W, DEVICE_H,
-                    switch_centers, rack_switches, port_map, sep_y,
+                    dwg,
+                    cb,
+                    dev_x,
+                    dev_y,
+                    DEVICE_W,
+                    DEVICE_H,
+                    switch_centers,
+                    rack_switches,
+                    port_map,
+                    sep_y,
                     device_index=ci,
                 )
 
@@ -756,27 +826,49 @@ class RackCentricDiagramGenerator:
             # Section separator between CBoxes and DBoxes
             if rack["bottom_devices"]:
                 sep_line_y = dev_y + DEVICE_GAP
-                dwg.add(dwg.line(
-                    start=(rx + 10, sep_line_y), end=(rx + rack_w - 10, sep_line_y),
-                    stroke="#9e9e9e", stroke_width=1,
-                    stroke_dasharray="4,3",
-                ))
+                dwg.add(
+                    dwg.line(
+                        start=(rx + 10, sep_line_y),
+                        end=(rx + rack_w - 10, sep_line_y),
+                        stroke="#9e9e9e",
+                        stroke_width=1,
+                        stroke_dasharray="4,3",
+                    )
+                )
                 dev_y = sep_line_y + DEVICE_GAP * 3
 
             # Bottom devices (DBoxes/EBoxes)
             for di, bd in enumerate(rack["bottom_devices"]):
-                bd_name = bd.get("name", f"{rack['bottom_label']}{di+1}") if isinstance(bd, dict) else f"{rack['bottom_label']}{di+1}"
-                grad = "url(#grad_cbox)" if rack["bottom_label"] == "EB" else "url(#grad_dbox)"
+                bd_name = (
+                    bd.get("name", f"{rack['bottom_label']}{di+1}")
+                    if isinstance(bd, dict)
+                    else f"{rack['bottom_label']}{di+1}"
+                )
+                grad = self._fill("grad_cbox") if rack["bottom_label"] == "EB" else self._fill("grad_dbox")
                 self._draw_device_node(
-                    dwg, dev_x, dev_y, DEVICE_W, DEVICE_H,
-                    bd_name, grad, COLOR_DEVICE_STROKE,
+                    dwg,
+                    dev_x,
+                    dev_y,
+                    DEVICE_W,
+                    DEVICE_H,
+                    bd_name,
+                    grad,
+                    COLOR_DEVICE_STROKE,
                     icon="storage",
                 )
 
                 total_cboxes = len(rack["cboxes"])
                 self._draw_device_connections(
-                    dwg, bd, dev_x, dev_y, DEVICE_W, DEVICE_H,
-                    switch_centers, rack_switches, port_map, sep_y,
+                    dwg,
+                    bd,
+                    dev_x,
+                    dev_y,
+                    DEVICE_W,
+                    DEVICE_H,
+                    switch_centers,
+                    rack_switches,
+                    port_map,
+                    sep_y,
                     device_index=total_cboxes + di,
                 )
 
@@ -801,11 +893,15 @@ class RackCentricDiagramGenerator:
                     sp_cx, sp_bot = spine_positions[spine_ip]
                     mid_y_up = content_y - SPINE_GAP / 2
                     path_d = _ortho_path(sw_cx, sw_top_y, sp_cx, sp_bot, mid_y=mid_y_up)
-                    dwg.add(dwg.path(
-                        d=path_d, fill="none",
-                        stroke=COLOR_SPINE_FABRIC, stroke_width=1.2,
-                        stroke_dasharray="4,2",
-                    ))
+                    dwg.add(
+                        dwg.path(
+                            d=path_d,
+                            fill="none",
+                            stroke=COLOR_SPINE_FABRIC,
+                            stroke_width=1.2,
+                            stroke_dasharray="4,2",
+                        )
+                    )
 
         # ----- Legend -----
         legend_y = content_y + rack_h + 10
@@ -813,20 +909,38 @@ class RackCentricDiagramGenerator:
 
         # ----- Page number -----
         if total_pages > 1:
-            dwg.add(dwg.text(
-                f"Page {page_num} of {total_pages}",
-                insert=(total_w / 2, total_h - 8),
-                text_anchor="middle", font_size="8px",
-                font_family="Helvetica, Arial, sans-serif",
-                fill="#9e9e9e",
-            ))
+            dwg.add(
+                dwg.text(
+                    f"Page {page_num} of {total_pages}",
+                    insert=(total_w / 2, total_h - 8),
+                    text_anchor="middle",
+                    font_size="8px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    fill="#9e9e9e",
+                )
+            )
 
-        return dwg.tostring()
+        return str(dwg.tostring())
 
     # ------------------------------------------------------------------
     # Draw helpers
     # ------------------------------------------------------------------
+    _GRADIENT_FLAT_MAP = {
+        "grad_cbox": COLOR_CBOX_FILL,
+        "grad_dbox": COLOR_DBOX_FILL,
+        "grad_switch": COLOR_SWITCH_FILL,
+        "grad_spine": COLOR_SPINE_FILL,
+    }
+
+    def _fill(self, grad_id: str) -> str:
+        """Return gradient URL when cairosvg will render, else flat color."""
+        if self._use_gradients:
+            return f"url(#{grad_id})"
+        return self._GRADIENT_FLAT_MAP.get(grad_id, COLOR_CBOX_FILL)
+
     def _add_gradients(self, dwg: Any) -> None:
+        if not self._use_gradients:
+            return
         defs = dwg.defs
         for gid, c1, c2 in [
             ("grad_cbox", "#ffffff", COLOR_CBOX_FILL),
@@ -840,15 +954,29 @@ class RackCentricDiagramGenerator:
             defs.add(lg)
 
     def _draw_device_node(
-        self, dwg: Any, x: float, y: float, w: float, h: float,
-        label: str, fill: str, stroke: str,
+        self,
+        dwg: Any,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        label: str,
+        fill: str,
+        stroke: str,
         icon: Optional[str] = None,
     ) -> None:
         """Draw a device rectangle with optional icon and label."""
-        dwg.add(dwg.rect(
-            insert=(x, y), size=(w, h), rx=4, ry=4,
-            fill=fill, stroke=stroke, stroke_width=1,
-        ))
+        dwg.add(
+            dwg.rect(
+                insert=(x, y),
+                size=(w, h),
+                rx=4,
+                ry=4,
+                fill=fill,
+                stroke=stroke,
+                stroke_width=1,
+            )
+        )
 
         # Icon (small, left side)
         if icon and self.device_icon_mode == "flat":
@@ -858,9 +986,7 @@ class RackCentricDiagramGenerator:
                 "switch": ICON_SWITCH,
             }.get(icon)
             if icon_data:
-                icon_g = dwg.g(
-                    transform=f"translate({x + 4},{y + h / 2 - 5}) scale(0.8)"
-                )
+                icon_g = dwg.g(transform=f"translate({x + 4},{y + h / 2 - 5}) scale(0.8)")
                 icon_g.add(dwg.path(d=icon_data, fill="none", stroke=stroke, stroke_width=0.8))
                 dwg.add(icon_g)
 
@@ -868,24 +994,40 @@ class RackCentricDiagramGenerator:
         text_x = x + (24 if icon and self.device_icon_mode == "flat" else 6)
         avail_chars = int((w - (text_x - x) - 4) / 5.0)  # ~5px per char at 9px font
         display_label = label if len(label) <= avail_chars else label[: avail_chars - 1] + "…"
-        dwg.add(dwg.text(
-            display_label,
-            insert=(text_x, y + h / 2 + 4),
-            font_size="9px",
-            font_family="Helvetica, Arial, sans-serif",
-            fill=COLOR_LABEL,
-        ))
+        dwg.add(
+            dwg.text(
+                display_label,
+                insert=(text_x, y + h / 2 + 4),
+                font_size="9px",
+                font_family="Helvetica, Arial, sans-serif",
+                fill=COLOR_LABEL,
+            )
+        )
 
     def _draw_switch_node(
-        self, dwg: Any, x: float, y: float, w: float, h: float,
-        designation: str, hostname: str,
-        fill: str, stroke: str,
+        self,
+        dwg: Any,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        designation: str,
+        hostname: str,
+        fill: str,
+        stroke: str,
     ) -> None:
         """Draw a switch box with a bold designation label and small hostname subtitle."""
-        dwg.add(dwg.rect(
-            insert=(x, y), size=(w, h), rx=4, ry=4,
-            fill=fill, stroke=stroke, stroke_width=1,
-        ))
+        dwg.add(
+            dwg.rect(
+                insert=(x, y),
+                size=(w, h),
+                rx=4,
+                ry=4,
+                fill=fill,
+                stroke=stroke,
+                stroke_width=1,
+            )
+        )
 
         if self.device_icon_mode == "flat":
             icon_g = dwg.g(transform=f"translate({x + 4},{y + h / 2 - 5}) scale(0.8)")
@@ -894,31 +1036,38 @@ class RackCentricDiagramGenerator:
 
         text_x = x + (24 if self.device_icon_mode == "flat" else 6)
 
-        dwg.add(dwg.text(
-            designation,
-            insert=(text_x, y + h / 2 - 1),
-            font_size="10px",
-            font_family="Helvetica, Arial, sans-serif",
-            font_weight="bold",
-            fill=COLOR_LABEL,
-        ))
+        dwg.add(
+            dwg.text(
+                designation,
+                insert=(text_x, y + h / 2 - 1),
+                font_size="10px",
+                font_family="Helvetica, Arial, sans-serif",
+                font_weight="bold",
+                fill=COLOR_LABEL,
+            )
+        )
 
         if hostname:
             avail = int((w - (text_x - x) - 4) / 4.5)
-            short_name = hostname if len(hostname) <= avail else hostname[:avail - 1] + "…"
-            dwg.add(dwg.text(
-                short_name,
-                insert=(text_x, y + h / 2 + 9),
-                font_size="7px",
-                font_family="Helvetica, Arial, sans-serif",
-                fill="#757575",
-            ))
+            short_name = hostname if len(hostname) <= avail else hostname[: avail - 1] + "…"
+            dwg.add(
+                dwg.text(
+                    short_name,
+                    insert=(text_x, y + h / 2 + 9),
+                    font_size="7px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    fill="#757575",
+                )
+            )
 
     def _draw_device_connections(
         self,
         dwg: Any,
         device: Any,
-        dev_x: float, dev_y: float, dev_w: float, dev_h: float,
+        dev_x: float,
+        dev_y: float,
+        dev_w: float,
+        dev_h: float,
         switch_centers: Dict[str, Tuple[float, float]],
         _rack_switches: List[Any],
         port_map: List[Dict[str, Any]],
@@ -967,12 +1116,13 @@ class RackCentricDiagramGenerator:
 
             ip_match = node_ip and node_ip in dev_ips
             name_match = (
-                (dev_hostname and conn_hostname and (
-                    dev_hostname == conn_hostname or dev_hostname in conn_hostname or conn_hostname in dev_hostname
-                )) or
-                (dev_name and conn_hostname and (
-                    dev_name == conn_hostname or dev_name in conn_hostname or conn_hostname in dev_name
-                ))
+                dev_hostname
+                and conn_hostname
+                and (dev_hostname == conn_hostname or dev_hostname in conn_hostname or conn_hostname in dev_hostname)
+            ) or (
+                dev_name
+                and conn_hostname
+                and (dev_name == conn_hostname or dev_name in conn_hostname or conn_hostname in dev_name)
             )
 
             if not (ip_match or name_match):
@@ -1013,24 +1163,31 @@ class RackCentricDiagramGenerator:
             ]
 
             path_d = _rounded_polyline(waypoints)
-            dwg.add(dwg.path(
-                d=path_d, fill="none",
-                stroke=color, stroke_width=2.0,
-                opacity=0.85,
-            ))
+            dwg.add(
+                dwg.path(
+                    d=path_d,
+                    fill="none",
+                    stroke=color,
+                    stroke_width=2.0,
+                    opacity=0.85,
+                )
+            )
 
             if self.show_port_labels:
                 port_name = conn.get("port", "")
                 if port_name:
                     label_x = exit_x + (6 if network == "A" else -6)
                     label_y = exit_y - 4
-                    dwg.add(dwg.text(
-                        port_name,
-                        insert=(label_x, label_y),
-                        font_size="6px",
-                        font_family="Helvetica, Arial, sans-serif",
-                        fill=color, opacity=0.7,
-                    ))
+                    dwg.add(
+                        dwg.text(
+                            port_name,
+                            insert=(label_x, label_y),
+                            font_size="6px",
+                            font_family="Helvetica, Arial, sans-serif",
+                            fill=color,
+                            opacity=0.7,
+                        )
+                    )
 
     @staticmethod
     def _is_drawable_interface(interface: str, conn: Dict[str, Any]) -> bool:
@@ -1071,21 +1228,35 @@ class RackCentricDiagramGenerator:
             x = start_x + i * spacing
             bw, bh = 110, 22
             tint = tint_map.get(color, "white")
-            dwg.add(dwg.rect(
-                insert=(x, y), size=(bw, bh), rx=11, ry=11,
-                fill=tint, stroke=color, stroke_width=1.5,
-            ))
-            dwg.add(dwg.line(
-                start=(x + 10, y + bh / 2), end=(x + 26, y + bh / 2),
-                stroke=color, stroke_width=2.5,
-            ))
-            dwg.add(dwg.text(
-                label, insert=(x + 32, y + bh / 2 + 4),
-                font_size="9px",
-                font_family="Helvetica, Arial, sans-serif",
-                font_weight="bold",
-                fill=color,
-            ))
+            dwg.add(
+                dwg.rect(
+                    insert=(x, y),
+                    size=(bw, bh),
+                    rx=11,
+                    ry=11,
+                    fill=tint,
+                    stroke=color,
+                    stroke_width=1.5,
+                )
+            )
+            dwg.add(
+                dwg.line(
+                    start=(x + 10, y + bh / 2),
+                    end=(x + 26, y + bh / 2),
+                    stroke=color,
+                    stroke_width=2.5,
+                )
+            )
+            dwg.add(
+                dwg.text(
+                    label,
+                    insert=(x + 32, y + bh / 2 + 4),
+                    font_size="9px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    font_weight="bold",
+                    fill=color,
+                )
+            )
 
     # ------------------------------------------------------------------
     # SVG to PNG conversion

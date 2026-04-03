@@ -823,9 +823,7 @@ class RackDiagram:
 
         top_u = positions[-1] + switch_height - 1
         if top_u > rack_height:
-            logger.info(
-                f"Strategy B (above): top switch reaches U{top_u}, exceeds rack height {rack_height}U"
-            )
+            logger.info(f"Strategy B (above): top switch reaches U{top_u}, exceeds rack height {rack_height}U")
             return []
 
         logger.info(f"Strategy B (above): placed {num_switches} switches at U{positions}")

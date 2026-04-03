@@ -28,10 +28,10 @@ from network_diagram_v2 import (
     _ortho_path,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_cbox(name: str, rack: str = "Rack-1", mgmt_ip: str = "") -> Dict[str, Any]:
     return {"name": name, "rack_name": rack, "mgmt_ip": mgmt_ip, "data_ips": []}
@@ -42,8 +42,11 @@ def _make_switch(hostname: str, mgmt_ip: str) -> Dict[str, Any]:
 
 
 def _make_port_map_entry(
-    node_ip: str, switch_ip: str, network: str = "A",
-    interface: str = "f0", hostname: str = "",
+    node_ip: str,
+    switch_ip: str,
+    network: str = "A",
+    interface: str = "f0",
+    hostname: str = "",
 ) -> Dict[str, Any]:
     return {
         "node_ip": node_ip,
@@ -60,6 +63,7 @@ def _make_port_map_entry(
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestRackGrouping:
     def test_cboxes_grouped_by_rack_name(self):
@@ -90,13 +94,15 @@ class TestSpineDetection:
         sw1 = _make_switch("leaf-a", "10.0.0.1")
         sw2 = _make_switch("spine-1", "10.0.0.3")
 
-        racks = [{
-            "rack_name": "Rack-1",
-            "cboxes": [],
-            "bottom_devices": [],
-            "switches": [sw1],
-            "bottom_label": "DB",
-        }]
+        racks = [
+            {
+                "rack_name": "Rack-1",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [sw1],
+                "bottom_label": "DB",
+            }
+        ]
         spines = gen._detect_spines([sw1, sw2], racks)
         assert len(spines) == 1
         assert spines[0]["hostname"] == "spine-1"
@@ -104,13 +110,15 @@ class TestSpineDetection:
     def test_no_spines_when_all_assigned(self):
         gen = RackCentricDiagramGenerator()
         sw1 = _make_switch("leaf-a", "10.0.0.1")
-        racks = [{
-            "rack_name": "Rack-1",
-            "cboxes": [],
-            "bottom_devices": [],
-            "switches": [sw1],
-            "bottom_label": "DB",
-        }]
+        racks = [
+            {
+                "rack_name": "Rack-1",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [sw1],
+                "bottom_label": "DB",
+            }
+        ]
         spines = gen._detect_spines([sw1], racks)
         assert len(spines) == 0
 
@@ -199,13 +207,15 @@ class TestSVGGeneration:
             _make_port_map_entry("10.0.0.1", "10.0.0.101", "A", "f0", "cb-1"),
             _make_port_map_entry("10.0.0.1", "10.0.0.102", "B", "f1", "cb-1"),
         ]
-        ipl_conns = [{
-            "switch1_ip": "10.0.0.101",
-            "switch2_ip": "10.0.0.200",
-            "switch_designation": "SWA",
-            "node_designation": "SP1",
-            "notes": "LLDP uplink",
-        }]
+        ipl_conns = [
+            {
+                "switch1_ip": "10.0.0.101",
+                "switch2_ip": "10.0.0.200",
+                "switch_designation": "SWA",
+                "node_designation": "SP1",
+                "notes": "LLDP uplink",
+            }
+        ]
         hardware = {
             "cboxes": [_make_cbox("cb-1", "Rack-1", "10.0.0.1")],
             "dboxes": [],
@@ -241,7 +251,7 @@ class TestMultiPage:
         racks = gen._build_rack_groups(cboxes, [], [], [], None, "DB")
         pages: List[List[Any]] = []
         for i in range(0, len(racks), MAX_RACKS_PER_PAGE):
-            pages.append(racks[i: i + MAX_RACKS_PER_PAGE])
+            pages.append(racks[i : i + MAX_RACKS_PER_PAGE])
         assert len(pages) == 2
         assert len(pages[0]) == 2
         assert len(pages[1]) == 1

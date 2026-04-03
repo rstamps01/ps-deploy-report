@@ -54,26 +54,30 @@ class TestEndToEndVnetmapDiagram:
             # Step 3: Build port_mapping_data shape expected by diagram generator
             port_map = []
             for conn in parsed["topology"]:
-                port_map.append({
-                    "node_ip": conn["node_ip"],
-                    "node_hostname": conn["node_hostname"],
-                    "hostname": conn["hostname"],
-                    "switch_ip": conn["switch_ip"],
-                    "port": conn["port"],
-                    "interface": conn["interface"],
-                    "network": conn["network"],
-                    "node_designation": "CN1" if "cnode" in conn["hostname"] else "DN1",
-                    "node_type": "cnode" if "cnode" in conn["hostname"] else "dnode",
-                })
+                port_map.append(
+                    {
+                        "node_ip": conn["node_ip"],
+                        "node_hostname": conn["node_hostname"],
+                        "hostname": conn["hostname"],
+                        "switch_ip": conn["switch_ip"],
+                        "port": conn["port"],
+                        "interface": conn["interface"],
+                        "network": conn["network"],
+                        "node_designation": "CN1" if "cnode" in conn["hostname"] else "DN1",
+                        "node_type": "cnode" if "cnode" in conn["hostname"] else "dnode",
+                    }
+                )
 
             ipl_connections = []
             for lldp in parsed["lldp_neighbors"]:
-                ipl_connections.append({
-                    "switch_a_ip": lldp["local_switch_ip"],
-                    "switch_a_port": lldp["local_port"],
-                    "switch_b_ip": lldp["remote_switch_ip"],
-                    "switch_b_port": lldp["remote_port"],
-                })
+                ipl_connections.append(
+                    {
+                        "switch_a_ip": lldp["local_switch_ip"],
+                        "switch_a_port": lldp["local_port"],
+                        "switch_b_ip": lldp["remote_switch_ip"],
+                        "switch_b_port": lldp["remote_port"],
+                    }
+                )
 
             port_mapping_data = {
                 "port_map": port_map,
@@ -97,12 +101,14 @@ class TestEndToEndVnetmapDiagram:
             }
 
             # Step 5: Generate diagram
-            gen = RackCentricDiagramGenerator(config={
-                "mode": "detailed",
-                "show_port_labels": False,
-                "device_icons": "flat",
-                "orientation": "landscape",
-            })
+            gen = RackCentricDiagramGenerator(
+                config={
+                    "mode": "detailed",
+                    "show_port_labels": False,
+                    "device_icons": "flat",
+                    "orientation": "landscape",
+                }
+            )
 
             output_dir = Path(td) / "diagrams"
             png_paths = gen.generate(

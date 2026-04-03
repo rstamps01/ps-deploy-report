@@ -340,7 +340,8 @@ class OneShotRunner:
         """In Tech Port mode, verify VMS discovery instead of direct API access."""
         if self._tunnel and self._tunnel_address:
             return ValidationCheck(
-                "Cluster API", "pass",
+                "Cluster API",
+                "pass",
                 f"Tech Port: VMS discovered (internal={self._tunnel.vms_internal_ip}, "
                 f"management={self._tunnel.vms_management_ip}), tunnel={self._tunnel_address}.",
                 "connectivity",
@@ -349,7 +350,8 @@ class OneShotRunner:
         node_password = self._credentials.get("node_password", "")
         if not node_password:
             return ValidationCheck(
-                "Cluster API", "fail",
+                "Cluster API",
+                "fail",
                 "Tech Port mode requires Node SSH password for VMS discovery.",
                 "connectivity",
             )
@@ -357,16 +359,21 @@ class OneShotRunner:
             from utils.vms_tunnel import discover_vms_management_ip
 
             vms_internal, vms_mgmt = discover_vms_management_ip(
-                cluster_ip, node_user, node_password, timeout=15,
+                cluster_ip,
+                node_user,
+                node_password,
+                timeout=15,
             )
             return ValidationCheck(
-                "Cluster API", "pass",
+                "Cluster API",
+                "pass",
                 f"Tech Port: VMS discovered (internal={vms_internal}, management={vms_mgmt}).",
                 "connectivity",
             )
         except Exception as exc:
             return ValidationCheck(
-                "Cluster API", "fail",
+                "Cluster API",
+                "fail",
                 f"Tech Port: VMS discovery failed: {exc}",
                 "connectivity",
             )
@@ -663,13 +670,14 @@ class OneShotRunner:
         node_user = self._credentials.get("node_user", "vastdata")
         node_password = self._credentials.get("node_password", "vastdata")
         self._emit("info", f"Tech Port mode: discovering VMS via {cluster_ip}...")
-        self._tunnel = VMSTunnel(cluster_ip, node_user, node_password)
-        self._tunnel.connect()
-        self._tunnel_address = self._tunnel.local_bind_address
+        tunnel = VMSTunnel(cluster_ip, node_user, node_password)
+        tunnel.connect()
+        self._tunnel = tunnel
+        self._tunnel_address = tunnel.local_bind_address
         self._emit(
             "info",
-            f"VMS discovered: internal={self._tunnel.vms_internal_ip}, "
-            f"management={self._tunnel.vms_management_ip}, tunnel={self._tunnel_address}",
+            f"VMS discovered: internal={tunnel.vms_internal_ip}, "
+            f"management={tunnel.vms_management_ip}, tunnel={self._tunnel_address}",
         )
 
     def _teardown_tunnel(self) -> None:

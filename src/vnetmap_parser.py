@@ -168,12 +168,14 @@ class VNetMapParser:
                     continue
                 seen.add(flat_key)
 
-                self.lldp_neighbors.append({
-                    "local_switch_ip": local_ip,
-                    "local_port": local_port,
-                    "remote_switch_ip": remote_ip,
-                    "remote_port": remote_port,
-                })
+                self.lldp_neighbors.append(
+                    {
+                        "local_switch_ip": local_ip,
+                        "local_port": local_port,
+                        "remote_switch_ip": remote_ip,
+                        "remote_port": remote_port,
+                    }
+                )
 
     def get_connections_by_switch(self) -> Dict[str, List[Dict[str, Any]]]:
         """

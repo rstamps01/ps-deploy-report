@@ -872,7 +872,8 @@ class VastBrandCompliance:
         if frame_width < MIN_FRAME_W or frame_height < MIN_FRAME_H:
             self.logger.warning(
                 "Margins too large (frame %.0fx%.0f pt); clamping to safe defaults.",
-                frame_width, frame_height,
+                frame_width,
+                frame_height,
             )
             left_margin = right_margin = 0.5 * inch
             top_margin = 0.5 * inch
@@ -881,8 +882,10 @@ class VastBrandCompliance:
             frame_height = page_height - top_margin - bottom_margin
 
         self.effective_margins = {
-            "left": left_margin, "right": right_margin,
-            "top": top_margin, "bottom": bottom_margin,
+            "left": left_margin,
+            "right": right_margin,
+            "top": top_margin,
+            "bottom": bottom_margin,
         }
 
         # Create main frame for content

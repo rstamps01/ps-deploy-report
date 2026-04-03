@@ -229,7 +229,7 @@ class ToolManager:
         self._emit("info", f"  Copying from local cache...")
 
         try:
-            import paramiko
+            import paramiko  # type: ignore[import-untyped]
             from scp import SCPClient
 
             ssh = paramiko.SSHClient()

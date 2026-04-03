@@ -10,6 +10,7 @@ Covers:
 import sys
 import tempfile
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -67,16 +68,14 @@ LLDP neighbors on 10.128.101.142:
 """
         result = self._write_and_parse(two_side_output)
         lldp = result.get("lldp_neighbors", [])
-        unique_pairs = {
-            (n["local_switch_ip"], n["local_port"], n["remote_switch_ip"], n["remote_port"])
-            for n in lldp
-        }
+        unique_pairs = {(n["local_switch_ip"], n["local_port"], n["remote_switch_ip"], n["remote_port"]) for n in lldp}
         assert len(unique_pairs) == len(lldp), "LLDP entries should be deduplicated"
 
 
 # ---------------------------------------------------------------------------
 # EnhancedPortMapper: breakout port normalisation
 # ---------------------------------------------------------------------------
+
 
 class TestBreakoutPortNormalisation:
     def test_eth1_xy_breakout(self):
@@ -104,6 +103,7 @@ class TestBreakoutPortNormalisation:
 # ---------------------------------------------------------------------------
 # Vnetmap file discovery (app.py helper)
 # ---------------------------------------------------------------------------
+
 
 class TestVnetmapDiscovery:
     """Test the vnetmap file discovery logic directly (without importing app.py)."""
@@ -146,13 +146,12 @@ class TestVnetmapDiscovery:
 # Interface filter (DNode)
 # ---------------------------------------------------------------------------
 
+
 class TestInterfaceFilter:
     def test_cnode_f0_is_drawable(self):
         from network_diagram_v2 import RackCentricDiagramGenerator
 
-        assert RackCentricDiagramGenerator._is_drawable_interface(
-            "f0", {"node_designation": "CN1"}
-        )
+        assert RackCentricDiagramGenerator._is_drawable_interface("f0", {"node_designation": "CN1"})
 
     def test_dnode_ens3_is_drawable(self):
         from network_diagram_v2 import RackCentricDiagramGenerator
@@ -164,6 +163,4 @@ class TestInterfaceFilter:
     def test_unknown_interface_not_drawable(self):
         from network_diagram_v2 import RackCentricDiagramGenerator
 
-        assert not RackCentricDiagramGenerator._is_drawable_interface(
-            "lo", {"node_designation": "CN1"}
-        )
+        assert not RackCentricDiagramGenerator._is_drawable_interface("lo", {"node_designation": "CN1"})

@@ -139,7 +139,9 @@ def discover_vms_management_ip(
 
     # Strategy 1: parse /etc/motd (fast, local file, no PATH dependency)
     rc, out, err = run_ssh_command(
-        entry_host, ssh_user, ssh_password,
+        entry_host,
+        ssh_user,
+        ssh_password,
         "grep 'VMS:' /etc/motd 2>/dev/null",
         timeout=timeout,
     )
@@ -154,16 +156,16 @@ def discover_vms_management_ip(
             "2>/dev/null | cut -d: -f1 | head -1"
         )
         rc, out, err = run_ssh_command(
-            entry_host, ssh_user, ssh_password, clush_cmd,
+            entry_host,
+            ssh_user,
+            ssh_password,
+            clush_cmd,
             timeout=timeout,
         )
         vms_internal_ip = parse_find_vms_output(out) if rc == 0 else None
 
     if not vms_internal_ip:
-        raise VMSDiscoveryError(
-            f"Could not discover VMS IP on {entry_host} "
-            f"(motd and clush both failed): {err}"
-        )
+        raise VMSDiscoveryError(f"Could not discover VMS IP on {entry_host} " f"(motd and clush both failed): {err}")
     logger.info("VMS internal IP: %s", vms_internal_ip)
 
     # Step 2: SSH hop to VMS internal IP, get management IP
@@ -179,9 +181,7 @@ def discover_vms_management_ip(
         jump_password=ssh_password,
     )
     if rc != 0:
-        raise VMSDiscoveryError(
-            f"Failed to get management IP from VMS CNode {vms_internal_ip} (rc={rc}): {err}"
-        )
+        raise VMSDiscoveryError(f"Failed to get management IP from VMS CNode {vms_internal_ip} (rc={rc}): {err}")
 
     vms_mgmt_ip = parse_management_ip(out)
     if not vms_mgmt_ip:
@@ -224,7 +224,7 @@ class VMSTunnel:
         self.remote_port = remote_port
         self.timeout = timeout
 
-        self._ssh_client = None  # type: ignore[assignment]
+        self._ssh_client: Optional[paramiko.SSHClient] = None
         self._server_socket: Optional[socket.socket] = None
         self._accept_thread: Optional[threading.Thread] = None
         self._running = False
@@ -347,7 +347,8 @@ class VMSTunnel:
         """Forward one TCP connection through the SSH tunnel."""
         channel = None
         try:
-            transport = self._ssh_client.get_transport()  # type: ignore[union-attr]
+            assert self._ssh_client is not None
+            transport = self._ssh_client.get_transport()
             if transport is None or not transport.is_active():
                 logger.warning("SSH transport not active, dropping connection")
                 local_sock.close()

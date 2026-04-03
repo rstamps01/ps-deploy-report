@@ -134,7 +134,7 @@ class SupportToolWorkflow:
         """
         import tempfile
 
-        import paramiko
+        import paramiko  # type: ignore[import-untyped]
         from scp import SCPClient
 
         jump_client: paramiko.SSHClient | None = None
@@ -146,8 +146,12 @@ class SupportToolWorkflow:
             jump_client = paramiko.SSHClient()
             jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             jump_client.connect(
-                jump_host, username=jump_user, password=jump_password,
-                timeout=30, look_for_keys=False, allow_agent=False,
+                jump_host,
+                username=jump_user,
+                password=jump_password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
             )
 
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".py")
@@ -167,8 +171,12 @@ class SupportToolWorkflow:
             vms_client = paramiko.SSHClient()
             vms_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             vms_client.connect(
-                vms_ip, username=jump_user, password=jump_password,
-                timeout=30, look_for_keys=False, allow_agent=False,
+                vms_ip,
+                username=jump_user,
+                password=jump_password,
+                timeout=30,
+                look_for_keys=False,
+                allow_agent=False,
                 sock=sock,
             )
 
@@ -185,6 +193,7 @@ class SupportToolWorkflow:
                 jump_client.close()
             if tmp_path:
                 import os
+
                 try:
                     os.unlink(tmp_path)
                 except OSError:
@@ -254,8 +263,12 @@ class SupportToolWorkflow:
             self.emit("info", f"  CNode {host} → VMS {vms_internal_ip}:{self.CONTAINER_SCRIPT_PATH}")
 
             push_ok, push_msg = self._scp_to_vms(
-                host, user, password, vms_internal_ip,
-                self.CONTAINER_SCRIPT_PATH, self.CONTAINER_SCRIPT_PATH,
+                host,
+                user,
+                password,
+                vms_internal_ip,
+                self.CONTAINER_SCRIPT_PATH,
+                self.CONTAINER_SCRIPT_PATH,
             )
             if not push_ok:
                 self.emit("error", f"Failed to push script to VMS: {push_msg}")
@@ -269,8 +282,14 @@ class SupportToolWorkflow:
             self.emit("info", f"$ {chmod_cmd}")
 
             rc, stdout, stderr = run_ssh_command(
-                vms_internal_ip, user, password, chmod_cmd, timeout=30,
-                jump_host=host, jump_user=user, jump_password=password,
+                vms_internal_ip,
+                user,
+                password,
+                chmod_cmd,
+                timeout=30,
+                jump_host=host,
+                jump_user=user,
+                jump_password=password,
             )
             if rc != 0:
                 self.emit("error", f"chmod failed: {stderr}")
@@ -278,8 +297,14 @@ class SupportToolWorkflow:
 
             verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
             rc, stdout, _ = run_ssh_command(
-                vms_internal_ip, user, password, verify_cmd, timeout=10,
-                jump_host=host, jump_user=user, jump_password=password,
+                vms_internal_ip,
+                user,
+                password,
+                verify_cmd,
+                timeout=10,
+                jump_host=host,
+                jump_user=user,
+                jump_password=password,
             )
             if stdout:
                 self.emit("info", stdout.strip())
@@ -323,8 +348,15 @@ class SupportToolWorkflow:
             self.emit("info", "")
 
             rc, stdout, stderr = run_ssh_command(
-                vms_internal_ip, user, password, run_cmd, timeout=600, force_tty=True,
-                jump_host=host, jump_user=user, jump_password=password,
+                vms_internal_ip,
+                user,
+                password,
+                run_cmd,
+                timeout=600,
+                force_tty=True,
+                jump_host=host,
+                jump_user=user,
+                jump_password=password,
             )
         else:
             self.emit("info", f"$ ssh {user}@{host}")

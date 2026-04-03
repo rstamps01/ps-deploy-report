@@ -1851,8 +1851,8 @@ class HealthChecker:
         fall back to alternative fields and then to the ``licenses/`` endpoint.
         """
         _LICENSE_FIELDS = ("license", "license_state", "license_type", "license_status")
-        for field in _LICENSE_FIELDS:
-            val = cluster_data.get(field)
+        for field_name in _LICENSE_FIELDS:
+            val = cluster_data.get(field_name)
             if val and str(val).strip().lower() not in ("", "none", "unknown", "null"):
                 return str(val).strip()
 
@@ -2595,8 +2595,8 @@ class HealthChecker:
             "cloud_enabled",
             "support_portal_enabled",
         )
-        for field in _BOOL_FIELDS:
-            val = cluster_data.get(field)
+        for field_name in _BOOL_FIELDS:
+            val = cluster_data.get(field_name)
             if val is not None:
                 return bool(val)
 
@@ -2729,9 +2729,7 @@ class HealthChecker:
     # Tier 3 -- Switch SSH checks
     # ------------------------------------------------------------------
 
-    def _detect_switch_type(
-        self, host: str, username: str, password: str, **ssh_kwargs: Any
-    ) -> str:
+    def _detect_switch_type(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> str:
         """Detect whether a switch runs Onyx or Cumulus Linux.
 
         Attempts ``show version`` via interactive SSH first — Onyx responds
@@ -2748,9 +2746,7 @@ class HealthChecker:
             "unix shell commands cannot be executed",
         )
         try:
-            rc, stdout, stderr = run_interactive_ssh(
-                host, username, password, "show version", timeout=15, **ssh_kwargs
-            )
+            rc, stdout, stderr = run_interactive_ssh(host, username, password, "show version", timeout=15, **ssh_kwargs)
             combined = ((stdout or "") + (stderr or "")).lower()
             if any(tag in combined for tag in _ONYX_INDICATORS):
                 self.logger.info("Switch %s detected as Onyx", host)
@@ -2800,7 +2796,11 @@ class HealthChecker:
                 ssh_idx += 1
                 self.logger.info(
                     "Running switch SSH check %d/%d on %s (%s): %s",
-                    i, len(checks), switch_ip, switch_os, fn.__name__,
+                    i,
+                    len(checks),
+                    switch_ip,
+                    switch_os,
+                    fn.__name__,
                 )
                 result = fn(switch_ip, username, password, switch_os=switch_os, **jump_kwargs)
                 results.append(result)
@@ -2945,24 +2945,28 @@ class HealthChecker:
             MLAG IPLs → Operational State: Up
             MLAG Members → State: Up
         """
-        rc, stdout, stderr = run_interactive_ssh(
-            host, username, password, "show mlag", timeout=30, **ssh_kwargs
-        )
+        rc, stdout, stderr = run_interactive_ssh(host, username, password, "show mlag", timeout=30, **ssh_kwargs)
         output = (stdout or "").strip()
 
         if not output:
             if stderr and "authentication failed" in (stderr or "").lower():
                 return HealthCheckResult(
-                    check_name="MLAG Status", category="switch_ssh", status="error",
+                    check_name="MLAG Status",
+                    category="switch_ssh",
+                    status="error",
                     message=f"SSH authentication failed on {host}",
                     details={"host": host, "stderr": stderr},
-                    timestamp=self._now(), duration_seconds=time.time() - start,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
                 )
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="warning",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="warning",
                 message=f"MLAG status could not be determined on {host} (no output from show mlag)",
                 details={"host": host, "stderr": stderr or ""},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         admin_enabled = False
@@ -3019,16 +3023,24 @@ class HealthChecker:
 
         if not found_any:
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="warning",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="warning",
                 message=f"MLAG fields not found in output on {host} — verify switch CLI access",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         if admin_enabled and oper_up:
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="pass",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="pass",
                 message=f"MLAG healthy on {host}: operational status Up",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         issues: List[str] = []
@@ -3037,9 +3049,13 @@ class HealthChecker:
         if not oper_up:
             issues.append("operational status not Up")
         return HealthCheckResult(
-            check_name="MLAG Status", category="switch_ssh", status="fail",
+            check_name="MLAG Status",
+            category="switch_ssh",
+            status="fail",
             message=f"MLAG issue on {host}: {', '.join(issues)}",
-            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            details=details,
+            timestamp=self._now(),
+            duration_seconds=time.time() - start,
         )
 
     # -- Cumulus MLAG ------------------------------------------------------
@@ -3057,13 +3073,9 @@ class HealthChecker:
         last_stderr = ""
         for cmd, use_pty in _MLAG_CMDS:
             if use_pty:
-                rc, stdout, stderr = run_interactive_ssh(
-                    host, username, password, cmd, timeout=30, **ssh_kwargs
-                )
+                rc, stdout, stderr = run_interactive_ssh(host, username, password, cmd, timeout=30, **ssh_kwargs)
             else:
-                rc, stdout, stderr = run_ssh_command(
-                    host, username, password, cmd, timeout=30, **ssh_kwargs
-                )
+                rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
             last_stderr = stderr or ""
             candidate = (stdout or "").strip()
             if candidate and "unknown command" not in candidate.lower():
@@ -3073,16 +3085,22 @@ class HealthChecker:
         if not output:
             if last_stderr and "authentication failed" in last_stderr.lower():
                 return HealthCheckResult(
-                    check_name="MLAG Status", category="switch_ssh", status="error",
+                    check_name="MLAG Status",
+                    category="switch_ssh",
+                    status="error",
                     message=f"SSH authentication failed on {host}",
                     details={"host": host, "stderr": last_stderr},
-                    timestamp=self._now(), duration_seconds=time.time() - start,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
                 )
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="warning",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="warning",
                 message=f"MLAG status could not be determined on {host} (no output from show mlag)",
                 details={"host": host, "stderr": last_stderr},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         peer_alive = False
@@ -3117,16 +3135,24 @@ class HealthChecker:
 
         if peer_alive and backup_active:
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="pass",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="pass",
                 message=f"MLAG healthy on {host}: peer-alive and backup-active",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         if not found_any_field:
             return HealthCheckResult(
-                check_name="MLAG Status", category="switch_ssh", status="warning",
+                check_name="MLAG Status",
+                category="switch_ssh",
+                status="warning",
                 message=f"MLAG fields not found in output on {host} — verify switch CLI access",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         issues: List[str] = []
@@ -3135,9 +3161,13 @@ class HealthChecker:
         if not backup_active:
             issues.append("backup-active not confirmed")
         return HealthCheckResult(
-            check_name="MLAG Status", category="switch_ssh", status="fail",
+            check_name="MLAG Status",
+            category="switch_ssh",
+            status="fail",
             message=f"MLAG issue on {host}: {', '.join(issues)}",
-            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            details=details,
+            timestamp=self._now(),
+            duration_seconds=time.time() - start,
         )
 
     # --- Switch SSH Check: NTP --------------------------------------------
@@ -3154,9 +3184,13 @@ class HealthChecker:
             raise
         except Exception as e:
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="error",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="error",
                 message=f"Check failed on {host}: {e}",
-                details={"host": host}, timestamp=self._now(), duration_seconds=time.time() - start,
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
     # -- Onyx NTP ----------------------------------------------------------
@@ -3170,17 +3204,18 @@ class HealthChecker:
             NTP is administratively: enabled
             Active servers and peers section with server IPs
         """
-        rc, stdout, stderr = run_interactive_ssh(
-            host, username, password, "show ntp", timeout=30, **ssh_kwargs
-        )
+        rc, stdout, stderr = run_interactive_ssh(host, username, password, "show ntp", timeout=30, **ssh_kwargs)
         output = (stdout or "").strip()
 
         if not output:
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="warning",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="warning",
                 message=f"NTP status could not be determined on {host} (no output from show ntp)",
                 details={"host": host, "switch_os": "onyx", "stderr": stderr or ""},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         ntp_enabled = False
@@ -3196,32 +3231,48 @@ class HealthChecker:
                 continue
             if in_active_section and ll and not ll.startswith("---"):
                 import re
+
                 if re.match(r"\d+\.\d+\.\d+\.\d+", ll.split(":")[0].strip()):
                     servers_found = True
 
         details: Dict[str, Any] = {
-            "host": host, "switch_os": "onyx", "stdout": output,
-            "ntp_enabled": ntp_enabled, "servers_found": servers_found,
+            "host": host,
+            "switch_os": "onyx",
+            "stdout": output,
+            "ntp_enabled": ntp_enabled,
+            "servers_found": servers_found,
         }
 
         if ntp_enabled and servers_found:
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="pass",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="pass",
                 message=f"NTP enabled with active servers on {host}",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         if ntp_enabled and not servers_found:
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="warning",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="warning",
                 message=f"NTP enabled but no active servers found on {host}",
-                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+                details=details,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         return HealthCheckResult(
-            check_name="Switch NTP", category="switch_ssh", status="warning",
+            check_name="Switch NTP",
+            category="switch_ssh",
+            status="warning",
             message=f"NTP not enabled on {host}",
-            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            details=details,
+            timestamp=self._now(),
+            duration_seconds=time.time() - start,
         )
 
     # -- Cumulus NTP -------------------------------------------------------
@@ -3237,10 +3288,13 @@ class HealthChecker:
 
         if "ntp not available" in output.lower():
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="warning",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="warning",
                 message=f"NTP not available on {host}",
                 details={"host": host, "switch_os": "cumulus", "stdout": output},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
         lines = output.splitlines()
@@ -3248,16 +3302,22 @@ class HealthChecker:
 
         if peer_lines:
             return HealthCheckResult(
-                check_name="Switch NTP", category="switch_ssh", status="pass",
+                check_name="Switch NTP",
+                category="switch_ssh",
+                status="pass",
                 message=f"NTP peers found on {host}",
                 details={"host": host, "switch_os": "cumulus", "stdout": output, "peer_count": len(peer_lines)},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
         return HealthCheckResult(
-            check_name="Switch NTP", category="switch_ssh", status="warning",
+            check_name="Switch NTP",
+            category="switch_ssh",
+            status="warning",
             message=f"No NTP peers found on {host}",
             details={"host": host, "switch_os": "cumulus", "stdout": output},
-            timestamp=self._now(), duration_seconds=time.time() - start,
+            timestamp=self._now(),
+            duration_seconds=time.time() - start,
         )
 
     # --- Switch SSH Check: Config Readability ------------------------------
@@ -3273,31 +3333,39 @@ class HealthChecker:
                 )
             else:
                 cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"
-                rc, stdout, stderr = run_ssh_command(
-                    host, username, password, cmd, timeout=30, **ssh_kwargs
-                )
+                rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
 
             output = (stdout or "").strip()
             if output:
                 return HealthCheckResult(
-                    check_name="Switch Config Readability", category="switch_ssh", status="pass",
+                    check_name="Switch Config Readability",
+                    category="switch_ssh",
+                    status="pass",
                     message=f"Switch config readable on {host}",
                     details={"host": host, "switch_os": switch_os, "stdout": output[:500]},
-                    timestamp=self._now(), duration_seconds=time.time() - start,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
                 )
             return HealthCheckResult(
-                check_name="Switch Config Readability", category="switch_ssh", status="warning",
+                check_name="Switch Config Readability",
+                category="switch_ssh",
+                status="warning",
                 message=f"Switch config returned empty output on {host}",
                 details={"host": host, "switch_os": switch_os, "stderr": stderr or ""},
-                timestamp=self._now(), duration_seconds=time.time() - start,
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
         except CancelledError:
             raise
         except Exception as e:
             return HealthCheckResult(
-                check_name="Switch Config Readability", category="switch_ssh", status="error",
+                check_name="Switch Config Readability",
+                category="switch_ssh",
+                status="error",
                 message=f"Check failed on {host}: {e}",
-                details={"host": host}, timestamp=self._now(), duration_seconds=time.time() - start,
+                details={"host": host},
+                timestamp=self._now(),
+                duration_seconds=time.time() - start,
             )
 
     def run_custom_scripts(self, scripts: List[Dict[str, str]]) -> List[HealthCheckResult]:
