@@ -109,7 +109,7 @@ class TestSwitchDetection:
         with patch("external_port_mapper.run_ssh_command") as mock_ssh, patch(
             "external_port_mapper.run_interactive_ssh"
         ):
-            mock_ssh.return_value = (1, "", "Cannot reach jump host")
+            mock_ssh.return_value = (1, "", "connection refused")
             with pytest.raises(Exception, match="CNode can reach"):
                 mapper_with_proxy._detect_switch_os("10.0.0.10")
 
@@ -166,6 +166,25 @@ class TestMacCollection:
         assert result["aa:bb:cc:dd:ee:01"]["vlan"] == "69"
         assert "aa:bb:cc:dd:ee:02" in result
         assert result["aa:bb:cc:dd:ee:02"]["port"] == "swp6"
+
+    def test_parse_onyx_mac_table_filters_port_channels(self, mapper):
+        """Port-channel (Po*) entries should be excluded; they represent
+        learned MACs via the inter-switch link, not direct physical connections."""
+        output = (
+            "VID  MAC Address  Type  Port\n"
+            "---  ---  ---  ---\n"
+            "69  AA:BB:CC:DD:EE:01  Dynamic  Eth1/5\n"
+            "69  AA:BB:CC:DD:EE:02  Dynamic  Po1\n"
+            "69  AA:BB:CC:DD:EE:03  Dynamic  Po2\n"
+            "1   AA:BB:CC:DD:EE:04  Dynamic  Eth1/10\n"
+        )
+        result = mapper._parse_onyx_mac_table(output)
+        assert "aa:bb:cc:dd:ee:01" in result
+        assert result["aa:bb:cc:dd:ee:01"]["port"] == "swp5"
+        assert "aa:bb:cc:dd:ee:02" not in result
+        assert "aa:bb:cc:dd:ee:03" not in result
+        assert "aa:bb:cc:dd:ee:04" in result
+        assert result["aa:bb:cc:dd:ee:04"]["port"] == "swp10"
 
 
 class TestCorrelation:
@@ -250,7 +269,7 @@ class TestProxyJumpConfig:
     def test_jump_kwargs_when_proxy_enabled(self, mapper_with_proxy):
         kwargs = mapper_with_proxy._jump_kwargs()
         assert kwargs == {
-            "jump_host": "10.0.0.2",
+            "jump_host": "10.0.0.1",
             "jump_user": "vastdata",
             "jump_password": "nodepass",
         }
@@ -279,7 +298,7 @@ class TestProxyJumpConfig:
             mock_ssh.return_value = (0, "Cumulus Linux hostname: switch-1", "")
             mapper_with_proxy._detect_switch_os("10.0.0.10")
         _, kwargs = mock_ssh.call_args
-        assert kwargs.get("jump_host") == "10.0.0.2"
+        assert kwargs.get("jump_host") == "10.0.0.1"
         assert kwargs.get("jump_user") == "vastdata"
         assert kwargs.get("jump_password") == "nodepass"
 
@@ -288,7 +307,7 @@ class TestProxyJumpConfig:
             mock_issh.return_value = (0, "output", "")
             mapper_with_proxy._run_onyx_interactive_command("10.0.0.10", "admin", "admin", "show version")
         _, kwargs = mock_issh.call_args
-        assert kwargs.get("jump_host") == "10.0.0.2"
+        assert kwargs.get("jump_host") == "10.0.0.1"
         assert kwargs.get("jump_user") == "vastdata"
         assert kwargs.get("jump_password") == "nodepass"
 

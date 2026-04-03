@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (Vnetmap Integration)
+- **Run Vnetmap checkbox** on Reporter page: pre-select to run `vnetmap.py` before report generation for fresh port mapping and network diagram data; requires node SSH credentials
+- **`/api/vnetmap-status` endpoint:** Detects existing vnetmap output for a cluster and compares hardware fingerprints between the two most recent reports to recommend re-running vnetmap when CBox/DBox/EBox/switch counts change
+- **Hardware change detection:** `_extract_hardware_fingerprint()` and `_compare_hardware_fingerprints()` compare device counts and models across report JSON files to surface topology drift
+- **Three-source port mapping priority** in data extractor: (1) vnetmap output (pre-parsed in app.py) → (2) external SSH collection → (3) static file fallback; each path feeds into `EnhancedPortMapper` for consistent output
+- **LLDP neighbor parsing:** VNetMap parser now extracts LLDP neighbor data for switch-to-switch (IPL/MLAG) connections; data extractor formats IPL from LLDP neighbors or infers IPL from switch pairs when LLDP is absent
+- **Advanced Config toggle:** "Run Vnetmap" default selection added under Reporter Defaults in Advanced Configuration page
+
+### Added (SVG Diagram Support)
+- **New dependencies:** `svgwrite>=1.4.0` and `cairosvg>=2.7.0` added to `requirements.txt` for rack-centric SVG network topology generation
+- **Landscape page template:** Report builder supports landscape-oriented pages for wide diagrams via `_create_landscape_template()` — registered alongside the portrait "VastPage" template
+
+### Changed (Port Mapping and Network Diagrams)
+- **Enhanced port mapper node classification:** Refactored from simple interface-prefix heuristic to multi-signal classification using hostname patterns, `node_type` field, and interface prefix for reliable CNode/DNode distinction
+- **Network diagram DNode interfaces:** Additional interface patterns recognized as primary drawable interfaces: `ens3`, `ens14`, `enp65s0`, `enp94s0`, `enp3s0` (alongside existing `f0`/`f1`)
+- **Brand compliance tables:** `create_vast_table()` now accepts optional `col_widths` (proportional weight list) and `compact` (smaller font/tighter padding) parameters for dense data tables
+
+### Changed (Reporter UI — Step Workflow)
+- **Simplified to 3 numbered step badges:** Step 1 (Enter IP and Save), Step 2 (Discovery), Step 3 (Run) — replacing the previous 4-step layout with inline numbered badge circles on labels and buttons
+- **Vnetmap status badge** displayed next to the Run Vnetmap checkbox showing freshness and hardware-change recommendations
+- **Step badge CSS:** `.step-badge-filled` (accent background) for instruction labels; `.step-badge-outline` (white background, accent border) for action buttons
+
+### Fixed (Rack Diagram — U-Position Calculation)
+- **Bottom-based U positioning:** Device placement changed from top-based (`u_position - u_height + 1`) to bottom-based (`u_position`) calculation — `u_position` now represents the base (bottom) U where a device is mounted and extends upward; CBox/DBox/EBox top/bottom calculations updated to match
+
+### Fixed (Health Check — License Detection)
+- **Multi-source license resolution:** New `_resolve_license()` method checks `license`, `license_state`, `license_type`, `license_status`, and `is_licensed` fields in cluster data, then falls back to the `licenses/` API endpoint — replaces the previous single-field lookup that returned null on many clusters
+- **License message enriched:** Pass status now includes the license value (e.g., "License is present and active (Licensed)")
+
+### Fixed (Health Check — Call Home)
+- **`callhomeconfigs/` endpoint:** Call Home check now queries the dedicated `callhomeconfigs/` endpoint (VAST v5.x+) for `cloud_registered`, `cloud_enabled`, `log_enabled`, `bundle_enabled`, and `customer` fields, with fallback to cluster boolean fields for older deployments
+- **Enriched status message:** Pass result now lists active features (e.g., "cloud registered, logging active, bundles active")
+- **Null-safe handling:** When Call Home status is not exposed via API, returns pass with guidance to verify in VMS GUI instead of a false failure
+
+### Fixed (Script Runner — Stderr Classification)
+- **`_classify_stderr_line()` method:** Intelligently classifies stderr output — SSH host-key warnings and known-hosts messages as `info`, ping diagnostics as `warn`, Python tracebacks as `error`, and generic stderr as `warn` (previously all stderr was emitted as `warn` or `error` based solely on exit code)
+- **`_emit()` deduplication:** Output callback and Python logger are now mutually exclusive — when an output callback is registered, lines go only to the callback; when no callback is set, lines go to the Python logger. Prevents duplicate log entries
+
+### Fixed (Discovery — Tech Port Probe)
+- **Port-aware connectivity check:** `/api/discover` pre-flight probe now uses port 22 for Tech Port connections and port 443 for VMS VIP connections (previously always probed 443, causing false "unreachable" errors for Tech Port IPs)
+- **Contextual error message:** Failure message now includes connection type label ("SSH (Tech Port)" or "HTTPS")
+
+### Fixed (macOS — cairosvg Library Path)
+- **DYLD_FALLBACK_LIBRARY_PATH:** Both `app.py` and `main.py` now prepend `/opt/homebrew/lib` to the dynamic library fallback path on macOS, enabling cairosvg to find Homebrew-installed libcairo without manual environment setup
+
+### Fixed (Report — Deduplication Field)
+- **Removed phantom "Deduplication Active" row** from the Cluster Information table — the underlying `dedup_active` API field does not exist in the VAST REST API; deduplication status is correctly reported by the existing "Similarity Enabled" row (field: `enable_similarity`). Removed the phantom field from `VastClusterInfo`, `ClusterSummary`, and JSON export
+
+### Added (Tests)
+- **`test_port_mapper.py`:** New test file for port mapping unit tests
+- **Updated test suites:** Health checker, rack diagram, external port mapper, and SSH adapter tests updated to match current API and behavior
+
 ### Changed (Reporter UI — Connection Settings)
 - **Step text revised:** Step 1 now reads "Connect to Tech Port (TP) and verify SSH access"; Step 2 reads "Enter Tech Port IP below and save as a new profile" — steps stacked vertically for clarity
 - **"SSH Proxy Mode — CNode to Switch"** shortened to **"SSH Proxy Mode"** across all three templates (`reporter.html`, `advanced_ops.html`, `generate.html`)

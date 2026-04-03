@@ -162,7 +162,8 @@ class OneShotRunner:
                 self._output_callback(level, message, details, "status")
             except Exception:
                 pass
-        logger.info("[%s] %s", level, message)
+        else:
+            logger.info("[%s] %s", level, message)
 
     def _emit_live(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:

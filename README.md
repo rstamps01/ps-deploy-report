@@ -41,8 +41,8 @@ No Python, pip, or virtual environment needed. Updates: download the latest rele
 | Area | Features |
 |------|----------|
 | **Desktop app** | Single .dmg/.zip install, browser-based UI at localhost:5173, live progress via SSE, cancel anytime, cluster profiles (shared across pages), report browser, config editor, hardware device library, in-app documentation viewer, full CLI via `--cli` |
-| **Reporter** | Unified workflow: switch placement (auto/manual), as-built report generation, optional pre-validation and health checks, VAST logo progress indicator with stopwatch timer, result bundling — all from a single page |
-| **Report generation** | VAST REST API v7 (v1 fallback), rack U positioning, auto/manual switch placement, PSNT tracking, optional SSH-based port mapping and IPL detection, SSH proxy hop through CNode for field deployments, EBox cluster support |
+| **Reporter** | Unified workflow: switch placement (auto/manual), as-built report generation, optional pre-validation, vnetmap topology collection, and health checks, VAST logo progress indicator with stopwatch timer, result bundling — all from a single page |
+| **Report generation** | VAST REST API v7 (v1 fallback), rack U positioning, auto/manual switch placement, PSNT tracking, optional SSH-based port mapping and IPL detection, vnetmap integration with hardware change detection, SSH proxy hop through CNode for field deployments, EBox cluster support |
 | **Health check** | Tier 1 (26 API checks) and Tier 3 (6 switch SSH checks) — 32 total checks; correlation engine; auto-generated remediation report with severity levels and actionable guidance |
 | **Post-install validation** | One-Shot mode runs selected operations sequentially with operation badges, pre-validation, auto-bundling; Developer-mode Advanced Ops for step-by-step execution |
 | **Reports** | PDF (VAST-branded) + JSON; executive summary, hardware inventory, physical rack layout, network topology, security, optional health check results and post-deployment validation |
@@ -545,4 +545,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.5.0 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 786 passing, 60%+ coverage threshold
+**Version:** 1.5.0 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 876 passing, 60%+ coverage threshold

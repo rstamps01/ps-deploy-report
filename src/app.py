@@ -29,6 +29,14 @@ from flask import (
 # Ensure src/ is on the path for sibling imports
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Ensure Homebrew's shared libraries are discoverable on macOS (needed for cairosvg → libcairo)
+if sys.platform == "darwin":
+    _brew_lib = Path("/opt/homebrew/lib")
+    if _brew_lib.is_dir():
+        _dyld = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+        if str(_brew_lib) not in _dyld:
+            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{_brew_lib}:{_dyld}" if _dyld else str(_brew_lib)
+
 from utils import get_bundle_dir, get_data_dir  # noqa: E402
 from utils.logger import enable_sse_logging, get_logger, get_sse_queue  # noqa: E402
 from hardware_library import get_builtin_devices_for_ui  # noqa: E402
@@ -333,6 +341,7 @@ def _register_routes(app: Flask) -> None:
             "switch_placement": form.get("switch_placement", "auto"),
             "proxy_jump": form.get("proxy_jump") == "on",
             "tech_port": form.get("tech_port") == "on",
+            "run_vnetmap": form.get("run_vnetmap") == "1",
         }
 
         if params["switch_placement"] == "manual":
@@ -1196,6 +1205,7 @@ def _register_routes(app: Flask) -> None:
             "rpt_pre_validation": True,
             "rpt_run_reporter": True,
             "rpt_health_check": True,
+            "rpt_run_vnetmap": False,
         }
 
         merged = {field: existing.get(field, default) for field, default in ALL_FIELDS.items()}
@@ -1238,15 +1248,19 @@ def _register_routes(app: Flask) -> None:
         if not cluster_ip:
             return jsonify({"error": "Cluster IP is required"}), 400
 
+        is_tech_port = bool(data.get("tech_port"))
+        probe_port = 22 if is_tech_port else 443
+
         # --- Fast reachability probe before any API work ---
         try:
-            sock = socket.create_connection((cluster_ip, 443), timeout=CONNECT_PROBE_TIMEOUT)
+            sock = socket.create_connection((cluster_ip, probe_port), timeout=CONNECT_PROBE_TIMEOUT)
             sock.close()
         except OSError:
+            label = "SSH (Tech Port)" if is_tech_port else "HTTPS"
             return (
                 jsonify(
                     {
-                        "error": f"Unable to reach {cluster_ip}:443 — connection "
+                        "error": f"Unable to reach {cluster_ip}:{probe_port} — {label} connection "
                         f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
                         f"the cluster IP is correct and reachable."
                     }
@@ -1447,6 +1461,49 @@ def _register_routes(app: Flask) -> None:
 
         return jsonify(sorted(get_unrecognized_models()))
 
+    @app.route("/api/vnetmap-status")
+    def api_vnetmap_status():
+        """Check whether vnetmap output exists and whether hardware has changed."""
+        cluster_ip = request.args.get("cluster_ip", "").strip()
+        if not cluster_ip:
+            return jsonify({"error": "cluster_ip is required"}), 400
+
+        result = {
+            "exists": False,
+            "filename": "",
+            "created_at": "",
+            "hardware_changed": False,
+            "change_summary": [],
+            "recommended": False,
+        }
+
+        try:
+            vnetmap_file = _find_latest_vnetmap_output(cluster_ip)
+            if vnetmap_file and vnetmap_file.exists():
+                result["exists"] = True
+                result["filename"] = vnetmap_file.name
+                result["created_at"] = _parse_vnetmap_timestamp(vnetmap_file.name)
+
+            reports = _find_report_jsons_for_cluster(
+                cluster_ip, app.config["DEFAULT_OUTPUT_DIR"]
+            )
+            if len(reports) >= 2:
+                import json as _json
+                with open(reports[0]) as f:
+                    newest = _json.load(f)
+                with open(reports[1]) as f:
+                    previous = _json.load(f)
+                fp_new = _extract_hardware_fingerprint(newest)
+                fp_old = _extract_hardware_fingerprint(previous)
+                changed, summary = _compare_hardware_fingerprints(fp_old, fp_new)
+                result["hardware_changed"] = changed
+                result["change_summary"] = summary
+                result["recommended"] = changed
+        except Exception as exc:
+            logger.warning("Error checking vnetmap status: %s", exc)
+
+        return jsonify(result)
+
     @app.route("/library/images/<path:filename>")
     def library_image(filename):
         return send_from_directory(app.config["USER_IMAGES_DIR"], filename)
@@ -1619,7 +1676,16 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         has_health = bool(params.get("include_health_check"))
         has_ports = bool(params.get("enable_port_mapping"))
-        phase_weights = {"auth": 5, "data_collection": 20, "health_check": 15, "port_mapping": 10, "data_extraction": 20, "json_save": 5, "pdf_generation": 25}
+        has_vnetmap = bool(params.get("run_vnetmap"))
+        phase_weights = {
+            "auth": 5, "vnetmap": 15, "data_collection": 15,
+            "health_check": 12, "port_mapping": 8,
+            "data_extraction": 15, "json_save": 5, "pdf_generation": 25,
+        }
+        if not has_vnetmap:
+            phase_weights["vnetmap"] = 0
+            phase_weights["data_collection"] = 20
+            phase_weights["data_extraction"] = 20
         if not has_health:
             phase_weights["health_check"] = 0
         if not has_ports:
@@ -1627,7 +1693,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         total_weight = sum(phase_weights.values())
         cumulative = 0
         phase_start = {}
-        for p in ["auth", "data_collection", "health_check", "port_mapping", "data_extraction", "json_save", "pdf_generation"]:
+        for p in ["auth", "vnetmap", "data_collection", "health_check", "port_mapping", "data_extraction", "json_save", "pdf_generation"]:
             phase_start[p] = int(cumulative * 100 / total_weight)
             cumulative += phase_weights[p]
 
@@ -1689,6 +1755,49 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not api_handler.authenticate():
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
+
+        # Optional: run vnetmap workflow before data collection
+        if has_vnetmap:
+            _check_cancel(app)
+            _update_progress(app, "JOB_PROGRESS", "vnetmap", phase_start["vnetmap"], "Running Vnetmap workflow...")
+            job_logger.info("Starting Vnetmap workflow (6 steps)...")
+            try:
+                import logging as _logging
+                from workflows.vnetmap_workflow import VnetmapWorkflow
+
+                vnetmap_wf = VnetmapWorkflow()
+                vnetmap_wf.set_output_callback(
+                    lambda level, msg, details=None: job_logger.log(
+                        getattr(_logging, level.upper(), _logging.INFO), msg
+                    )
+                )
+                vnetmap_wf.set_credentials({
+                    "cluster_ip": params["cluster_ip"],
+                    "node_user": params.get("node_user", "vastdata"),
+                    "node_password": params.get("node_password", ""),
+                    "switch_user": params.get("switch_user", ""),
+                    "switch_password": params.get("switch_password", ""),
+                    "username": params.get("username", ""),
+                    "password": params.get("password", ""),
+                    "api_token": params.get("token", ""),
+                })
+                ok, prereq_msg = vnetmap_wf.validate_prerequisites()
+                if not ok:
+                    job_logger.warning("Vnetmap prerequisites not met (%s) — skipping", prereq_msg)
+                else:
+                    for step_id in range(1, 7):
+                        _check_cancel(app)
+                        step_result = vnetmap_wf.run_step(step_id)
+                        if not step_result.get("success"):
+                            job_logger.warning(
+                                "Vnetmap step %d failed: %s — continuing without fresh vnetmap",
+                                step_id, step_result.get("message"),
+                            )
+                            break
+                    else:
+                        job_logger.info("Vnetmap workflow completed — fresh output available")
+            except Exception as vn_exc:
+                job_logger.warning("Vnetmap workflow failed (%s) — continuing with existing data", vn_exc)
 
         # Collect data
         _check_cancel(app)
@@ -1760,24 +1869,52 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             except Exception as hc_exc:
                 job_logger.warning("Health check failed (non-blocking): %s", hc_exc)
 
-        # Optional port mapping
+        # Optional port mapping — prefer vnetmap output, fall back to SSH
         _check_cancel(app)
         _update_progress(app, "JOB_PROGRESS", "port_mapping", phase_start["port_mapping"], "Collecting port mapping data...")
+        use_vnetmap = False
         if params.get("enable_port_mapping"):
-            job_logger.info("Collecting port mapping data via SSH...")
-            port_data = _collect_port_mapping_web(params, raw_data, api_handler)
-            if port_data:
-                raw_data["port_mapping_external"] = port_data
-                job_logger.info("Port mapping data collected successfully")
-            else:
-                job_logger.warning("Port mapping collection failed — check SSH credentials and network connectivity")
+            vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"])
+            if vnetmap_file:
+                job_logger.info("Found vnetmap output: %s — using as port mapping source", vnetmap_file.name)
+                try:
+                    from vnetmap_parser import VNetMapParser
+
+                    parser = VNetMapParser(str(vnetmap_file))
+                    vnetmap_result = parser.parse()
+                    if vnetmap_result.get("available") and vnetmap_result.get("topology"):
+                        raw_data["port_mapping_vnetmap"] = vnetmap_result
+                        use_vnetmap = True
+                        job_logger.info(
+                            "Vnetmap data parsed: %d connections", len(vnetmap_result["topology"])
+                        )
+                    else:
+                        job_logger.warning(
+                            "Vnetmap file found but parsing failed: %s — falling back to SSH",
+                            vnetmap_result.get("error", "no topology data"),
+                        )
+                except Exception as vn_exc:
+                    job_logger.warning("Failed to parse vnetmap output (%s) — falling back to SSH", vn_exc)
+
+            if not use_vnetmap:
+                job_logger.info("Collecting port mapping data via SSH...")
+                port_data = _collect_port_mapping_web(params, raw_data, api_handler)
+                if port_data:
+                    raw_data["port_mapping_external"] = port_data
+                    job_logger.info("Port mapping data collected successfully")
+                else:
+                    job_logger.warning("Port mapping collection failed — check SSH credentials and network connectivity")
 
         # Process data
         _check_cancel(app)
         _update_progress(app, "JOB_PROGRESS", "data_extraction", phase_start["data_extraction"], "Processing collected data...")
         job_logger.info("Processing collected data...")
-        use_ext = bool(params.get("enable_port_mapping") and "port_mapping_external" in raw_data)
-        processed_data = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext)
+        use_ext = bool(
+            not use_vnetmap and params.get("enable_port_mapping") and "port_mapping_external" in raw_data
+        )
+        processed_data = data_extractor.extract_all_data(
+            raw_data, use_external_port_mapping=use_ext, use_vnetmap=use_vnetmap
+        )
         if not processed_data:
             raise RuntimeError("Data processing failed")
 
@@ -1847,6 +1984,114 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             app.config["JOB_RUNNING"] = False
 
 
+def _extract_hardware_fingerprint(report_json: dict) -> dict:
+    """Extract a comparable hardware fingerprint from a report JSON."""
+    hw = report_json.get("hardware_inventory", {})
+
+    def _to_list(obj):
+        if isinstance(obj, dict):
+            return list(obj.values())
+        return obj if isinstance(obj, list) else []
+
+    cnodes = _to_list(hw.get("cnodes", []))
+    dnodes = _to_list(hw.get("dnodes", []))
+    switches = _to_list(hw.get("switches", []))
+    cboxes = _to_list(hw.get("cboxes", []))
+    dboxes = _to_list(hw.get("dboxes", []))
+    eboxes = _to_list(hw.get("eboxes", []))
+
+    return {
+        "cbox_count": len(cboxes),
+        "dbox_count": len(dboxes),
+        "cnode_count": len(cnodes),
+        "dnode_count": len(dnodes),
+        "switch_count": len(switches),
+        "ebox_count": len(eboxes),
+        "cnode_ips": sorted(n.get("mgmt_ip", "") for n in cnodes if n.get("mgmt_ip")),
+        "dnode_ips": sorted(n.get("mgmt_ip", "") for n in dnodes if n.get("mgmt_ip")),
+        "switch_ips": sorted(s.get("mgmt_ip", "") for s in switches if s.get("mgmt_ip")),
+        "ebox_ips": sorted(e.get("mgmt_ip", "") for e in eboxes if e.get("mgmt_ip")),
+    }
+
+
+def _compare_hardware_fingerprints(
+    old: dict, new: dict,
+) -> tuple:
+    """Compare two hardware fingerprints and return (changed, summary_list)."""
+    changes: list = []
+    for key, label in [
+        ("cbox_count", "CBox"), ("dbox_count", "DBox"),
+        ("cnode_count", "CNode"), ("dnode_count", "DNode"),
+        ("switch_count", "Switch"), ("ebox_count", "EBox"),
+    ]:
+        if old.get(key) != new.get(key):
+            changes.append(f"{label} count changed: {old.get(key)} \u2192 {new.get(key)}")
+    for key, label in [
+        ("cnode_ips", "CNode"), ("dnode_ips", "DNode"),
+        ("switch_ips", "Switch"), ("ebox_ips", "EBox"),
+    ]:
+        added = set(new.get(key, [])) - set(old.get(key, []))
+        removed = set(old.get(key, [])) - set(new.get(key, []))
+        for ip in sorted(added):
+            changes.append(f"New {label} detected: {ip}")
+        for ip in sorted(removed):
+            changes.append(f"{label} removed: {ip}")
+    return (bool(changes), changes)
+
+
+def _find_report_jsons_for_cluster(cluster_ip: str, output_dir: str) -> list:
+    """Return up to 2 most recent report JSON paths for a cluster, newest first."""
+    out = Path(output_dir)
+    if not out.is_dir():
+        return []
+    candidates = []
+    for f in out.glob("vast_data_*.json"):
+        try:
+            with open(f) as fh:
+                head = fh.read(4096)
+            if f'"{cluster_ip}"' in head:
+                candidates.append(f)
+        except (OSError, UnicodeDecodeError):
+            continue
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[:2]
+
+
+def _parse_vnetmap_timestamp(filename: str) -> str:
+    """Extract human-readable timestamp from vnetmap filename.
+
+    ``vnetmap_output_10.143.11.63_20260330_030728.txt``
+    -> ``2026-03-30 03:07:28``
+    """
+    import re as _re
+    m = _re.search(r"_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})", filename)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)} {m.group(4)}:{m.group(5)}:{m.group(6)}"
+    return ""
+
+
+def _find_latest_vnetmap_output(cluster_ip: str) -> Optional[Path]:
+    """Find the most recent vnetmap output file for a given cluster IP.
+
+    Scans ``output/scripts/`` for files matching
+    ``vnetmap_output_{cluster_ip}_*.txt``.  Does NOT fall back to
+    files from other clusters to avoid cross-contamination of port
+    mapping data.
+    """
+    from utils import get_data_dir
+
+    scripts_dir = get_data_dir() / "output" / "scripts"
+    if not scripts_dir.is_dir():
+        return None
+
+    exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
+    if exact:
+        return exact[0]
+
+    logger.info("No vnetmap output file found for cluster %s", cluster_ip)
+    return None
+
+
 def _collect_port_mapping_web(
     params: Dict[str, Any],
     raw_data: Dict[str, Any],
@@ -1886,9 +2131,19 @@ def _collect_port_mapping_web(
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
 
+        MAX_CNODE_ATTEMPTS = 3
         last_error = None
         last_partial = None
+        attempts = 0
         for cnode_ip in cnode_ips:
+            if attempts >= MAX_CNODE_ATTEMPTS:
+                logger.warning(
+                    "Port mapping failed on %d CNodes — skipping remaining %d",
+                    MAX_CNODE_ATTEMPTS,
+                    len(cnode_ips) - MAX_CNODE_ATTEMPTS,
+                )
+                break
+            attempts += 1
             try:
                 tunnel_addr = getattr(api_handler, "_api_host", None)
                 if tunnel_addr == params["cluster_ip"]:
@@ -1920,9 +2175,17 @@ def _collect_port_mapping_web(
                 last_error = result.get("error", "unknown reason")
                 if result.get("port_map"):
                     last_partial = result
+                if "cannot reach switch" in (last_error or "").lower():
+                    logger.warning(
+                        "Switch unreachable from CNode %s — not retrying remaining CNodes", cnode_ip
+                    )
+                    break
             except Exception as e:
                 last_error = _safe_str(e)
                 logger.warning("Port mapping via CNode %s failed: %s — trying next CNode", cnode_ip, last_error)
+                if "cannot reach switch" in last_error.lower():
+                    logger.warning("Switch connectivity issue — not retrying remaining CNodes")
+                    break
 
         if last_partial and last_partial.get("port_map"):
             logger.info("Using partial port mapping from last attempt")

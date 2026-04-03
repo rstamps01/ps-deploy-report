@@ -1,7 +1,7 @@
 """
 vnetmap Validation Workflow
 
-7-step workflow for validating network topology using vnetmap.py.
+6-step workflow for validating network topology using vnetmap.py.
 """
 
 import json

@@ -20,10 +20,8 @@
     </div>
     <div class="card-body">
         <p class="card-steps">
-            <strong>Step 1</strong> — <strong style="color:var(--accent);">Verify SSH access.</strong>
-            <span class="info-icon" title="Physical: Connect to Tech Port.&#10;Network: Connect to VMS VIP.&#10;&#10;For network connections to VMS VIP, open Advanced and uncheck Tech Port Mode.">&#9432;</span><br>
-            <strong>Step 2</strong> — <strong style="color:var(--accent);">Enter IP</strong> for Tech Port or VMS and <strong style="color:var(--accent);">click save.</strong>
-            <span class="info-icon" title="For Tech Port connections use 192.168.2.2&#10;For network connections use the VMS VIP address&#10;&#10;Default passwords are pre-populated when Autofill is enabled (see Advanced).&#10;Edit any non-default passwords and save.">&#9432;</span>
+            <span class="step-badge step-badge-filled">1</span> — <strong style="color:var(--accent);">Enter IP</strong> for Tech Port or VMS and <strong style="color:var(--accent);">Click Save.</strong>
+            <span class="info-icon" title="Tech Port: 192.168.2.2&#10; - Advanced Menu → Select Tech Port Mode&#10;&#10;Network: VMS VIP address&#10; - Advanced Menu → Uncheck Tech Port Mode&#10;&#10;Default passwords are pre-populated when Autofill is enabled (see Advanced).&#10;Edit any non-default passwords and save.">&#9432;</span>
         </p>
         <form id="credentialsForm">
             <!-- Row 1: Profile dropdown + Cluster IP side by side -->
@@ -38,7 +36,7 @@
                     </div>
                 </div>
                 <div class="form-group" style="flex: 1;">
-                    <label for="clusterIp">Tech Port IP / VMS VIP <span class="info-icon" title="Tech Port: 192.168.2.2&#10;Network: VMS VIP address (e.g. 10.143.10.100)">&#9432;</span></label>
+                    <label for="clusterIp"><span class="step-badge step-badge-filled">1</span> Tech Port IP / VMS VIP <span class="info-icon" title="Tech Port: 192.168.2.2&#10;Network: VMS VIP address (e.g. 10.143.10.100)">&#9432;</span></label>
                     <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
                 </div>
             </div>
@@ -72,7 +70,7 @@
                             <input type="password" id="nodePassword" name="node_password" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default cumulus: Vastdata1!&#10;Alt: VastData1! / cumulus / Cumu1usLinux!&#10;Default onyx/Cisco/Arista: admin">&#9432;</span></label>
+                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default password: Vastdata1!&#10; - Alt Passwords: VastData1! / cumulus / Cumu1usLinux!&#10; - onyx/Cisco/Arista: admin">&#9432;</span></label>
                             <input type="password" id="switchPassword" name="switch_password" class="form-control">
                         </div>
                     </div>
@@ -154,9 +152,9 @@
             <input type="hidden" id="rptManualSwitchIps" value="[]">
 
             <p class="card-steps" style="margin-top:0;">
-                <strong>Step 3</strong> — <strong style="color:var(--accent);">Click Discovery</strong> to add racks, switches, and assign U-heights.
+                <span class="step-badge step-badge-filled">2</span> — <strong style="color:var(--accent);">Click Discovery</strong> to assign switch U-height.
                 <span class="info-icon" title="Run Discovery to find switches and place in racks. U-height assignment is used in report rack diagram.&#10;&#10;Optional: Use +Switch to add customer managed Leaf &amp; Spine switches.">&#9432;</span><br>
-                <strong>Step 4</strong> — <strong style="color:var(--accent);">Save to profile</strong> and <strong style="color:var(--accent);">click Run</strong> to generate the Report.
+                <span class="step-badge step-badge-filled">3</span> — <strong style="color:var(--accent);">Click Run</strong> to generate the Report.
             </p>
 
             <!-- Reporter Checklist -->
@@ -167,6 +165,13 @@
                         <input type="checkbox" id="rptPreValidation" checked>
                         <span class="oneshot-item-name">Pre-Validation <span class="info-icon" title="Verify credentials, VMS access, rack config, switch config, SSH access">&#9432;</span></span>
                     </label>
+                    <div class="oneshot-item" id="vnetmapItem" style="display: flex; align-items: center; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer;">
+                            <input type="checkbox" id="rptRunVnetmap">
+                            <span class="oneshot-item-name">Run Vnetmap <span class="info-icon" title="Run the VAST vnetmap topology tool before report generation for fresh port mapping and diagram data. Requires node SSH credentials.">&#9432;</span></span>
+                        </label>
+                        <span id="vnetmapStatus" class="vnetmap-status-badge" style="display: none;"></span>
+                    </div>
                     <label class="oneshot-item">
                         <input type="checkbox" id="rptRunReporter" checked>
                         <span class="oneshot-item-name">Generate As-Built Report <span class="info-icon" title="Generate as-built report with current connection and placement settings">&#9432;</span></span>
@@ -219,10 +224,10 @@
                   <div class="stepper-dot disabled" id="stepDot5"></div>
               </div>
               <div class="stepper-buttons">
-                  <button type="button" class="btn btn-primary" id="btnDiscovery" onclick="openPlacementModal()">Discovery</button>
+                  <button type="button" class="btn btn-primary" id="btnDiscovery" onclick="openPlacementModal()"><span class="step-badge step-badge-outline">2</span>Discovery</button>
                   <span class="stepper-chevron">&rsaquo;</span>
                   <div class="stepper-btn-slot">
-                      <button type="button" class="btn btn-primary" id="btnReporterRun" onclick="runReporterChecklist()">Run</button>
+                      <button type="button" class="btn btn-primary" id="btnReporterRun" onclick="runReporterChecklist()"><span class="step-badge step-badge-outline">3</span>Run</button>
                       <button type="button" class="btn btn-danger" id="btnReporterCancel" style="display:none;" onclick="cancelReporterRun()">Cancel</button>
                   </div>
                   <span class="stepper-chevron">&rsaquo;</span>
@@ -726,6 +731,15 @@
     margin: 0 0 14px 0; line-height: 1.6;
 }
 .card-steps strong { color: var(--text-primary); }
+.step-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    font-size: 11px; font-weight: 700; line-height: 1;
+    vertical-align: middle; flex-shrink: 0;
+}
+.step-badge-filled { background: var(--accent); color: #fff; }
+.step-badge-outline { background: #fff; color: var(--accent); border: 2px solid var(--accent); }
+.btn .step-badge { width: 18px; height: 18px; font-size: 10px; margin-right: 5px; }
 
 /* --- Profile row (dropdown + Cluster IP side by side) --- */
 .creds-row-profile { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
@@ -769,12 +783,12 @@
 .output-placeholder { color: var(--text-secondary); text-align: center; padding: 40px; }
 .output-line { margin: 2px 0; white-space: pre-wrap; }
 .output-line .timestamp { color: #888; margin-right: 8px; }
+.output-line[data-tier="debug"] { color: #777; font-style: italic; }
+.output-line[data-tier="live"] { color: #b0bec5; }
 .output-line.info { color: #e0e0e0; }
 .output-line.warn, .output-line.warning { color: #ff9800; }
 .output-line.error, .output-line.fail, .output-line.critical { color: #f44336; }
 .output-line.success { color: #4caf50; }
-.output-line[data-tier="debug"] { color: #777; font-style: italic; }
-.output-line[data-tier="live"] { color: #b0bec5; }
 .output-line.tier-hidden { display: none !important; }
 .log-level-selector { display: flex; gap: 0; margin: 0 12px; }
 .log-level-btn { background: transparent; color: #888; border: 1px solid #444; padding: 3px 12px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
@@ -1009,6 +1023,7 @@ function saveUIState() {
             rptPreValidation: document.getElementById('rptPreValidation').checked,
             rptRunReporter: document.getElementById('rptRunReporter').checked,
             rptHealthCheck: document.getElementById('rptHealthCheck').checked,
+            rptRunVnetmap: document.getElementById('rptRunVnetmap').checked,
             oneShotPreValidation: document.getElementById('oneShotPreValidation').checked
         };
         var proxyJump = document.getElementById('proxyJumpToggle');
@@ -1115,6 +1130,7 @@ async function applySavedUIState(saved) {
         if (saved.rptPreValidation !== undefined) document.getElementById('rptPreValidation').checked = saved.rptPreValidation;
         if (saved.rptRunReporter !== undefined) document.getElementById('rptRunReporter').checked = saved.rptRunReporter;
         if (saved.rptHealthCheck !== undefined) document.getElementById('rptHealthCheck').checked = saved.rptHealthCheck;
+        if (saved.rptRunVnetmap !== undefined) document.getElementById('rptRunVnetmap').checked = saved.rptRunVnetmap;
     }
     if (!defaultsChanged && saved.oneShotPreValidation !== undefined) {
         document.getElementById('oneShotPreValidation').checked = saved.oneShotPreValidation;
@@ -1207,8 +1223,8 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
     var cls = entry.level;
     var msgUpper = (entry.message || '').toUpperCase();
     if (cls === 'info') {
-        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
-        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('FAIL') !== -1) cls = 'error';
+        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('{WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
+        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('{ERROR') !== -1) cls = 'error';
         else if (msgUpper.indexOf('SUCCESS') !== -1 || msgUpper.indexOf('COMPLETED') !== -1) cls = 'success';
     }
     line.className = 'output-line ' + cls;
@@ -1305,6 +1321,10 @@ async function loadProfile() {
     if (runRpt) runRpt.checked = p.rpt_run_reporter !== false;
     var healthChk = document.getElementById('rptHealthCheck');
     if (healthChk) healthChk.checked = p.rpt_health_check !== undefined ? p.rpt_health_check : true;
+    var vnetmapChk = document.getElementById('rptRunVnetmap');
+    if (vnetmapChk) vnetmapChk.checked = !!p.rpt_run_vnetmap;
+
+    checkVnetmapStatus(p.cluster_ip || document.getElementById('clusterIp').value);
 
     if (p.manual_placements && Array.isArray(p.manual_placements) && p.manual_placements.length > 0) {
         rptPlacedSwitches = p.manual_placements;
@@ -1343,6 +1363,8 @@ async function saveProfile() {
     data.rpt_run_reporter = runRptEl ? runRptEl.checked : true;
     var healthEl = document.getElementById('rptHealthCheck');
     data.rpt_health_check = healthEl ? healthEl.checked : true;
+    var vnetmapEl = document.getElementById('rptRunVnetmap');
+    data.rpt_run_vnetmap = vnetmapEl ? vnetmapEl.checked : false;
     try {
         var resp = await fetch('/profiles', {
             method: 'POST',
@@ -1907,6 +1929,7 @@ function rptRemoveSwitchPlacement(idx) {
     rptRenderSwitchDropdown();
     rptRenderPlacedTable();
     rptSyncManualPlacements();
+    renderPlacementSummary();
 }
 
 function rptRenderPlacedTable() {
@@ -1982,6 +2005,7 @@ function rptRemoveManualSwitchIp(idx) {
     rptRenderManualSwitchIps();
     rptRenderSwitchDropdown();
     document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    renderPlacementSummary();
     saveUIState();
 }
 
@@ -2238,6 +2262,7 @@ async function runReporterGenerate(creds, includeHealth) {
     var manualPlacements = [];
     try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
 
+    var doVnetmap = document.getElementById('rptRunVnetmap');
     var payload = Object.assign({}, creds, {
         switch_placement: switchPlacement,
         manual_placements: JSON.stringify(manualPlacements),
@@ -2245,7 +2270,8 @@ async function runReporterGenerate(creds, includeHealth) {
         include_health_check: includeHealth ? '1' : '',
         enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
         proxy_jump: creds.proxy_jump ? 'on' : '',
-        tech_port: creds.tech_port ? 'on' : ''
+        tech_port: creds.tech_port ? 'on' : '',
+        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : ''
     });
 
     startReporterLogStream();
@@ -2400,6 +2426,10 @@ function applyReporterDefaults() {
         document.getElementById('rptHealthCheck').checked = rd.health_check;
         var d = document.getElementById('rptHealthCheckDetail');
         if (d) d.style.display = rd.health_check ? '' : 'none';
+    }
+    if (rd.run_vnetmap !== undefined) {
+        var el = document.getElementById('rptRunVnetmap');
+        if (el) el.checked = !!rd.run_vnetmap;
     }
 }
 
@@ -2760,6 +2790,37 @@ async function downloadResults() {
 }
 
 // =====================================================================
+// VNETMAP STATUS CHECK
+// =====================================================================
+async function checkVnetmapStatus(clusterIp) {
+    var badge = document.getElementById('vnetmapStatus');
+    if (!badge) return;
+    if (!clusterIp) { badge.style.display = 'none'; return; }
+    try {
+        var res = await fetch('/api/vnetmap-status?cluster_ip=' + encodeURIComponent(clusterIp));
+        if (!res.ok) { badge.style.display = 'none'; return; }
+        var data = await res.json();
+        var cb = document.getElementById('rptRunVnetmap');
+        if (data.exists && !data.recommended) {
+            badge.className = 'vnetmap-status-badge available';
+            badge.textContent = '\u2713 Output available \u2014 ' + data.created_at;
+            badge.title = data.filename || '';
+        } else if (data.exists && data.recommended) {
+            badge.className = 'vnetmap-status-badge recommended';
+            badge.textContent = '\u26A0 Changes detected \u2014 recommend re-run';
+            badge.title = (data.change_summary || []).join('\n');
+            if (cb) cb.checked = true;
+        } else {
+            badge.className = 'vnetmap-status-badge missing';
+            badge.textContent = 'No output found';
+            badge.title = '';
+        }
+        badge.style.display = 'inline-flex';
+    } catch (e) {
+        badge.style.display = 'none';
+    }
+}
+
 // INITIALIZATION
 // =====================================================================
 document.addEventListener('DOMContentLoaded', async function() {
@@ -2834,6 +2895,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
     document.getElementById('oneShotPreValidation').addEventListener('change', function() {
         saveUIState();
+    });
+    document.getElementById('rptRunVnetmap').addEventListener('change', function() {
+        saveUIState();
+    });
+    document.getElementById('clusterIp').addEventListener('blur', function() {
+        checkVnetmapStatus(this.value.trim());
     });
 
     document.getElementById('switchUser').addEventListener('input', function() {

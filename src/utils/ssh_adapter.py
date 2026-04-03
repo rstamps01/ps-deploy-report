@@ -150,23 +150,23 @@ def run_interactive_ssh(
     Uses *pexpect* on macOS/Linux to drive the password prompt and the
     switch CLI interactively.  Falls back to paramiko on Windows.
 
-    When *jump_host* is provided, paramiko's ``direct-tcpip`` channel is
-    used regardless of platform (pexpect cannot drive a tunnelled session).
+    When *jump_host* is provided, paramiko's ``invoke_shell()`` is used
+    to open a true interactive shell channel through the tunnel — this is
+    required for Onyx restricted shells that reject ``exec_command()``.
     """
     if jump_host:
-        return _paramiko_exec(
+        return _paramiko_shell(
             host,
             username,
             password,
             command,
             timeout,
-            force_tty=True,
             jump_host=jump_host,
             jump_user=jump_user,
             jump_password=jump_password,
         )
     if IS_WINDOWS:
-        return _paramiko_exec(host, username, password, command, timeout, force_tty=True)
+        return _paramiko_shell(host, username, password, command, timeout)
     return _pexpect_interactive(host, username, password, command, timeout, known_hosts_file)
 
 
@@ -336,6 +336,131 @@ def _pexpect_interactive(
 # ---------------------------------------------------------------------------
 # Windows / fallback implementation (paramiko)
 # ---------------------------------------------------------------------------
+
+
+def _paramiko_shell(
+    host: str,
+    username: str,
+    password: str,
+    command: str,
+    timeout: int,
+    jump_host: Optional[str] = None,
+    jump_user: Optional[str] = None,
+    jump_password: Optional[str] = None,
+) -> Tuple[int, str, str]:
+    """Open an interactive shell channel via paramiko and type the command.
+
+    Unlike ``exec_command()``, ``invoke_shell()`` spawns the remote user's
+    default shell (e.g. the Onyx restricted CLI) and then sends the command
+    as typed input.  This is required for Mellanox Onyx switches whose
+    restricted shell rejects exec-style command execution with
+    ``UNIX shell commands cannot be executed using this account``.
+    """
+    try:
+        import paramiko  # type: ignore[import-untyped]
+    except ImportError:
+        return 1, "", "paramiko not installed. Run: pip install paramiko"
+
+    import re
+    import time as _time
+
+    jump_params = [jump_host, jump_user, jump_password]
+    if any(jump_params) and not all(jump_params):
+        return 1, "", "Incomplete jump host config"
+
+    use_jump = jump_host and jump_user and jump_password
+    jump_client: Optional[paramiko.SSHClient] = None
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        connect_timeout = min(timeout, 30)
+        sock = None
+
+        if use_jump:
+            jump_client = paramiko.SSHClient()
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            try:
+                jump_client.connect(
+                    jump_host,
+                    username=jump_user,
+                    password=jump_password,
+                    timeout=connect_timeout,
+                    banner_timeout=connect_timeout,
+                    look_for_keys=False,
+                    allow_agent=False,
+                )
+            except paramiko.AuthenticationException:
+                return 1, "", "Jump host authentication failed for " + jump_user + "@" + jump_host
+            except (paramiko.SSHException, OSError) as exc:
+                return 1, "", "Jump host connection failed for " + jump_host + ": " + str(exc)
+
+            jump_transport = jump_client.get_transport()
+            if jump_transport is None:
+                return 1, "", "Jump host transport unavailable for " + jump_host
+            sock = jump_transport.open_channel("direct-tcpip", (host, 22), ("127.0.0.1", 0))
+
+        client.connect(
+            host,
+            username=username,
+            password=password,
+            timeout=connect_timeout,
+            banner_timeout=connect_timeout,
+            look_for_keys=False,
+            allow_agent=False,
+            sock=sock,
+        )
+
+        chan = client.invoke_shell(term="vt100", width=200, height=50)
+        chan.settimeout(float(timeout))
+
+        _PROMPT_RE = re.compile(r"[\]#>$]\s*$")
+
+        def _read_until_prompt(deadline: float) -> str:
+            buf = ""
+            while _time.time() < deadline:
+                if chan.recv_ready():
+                    chunk = chan.recv(65536).decode("utf-8", errors="replace")
+                    buf += chunk
+                    if _PROMPT_RE.search(buf.split("\n")[-1]):
+                        break
+                else:
+                    _time.sleep(0.1)
+            return buf
+
+        deadline = _time.time() + timeout
+
+        _read_until_prompt(deadline)
+
+        chan.sendall(command + "\n")
+        _time.sleep(0.3)
+
+        raw_output = _read_until_prompt(deadline)
+
+        chan.sendall("exit\n")
+        _time.sleep(0.2)
+        chan.close()
+
+        lines = raw_output.splitlines()
+        if lines and command in lines[0]:
+            lines = lines[1:]
+        if lines and _PROMPT_RE.search(lines[-1]):
+            lines = lines[:-1]
+        output = "\n".join(lines).strip()
+
+        return 0, output, ""
+    except paramiko.AuthenticationException:
+        return 1, "", "Authentication failed for " + username + "@" + host
+    except paramiko.SSHException as exc:
+        return 1, "", "SSH error for " + username + "@" + host + ": " + str(exc)
+    except OSError as exc:
+        return 1, "", "Connection failed for " + host + ": " + str(exc)
+    except Exception as exc:
+        return 1, "", str(exc)
+    finally:
+        client.close()
+        if jump_client is not None:
+            jump_client.close()
 
 
 def _paramiko_exec(

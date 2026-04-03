@@ -323,6 +323,203 @@ class TestEnhancedPortMapper(unittest.TestCase):
         self.assertEqual(result["total_connections"], 0)
         self.assertIn("port_map", result)
 
+    def test_build_node_maps_uses_node_type_field(self):
+        """Nodes should be classified by their node_type field, not interface heuristics."""
+        from enhanced_port_mapper import EnhancedPortMapper
+
+        external_port_map = [
+            {
+                "node_ip": "172.16.128.1",
+                "node_hostname": "cnode-host-01",
+                "node_type": "Cnode",
+                "interface": "ens1f0",
+                "box_name": "cbox-ABC",
+            },
+            {
+                "node_ip": "172.16.128.102",
+                "node_hostname": "aidc-vast01-d102",
+                "node_type": "Dnode",
+                "interface": "ens3",
+                "box_name": "dbox-225PF029",
+            },
+            {
+                "node_ip": "172.16.128.103",
+                "node_hostname": "Rack-DB1-UU7-bottom",
+                "node_type": "Dnode",
+                "interface": "ens14",
+                "box_name": "dbox-25APF04F",
+            },
+        ]
+        mapper = EnhancedPortMapper(
+            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            external_port_map=external_port_map,
+        )
+        self.assertIn("172.16.128.1", mapper.cnode_map)
+        self.assertIn("172.16.128.102", mapper.dnode_map)
+        self.assertIn("172.16.128.103", mapper.dnode_map)
+        self.assertNotIn("172.16.128.102", mapper.cnode_map)
+        self.assertNotIn("172.16.128.103", mapper.cnode_map)
+
+    def test_build_node_maps_dbox_numbering(self):
+        """DNodes from different DBoxes should get distinct dbox_num values."""
+        from enhanced_port_mapper import EnhancedPortMapper
+
+        external_port_map = [
+            {
+                "node_ip": "172.16.128.102",
+                "node_hostname": "dnode-a",
+                "node_type": "Dnode",
+                "interface": "ens3",
+                "box_name": "dbox-AAA",
+            },
+            {
+                "node_ip": "172.16.128.103",
+                "node_hostname": "dnode-b",
+                "node_type": "Dnode",
+                "interface": "ens14",
+                "box_name": "dbox-AAA",
+            },
+            {
+                "node_ip": "172.16.128.104",
+                "node_hostname": "dnode-c",
+                "node_type": "Dnode",
+                "interface": "ens3",
+                "box_name": "dbox-BBB",
+            },
+        ]
+        mapper = EnhancedPortMapper(
+            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            external_port_map=external_port_map,
+        )
+        dbox_nums = {ip: info["dbox_num"] for ip, info in mapper.dnode_map.items()}
+        self.assertEqual(dbox_nums["172.16.128.102"], dbox_nums["172.16.128.103"])
+        self.assertNotEqual(dbox_nums["172.16.128.102"], dbox_nums["172.16.128.104"])
+
+    def test_build_node_maps_fallback_heuristic(self):
+        """When node_type is missing, the interface/hostname heuristic applies."""
+        from enhanced_port_mapper import EnhancedPortMapper
+
+        external_port_map = [
+            {
+                "node_ip": "172.16.0.1",
+                "node_hostname": "host-d-105",
+                "node_type": "",
+                "interface": "enp3s0f0",
+                "box_name": "",
+            },
+            {
+                "node_ip": "172.16.0.2",
+                "node_hostname": "some-cnode-host",
+                "node_type": "",
+                "interface": "enp129s0f0",
+                "box_name": "",
+            },
+        ]
+        mapper = EnhancedPortMapper(
+            cboxes=[], dboxes=[], cnodes=[], dnodes=[], switches=[],
+            external_port_map=external_port_map,
+        )
+        self.assertIn("172.16.0.1", mapper.dnode_map)
+        self.assertIn("172.16.0.2", mapper.cnode_map)
+
+    def test_dnode_designation_format(self):
+        """DNodes should produce DB#-DN#-R/L designations."""
+        from enhanced_port_mapper import EnhancedPortMapper
+
+        external_port_map = [
+            {
+                "node_ip": "172.16.128.102",
+                "node_hostname": "dnode-1",
+                "node_type": "Dnode",
+                "interface": "ens3",
+                "switch_ip": "10.0.0.201",
+                "port": "swp5",
+                "mac": "aa:bb:cc:dd:ee:01",
+                "network": "A",
+                "port_side": "R",
+                "box_name": "dbox-X",
+                "notes": "",
+            },
+        ]
+        mapper = EnhancedPortMapper(
+            cboxes=[], dboxes=[], cnodes=[], dnodes=[],
+            switches=[{"mgmt_ip": "10.0.0.201", "name": "sw-A"}],
+            external_port_map=external_port_map,
+        )
+        result = mapper.generate_enhanced_port_map(external_port_map)
+        entry = result["port_map"][0]
+        self.assertEqual(entry["node_type"], "dnode")
+        self.assertIn("DB", entry["node_designation"])
+        self.assertIn("DN", entry["node_designation"])
+
+
+class TestPortSpeedLookup(unittest.TestCase):
+    """Verify that the switch port speed lookup map is constructed correctly."""
+
+    def test_speed_lookup_maps_swp_to_eth_speed(self):
+        """Switch inventory Eth1/N names should map to swpN for speed lookup."""
+        switches = [
+            {
+                "mgmt_ip": "10.0.0.201",
+                "name": "sw-A",
+                "ports": [
+                    {"name": "Eth1/1", "speed": "100G"},
+                    {"name": "Eth1/5", "speed": "100G"},
+                    {"name": "Eth1/11/1", "speed": "50G"},
+                ],
+            }
+        ]
+        lookup: dict[str, dict[str, str]] = {}
+        for switch in switches:
+            mgmt_ip = switch.get("mgmt_ip")
+            speed_map: dict[str, str] = {}
+            for port_info in switch.get("ports", []):
+                port_name = port_info.get("name", "")
+                port_speed = port_info.get("speed", "")
+                if port_name and port_speed:
+                    speed_map[port_name] = port_speed
+                    if port_name.startswith("Eth") and "/" in port_name:
+                        parts = port_name.split("/")
+                        if len(parts) == 2:
+                            speed_map[f"swp{parts[1]}"] = port_speed
+                        elif len(parts) == 3:
+                            speed_map[f"swp{parts[1]}/{parts[2]}"] = port_speed
+            if mgmt_ip:
+                lookup[mgmt_ip] = speed_map
+
+        self.assertEqual(lookup["10.0.0.201"]["swp1"], "100G")
+        self.assertEqual(lookup["10.0.0.201"]["swp5"], "100G")
+        self.assertEqual(lookup["10.0.0.201"]["Eth1/1"], "100G")
+        self.assertEqual(lookup["10.0.0.201"]["swp11/1"], "50G")
+        self.assertNotIn("swp999", lookup["10.0.0.201"])
+
+    def test_speed_lookup_missing_port_returns_empty(self):
+        """Unknown port names should not be in the lookup."""
+        switches = [
+            {
+                "mgmt_ip": "10.0.0.201",
+                "name": "sw-A",
+                "ports": [{"name": "Eth1/5", "speed": "100G"}],
+            }
+        ]
+        lookup: dict[str, dict[str, str]] = {}
+        for switch in switches:
+            mgmt_ip = switch.get("mgmt_ip")
+            speed_map: dict[str, str] = {}
+            for port_info in switch.get("ports", []):
+                port_name = port_info.get("name", "")
+                port_speed = port_info.get("speed", "")
+                if port_name and port_speed:
+                    speed_map[port_name] = port_speed
+                    if port_name.startswith("Eth") and "/" in port_name:
+                        parts = port_name.split("/")
+                        if len(parts) == 2:
+                            speed_map[f"swp{parts[1]}"] = port_speed
+            if mgmt_ip:
+                lookup[mgmt_ip] = speed_map
+
+        self.assertEqual(lookup["10.0.0.201"].get("swp20", ""), "")
+
 
 class TestExternalPortMapperImport(unittest.TestCase):
     """Verify ExternalPortMapper can be imported and basic structure is sound."""

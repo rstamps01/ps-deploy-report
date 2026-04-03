@@ -206,10 +206,10 @@ class TestParamikoExecWithJumpHost(unittest.TestCase):
 
 
 class TestRunInteractiveSSHWithJumpHost(unittest.TestCase):
-    """Verify run_interactive_ssh routes through paramiko when jump_host is provided."""
+    """Verify run_interactive_ssh routes through _paramiko_shell when jump_host is provided."""
 
-    @patch("utils.ssh_adapter._paramiko_exec", return_value=(0, "proxied", ""))
-    def test_run_interactive_ssh_with_jump_uses_paramiko(self, mock_exec):
+    @patch("utils.ssh_adapter._paramiko_shell", return_value=(0, "proxied", ""))
+    def test_run_interactive_ssh_with_jump_uses_paramiko(self, mock_shell):
         from utils.ssh_adapter import run_interactive_ssh
 
         rc, out, err = run_interactive_ssh(
@@ -224,13 +224,12 @@ class TestRunInteractiveSSHWithJumpHost(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(out, "proxied")
-        mock_exec.assert_called_once_with(
+        mock_shell.assert_called_once_with(
             "172.27.51.4",
             "admin",
             "switchpass",
             "show version",
             30,
-            force_tty=True,
             jump_host="192.168.2.2",
             jump_user="vastdata",
             jump_password="cnodepass",

@@ -57,13 +57,14 @@ class SessionManager:
         self._active_sessions: dict[str, SessionInfo] = {}
 
     def _emit(self, level: str, message: str) -> None:
-        """Emit output to callback."""
+        """Emit output to callback, or fall back to the Python logger."""
         if self._output_callback:
             try:
                 self._output_callback(level, message, None)
             except Exception:
                 pass
-        logger.log({"info": 20, "warn": 30, "error": 40, "success": 20}.get(level, 20), message)
+        else:
+            logger.log({"info": 20, "warn": 30, "error": 40, "success": 20}.get(level, 20), message)
 
     def _generate_session_name(self, workflow_id: str) -> str:
         """Generate a unique session name."""

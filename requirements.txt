@@ -19,6 +19,10 @@ pymupdf>=1.24.0
 # Image processing for diagram sizing
 Pillow>=12.1.1
 
+# SVG diagram generation (rack-centric network topology)
+svgwrite>=1.4.0
+cairosvg>=2.7.0
+
 # CLI argument parsing
 click>=8.1.0
 

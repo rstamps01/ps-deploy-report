@@ -113,6 +113,20 @@ data_collection:
   # Handle missing data gracefully
   graceful_degradation: true
 
+# Network Diagram Configuration
+network_diagram:
+  # Diagram mode: "detailed" (rack-centric SVG) or "compact" (legacy ReportLab)
+  mode: "detailed"
+
+  # Show port designations on connection lines (e.g., SWA-P15/1)
+  show_port_labels: false
+
+  # Device representation: "flat" (simplified SVG icons) or "hardware" (product images)
+  device_icons: "flat"
+
+  # Page orientation for the diagram: "portrait" or "landscape"
+  orientation: "portrait"
+
 # SSH Configuration
 ssh:
   # Proxy hop through CNode for switch SSH connections (field deployments)
@@ -161,6 +175,7 @@ advanced_operations:
     pre_validation: true
     run_reporter: true
     health_check: true
+    run_vnetmap: true
 
   # Default selections for Test Suite (One-Shot) operations
   defaults:

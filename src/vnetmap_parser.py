@@ -1,7 +1,8 @@
 """
 VNetMap Output Parser
 
-Parses vnetmap.py output files to extract port-to-device mapping information.
+Parses vnetmap.py output files to extract port-to-device mapping information,
+including LLDP neighbor data for switch-to-switch (IPL) connections.
 """
 
 import re
@@ -23,6 +24,7 @@ class VNetMapParser:
         self.raw_data: list[Any] = []
         self.topology_data: list[Any] = []
         self.cross_connections: list[Any] = []
+        self.lldp_neighbors: list[Dict[str, str]] = []
 
     def parse(self) -> Dict[str, Any]:
         """
@@ -37,22 +39,22 @@ class VNetMapParser:
                 "error": f"VNetMap output file not found: {self.output_file}",
                 "topology": [],
                 "cross_connections": [],
+                "lldp_neighbors": [],
             }
 
         try:
             with open(self.output_file, "r") as f:
                 content = f.read()
 
-            # Extract topology section
             self._parse_topology_section(content)
-
-            # Extract cross-connection warnings
             self._parse_cross_connections(content)
+            self._parse_lldp_neighbors(content)
 
             return {
                 "available": True,
                 "topology": self.topology_data,
                 "cross_connections": self.cross_connections,
+                "lldp_neighbors": self.lldp_neighbors,
                 "total_connections": len(self.topology_data),
             }
 
@@ -62,6 +64,7 @@ class VNetMapParser:
                 "error": f"Error parsing vnetmap output: {e}",
                 "topology": [],
                 "cross_connections": [],
+                "lldp_neighbors": [],
             }
 
     def _parse_topology_section(self, content: str):
@@ -70,8 +73,11 @@ class VNetMapParser:
 
         Format:
         hostname    switch_ip    port    node_ip    interface    mac    network
+
+        Each entry is augmented with a ``node_hostname`` alias equal to
+        ``hostname`` so that downstream consumers (``EnhancedPortMapper``)
+        can locate the field consistently.
         """
-        # Find the "Full topology" section
         topology_match = re.search(
             r"Full topology\n(.*?)(?:\n\n|\nConnectivity issue)",
             content,
@@ -84,12 +90,12 @@ class VNetMapParser:
         topology_lines = topology_match.group(1).strip().split("\n")
 
         for line in topology_lines:
-            # Split by whitespace (multiple spaces/tabs)
             parts = line.split()
 
             if len(parts) >= 7:
                 connection = {
                     "hostname": parts[0],
+                    "node_hostname": parts[0],
                     "switch_ip": parts[1],
                     "port": parts[2],
                     "node_ip": parts[3],
@@ -125,6 +131,49 @@ class VNetMapParser:
                         "network_labels": network_labels,
                     }
                 )
+
+    def _parse_lldp_neighbors(self, content: str):
+        """
+        Parse LLDP neighbor data from vnetmap output to identify switch-to-switch
+        (IPL/MLAG) connections.
+
+        Looks for patterns like::
+
+            LLDP neighbors on <switch_ip>:
+            Eth1/29  <remote_switch_ip>  Eth1/29
+            Eth1/30  <remote_switch_ip>  Eth1/30
+
+        Also matches Cumulus-style ``swpNN`` naming.
+        """
+        seen: set[tuple[str, str, str, str]] = set()
+
+        # Pattern: "LLDP neighbors on <IP>:" followed by lines of
+        #   local_port   remote_ip   remote_port
+        lldp_block_re = re.compile(
+            r"LLDP neighbors on ([\d.]+)[:\s]*\n((?:[ \t]+\S+[ \t]+[\d.]+[ \t]+\S+\n?)+)",
+            re.MULTILINE,
+        )
+        line_re = re.compile(r"(\S+)\s+([\d.]+)\s+(\S+)")
+
+        for block_match in lldp_block_re.finditer(content):
+            local_ip = block_match.group(1)
+            for line_match in line_re.finditer(block_match.group(2)):
+                local_port = line_match.group(1)
+                remote_ip = line_match.group(2)
+                remote_port = line_match.group(3)
+
+                key = tuple(sorted([(local_ip, local_port), (remote_ip, remote_port)]))
+                flat_key = (key[0][0], key[0][1], key[1][0], key[1][1])
+                if flat_key in seen:
+                    continue
+                seen.add(flat_key)
+
+                self.lldp_neighbors.append({
+                    "local_switch_ip": local_ip,
+                    "local_port": local_port,
+                    "remote_switch_ip": remote_ip,
+                    "remote_port": remote_port,
+                })
 
     def get_connections_by_switch(self) -> Dict[str, List[Dict[str, Any]]]:
         """

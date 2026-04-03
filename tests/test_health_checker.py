@@ -200,6 +200,23 @@ class TestHealthChecker:
         assert result.status == "warning"
         assert "No license" in result.message
 
+    def test_check_license_via_license_state(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = _cluster_data(license=None, license_state="Active")
+        result = checker._check_license()
+        assert result.status == "pass"
+        assert "active" in result.message.lower()
+
+    def test_check_license_via_is_licensed(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = _cluster_data(license=None, is_licensed=True)
+        result = checker._check_license()
+        assert result.status == "pass"
+
+    def test_check_license_via_license_type(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = _cluster_data(license=None, license_type="Perpetual")
+        result = checker._check_license()
+        assert result.status == "pass"
+        assert "perpetual" in result.message.lower()
+
     # --- DNode Status --------------------------------------------------
 
     def test_check_dnode_status_active(self, checker, mock_api_handler):
@@ -529,18 +546,18 @@ class TestSSHTier3Checks:
         switch_config = {"username": "cumulus", "password": "secret", "switch_ips": ["10.0.1.1"]}
         return HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
 
-    @patch("health_checker.run_ssh_command")
-    def test_mlag_status_pass(self, mock_ssh, switch_checker):
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_status_pass(self, mock_pty, switch_checker):
         mlag_output = "peer-alive          : true\n" "backup-active       : true\n" "mlag-id             : 1\n"
-        mock_ssh.return_value = (0, mlag_output, "")
+        mock_pty.return_value = (0, mlag_output, "")
         result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
         assert result.status == "pass"
         assert "peer-alive" in result.message
 
-    @patch("health_checker.run_ssh_command")
-    def test_mlag_status_fail(self, mock_ssh, switch_checker):
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_status_fail(self, mock_pty, switch_checker):
         mlag_output = "peer-alive          : false\n" "backup-active       : false\n"
-        mock_ssh.return_value = (0, mlag_output, "")
+        mock_pty.return_value = (0, mlag_output, "")
         result = switch_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
         assert result.status == "fail"
         assert "peer-alive" in result.message
@@ -675,8 +692,40 @@ class TestAPICheckBranches:
         assert r.status == "warning"
         assert "blocked" in r.message.lower()
 
+    def test_check_call_home_via_callhomeconfigs_registered(self, mock_api_handler):
+        """Primary path: callhomeconfigs/ returns cloud_registered=True."""
+        cfg = [{"cloud_registered": True, "log_enabled": True, "bundle_enabled": False, "cloud_enabled": False, "customer": "AcmeCo"}]
+        mock_api_handler._make_api_request.return_value = cfg
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "pass"
+        assert "enabled" in r.message.lower()
+        assert "cloud registered" in r.message.lower()
+        assert "logging active" in r.message.lower()
+
+    def test_check_call_home_via_callhomeconfigs_disabled(self, mock_api_handler):
+        """callhomeconfigs/ exists but all flags are False."""
+        cfg = [{"cloud_registered": False, "log_enabled": False, "bundle_enabled": False, "cloud_enabled": False}]
+        mock_api_handler._make_api_request.return_value = cfg
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "warning"
+        assert "not enabled" in r.message.lower()
+
     def test_check_call_home_enabled(self, mock_api_handler):
         hc = self._make_hc(mock_api_handler, {"call_home_enabled": True, "name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "pass"
+        assert "enabled" in r.message.lower()
+
+    def test_check_call_home_ssp_enabled(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"ssp_enabled": True, "name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "pass"
+        assert "enabled" in r.message.lower()
+
+    def test_check_call_home_phone_home_enabled(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"phone_home_enabled": True, "name": "c"})
         r = hc._check_call_home_status()
         assert r.status == "pass"
         assert "enabled" in r.message.lower()
@@ -686,6 +735,12 @@ class TestAPICheckBranches:
         r = hc._check_call_home_status()
         assert r.status == "warning"
         assert "not enabled" in r.message.lower()
+
+    def test_check_call_home_no_field(self, mock_api_handler):
+        hc = self._make_hc(mock_api_handler, {"name": "c"})
+        r = hc._check_call_home_status()
+        assert r.status == "pass"
+        assert "not exposed via api" in r.message.lower()
 
     def test_check_switches_registered_empty(self, mock_api_handler):
         mock_api_handler._make_api_request.return_value = []
@@ -719,11 +774,12 @@ class TestSwitchCheckDispatch:
         assert checker.run_switch_ssh_checks() == []
 
     @patch("health_checker.run_ssh_command")
-    def test_switch_checks_with_ips(self, mock_ssh, mock_api_handler):
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_checks_with_ips(self, mock_pty, mock_ssh, mock_api_handler):
         switch_config = {"username": "cumulus", "password": "secret", "switch_ips": ["10.0.0.10"]}
         checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
 
-        mlag_ok = "peer-alive: Yes\nbackup-active: Yes\n"
+        nv_mlag_ok = "peer-alive: Yes\nbackup-active: Yes\n"
         ntp_ok = (
             "     remote           refid      st t when poll reach   delay   offset  jitter\n"
             "==============================================================================\n"
@@ -731,8 +787,9 @@ class TestSwitchCheckDispatch:
         )
         cfg_ok = "interface swp1\n"
 
+        mock_pty.return_value = (0, "Cumulus Linux hostname: switch-1", "")
         mock_ssh.side_effect = [
-            (0, mlag_ok, ""),
+            (0, nv_mlag_ok, ""),
             (0, ntp_ok, ""),
             (0, cfg_ok, ""),
         ]
@@ -769,24 +826,96 @@ class TestSwitchCheckMethods:
             switch_ssh_config={"username": "cumulus", "password": "secret", "switch_ips": ["10.0.1.1"]},
         )
 
+    # -- Cumulus MLAG tests ------------------------------------------------
+
     @patch("health_checker.run_ssh_command")
     def test_mlag_healthy(self, mock_ssh, sw_checker):
         mock_ssh.return_value = (0, "peer-alive: Yes\nbackup-active: Yes\n", "")
-        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
         assert r.status == "pass"
         assert "MLAG healthy" in r.message
 
     @patch("health_checker.run_ssh_command")
     def test_mlag_unhealthy(self, mock_ssh, sw_checker):
         mock_ssh.return_value = (0, "peer-alive: No\nbackup-active: Yes\n", "")
-        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
         assert r.status == "fail"
 
     @patch("health_checker.run_ssh_command")
-    def test_mlag_not_available(self, mock_ssh, sw_checker):
-        mock_ssh.return_value = (0, "MLAG command not available", "")
-        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret")
-        assert r.status == "skipped"
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_no_output_warning(self, mock_pty, mock_ssh, sw_checker):
+        mock_ssh.return_value = (1, "", "unknown command")
+        mock_pty.return_value = (1, "", "unknown command")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
+        assert r.status == "warning"
+        assert "could not be determined" in r.message
+
+    @patch("health_checker.run_ssh_command")
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_empty_response_warning(self, mock_pty, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "", "")
+        mock_pty.return_value = (0, "", "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
+        assert r.status == "warning"
+        assert "could not be determined" in r.message
+
+    # -- Onyx MLAG tests ---------------------------------------------------
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_onyx_format_pass(self, mock_pty, sw_checker):
+        onyx_output = (
+            "Admin status: Enabled\n"
+            "Operational status: Up\n"
+            "Reload-delay: 30 sec\n"
+            "System-mac: c4:d6:53:1c:d5:d8\n"
+            "\n"
+            "MLAG IPLs Summary:\n"
+            "---\n"
+            "1    Po1           4000       Up           10.10.10.2\n"
+            "\n"
+            "MLAG Members Summary:\n"
+            "---\n"
+            "System-id           State                        Hostname\n"
+            "---\n"
+            "90:0A:84:44:6D:88   Up                           SW02\n"
+            "90:0A:84:44:72:88   Up                           SW01\n"
+        )
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "pass"
+        assert "MLAG healthy" in r.message
+        assert "operational status Up" in r.message
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_onyx_oper_down(self, mock_pty, sw_checker):
+        onyx_output = (
+            "Admin status: Enabled\n"
+            "Operational status: Down\n"
+        )
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "fail"
+        assert "operational status not Up" in r.message
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_onyx_admin_disabled(self, mock_pty, sw_checker):
+        onyx_output = (
+            "Admin status: Disabled\n"
+            "Operational status: Down\n"
+        )
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "fail"
+        assert "admin status not Enabled" in r.message
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_mlag_onyx_empty(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "", "")
+        r = sw_checker._check_mlag_status("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "warning"
+        assert "could not be determined" in r.message
+
+    # -- Cumulus NTP tests -------------------------------------------------
 
     @patch("health_checker.run_ssh_command")
     def test_switch_ntp_peers(self, mock_ssh, sw_checker):
@@ -796,9 +925,212 @@ class TestSwitchCheckMethods:
             "*ntp.server.com  17.253.34.123    2 u  532 1024  377   12.345   -0.678   1.234\n"
         )
         mock_ssh.return_value = (0, ntp_output, "")
-        r = sw_checker._check_switch_ntp("10.0.1.1", "cumulus", "secret")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
         assert r.status == "pass"
         assert "NTP peers found" in r.message
+
+    @patch("health_checker.run_ssh_command")
+    def test_switch_ntp_cumulus_no_peers(self, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "NTP not available", "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
+        assert r.status == "warning"
+        assert "not available" in r.message.lower()
+
+    # -- Onyx NTP tests ----------------------------------------------------
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_ntp_onyx_enabled_with_server(self, mock_pty, sw_checker):
+        onyx_output = (
+            "NTP is administratively            : enabled\n"
+            "VRF name                           : default\n"
+            "NTP Authentication administratively: disabled\n"
+            "NTP server role                    : enabled\n"
+            "\n"
+            "Clock is unsynchronized.\n"
+            "\n"
+            "Active servers and peers:\n"
+            "  10.128.12.18:\n"
+            "    Conf Type          : peer\n"
+            "    Status             : pending\n"
+        )
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "pass"
+        assert "NTP enabled" in r.message
+        assert "active servers" in r.message.lower()
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_ntp_onyx_enabled_no_server(self, mock_pty, sw_checker):
+        onyx_output = (
+            "NTP is administratively            : enabled\n"
+            "NTP Authentication administratively: disabled\n"
+            "\n"
+            "Active servers and peers:\n"
+        )
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "warning"
+        assert "no active servers" in r.message.lower()
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_ntp_onyx_disabled(self, mock_pty, sw_checker):
+        onyx_output = "NTP is administratively            : disabled\n"
+        mock_pty.return_value = (0, onyx_output, "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "warning"
+        assert "not enabled" in r.message.lower()
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_ntp_onyx_empty(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "", "")
+        r = sw_checker._check_switch_ntp("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "warning"
+
+    # -- Onyx Config tests -------------------------------------------------
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_config_onyx_readable(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "## Running database \"initial\"\nno cli default prefix-mode enabled", "")
+        r = sw_checker._check_switch_config_backup("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "pass"
+        assert "readable" in r.message.lower()
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_switch_config_onyx_empty(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "", "")
+        r = sw_checker._check_switch_config_backup("10.0.1.1", "admin", "secret", switch_os="onyx")
+        assert r.status == "warning"
+        assert "empty" in r.message.lower()
+
+    # -- Cumulus Config tests -----------------------------------------------
+
+    @patch("health_checker.run_ssh_command")
+    def test_switch_config_cumulus_readable(self, mock_ssh, sw_checker):
+        mock_ssh.return_value = (0, "interface swp1\n  ip address 10.0.0.1/24", "")
+        r = sw_checker._check_switch_config_backup("10.0.1.1", "cumulus", "secret", switch_os="cumulus")
+        assert r.status == "pass"
+        assert "readable" in r.message.lower()
+
+
+# ===================================================================
+# WS-C: TestMLAGConsolidation
+# ===================================================================
+
+
+class TestSwitchResultConsolidation:
+    def test_consolidate_identical_mlag_pass(self):
+        results = [
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
+                              {"host": "10.0.0.1", "peer_alive": True, "backup_active": True}, "t"),
+            HealthCheckResult("Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.1",
+                              {"host": "10.0.0.1"}, "t"),
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.2",
+                              {"host": "10.0.0.2", "peer_alive": True, "backup_active": True}, "t"),
+            HealthCheckResult("Switch NTP", "switch_ssh", "pass", "NTP peers found on 10.0.0.2",
+                              {"host": "10.0.0.2"}, "t"),
+        ]
+        out = HealthChecker._consolidate_switch_results(results)
+        mlag_entries = [r for r in out if r.check_name == "MLAG Status"]
+        ntp_entries = [r for r in out if r.check_name == "Switch NTP"]
+        assert len(mlag_entries) == 1
+        assert "10.0.0.1" in mlag_entries[0].message
+        assert "10.0.0.2" in mlag_entries[0].message
+        assert len(ntp_entries) == 1
+        assert len(out) == 2
+
+    def test_consolidate_different_mlag_keeps_both(self):
+        results = [
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
+                              {"host": "10.0.0.1", "peer_alive": True, "backup_active": True}, "t"),
+            HealthCheckResult("MLAG Status", "switch_ssh", "fail", "MLAG issue on 10.0.0.2",
+                              {"host": "10.0.0.2", "peer_alive": False, "backup_active": True}, "t"),
+        ]
+        out = HealthChecker._consolidate_switch_results(results)
+        mlag_entries = [r for r in out if r.check_name == "MLAG Status"]
+        assert len(mlag_entries) == 2
+
+    def test_consolidate_single_switch_unchanged(self):
+        results = [
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass", "MLAG healthy on 10.0.0.1",
+                              {"host": "10.0.0.1"}, "t"),
+            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1",
+                              {"host": "10.0.0.1"}, "t"),
+        ]
+        out = HealthChecker._consolidate_switch_results(results)
+        assert len(out) == 2
+
+    def test_consolidate_ntp_warning_both_switches(self):
+        results = [
+            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.1",
+                              {"host": "10.0.0.1"}, "t"),
+            HealthCheckResult("Switch Config Readability", "switch_ssh", "pass",
+                              "Switch config readable on 10.0.0.1", {"host": "10.0.0.1"}, "t"),
+            HealthCheckResult("Switch NTP", "switch_ssh", "warning", "No NTP peers found on 10.0.0.2",
+                              {"host": "10.0.0.2"}, "t"),
+            HealthCheckResult("Switch Config Readability", "switch_ssh", "pass",
+                              "Switch config readable on 10.0.0.2", {"host": "10.0.0.2"}, "t"),
+        ]
+        out = HealthChecker._consolidate_switch_results(results)
+        ntp_entries = [r for r in out if r.check_name == "Switch NTP"]
+        cfg_entries = [r for r in out if r.check_name == "Switch Config Readability"]
+        assert len(ntp_entries) == 1
+        assert "10.0.0.1" in ntp_entries[0].message
+        assert "10.0.0.2" in ntp_entries[0].message
+        assert len(cfg_entries) == 1
+        assert len(out) == 2
+
+    def test_consolidate_onyx_mlag_pass(self):
+        results = [
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass",
+                              "MLAG healthy on 10.0.0.1: operational status Up",
+                              {"host": "10.0.0.1", "switch_os": "onyx", "admin_enabled": True, "oper_up": True}, "t"),
+            HealthCheckResult("MLAG Status", "switch_ssh", "pass",
+                              "MLAG healthy on 10.0.0.2: operational status Up",
+                              {"host": "10.0.0.2", "switch_os": "onyx", "admin_enabled": True, "oper_up": True}, "t"),
+        ]
+        out = HealthChecker._consolidate_switch_results(results)
+        assert len(out) == 1
+        assert "10.0.0.1" in out[0].message
+        assert "10.0.0.2" in out[0].message
+        assert "operational status Up" in out[0].message
+
+
+# ===================================================================
+# WS-D: TestSwitchOSDetection
+# ===================================================================
+
+
+class TestSwitchOSDetection:
+    @pytest.fixture
+    def sw_checker(self, mock_api_handler):
+        return HealthChecker(
+            api_handler=mock_api_handler,
+            switch_ssh_config={"username": "admin", "password": "secret", "switch_ips": ["10.0.1.1"]},
+        )
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_detect_onyx(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "Product name:      Onyx\nProduct release:   3.10.4104", "")
+        os_type = sw_checker._detect_switch_type("10.0.1.1", "admin", "secret")
+        assert os_type == "onyx"
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_detect_mellanox(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "Product name:      Mellanox SN2700", "")
+        os_type = sw_checker._detect_switch_type("10.0.1.1", "admin", "secret")
+        assert os_type == "onyx"
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_detect_cumulus_default(self, mock_pty, sw_checker):
+        mock_pty.return_value = (0, "Cumulus Linux hostname: switch-1", "")
+        os_type = sw_checker._detect_switch_type("10.0.1.1", "cumulus", "secret")
+        assert os_type == "cumulus"
+
+    @patch("health_checker.run_interactive_ssh")
+    def test_detect_fallback_on_error(self, mock_pty, sw_checker):
+        mock_pty.side_effect = Exception("SSH failed")
+        os_type = sw_checker._detect_switch_type("10.0.1.1", "admin", "secret")
+        assert os_type == "cumulus"
 
 
 # ===================================================================

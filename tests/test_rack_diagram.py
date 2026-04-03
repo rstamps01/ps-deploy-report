@@ -109,6 +109,31 @@ class TestDeviceBoundaries(unittest.TestCase):
         self.assertIsNone(result["highest_dbox_top"])
         self.assertIsNone(result["lowest_dbox_bottom"])
 
+    def test_2u_device_extends_upward_from_base(self):
+        """A 2U device at U10 should occupy U10 (base) and U11 (top), not U9-U10."""
+        dboxes = [{"model": "sanmina", "rack_unit": "U10"}]
+        result = self.rack._gather_device_boundaries([], dboxes)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lowest_dbox_bottom"], 10, "Base of 2U device at U10 should be U10")
+        self.assertEqual(result["highest_dbox_top"], 11, "Top of 2U device at U10 should be U11")
+
+    def test_2u_devices_boundaries_bottom_up(self):
+        """Multiple 2U devices: verify base is designated U, top extends upward."""
+        cboxes = [
+            {"model": "cascadelake", "rack_unit": "U25"},
+            {"model": "cascadelake", "rack_unit": "U27"},
+        ]
+        dboxes = [
+            {"model": "sanmina", "rack_unit": "U10"},
+            {"model": "sanmina", "rack_unit": "U13"},
+        ]
+        result = self.rack._gather_device_boundaries(cboxes, dboxes)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["lowest_cbox_bottom"], 25, "Lowest CBox base = U25")
+        self.assertEqual(result["highest_cbox_top"], 28, "CBox at U27 (2U) tops at U28")
+        self.assertEqual(result["lowest_dbox_bottom"], 10, "Lowest DBox base = U10")
+        self.assertEqual(result["highest_dbox_top"], 14, "DBox at U13 (2U) tops at U14")
+
 
 class TestSwitchPlacement(unittest.TestCase):
 

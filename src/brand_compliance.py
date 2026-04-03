@@ -317,7 +317,14 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_table(self, data: List[List[str]], title: str = None, headers: List[str] = None) -> List[Any]:
+    def create_vast_table(
+        self,
+        data: List[List[str]],
+        title: str = None,
+        headers: List[str] = None,
+        col_widths: List[float] = None,
+        compact: bool = False,
+    ) -> List[Any]:
         """
         Create VAST brand-compliant table with gradient styling.
 
@@ -325,6 +332,10 @@ class VastBrandCompliance:
             data (List[List[str]]): Table data
             title (str, optional): Table title
             headers (List[str], optional): Column headers
+            col_widths (List[float], optional): Proportional column weights
+                (e.g. [3, 2, 1] → 3/6, 2/6, 1/6 of page width).
+                When None every column gets equal width.
+            compact (bool): Use smaller font and tighter padding for dense tables.
 
         Returns:
             List[Any]: Table elements (wrapped in KeepTogether if title provided)
@@ -350,26 +361,35 @@ class VastBrandCompliance:
         else:
             page_width = A4[0] - 1.0 * inch
         num_cols = len(table_data[0]) if table_data else 1
-        col_width = page_width / num_cols if num_cols > 0 else page_width
+
+        if col_widths and len(col_widths) == num_cols:
+            total_weight = sum(col_widths)
+            computed_widths = [(w / total_weight) * page_width for w in col_widths]
+        else:
+            col_width = page_width / num_cols if num_cols > 0 else page_width
+            computed_widths = [col_width] * num_cols
 
         # Create table with repeat headers on page breaks
-        table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
+        table = Table(table_data, colWidths=computed_widths, repeatRows=1)
 
         # Apply VAST brand table styling
+        font_sz = (self.typography.BODY_SIZE - 2) if compact else self.typography.BODY_SIZE
+        cell_pad = 4 if compact else 8
+        lr_pad = 6 if compact else 12
         table_style = TableStyle(
             [
                 # Header row styling
                 ("BACKGROUND", (0, 0), (-1, 0), self.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.colors.PURE_WHITE),
                 ("FONTNAME", (0, 0), (-1, 0), self.typography.PRIMARY_FONT),
-                ("FONTSIZE", (0, 0), (-1, 0), self.typography.BODY_SIZE),
+                ("FONTSIZE", (0, 0), (-1, 0), font_sz),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 # Data rows styling with gradient effect
                 ("BACKGROUND", (0, 1), (-1, -1), self.colors.VAST_BLUE_LIGHTEST),
                 ("TEXTCOLOR", (0, 1), (-1, -1), self.colors.DARK_GRAY),
                 ("FONTNAME", (0, 1), (-1, -1), self.typography.BODY_FONT),
-                ("FONTSIZE", (0, 1), (-1, -1), self.typography.BODY_SIZE),
+                ("FONTSIZE", (0, 1), (-1, -1), font_sz),
                 # Borders and spacing
                 ("GRID", (0, 0), (-1, -1), 1, self.colors.BACKGROUND_DARK),
                 (
@@ -378,9 +398,9 @@ class VastBrandCompliance:
                     (-1, -1),
                     [self.colors.PURE_WHITE, self.colors.ALTERNATING_ROW],
                 ),
-                ("PADDING", (0, 0), (-1, -1), 8),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("PADDING", (0, 0), (-1, -1), cell_pad),
+                ("LEFTPADDING", (0, 0), (-1, -1), lr_pad),
+                ("RIGHTPADDING", (0, 0), (-1, -1), lr_pad),
                 ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
         )

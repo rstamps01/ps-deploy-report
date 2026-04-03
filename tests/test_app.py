@@ -424,9 +424,11 @@ class TestApiDiscover(unittest.TestCase):
         self.assertIn("error", body)
         self.assertIn("Cluster IP", body["error"])
 
+    @patch("socket.create_connection")
     @patch("rack_diagram.RackDiagram")
     @patch("api_handler.create_vast_api_handler")
-    def test_api_discover_auth_failure_returns_401(self, mock_create_handler, mock_rack_diagram):
+    def test_api_discover_auth_failure_returns_401(self, mock_create_handler, mock_rack_diagram, mock_socket):
+        mock_socket.return_value = MagicMock()
         mock_handler = MagicMock()
         mock_handler.authenticate.return_value = False
         mock_create_handler.return_value = mock_handler
@@ -443,9 +445,11 @@ class TestApiDiscover(unittest.TestCase):
         mock_handler.get_racks.assert_not_called()
         mock_handler.close.assert_not_called()
 
+    @patch("socket.create_connection")
     @patch("rack_diagram.RackDiagram")
     @patch("api_handler.create_vast_api_handler")
-    def test_api_discover_success_returns_racks_and_switches(self, mock_create_handler, mock_rack_diagram):
+    def test_api_discover_success_returns_racks_and_switches(self, mock_create_handler, mock_rack_diagram, mock_socket):
+        mock_socket.return_value = MagicMock()
         mock_handler = MagicMock()
         mock_handler.authenticate.return_value = True
         mock_handler.get_racks.return_value = [

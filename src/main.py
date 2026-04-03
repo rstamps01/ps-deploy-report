@@ -31,6 +31,14 @@ from typing import Any, Dict, Optional, cast
 # Add src directory to Python path (must run before local imports when run as script)
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Ensure Homebrew's shared libraries are discoverable on macOS (needed for cairosvg → libcairo)
+if sys.platform == "darwin":
+    _brew_lib = Path("/opt/homebrew/lib")
+    if _brew_lib.is_dir():
+        _dyld = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+        if str(_brew_lib) not in _dyld:
+            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{_brew_lib}:{_dyld}" if _dyld else str(_brew_lib)
+
 from api_handler import create_vast_api_handler  # noqa: E402
 from data_extractor import create_data_extractor  # noqa: E402
 from report_builder import create_report_builder  # noqa: E402

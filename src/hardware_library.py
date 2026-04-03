@@ -72,6 +72,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "cascadelake_cbox_2u.png",
         "description": "CascadeLake 2U CBox",
     },
+    "hpe": {
+        "type": "cbox",
+        "height_u": 2,
+        "image_filename": "hpe_il_cbox_2u.png",
+        "description": "HPE CBox (generic)",
+    },
     # =========================================================================
     # DBoxes (Data Boxes)
     # =========================================================================

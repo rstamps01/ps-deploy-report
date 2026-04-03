@@ -356,9 +356,14 @@ class NetworkDiagramGenerator:
                     is_cnode = "CN" in node_designation
                     is_ebox_node = "EB" in node_designation
 
-                    # Only draw primary physical interfaces (f0 and f1)
+                    # Determine if this is a drawable primary interface
                     is_primary = False
                     if "f0" in interface or "f1" in interface:
+                        is_primary = True
+                    elif is_dnode and any(
+                        interface.startswith(p)
+                        for p in ("ens3", "ens14", "enp65s0", "enp94s0", "enp3s0")
+                    ):
                         is_primary = True
 
                     if not is_primary:

@@ -85,12 +85,13 @@ class ScriptRunner:
 
     def _emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         """Emit output to the callback if set."""
-        logger.log({"info": 20, "warn": 30, "error": 40, "success": 20, "debug": 10}.get(level, 20), message)
         if self._output_callback:
             try:
                 self._output_callback(level, message, details)
             except Exception:
                 pass
+        else:
+            logger.log({"info": 20, "warn": 30, "error": 40, "success": 20, "debug": 10}.get(level, 20), message)
 
     def get_local_dir(self) -> Path:
         """Get the local directory for script storage."""
@@ -514,6 +515,39 @@ class ScriptRunner:
 
         return "info"
 
+    @staticmethod
+    def _classify_stderr_line(line: str) -> str:
+        """Classify a stderr line, returning an appropriate log level.
+
+        Many programs write non-error diagnostics to stderr (SSH warnings,
+        ping probes, etc.).  This method distinguishes true errors from
+        informational noise.
+        """
+        ll = line.lower().strip()
+        if not ll:
+            return "info"
+
+        # SSH host-key / known-hosts warnings are informational
+        if "permanently added" in ll and "known hosts" in ll:
+            return "info"
+        if ll.startswith("warning:") and "known hosts" in ll:
+            return "info"
+
+        # Ping diagnostic output — warn, not error
+        if ll.startswith("ping:"):
+            return "warn"
+
+        # Python traceback lines — real errors
+        if ll.startswith("traceback (most recent call last"):
+            return "error"
+        if ll.startswith("file ") and ", line " in ll and ", in " in ll:
+            return "error"
+        if ll.startswith("exception:") or ll.startswith("raise "):
+            return "error"
+
+        # Generic — default to warn for stderr
+        return "warn"
+
     def execute_remote(
         self,
         host: str,
@@ -565,7 +599,7 @@ class ScriptRunner:
                         self._emit(line_level, line)
             if stderr:
                 for line in stderr.strip().split("\n"):
-                    self._emit("warn" if success else "error", line)
+                    self._emit(self._classify_stderr_line(line), line)
 
             self._emit("info", "")
             result_level = "success" if success else "error"

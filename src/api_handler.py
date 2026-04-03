@@ -70,7 +70,6 @@ class VastClusterInfo:
     # Cluster feature flags and configuration
     enabled: Optional[bool] = None
     enable_similarity: Optional[bool] = None
-    dedup_active: Optional[bool] = None
     is_wb_raid_enabled: Optional[bool] = None
     wb_raid_layout: Optional[str] = None
     dbox_ha_support: Optional[bool] = None
@@ -922,7 +921,6 @@ class VastApiHandler:
             # Extract cluster feature flags and configuration
             cluster_info.enabled = cluster_data.get("enabled", None)
             cluster_info.enable_similarity = cluster_data.get("enable_similarity", None)
-            cluster_info.dedup_active = cluster_data.get("dedup_active", None)
             cluster_info.is_wb_raid_enabled = cluster_data.get("is_wb_raid_enabled", None)
             cluster_info.wb_raid_layout = cluster_data.get("wb_raid_layout", "Unknown")
             cluster_info.dbox_ha_support = cluster_data.get("dbox_ha_support", None)
@@ -2494,7 +2492,6 @@ class VastApiHandler:
                     # Cluster feature flags and configuration
                     "enabled": cluster_info.enabled,
                     "enable_similarity": cluster_info.enable_similarity,
-                    "dedup_active": cluster_info.dedup_active,
                     "is_wb_raid_enabled": cluster_info.is_wb_raid_enabled,
                     "wb_raid_layout": cluster_info.wb_raid_layout,
                     "dbox_ha_support": cluster_info.dbox_ha_support,

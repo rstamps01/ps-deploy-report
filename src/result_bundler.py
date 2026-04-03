@@ -41,13 +41,14 @@ class ResultBundler:
         self._metadata: Dict[str, Any] = {}
 
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
-        """Emit output message via callback."""
+        """Emit output message via callback, or fall back to the Python logger."""
         if self._output_callback:
             try:
                 self._output_callback(level, message, details)
             except Exception:
                 pass
-        logger.info(f"[{level}] {message}")
+        else:
+            logger.info(f"[{level}] {message}")
 
     def set_metadata(self, cluster_name: str, cluster_ip: str, cluster_version: str) -> None:
         """Set cluster metadata for the bundle.

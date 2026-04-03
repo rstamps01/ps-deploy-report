@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
-from utils.ssh_adapter import run_ssh_command
+from utils.ssh_adapter import run_ssh_command, run_interactive_ssh
 
 
 class CancelledError(Exception):
@@ -1797,7 +1797,7 @@ class HealthChecker:
                     duration_seconds=time.time() - start,
                 )
 
-            license_info = data.get("license")
+            license_info = self._resolve_license(data)
             details = {"license": license_info}
 
             if not license_info:
@@ -1826,7 +1826,7 @@ class HealthChecker:
                 check_name="License",
                 category="api",
                 status="pass",
-                message="License is present and active",
+                message=f"License is present and active ({license_info})",
                 details=details,
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
@@ -1842,6 +1842,42 @@ class HealthChecker:
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
+
+    def _resolve_license(self, cluster_data: Dict[str, Any]) -> Optional[str]:
+        """Resolve license status from cluster data and the licenses/ endpoint.
+
+        The clusters/ endpoint exposes license info under varying field names
+        across VAST API versions.  When the primary ``license`` field is empty,
+        fall back to alternative fields and then to the ``licenses/`` endpoint.
+        """
+        _LICENSE_FIELDS = ("license", "license_state", "license_type", "license_status")
+        for field in _LICENSE_FIELDS:
+            val = cluster_data.get(field)
+            if val and str(val).strip().lower() not in ("", "none", "unknown", "null"):
+                return str(val).strip()
+
+        if cluster_data.get("is_licensed") is True:
+            return "Licensed"
+
+        try:
+            licenses = self.api_handler._make_api_request("licenses/")
+            if isinstance(licenses, list) and licenses:
+                lic = licenses[0]
+                if "license" in str(lic.get("url", "")) or lic.get("license_key") or lic.get("key"):
+                    state = lic.get("license_state") or lic.get("license_type")
+                    if state:
+                        return str(state).strip()
+                    return "Active"
+            if isinstance(licenses, dict) and licenses:
+                if licenses.get("license_key") or licenses.get("key"):
+                    state = licenses.get("license_state") or licenses.get("license_type")
+                    if state:
+                        return str(state).strip()
+                    return "Active"
+        except Exception:
+            pass
+
+        return None
 
     # --- 16. Capacity -----------------------------------------------------
 
@@ -2429,10 +2465,14 @@ class HealthChecker:
     # ------------------------------------------------------------------
 
     def _check_call_home_status(self) -> HealthCheckResult:
-        """Check Call Home / Support Contact configuration status."""
+        """Check Call Home / Support Contact configuration via ``callhomeconfigs/``.
+
+        Primary source is the dedicated ``callhomeconfigs/`` endpoint (available
+        on VAST v5.x+).  Falls back to boolean fields in ``clusters/`` for
+        older or non-standard deployments.
+        """
         start = time.time()
         try:
-            # Try to get support/contact or cluster settings for call home
             cluster_data = self._get_cluster_data()
             if not cluster_data:
                 return HealthCheckResult(
@@ -2444,18 +2484,38 @@ class HealthChecker:
                     duration_seconds=time.time() - start,
                 )
 
-            # Check for support contact info
-            support_email = cluster_data.get("support_email") or cluster_data.get("contact_email")
-            support_phone = cluster_data.get("support_phone") or cluster_data.get("contact_phone")
-            call_home_enabled = cluster_data.get("call_home_enabled", False)
+            call_home_state = self._resolve_call_home(cluster_data)
 
-            details = {
-                "call_home_enabled": call_home_enabled,
-                "support_email": support_email or "Not configured",
-                "support_phone": support_phone or "Not configured",
-            }
+            details: Dict[str, Any] = {"call_home_enabled": call_home_state}
 
-            if not call_home_enabled:
+            try:
+                configs = self.api_handler._make_api_request("callhomeconfigs/")
+                cfg = None
+                if isinstance(configs, list) and configs:
+                    cfg = configs[0]
+                elif isinstance(configs, dict) and configs:
+                    cfg = configs
+                if cfg:
+                    details["cloud_registered"] = cfg.get("cloud_registered")
+                    details["cloud_enabled"] = cfg.get("cloud_enabled")
+                    details["log_enabled"] = cfg.get("log_enabled")
+                    details["bundle_enabled"] = cfg.get("bundle_enabled")
+                    details["customer"] = cfg.get("customer") or "Not set"
+            except Exception:
+                pass
+
+            if call_home_state is None:
+                return HealthCheckResult(
+                    check_name="Call Home Status",
+                    category="api",
+                    status="pass",
+                    message="Call Home status not exposed via API — verify in VMS GUI.",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
+            if not call_home_state:
                 return HealthCheckResult(
                     check_name="Call Home Status",
                     category="api",
@@ -2466,11 +2526,20 @@ class HealthChecker:
                     duration_seconds=time.time() - start,
                 )
 
+            parts = []
+            if details.get("cloud_registered"):
+                parts.append("cloud registered")
+            if details.get("log_enabled"):
+                parts.append("logging active")
+            if details.get("bundle_enabled"):
+                parts.append("bundles active")
+            suffix = f" ({', '.join(parts)})" if parts else ""
+
             return HealthCheckResult(
                 check_name="Call Home Status",
                 category="api",
                 status="pass",
-                message="Call Home is enabled",
+                message=f"Call Home is enabled{suffix}",
                 details=details,
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
@@ -2486,6 +2555,52 @@ class HealthChecker:
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
+
+    def _resolve_call_home(self, cluster_data: Dict[str, Any]) -> Optional[bool]:
+        """Determine whether Call Home / Phone Home / SSP is enabled.
+
+        Returns ``True`` (enabled), ``False`` (explicitly disabled), or
+        ``None`` (field not present in the API — status cannot be determined).
+
+        Primary source is the dedicated ``callhomeconfigs/`` endpoint which
+        exposes ``cloud_registered``, ``log_enabled``, ``bundle_enabled``,
+        and ``cloud_enabled`` fields.  Falls back to ``clusters/`` fields
+        for older API versions.
+        """
+        try:
+            configs = self.api_handler._make_api_request("callhomeconfigs/")
+            cfg: Optional[Dict[str, Any]] = None
+            if isinstance(configs, list) and configs:
+                cfg = configs[0]
+            elif isinstance(configs, dict) and configs:
+                cfg = configs
+
+            if cfg:
+                cloud_registered = cfg.get("cloud_registered", False)
+                log_enabled = cfg.get("log_enabled", False)
+                bundle_enabled = cfg.get("bundle_enabled", False)
+                cloud_enabled = cfg.get("cloud_enabled", False)
+                if cloud_registered or log_enabled or bundle_enabled or cloud_enabled:
+                    return True
+                return False
+        except Exception:
+            pass
+
+        _BOOL_FIELDS = (
+            "ssp_enabled",
+            "phone_home_enabled",
+            "call_home_enabled",
+            "phone_home",
+            "call_home",
+            "cloud_enabled",
+            "support_portal_enabled",
+        )
+        for field in _BOOL_FIELDS:
+            val = cluster_data.get(field)
+            if val is not None:
+                return bool(val)
+
+        return None
 
     def _check_rack_uheight_config(self) -> HealthCheckResult:
         """Check if rack and U-height settings are configured for CBoxes/DBoxes."""
@@ -2614,6 +2729,38 @@ class HealthChecker:
     # Tier 3 -- Switch SSH checks
     # ------------------------------------------------------------------
 
+    def _detect_switch_type(
+        self, host: str, username: str, password: str, **ssh_kwargs: Any
+    ) -> str:
+        """Detect whether a switch runs Onyx or Cumulus Linux.
+
+        Attempts ``show version`` via interactive SSH first — Onyx responds
+        with Product/Mellanox identifiers.  The restricted-shell rejection
+        message (``UNIX shell commands cannot be executed``) is also treated
+        as an Onyx indicator because Cumulus never produces it.
+
+        Returns ``"onyx"`` or ``"cumulus"`` (default).
+        """
+        _ONYX_INDICATORS = (
+            "onyx",
+            "mellanox",
+            "product name",
+            "unix shell commands cannot be executed",
+        )
+        try:
+            rc, stdout, stderr = run_interactive_ssh(
+                host, username, password, "show version", timeout=15, **ssh_kwargs
+            )
+            combined = ((stdout or "") + (stderr or "")).lower()
+            if any(tag in combined for tag in _ONYX_INDICATORS):
+                self.logger.info("Switch %s detected as Onyx", host)
+                return "onyx"
+        except Exception:
+            pass
+
+        self.logger.info("Switch %s treated as Cumulus (default)", host)
+        return "cumulus"
+
     def run_switch_ssh_checks(self) -> List[HealthCheckResult]:
         if not self.switch_ssh_config:
             self.logger.info("Switch SSH config not provided, skipping switch SSH checks")
@@ -2646,11 +2793,16 @@ class HealthChecker:
         total_ssh_checks = len(switch_ips) * len(checks)
         ssh_idx = 0
         for switch_ip in switch_ips:
+            self._check_cancel()
+            switch_os = self._detect_switch_type(switch_ip, username, password, **jump_kwargs)
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()
                 ssh_idx += 1
-                self.logger.info("Running switch SSH check %d/%d on %s: %s", i, len(checks), switch_ip, fn.__name__)
-                result = fn(switch_ip, username, password, **jump_kwargs)
+                self.logger.info(
+                    "Running switch SSH check %d/%d on %s (%s): %s",
+                    i, len(checks), switch_ip, switch_os, fn.__name__,
+                )
+                result = fn(switch_ip, username, password, switch_os=switch_os, **jump_kwargs)
                 results.append(result)
                 if self.progress_callback:
                     self.progress_callback(ssh_idx, total_ssh_checks, f"{fn.__name__}@{switch_ip}")
@@ -2658,77 +2810,115 @@ class HealthChecker:
                     self.logger.warning(
                         "Check %s on %s => %s: %s", fn.__name__, switch_ip, result.status, result.message
                     )
+
+        results = self._consolidate_switch_results(results)
         return results
+
+    @staticmethod
+    def _consolidate_switch_results(results: List[HealthCheckResult]) -> List[HealthCheckResult]:
+        """Merge switch_ssh results that share the same check name and status.
+
+        When both switches in a pair report identical status for a given
+        check, the duplicate is removed and the remaining entry mentions
+        both switch IPs.  Checks with differing statuses are kept separate.
+        """
+        from collections import OrderedDict
+
+        groups: OrderedDict[str, List[int]] = OrderedDict()
+        for idx, r in enumerate(results):
+            if r.category == "switch_ssh":
+                groups.setdefault(r.check_name, []).append(idx)
+
+        skip: set = set()
+        replacements: Dict[int, HealthCheckResult] = {}
+
+        for check_name, indices in groups.items():
+            if len(indices) <= 1:
+                continue
+
+            first = results[indices[0]]
+            if not all(results[i].status == first.status for i in indices):
+                continue
+
+            hosts = []
+            for i in indices:
+                r = results[i]
+                host = r.details.get("host", "") if r.details else ""
+                if host:
+                    hosts.append(host)
+            host_label = ", ".join(hosts) if hosts else "switches"
+
+            base_msg = first.message
+            for h in hosts:
+                base_msg = base_msg.replace(h, "").replace("on ,", "on").replace("on  ", "on ")
+            base_msg = base_msg.strip().rstrip(":")
+
+            if check_name == "MLAG Status":
+                os_type = (first.details or {}).get("switch_os", "cumulus")
+                if first.status == "pass":
+                    if os_type == "onyx":
+                        message = f"MLAG healthy on {host_label}: operational status Up"
+                    else:
+                        message = f"MLAG healthy on {host_label}: peer-alive and backup-active"
+                elif first.status == "fail":
+                    if os_type == "onyx":
+                        issues = []
+                        if not (first.details or {}).get("admin_enabled"):
+                            issues.append("admin status not Enabled")
+                        if not (first.details or {}).get("oper_up"):
+                            issues.append("operational status not Up")
+                        message = f"MLAG issue on {host_label}: {', '.join(issues)}" if issues else first.message
+                    else:
+                        issues = []
+                        if not (first.details or {}).get("peer_alive"):
+                            issues.append("peer-alive not confirmed")
+                        if not (first.details or {}).get("backup_active"):
+                            issues.append("backup-active not confirmed")
+                        message = f"MLAG issue on {host_label}: {', '.join(issues)}" if issues else first.message
+                else:
+                    message = f"{base_msg} ({host_label})"
+            else:
+                if host_label in base_msg:
+                    message = base_msg
+                else:
+                    message = f"{base_msg} ({host_label})"
+
+            combined_details = dict(first.details or {})
+            combined_details["hosts"] = hosts
+
+            merged = HealthCheckResult(
+                check_name=check_name,
+                category="switch_ssh",
+                status=first.status,
+                message=message,
+                details=combined_details,
+                timestamp=first.timestamp,
+                duration_seconds=first.duration_seconds,
+            )
+            replacements[indices[0]] = merged
+            for i in indices[1:]:
+                skip.add(i)
+
+        consolidated = []
+        for idx, r in enumerate(results):
+            if idx in skip:
+                continue
+            if idx in replacements:
+                consolidated.append(replacements[idx])
+            else:
+                consolidated.append(r)
+        return consolidated
 
     # --- Switch SSH Check: MLAG Status ------------------------------------
 
-    def _check_mlag_status(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
+    def _check_mlag_status(
+        self, host: str, username: str, password: str, *, switch_os: str = "cumulus", **ssh_kwargs: Any
+    ) -> HealthCheckResult:
         start = time.time()
         try:
-            cmd = "nv show mlag 2>/dev/null || show mlag detail 2>/dev/null || echo 'MLAG command not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
-
-            if rc != 0 and not stdout:
-                return HealthCheckResult(
-                    check_name="MLAG Status",
-                    category="switch_ssh",
-                    status="error",
-                    message=f"SSH command failed on {host}: {stderr or 'connection error'}",
-                    details={"host": host, "stderr": stderr},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            output = stdout.strip() if stdout else ""
-            output_lower = output.lower()
-
-            if "mlag command not available" in output_lower:
-                return HealthCheckResult(
-                    check_name="MLAG Status",
-                    category="switch_ssh",
-                    status="skipped",
-                    message=f"MLAG command not available on {host}",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            peer_alive = False
-            backup_active = False
-            for line in output.splitlines():
-                ll = line.lower().strip()
-                if "peer-alive" in ll:
-                    peer_alive = "true" in ll or "yes" in ll
-                if "backup-active" in ll:
-                    backup_active = "true" in ll or "yes" in ll
-
-            details = {"host": host, "stdout": output, "peer_alive": peer_alive, "backup_active": backup_active}
-
-            if peer_alive and backup_active:
-                return HealthCheckResult(
-                    check_name="MLAG Status",
-                    category="switch_ssh",
-                    status="pass",
-                    message=f"MLAG healthy on {host}: peer-alive and backup-active",
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            issues: List[str] = []
-            if not peer_alive:
-                issues.append("peer-alive not confirmed")
-            if not backup_active:
-                issues.append("backup-active not confirmed")
-            return HealthCheckResult(
-                check_name="MLAG Status",
-                category="switch_ssh",
-                status="fail",
-                message=f"MLAG issue on {host}: {', '.join(issues)}",
-                details=details,
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
+            if switch_os == "onyx":
+                return self._check_mlag_onyx(host, username, password, start, **ssh_kwargs)
+            return self._check_mlag_cumulus(host, username, password, start, **ssh_kwargs)
         except CancelledError:
             raise
         except Exception as e:
@@ -2741,94 +2931,373 @@ class HealthChecker:
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
+
+    # -- Onyx MLAG ---------------------------------------------------------
+
+    def _check_mlag_onyx(
+        self, host: str, username: str, password: str, start: float, **ssh_kwargs: Any
+    ) -> HealthCheckResult:
+        """Parse ``show mlag`` output from Mellanox Onyx switches.
+
+        Key fields:
+            Admin status: Enabled
+            Operational status: Up
+            MLAG IPLs → Operational State: Up
+            MLAG Members → State: Up
+        """
+        rc, stdout, stderr = run_interactive_ssh(
+            host, username, password, "show mlag", timeout=30, **ssh_kwargs
+        )
+        output = (stdout or "").strip()
+
+        if not output:
+            if stderr and "authentication failed" in (stderr or "").lower():
+                return HealthCheckResult(
+                    check_name="MLAG Status", category="switch_ssh", status="error",
+                    message=f"SSH authentication failed on {host}",
+                    details={"host": host, "stderr": stderr},
+                    timestamp=self._now(), duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="warning",
+                message=f"MLAG status could not be determined on {host} (no output from show mlag)",
+                details={"host": host, "stderr": stderr or ""},
+                timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        admin_enabled = False
+        oper_up = False
+        ipl_up = False
+        members_up = False
+        found_any = False
+
+        in_ipls = False
+        in_members = False
+
+        for line in output.splitlines():
+            ll = line.lower().strip()
+
+            if "mlag ipls summary" in ll:
+                in_ipls = True
+                in_members = False
+                continue
+            if "mlag members summary" in ll:
+                in_members = True
+                in_ipls = False
+                continue
+
+            if ll.startswith("admin status"):
+                found_any = True
+                admin_enabled = "enabled" in ll
+            elif ll.startswith("operational status"):
+                found_any = True
+                oper_up = "up" in ll
+
+            if in_ipls and "---" not in ll and ll and not ll.startswith("id"):
+                parts = ll.split()
+                if any(p == "up" for p in parts):
+                    ipl_up = True
+                    found_any = True
+
+            if in_members:
+                if "---" in ll or ll.startswith("system-id"):
+                    continue
+                parts = ll.split()
+                if any(p == "up" for p in parts):
+                    members_up = True
+                    found_any = True
+
+        details: Dict[str, Any] = {
+            "host": host,
+            "switch_os": "onyx",
+            "stdout": output,
+            "admin_enabled": admin_enabled,
+            "oper_up": oper_up,
+            "ipl_up": ipl_up,
+            "members_up": members_up,
+        }
+
+        if not found_any:
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="warning",
+                message=f"MLAG fields not found in output on {host} — verify switch CLI access",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        if admin_enabled and oper_up:
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="pass",
+                message=f"MLAG healthy on {host}: operational status Up",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        issues: List[str] = []
+        if not admin_enabled:
+            issues.append("admin status not Enabled")
+        if not oper_up:
+            issues.append("operational status not Up")
+        return HealthCheckResult(
+            check_name="MLAG Status", category="switch_ssh", status="fail",
+            message=f"MLAG issue on {host}: {', '.join(issues)}",
+            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+        )
+
+    # -- Cumulus MLAG ------------------------------------------------------
+
+    def _check_mlag_cumulus(
+        self, host: str, username: str, password: str, start: float, **ssh_kwargs: Any
+    ) -> HealthCheckResult:
+        """Parse ``nv show mlag`` / ``show mlag`` on Cumulus switches."""
+        _MLAG_CMDS = [
+            ("nv show mlag", False),
+            ("show mlag", True),
+        ]
+
+        output = ""
+        last_stderr = ""
+        for cmd, use_pty in _MLAG_CMDS:
+            if use_pty:
+                rc, stdout, stderr = run_interactive_ssh(
+                    host, username, password, cmd, timeout=30, **ssh_kwargs
+                )
+            else:
+                rc, stdout, stderr = run_ssh_command(
+                    host, username, password, cmd, timeout=30, **ssh_kwargs
+                )
+            last_stderr = stderr or ""
+            candidate = (stdout or "").strip()
+            if candidate and "unknown command" not in candidate.lower():
+                output = candidate
+                break
+
+        if not output:
+            if last_stderr and "authentication failed" in last_stderr.lower():
+                return HealthCheckResult(
+                    check_name="MLAG Status", category="switch_ssh", status="error",
+                    message=f"SSH authentication failed on {host}",
+                    details={"host": host, "stderr": last_stderr},
+                    timestamp=self._now(), duration_seconds=time.time() - start,
+                )
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="warning",
+                message=f"MLAG status could not be determined on {host} (no output from show mlag)",
+                details={"host": host, "stderr": last_stderr},
+                timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        peer_alive = False
+        backup_active = False
+        oper_up = False
+        found_any_field = False
+        for line in output.splitlines():
+            ll = line.lower().strip()
+            if "peer-alive" in ll or "peer is alive" in ll or "peer alive" in ll:
+                found_any_field = True
+                peer_alive = "true" in ll or "yes" in ll
+            if "peer state" in ll or "peer-state" in ll:
+                found_any_field = True
+                peer_alive = peer_alive or "up" in ll
+            if "backup-active" in ll or "backup active" in ll:
+                found_any_field = True
+                backup_active = "true" in ll or "yes" in ll
+            if "operational state" in ll or "oper-state" in ll:
+                found_any_field = True
+                oper_up = "up" in ll
+
+        if oper_up and not backup_active:
+            backup_active = True
+
+        details: Dict[str, Any] = {
+            "host": host,
+            "switch_os": "cumulus",
+            "stdout": output,
+            "peer_alive": peer_alive,
+            "backup_active": backup_active,
+        }
+
+        if peer_alive and backup_active:
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="pass",
+                message=f"MLAG healthy on {host}: peer-alive and backup-active",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        if not found_any_field:
+            return HealthCheckResult(
+                check_name="MLAG Status", category="switch_ssh", status="warning",
+                message=f"MLAG fields not found in output on {host} — verify switch CLI access",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        issues: List[str] = []
+        if not peer_alive:
+            issues.append("peer-alive not confirmed")
+        if not backup_active:
+            issues.append("backup-active not confirmed")
+        return HealthCheckResult(
+            check_name="MLAG Status", category="switch_ssh", status="fail",
+            message=f"MLAG issue on {host}: {', '.join(issues)}",
+            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+        )
 
     # --- Switch SSH Check: NTP --------------------------------------------
 
-    def _check_switch_ntp(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> HealthCheckResult:
+    def _check_switch_ntp(
+        self, host: str, username: str, password: str, *, switch_os: str = "cumulus", **ssh_kwargs: Any
+    ) -> HealthCheckResult:
         start = time.time()
         try:
-            cmd = "ntpq -p 2>/dev/null || echo 'NTP not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
-
-            output = stdout.strip() if stdout else ""
-
-            if "ntp not available" in output.lower():
-                return HealthCheckResult(
-                    check_name="Switch NTP",
-                    category="switch_ssh",
-                    status="warning",
-                    message=f"NTP not available on {host}",
-                    details={"host": host, "stdout": output},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            lines = output.splitlines()
-            peer_lines = [ln for ln in lines if ln.strip() and ln.strip()[0] in ("*", "+", "-", "o", "x", ".", "#")]
-
-            if peer_lines:
-                return HealthCheckResult(
-                    check_name="Switch NTP",
-                    category="switch_ssh",
-                    status="pass",
-                    message=f"NTP peers found on {host}",
-                    details={"host": host, "stdout": output, "peer_count": len(peer_lines)},
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Switch NTP",
-                category="switch_ssh",
-                status="warning",
-                message=f"No NTP peers found on {host}",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
+            if switch_os == "onyx":
+                return self._check_ntp_onyx(host, username, password, start, **ssh_kwargs)
+            return self._check_ntp_cumulus(host, username, password, start, **ssh_kwargs)
         except CancelledError:
             raise
         except Exception as e:
             return HealthCheckResult(
-                check_name="Switch NTP",
-                category="switch_ssh",
-                status="error",
+                check_name="Switch NTP", category="switch_ssh", status="error",
                 message=f"Check failed on {host}: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
+                details={"host": host}, timestamp=self._now(), duration_seconds=time.time() - start,
             )
+
+    # -- Onyx NTP ----------------------------------------------------------
+
+    def _check_ntp_onyx(
+        self, host: str, username: str, password: str, start: float, **ssh_kwargs: Any
+    ) -> HealthCheckResult:
+        """Parse ``show ntp`` output from Onyx switches.
+
+        Key fields:
+            NTP is administratively: enabled
+            Active servers and peers section with server IPs
+        """
+        rc, stdout, stderr = run_interactive_ssh(
+            host, username, password, "show ntp", timeout=30, **ssh_kwargs
+        )
+        output = (stdout or "").strip()
+
+        if not output:
+            return HealthCheckResult(
+                check_name="Switch NTP", category="switch_ssh", status="warning",
+                message=f"NTP status could not be determined on {host} (no output from show ntp)",
+                details={"host": host, "switch_os": "onyx", "stderr": stderr or ""},
+                timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        ntp_enabled = False
+        servers_found = False
+        in_active_section = False
+
+        for line in output.splitlines():
+            ll = line.lower().strip()
+            if "ntp is administratively" in ll and "enabled" in ll:
+                ntp_enabled = True
+            if "active servers and peers" in ll:
+                in_active_section = True
+                continue
+            if in_active_section and ll and not ll.startswith("---"):
+                import re
+                if re.match(r"\d+\.\d+\.\d+\.\d+", ll.split(":")[0].strip()):
+                    servers_found = True
+
+        details: Dict[str, Any] = {
+            "host": host, "switch_os": "onyx", "stdout": output,
+            "ntp_enabled": ntp_enabled, "servers_found": servers_found,
+        }
+
+        if ntp_enabled and servers_found:
+            return HealthCheckResult(
+                check_name="Switch NTP", category="switch_ssh", status="pass",
+                message=f"NTP enabled with active servers on {host}",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        if ntp_enabled and not servers_found:
+            return HealthCheckResult(
+                check_name="Switch NTP", category="switch_ssh", status="warning",
+                message=f"NTP enabled but no active servers found on {host}",
+                details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        return HealthCheckResult(
+            check_name="Switch NTP", category="switch_ssh", status="warning",
+            message=f"NTP not enabled on {host}",
+            details=details, timestamp=self._now(), duration_seconds=time.time() - start,
+        )
+
+    # -- Cumulus NTP -------------------------------------------------------
+
+    def _check_ntp_cumulus(
+        self, host: str, username: str, password: str, start: float, **ssh_kwargs: Any
+    ) -> HealthCheckResult:
+        """Parse ``ntpq -p`` output from Cumulus switches."""
+        cmd = "ntpq -p 2>/dev/null || echo 'NTP not available'"
+        rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
+
+        output = stdout.strip() if stdout else ""
+
+        if "ntp not available" in output.lower():
+            return HealthCheckResult(
+                check_name="Switch NTP", category="switch_ssh", status="warning",
+                message=f"NTP not available on {host}",
+                details={"host": host, "switch_os": "cumulus", "stdout": output},
+                timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+
+        lines = output.splitlines()
+        peer_lines = [ln for ln in lines if ln.strip() and ln.strip()[0] in ("*", "+", "-", "o", "x", ".", "#")]
+
+        if peer_lines:
+            return HealthCheckResult(
+                check_name="Switch NTP", category="switch_ssh", status="pass",
+                message=f"NTP peers found on {host}",
+                details={"host": host, "switch_os": "cumulus", "stdout": output, "peer_count": len(peer_lines)},
+                timestamp=self._now(), duration_seconds=time.time() - start,
+            )
+        return HealthCheckResult(
+            check_name="Switch NTP", category="switch_ssh", status="warning",
+            message=f"No NTP peers found on {host}",
+            details={"host": host, "switch_os": "cumulus", "stdout": output},
+            timestamp=self._now(), duration_seconds=time.time() - start,
+        )
 
     # --- Switch SSH Check: Config Readability ------------------------------
 
     def _check_switch_config_backup(
-        self, host: str, username: str, password: str, **ssh_kwargs: Any
+        self, host: str, username: str, password: str, *, switch_os: str = "cumulus", **ssh_kwargs: Any
     ) -> HealthCheckResult:
         start = time.time()
         try:
-            cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"
-            rc, stdout, stderr = run_ssh_command(host, username, password, cmd, timeout=30, **ssh_kwargs)
+            if switch_os == "onyx":
+                rc, stdout, stderr = run_interactive_ssh(
+                    host, username, password, "show running-config", timeout=30, **ssh_kwargs
+                )
+            else:
+                cmd = "nv config show 2>/dev/null | head -50 || echo 'Config not available'"
+                rc, stdout, stderr = run_ssh_command(
+                    host, username, password, cmd, timeout=30, **ssh_kwargs
+                )
 
-            output = stdout.strip() if stdout else ""
+            output = (stdout or "").strip()
+            if output:
+                return HealthCheckResult(
+                    check_name="Switch Config Readability", category="switch_ssh", status="pass",
+                    message=f"Switch config readable on {host}",
+                    details={"host": host, "switch_os": switch_os, "stdout": output[:500]},
+                    timestamp=self._now(), duration_seconds=time.time() - start,
+                )
             return HealthCheckResult(
-                check_name="Switch Config Readability",
-                category="switch_ssh",
-                status="pass",
-                message=f"Switch config readable on {host}",
-                details={"host": host, "stdout": output},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
+                check_name="Switch Config Readability", category="switch_ssh", status="warning",
+                message=f"Switch config returned empty output on {host}",
+                details={"host": host, "switch_os": switch_os, "stderr": stderr or ""},
+                timestamp=self._now(), duration_seconds=time.time() - start,
             )
         except CancelledError:
             raise
         except Exception as e:
             return HealthCheckResult(
-                check_name="Switch Config Readability",
-                category="switch_ssh",
-                status="error",
+                check_name="Switch Config Readability", category="switch_ssh", status="error",
                 message=f"Check failed on {host}: {e}",
-                details={"host": host},
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
+                details={"host": host}, timestamp=self._now(), duration_seconds=time.time() - start,
             )
 
     def run_custom_scripts(self, scripts: List[Dict[str, str]]) -> List[HealthCheckResult]:

@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-03-30 (v1.5.0 pre-release: granular progress tracking, Dashboard content refresh, support tool fix, CHANGELOG/release notes update)  
+**Last updated:** 2026-04-03 (v1.5.0-rc1: vnetmap integration, SVG diagrams, health check license/call-home fixes, rack diagram U-position fix, dedup_active cleanup, docs refresh)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -212,7 +212,7 @@
 | DOC-12 | **docs/deployment/DEPLOYMENT.md — Version and config updates:** Updated Python 3.8+ → 3.10+, added Advanced Config reference, updated footer to v1.5.0 | Low | Done |
 | DOC-13 | **docs/API-REFERENCE.md — Prometheus and monitoring endpoints:** Verify Prometheus metric endpoints (`/api/prometheusmetrics/{path}`) are documented with available paths (devices, cnodes, cluster, network, etc.). Check if monitoring endpoints section references removed SNMP/syslog endpoints and remove if present. Confirm `nb_eth_mtu` field reference in network settings. Update "Last updated" date. | Low | Planned |
 | DOC-14 | **Confluence docs sync (`docs/confluence/`):** Refresh local copies of Confluence design/requirements pages (page 6664028496) before v1.5.0 release using Atlassian MCP tools. Ensure RFE table and version references reflect current state. Directory currently empty — requires initial download or re-sync from Confluence. | Medium | Planned |
-| DOC-15 | **CHANGELOG.md — Verify completeness:** Review v1.5.0 changelog entries against all modified files and features. Ensure no changes from recent sessions (Advanced Configuration, report formatting, VIP Pools, config wiring, Prometheus diagnostics) are missing before release tag. | Low | Planned |
+| DOC-15 | **CHANGELOG.md — Verify completeness:** Review v1.5.0 changelog entries against all modified files and features. Ensure no changes from recent sessions (Advanced Configuration, report formatting, VIP Pools, config wiring, Prometheus diagnostics) are missing before release tag. | Low | Done — v1.5.0-rc1 |
 | TP-1 | **Tech Port Auto-Discovery and API Proxy Tunnel:** Enable the app to connect to any CBox Tech Port (192.168.2.2) and automatically discover and tunnel API calls to VMS, eliminating manual CBox identification. **Feasibility validated on selab-var-202 (2026-03-28):** (1) `find-vms` returns VMS internal IP (172.16.3.4) from any CNode; (2) SSH hop from non-VMS CNode to VMS internal IP works; (3) `ip addr` on VMS CNode returns management IP (10.143.11.202); (4) API calls to management IP from any CNode return HTTP 403 (auth required = reachable); (5) VMS internal IP does NOT serve HTTPS (000) — must use management IP for API tunnel. **Discovery chain:** SSH Tech Port → `find-vms` → SSH hop to VMS internal IP → extract management IP from `ip addr` → paramiko tunnel to management IP:443. Builds on existing `ssh_adapter.py` proxy hop infrastructure (`direct-tcpip` channels). Diagnostic script at `tests/diag_vms_proxy_feasibility.py`. | High | Planned |
 | AO-28 | **Switch config backup in Network Configuration Extraction:** Add a full switch config backup step to the One-Shot Network Configuration Extraction workflow (`src/workflows/network_config_workflow.py`). Run `nv config show` (full output, not head-50) on each switch and save the complete config to a file in the output directory (e.g. `switch_config_<ip>.txt`). Include in the result bundle. The existing Tier 3 health check `_check_switch_config_backup` (now renamed to `Switch Config Readability`) only captures a 50-line snippet for verification — the workflow step should capture the full config for backup/reference purposes. | Medium | Planned |
 | PROM-1 | **Enhanced Prometheus device metrics capture:** Enrich the Device Health (Prometheus) health check to capture per-device structured data in the JSON details: endurance %, temperature, media errors, power-on hours, power cycles, and active/inactive/failed state for all SSDs and NVRAMs. Add warning thresholds (endurance <80%, temperature >55°C SSD / >65°C NVRAM). Currently only aggregate counts are stored; individual device data is discarded after scanning. Diagnostic script at `tests/diag_prometheus_metrics.py`. | Medium | Planned |
@@ -257,18 +257,26 @@
 | HC-9 | **API endpoint cleanup:** Removed undocumented endpoints (ntps/, alerts/); changed alarmdefinitions/ to eventdefinitions/ | api_handler.py, health_checker.py |
 | HC-10 | **Reduced log noise:** WARNING→DEBUG for optional 404 endpoints (ldap, nis, snapprograms, snmp, syslog) | api_handler.py |
 | HC-11 | **Health check report table:** Removed Duration column; expanded Message column to 56% | report_builder.py |
+| HC-12 | **License detection multi-source:** `_resolve_license()` checks 5 cluster fields + `licenses/` endpoint fallback | health_checker.py; fixes null license on many clusters |
+| HC-13 | **Call Home via `callhomeconfigs/`:** Dedicated endpoint with cloud/log/bundle status; fallback to cluster booleans | health_checker.py; enriched status message |
+| DOC-15 | CHANGELOG verification | v1.5.0-rc1 entries verified against all modified files |
+| RPT-4 | **Dedup field cleanup:** Removed phantom `dedup_active` (not in VAST API); "Similarity Enabled" row is the correct dedup indicator | api_handler.py, data_extractor.py, report_builder.py |
+| RPT-5 | **Rack diagram U-position fix:** Bottom-based positioning; device extends upward from base U | rack_diagram.py |
+| VNET-1 | **Vnetmap integration:** Run Vnetmap checkbox, `/api/vnetmap-status`, hardware fingerprint comparison, three-source port mapping priority, LLDP IPL parsing | app.py, data_extractor.py, vnetmap_parser.py, reporter.html |
+| SVG-1 | **SVG diagram support:** svgwrite + cairosvg deps, landscape page template, macOS libcairo path | requirements.txt, report_builder.py, app.py, main.py |
 
 ---
 
 ## Next steps (current focus)
 
-1. **Documentation refresh (DOC-1 through DOC-15):** In progress. High-priority items (DOC-1, DOC-2, DOC-3, DOC-4, DOC-5, DOC-6, DOC-7, DOC-8, DOC-10, DOC-11, DOC-12) being completed this session. Remaining: DOC-9 (release notes), DOC-13 (API reference), DOC-14 (Confluence sync), DOC-15 (CHANGELOG verification).
-2. **UI Enhancement Phase (UI-1 through UI-9):** Switch Placement Editor modal, 5-step stepper action bar, and progress tracker complete. Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9). Plan at `.cursor/plans/switch_placement_modal_3d624e42.plan.md`.
-3. **v1.5.0 release:** All pre-release items complete (AO-15, AO-19, CFG-1, NET-1, REL-1, PM-1, CFG-2, RPT-1, RPT-2, RPT-3, HWL-1, HC-1). QA passed: flake8 clean, black formatted, 786 tests pass. Merge feature branch to develop, then to main, tag v1.5.0.
-4. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
-5. **Test suite:** TSE-9 (coverage toward 80%); all features validated before next release.
-6. Before each release: update this file (status, Last updated, move completed items to Done).
-7. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+1. **v1.5.0-rc1 deployment testing:** RC1 tag pushed to trigger CI build-release workflow. Validate macOS .dmg and Windows .zip artifacts, then run smoke tests on both platforms.
+2. **v1.5.0 release:** After RC1 validation, merge feature branch to develop, then to main, tag v1.5.0. Release notes (DOC-9) to be finalized.
+3. **Documentation refresh (remaining):** DOC-9 (release notes), DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
+4. **UI Enhancement Phase (UI-1 through UI-9):** Switch Placement Editor modal, stepper action bar, and progress tracker complete. Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9).
+5. **Generate page enhancements (AO-20):** Apply log level selector, persistent log storage, and state persistence to the Generate Report page (future — post-v1.5.0).
+6. **Test suite:** TSE-9 (coverage toward 80%); 876 tests pass at 62% coverage currently.
+7. Before each release: update this file (status, Last updated, move completed items to Done).
+8. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
 
 ---
 

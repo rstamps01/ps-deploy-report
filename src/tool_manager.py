@@ -62,13 +62,14 @@ class ToolManager:
         self._local_tools_dir.mkdir(parents=True, exist_ok=True)
 
     def _emit(self, level: str, message: str) -> None:
-        """Emit output to callback."""
+        """Emit output to callback, or fall back to the Python logger."""
         if self._output_callback:
             try:
                 self._output_callback(level, message, None)
             except Exception:
                 pass
-        logger.log({"info": 20, "warn": 30, "error": 40, "success": 20, "debug": 10}.get(level, 20), message)
+        else:
+            logger.log({"info": 20, "warn": 30, "error": 40, "success": 20, "debug": 10}.get(level, 20), message)
 
     def get_local_tool_path(self, tool_name: str) -> Path:
         """Get the local path for a tool."""

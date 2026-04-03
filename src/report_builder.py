@@ -49,6 +49,7 @@ try:
         Frame,
         Image,
         KeepTogether,
+        NextPageTemplate,
         PageBreak,
         PageTemplate,
         Paragraph,
@@ -83,6 +84,12 @@ class ReportConfig:
     include_enhanced_features: bool = True
     organization: str = "VAST Professional Services"
     sections: Dict[str, bool] = field(default_factory=dict)
+    network_diagram: Dict[str, Any] = field(default_factory=lambda: {
+        "mode": "detailed",
+        "show_port_labels": False,
+        "device_icons": "flat",
+        "orientation": "portrait",
+    })
 
     def section_enabled(self, key: str) -> bool:
         """Return whether a report section should be rendered (default True)."""
@@ -125,6 +132,10 @@ class ReportConfig:
         raw_sections = dc.get("sections", {})
         if isinstance(raw_sections, dict):
             kwargs["sections"] = {k: bool(v) for k, v in raw_sections.items()}
+
+        nd = config.get("network_diagram", {})
+        if isinstance(nd, dict) and nd:
+            kwargs["network_diagram"] = nd
 
         return cls(**kwargs)
 
@@ -240,6 +251,32 @@ class VastReportBuilder:
         except Exception as e:
             self.logger.error(f"Error generating PDF report: {e}")
             return False
+
+    def _create_landscape_template(
+        self, portrait_size: tuple, margins: Dict[str, float]
+    ) -> Any:
+        """Build a landscape PageTemplate for wide diagrams."""
+        from reportlab.platypus import Frame, PageTemplate
+
+        landscape_w = portrait_size[1]
+        landscape_h = portrait_size[0]
+        left = margins.get("left", 36)
+        right = margins.get("right", 36)
+        top = margins.get("top", 36)
+        bottom = margins.get("bottom", 54)
+
+        frame = Frame(
+            left, bottom,
+            landscape_w - left - right,
+            landscape_h - top - bottom,
+            leftPadding=0, bottomPadding=0,
+            rightPadding=0, topPadding=0,
+        )
+        return PageTemplate(
+            id="landscape",
+            frames=[frame],
+            pagesize=(landscape_w, landscape_h),
+        )
 
     def _build_report_story(
         self,
@@ -521,13 +558,11 @@ class VastReportBuilder:
                     topMargin=em["top"],
                     bottomMargin=em["bottom"],
                 )
-                temp_doc.addPageTemplates([page_template])
+                landscape_template = self._create_landscape_template(page_size, em)
+                temp_doc.addPageTemplates([page_template, landscape_template])
 
                 # Build story with page markers
                 story_pass1 = self._build_report_story(processed_data, page_tracker)
-
-                # Add page template directive
-                from reportlab.platypus import NextPageTemplate
 
                 story_pass1.insert(0, NextPageTemplate("VastPage"))
 
@@ -556,13 +591,11 @@ class VastReportBuilder:
                 topMargin=em["top"],
                 bottomMargin=em["bottom"],
             )
-            doc.addPageTemplates([page_template])
+            landscape_template = self._create_landscape_template(page_size, em)
+            doc.addPageTemplates([page_template, landscape_template])
 
             # Build story with captured page numbers (no markers needed in second pass)
             story_pass2 = self._build_report_story(processed_data, page_tracker)
-
-            # Add page template directive
-            from reportlab.platypus import NextPageTemplate
 
             story_pass2.insert(0, NextPageTemplate("VastPage"))
 
@@ -2025,14 +2058,6 @@ class VastReportBuilder:
                 ),
             ],
             [
-                "Deduplication Active",
-                (
-                    "Yes"
-                    if cluster_info.get("dedup_active")
-                    else ("No" if cluster_info.get("dedup_active") is not None else "Unknown")
-                ),
-            ],
-            [
                 "Write-Back RAID Enabled",
                 (
                     "Yes"
@@ -2273,7 +2298,7 @@ class VastReportBuilder:
                     self.manual_rack_placements.setdefault(rn, []).append(sw_data)
                 self.switch_rack_name = sorted(self.manual_rack_placements.keys())[0]
                 self.logger.info("Manual switch placement: %s", self.switch_positions)
-            elif switches and len(switches) == 2:
+            if (not manual_placements) and switches and len(switches) == 2:
                 # --- Auto placement: cascade through racks (same logic for ebox: above ebox then below ebox) ---
                 hw_cnodes = hardware.get("cnodes") or []
                 hw_dboxes_raw = hardware.get("dboxes") or {}
@@ -2495,9 +2520,32 @@ class VastReportBuilder:
                 if manual_rack_map:
                     # Manual placement: distribute switches to their specified racks
                     # with explicit rack_unit so generate_rack_diagram uses them directly.
+                    # Build a case-insensitive lookup for rack name resolution.
+                    racks_data_lower = {k.lower().strip(): k for k in racks_data}
+                    assigned_any = False
                     for rn, placements in manual_rack_map.items():
+                        target_rn = rn
                         if rn not in racks_data:
-                            continue
+                            # Try case-insensitive match
+                            resolved = racks_data_lower.get(rn.lower().strip())
+                            if resolved:
+                                self.logger.info(
+                                    f"Manual switch placement rack '{rn}' resolved to '{resolved}' (case-insensitive)"
+                                )
+                                target_rn = resolved
+                            elif len(racks_data) == 1:
+                                # Single hardware rack — assign there with a warning
+                                target_rn = next(iter(racks_data))
+                                self.logger.warning(
+                                    f"Manual switch placement rack '{rn}' not found in racks_data — "
+                                    f"falling back to only available rack '{target_rn}'"
+                                )
+                            else:
+                                self.logger.warning(
+                                    f"Manual switch placement rack '{rn}' not found in racks_data "
+                                    f"(available: {list(racks_data.keys())}). Skipping these switches."
+                                )
+                                continue
                         sw_list = []
                         for p in placements:
                             sw_list.append(
@@ -2508,9 +2556,15 @@ class VastReportBuilder:
                                     "rack_unit": f"U{p['u_position']}",
                                 }
                             )
-                        racks_data[rn]["switches"] = sw_list
-                        self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{rn}'")
-                elif switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
+                        racks_data[target_rn]["switches"] = sw_list
+                        assigned_any = True
+                        self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{target_rn}'")
+                    if not assigned_any:
+                        self.logger.warning(
+                            "Manual switch placement produced no assignments — falling back to auto-placement"
+                        )
+                _manual_ok = bool(manual_rack_map) and assigned_any if manual_rack_map else False
+                if not _manual_ok and switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
                     # Auto placement: all switches go to the single winning rack.
                     switches_data = []
                     for switch in switches:
@@ -3610,65 +3664,97 @@ class VastReportBuilder:
         )
         content.append(Spacer(1, 16))
 
+        # Determine diagram mode from config
+        diagram_mode = self.config.network_diagram.get("mode", "detailed")
+
+        # Prepare shared data for either renderer
+        port_mapping_section = data.get("sections", {}).get("port_mapping", {})
+        port_mapping_data = port_mapping_section.get("data", {}) if isinstance(port_mapping_section, dict) else {}
+        hardware_inventory = data.get("hardware_inventory", {})
+
+        cboxes_data = hardware_inventory.get("cboxes") or {}
+        dboxes_data = hardware_inventory.get("dboxes") or {}
+        eboxes_data = hardware_inventory.get("eboxes") or {}
+        switches_data = hardware_inventory.get("switches") or []
+
+        cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
+        dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
+        eboxes_list = list(eboxes_data.values()) if isinstance(eboxes_data, dict) else eboxes_data
+        switches_list = switches_data if isinstance(switches_data, list) else []
+
+        cnodes_data = hardware_inventory.get("cnodes") or {}
+        dnodes_data = hardware_inventory.get("dnodes") or {}
+        cnodes_list = list(cnodes_data.values()) if isinstance(cnodes_data, dict) else cnodes_data
+        dnodes_list = list(dnodes_data.values()) if isinstance(dnodes_data, dict) else dnodes_data
+
+        hardware_data = {
+            "cboxes": cboxes_list,
+            "dboxes": dboxes_list,
+            "eboxes": eboxes_list,
+            "switches": switches_list,
+            "cnodes": cnodes_list,
+            "dnodes": dnodes_list,
+        }
+
+        self.logger.info(
+            f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
+            f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['eboxes'])} EBoxes, "
+            f"{len(hardware_data['switches'])} Switches"
+        )
+
+        diagrams_dir = get_data_dir() / "output" / "diagrams"
+        diagrams_dir.mkdir(parents=True, exist_ok=True)
+
+        generated_paths: list = []
+
+        # ---------- Detailed mode (rack-centric SVG) ----------
+        if diagram_mode == "detailed":
+            try:
+                from network_diagram_v2 import create_rack_centric_diagram_generator
+
+                gen = create_rack_centric_diagram_generator(
+                    config=self.config.network_diagram,
+                    assets_path=str(get_bundle_dir() / "assets"),
+                    library_path=self.library_path,
+                    user_images_dir=self.user_images_dir,
+                )
+                generated_paths = gen.generate(
+                    port_mapping_data=port_mapping_data,
+                    hardware_data=hardware_data,
+                    output_dir=str(diagrams_dir),
+                )
+                self.logger.info("Detailed diagram generated %d page(s)", len(generated_paths))
+            except Exception as e:
+                self.logger.warning("Detailed diagram failed, falling back to compact: %s", e)
+                diagram_mode = "compact"
+
+        # ---------- Compact mode (legacy ReportLab) ----------
+        if diagram_mode == "compact" or not generated_paths:
+            try:
+                from network_diagram import NetworkDiagramGenerator
+
+                diagram_generator = NetworkDiagramGenerator(
+                    assets_path=str(get_bundle_dir() / "assets"),
+                    library_path=self.library_path,
+                    user_images_dir=self.user_images_dir,
+                )
+                diagram_path = diagrams_dir / "network_topology.pdf"
+                target_diagram_width = 6.5 * inch
+                target_diagram_height = 6.0 * inch
+
+                gen_path = diagram_generator.generate_network_diagram(
+                    port_mapping_data=port_mapping_data,
+                    hardware_data=hardware_data,
+                    output_path=str(diagram_path),
+                    drawing_size=(target_diagram_width, target_diagram_height),
+                )
+                if gen_path and Path(gen_path).exists():
+                    generated_paths = [gen_path]
+            except Exception as e:
+                self.logger.error("Error generating compact network diagram: %s", e, exc_info=True)
+
         # Generate network diagram dynamically
         try:
-            from network_diagram import NetworkDiagramGenerator
-
-            # Get required data
-            port_mapping_section = data.get("sections", {}).get("port_mapping", {})
-            port_mapping_data = port_mapping_section.get("data", {}) if isinstance(port_mapping_section, dict) else {}
-
-            # Prepare hardware data from hardware_inventory
-            hardware_inventory = data.get("hardware_inventory", {})
-
-            # Convert cboxes/dboxes/eboxes from dict to list if needed
-            cboxes_data = hardware_inventory.get("cboxes") or {}
-            dboxes_data = hardware_inventory.get("dboxes") or {}
-            eboxes_data = hardware_inventory.get("eboxes") or {}
-            switches_data = hardware_inventory.get("switches") or []
-
-            # If cboxes/dboxes/eboxes are dicts (keyed by name), convert to list of values
-            cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
-            dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
-            eboxes_list = list(eboxes_data.values()) if isinstance(eboxes_data, dict) else eboxes_data
-            switches_list = switches_data if isinstance(switches_data, list) else []
-
-            hardware_data = {
-                "cboxes": cboxes_list,
-                "dboxes": dboxes_list,
-                "eboxes": eboxes_list,
-                "switches": switches_list,
-            }
-
-            self.logger.info(
-                f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
-                f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['eboxes'])} EBoxes, "
-                f"{len(hardware_data['switches'])} Switches"
-            )
-
-            diagrams_dir = get_data_dir() / "output" / "diagrams"
-            diagrams_dir.mkdir(parents=True, exist_ok=True)
-
-            diagram_generator = NetworkDiagramGenerator(
-                assets_path=str(get_bundle_dir() / "assets"),
-                library_path=self.library_path,
-                user_images_dir=self.user_images_dir,
-            )
-
-            diagram_path = diagrams_dir / "network_topology.pdf"
-
-            # Use standard width but reduce height to fit on page 11
-            # Width: standard letter - margins, Height: reduced to fit
-            target_diagram_width = 6.5 * inch
-            target_diagram_height = 6.0 * inch  # Reduced from ~9" to fit on page
-
-            generated_path = diagram_generator.generate_network_diagram(
-                port_mapping_data=port_mapping_data,
-                hardware_data=hardware_data,
-                output_path=str(diagram_path),
-                drawing_size=(target_diagram_width, target_diagram_height),
-            )
-
             # Add color legend
             legend_style = ParagraphStyle(
                 "Diagram_Legend",
@@ -3680,37 +3766,40 @@ class VastReportBuilder:
             )
             content.append(
                 Paragraph(
-                    "<font color='#00aa00'><b>■</b> Green</font> = Switch A connections | "
-                    "<font color='#0066cc'><b>■</b> Blue</font> = Switch B connections | "
-                    "<font color='#9933cc'><b>■</b> Purple</font> = IPL/MLAG connections",
+                    "<font color='#0F9D58'><b>■</b> Green</font> = Network A | "
+                    "<font color='#4285F4'><b>■</b> Blue</font> = Network B | "
+                    "<font color='#7B1FA2'><b>■</b> Purple</font> = IPL/MLAG | "
+                    "<font color='#757575'><b>■</b> Gray</font> = Spine",
                     legend_style,
                 )
             )
             content.append(Spacer(1, 12))
 
-            if generated_path and Path(generated_path).exists():
-                self.logger.info(f"Network diagram generated: {generated_path}")
+            if generated_paths:
+                from PIL import Image as PILImage
 
-                # Embed the generated diagram (PNG)
-                try:
-                    # Calculate available space on page
+                for gp in generated_paths:
+                    if not Path(gp).exists():
+                        continue
+                    self.logger.info(f"Network diagram generated: {gp}")
+
                     available_width = getattr(self, "_frame_width", 7.5 * inch)
                     available_height = getattr(self, "_frame_height", 10.19 * inch)
+
+                    orientation = self.config.network_diagram.get("orientation", "portrait")
+                    use_landscape = orientation == "landscape"
+                    if use_landscape and diagram_mode == "detailed":
+                        available_width = 10.0 * inch
+                        available_height = 7.0 * inch
+
                     max_diagram_height = available_height - 1.5 * inch
 
-                    # Get actual image dimensions to calculate aspect ratio
-                    from PIL import Image as PILImage
-
-                    with PILImage.open(str(generated_path)) as pil_img:
+                    with PILImage.open(str(gp)) as pil_img:
                         img_width, img_height = pil_img.size
                         aspect_ratio = img_width / img_height
 
-                    # Calculate dimensions to fit within available space while maintaining aspect ratio
-                    # Try fitting by width first
-                    target_width = available_width * 0.95  # Use 95% of available width
+                    target_width = available_width * 0.95
                     target_height = target_width / aspect_ratio
-
-                    # If height exceeds available space, scale by height instead
                     if target_height > max_diagram_height:
                         target_height = max_diagram_height
                         target_width = target_height * aspect_ratio
@@ -3721,16 +3810,9 @@ class VastReportBuilder:
                         f"available={available_width:.1f}x{max_diagram_height:.1f}"
                     )
 
-                    # Load and add the dynamically generated diagram with calculated dimensions
-                    img = Image(
-                        str(generated_path),
-                        width=target_width,
-                        height=target_height,
-                    )
+                    img = Image(str(gp), width=target_width, height=target_height)
 
-                    # Center the image using a table
                     from reportlab.platypus import Table as RLTable
-
                     image_table = RLTable(
                         [[img]],
                         colWidths=[available_width],
@@ -3743,17 +3825,22 @@ class VastReportBuilder:
                             ]
                         )
                     )
+
+                    if use_landscape and diagram_mode == "detailed":
+                        content.append(NextPageTemplate("landscape"))
+                        content.append(PageBreak())
+
                     content.append(image_table)
 
-                    self.logger.info("Embedded dynamically generated network diagram")
-                    return content
+                    if use_landscape and diagram_mode == "detailed":
+                        content.append(NextPageTemplate("VastPage"))
+                        content.append(PageBreak())
 
-                except Exception as e:
-                    self.logger.error(f"Error embedding generated diagram: {e}", exc_info=True)
-                    # Fall through to show "no data" message
+                self.logger.info("Embedded network diagram (%s mode)", diagram_mode)
+                return content
 
             else:
-                self.logger.warning("Network diagram PNG not available (renderPM and PDF fallback failed)")
+                self.logger.warning("Network diagram PNG not available")
 
         except Exception as e:
             self.logger.error(f"Error generating network diagram: {e}", exc_info=True)
@@ -3817,6 +3904,99 @@ class VastReportBuilder:
         else:
             # Other speeds (40G, 10G, etc.)
             return "Data Plane"
+
+    def _create_vnetmap_topology_tables(
+        self,
+        port_map: List[Dict[str, Any]],
+        switches: List[Dict[str, Any]],
+        styles: Any,
+    ) -> List[Any]:
+        """Render vnetmap 'Full Topology' and per-switch topology tables."""
+        content: List[Any] = []
+
+        unique_nodes = {e.get("node_hostname", "") for e in port_map if e.get("node_hostname")}
+        unique_switches = {e.get("switch_ip", "") for e in port_map if e.get("switch_ip")}
+
+        summary_style = ParagraphStyle(
+            "VnetmapSummary",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=6,
+            spaceBefore=4,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+        )
+        content.append(
+            Paragraph(
+                f"<b>Topology Discovery:</b> Mapping nodes <b>{len(unique_nodes)}</b> "
+                f"Switches <b>{len(unique_switches)}</b>",
+                summary_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        # --- Full Topology table ---
+        # Proportional weights: Node(wide) | Switch IP | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
+        full_headers = ["Node", "Switch IP", "Port", "Data IP", "Interface", "MAC", "Net"]
+        full_col_weights = [5, 3, 1.2, 2.5, 2, 3.5, 0.8]
+        full_data = []
+        for e in sorted(port_map, key=lambda x: (x.get("node_hostname", ""), x.get("network", ""))):
+            full_data.append([
+                e.get("node_hostname", ""),
+                e.get("switch_ip", ""),
+                e.get("port", ""),
+                e.get("node_ip", ""),
+                e.get("interface", ""),
+                e.get("mac", "") or "",
+                e.get("network", ""),
+            ])
+
+        full_topo_elements = self.brand_compliance.create_vast_table(
+            full_data, "Full Topology", full_headers,
+            col_widths=full_col_weights, compact=True,
+        )
+        content.extend(full_topo_elements)
+
+        # --- Per-switch topology tables ---
+        # Proportional weights: Node(wide) | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
+        sw_col_weights = [5, 1.2, 2.5, 2, 3.5, 0.8]
+
+        switch_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for e in port_map:
+            sip = e.get("switch_ip", "")
+            if sip:
+                switch_groups.setdefault(sip, []).append(e)
+
+        leaf_ips = sorted(switch_groups.keys())
+        for switch_ip in leaf_ips:
+            entries = switch_groups[switch_ip]
+            networks = sorted({e.get("network", "?") for e in entries})
+            subnets = sorted({e.get("node_ip", "").rsplit(".", 1)[0] for e in entries if e.get("node_ip")})
+            net_label = ", ".join(networks) if networks else "?"
+
+            sw_headers = ["Node", "Port", "Data IP", "Interface", "MAC", "Net"]
+            sw_data = []
+            for e in sorted(entries, key=lambda x: (x.get("node_hostname", ""), x.get("port", ""))):
+                sw_data.append([
+                    e.get("node_hostname", ""),
+                    e.get("port", ""),
+                    e.get("node_ip", ""),
+                    e.get("interface", ""),
+                    e.get("mac", "") or "",
+                    e.get("network", ""),
+                ])
+
+            subnet_display = ", ".join(subnets) if subnets else ""
+            sw_title = (
+                f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
+            )
+            sw_elements = self.brand_compliance.create_vast_table(
+                sw_data, sw_title, sw_headers,
+                col_widths=sw_col_weights, compact=True,
+            )
+            content.extend(sw_elements)
+
+        content.append(Spacer(1, 8))
+        return content
 
     def _create_port_mapping_section(
         self,
@@ -3891,6 +4071,10 @@ class VastReportBuilder:
             content.append(Paragraph("No port mapping data available", styles["Normal"]))
             return content
 
+        # --- Vnetmap Topology Detail ---
+        if port_mapping_data.get("data_source", "").startswith("vnetmap"):
+            content.extend(self._create_vnetmap_topology_tables(port_map, switches, styles))
+
         # Group ports by switch
         ports_by_switch: dict[str, Any] = {}
         for entry in port_map:
@@ -3907,10 +4091,37 @@ class VastReportBuilder:
                 )
             )
 
-        # Find switch info from switches list to get switch numbers
+        # Only number switches that actually appear in the port map (leaf switches)
+        port_map_switch_ips = {e["switch_ip"] for e in port_map if e.get("switch_ip")}
+        leaf_switches = [
+            sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips
+        ]
+        if not leaf_switches:
+            leaf_switches = list(switches)
+        leaf_switches.sort(key=lambda s: s.get("mgmt_ip", ""))
+
         switch_ip_to_number = {}
-        for idx, switch in enumerate(switches, start=1):
-            switch_ip_to_number[switch.get("mgmt_ip")] = idx
+        switch_port_speed_lookup: dict[str, dict[str, str]] = {}
+        for idx, switch in enumerate(leaf_switches, start=1):
+            mgmt_ip = switch.get("mgmt_ip")
+            switch_ip_to_number[mgmt_ip] = idx
+            speed_map: dict[str, str] = {}
+            for port_info in switch.get("ports", []):
+                port_name = port_info.get("name", "")
+                port_speed = port_info.get("speed", "")
+                if port_name and port_speed:
+                    speed_map[port_name] = port_speed
+                    if port_name.startswith("Eth") and "/" in port_name:
+                        parts = port_name.split("/")
+                        if len(parts) == 2:
+                            speed_map[f"swp{parts[1]}"] = port_speed
+                        elif len(parts) == 3:
+                            speed_map[f"swp{parts[1]}/{parts[2]}"] = port_speed
+                            parent_key = f"Eth{parts[0]}/{parts[1]}"
+                            if parent_key not in speed_map:
+                                speed_map[parent_key] = port_speed
+            if mgmt_ip:
+                switch_port_speed_lookup[mgmt_ip] = speed_map
 
         # Sort switches by switch number (Switch 1 before Switch 2)
         sorted_switch_ips = sorted(ports_by_switch.keys(), key=lambda ip: switch_ip_to_number.get(ip, 999))
@@ -3973,7 +4184,12 @@ class VastReportBuilder:
                     continue
                 seen_connections.add(conn_key)
 
-                speed = "200G"  # Default, would need to get from switch port data
+                port_name_raw = conn.get("port", "")
+                speed = switch_port_speed_lookup.get(switch_ip, {}).get(
+                    port_name_raw, switch_port_speed_lookup.get(switch_ip, {}).get(
+                        conn.get("original_port", ""), ""
+                    )
+                ) or "Unknown"
 
                 # Use notes from port map entry
                 # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
@@ -3992,47 +4208,29 @@ class VastReportBuilder:
                 table_data.append([port_display, node_display, network, speed, notes_str])
 
             # Add IPL/MLAG connections to this switch's table
-            # Use the new deduplicated ipl_connections format
             ipl_connections = port_mapping_data.get("ipl_connections", [])
             if ipl_connections:
-                # Add IPL connections for this switch
                 for ipl_conn in ipl_connections:
-                    # ipl_conn format (stored from Switch 1's perspective):
-                    # {
-                    #   'switch_designation': 'SWA-P29',  (always Switch 1)
-                    #   'node_designation': 'SWB-P29',     (always Switch 2)
-                    #   'notes': 'IPL',
-                    #   'connection_type': 'IPL',
-                    #   ...
-                    # }
+                    sw_des = ipl_conn.get("switch_designation", "")
+                    peer_des = ipl_conn.get("node_designation", "")
+                    ipl_note = ipl_conn.get("notes", "IPL")
 
-                    # Check which switch this is and format accordingly
-                    switch_des = ipl_conn.get("switch_designation", "")
-                    node_des = ipl_conn.get("node_designation", "")
-
-                    # Extract switch letter from designation (SWA-P29 -> A, SWB-P29 -> B)
-                    if "SWA" in switch_des and switch_num == 1:
-                        # This is Switch 1: show SWA-P29 → SWB-P29
-                        table_data.append(
-                            [
-                                switch_des,  # SWA-P29
-                                node_des,  # SWB-P29
-                                "A/B",  # Network (both)
-                                "100G",  # Speed
-                                ipl_conn.get("notes", "IPL"),  # IPL
-                            ]
-                        )
-                    elif "SWB" in node_des and switch_num == 2:
-                        # This is Switch 2: swap the columns to show SWB-P29 → SWA-P29
-                        table_data.append(
-                            [
-                                node_des,  # SWB-P29 (was in node_designation)
-                                switch_des,  # SWA-P29 (was in switch_designation)
-                                "A/B",  # Network (both)
-                                "100G",  # Speed
-                                ipl_conn.get("notes", "IPL"),  # IPL
-                            ]
-                        )
+                    if switch_num == 1:
+                        table_data.append([
+                            sw_des or "SWA",
+                            peer_des or "SWB",
+                            "A/B",
+                            "",
+                            ipl_note,
+                        ])
+                    elif switch_num == 2:
+                        table_data.append([
+                            peer_des or "SWB",
+                            sw_des or "SWA",
+                            "A/B",
+                            "",
+                            ipl_note,
+                        ])
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
@@ -5004,13 +5202,30 @@ class VastReportBuilder:
             detail_headers = ["Check Name", "Category", "Status", "Message"]
             detail_data = [detail_headers]
 
+            cell_font = self._font("regular")
+            cell_size = self.config.font_size - 1
+            cell_style = ParagraphStyle(
+                "HealthCell",
+                parent=styles["Normal"],
+                fontName=cell_font,
+                fontSize=cell_size,
+                leading=cell_size + 2,
+                alignment=1,
+                wordWrap="CJK",
+            )
+            msg_style = ParagraphStyle(
+                "HealthMsg",
+                parent=cell_style,
+                alignment=0,
+            )
+
             for r in results:
                 detail_data.append(
                     [
-                        self._safe_table_value(r.get("check_name")),
-                        self._safe_table_value(r.get("category")),
-                        self._safe_table_value(r.get("status")),
-                        self._safe_table_value(r.get("message")),
+                        Paragraph(self._safe_table_value(r.get("check_name")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("category")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("status")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("message")), msg_style),
                     ]
                 )
 
@@ -5019,7 +5234,7 @@ class VastReportBuilder:
                 page_width * 0.22,  # Check Name
                 page_width * 0.12,  # Category
                 page_width * 0.10,  # Status
-                page_width * 0.56,  # Message (expanded to fit text)
+                page_width * 0.56,  # Message
             ]
 
             detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
@@ -5028,7 +5243,7 @@ class VastReportBuilder:
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
                 ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
-                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size - 1),
+                ("FONTSIZE", (0, 0), (-1, 0), self.config.font_size - 1),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
@@ -5041,7 +5256,6 @@ class VastReportBuilder:
                     (-1, -1),
                     [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
                 ),
-                ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
 
             # Per-row status colour in the Status column (index 2)
@@ -5250,7 +5464,11 @@ class VastReportBuilder:
                 or (bool(license_val) and license_val not in ("", "none", "unknown"))
             ),
         }
-        manual_items = {"Test Fail-over Behavior", "Confirm VIP Movement and ARP Updates"}
+        manual_items = {
+            "Test Fail-over Behavior",
+            "Confirm VIP Movement and ARP Updates",
+            "Change Default Passwords",
+        }
 
         for step in next_steps:
             item = step.get("item", "")
