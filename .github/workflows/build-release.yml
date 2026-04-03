@@ -142,9 +142,9 @@ jobs:
           mkdir -p config
           [ -f config/cluster_profiles.json ] || echo '{}' > config/cluster_profiles.json
 
-      - name: Install create-dmg (macOS only, required for .dmg)
+      - name: Install macOS build deps (cairo for SVG diagrams, create-dmg for .dmg)
         if: matrix.os == 'macos-latest'
-        run: brew install create-dmg
+        run: brew install cairo create-dmg
 
       - name: Build
         run: ${{ matrix.script }}

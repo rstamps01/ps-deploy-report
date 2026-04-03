@@ -167,7 +167,7 @@
                     </label>
                     <div class="oneshot-item" id="vnetmapItem" style="display: flex; align-items: center; gap: 8px;">
                         <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer;">
-                            <input type="checkbox" id="rptRunVnetmap">
+                            <input type="checkbox" id="rptRunVnetmap" checked>
                             <span class="oneshot-item-name">Run Vnetmap <span class="info-icon" title="Run the VAST vnetmap topology tool before report generation for fresh port mapping and diagram data. Requires node SSH credentials.">&#9432;</span></span>
                         </label>
                         <span id="vnetmapStatus" class="vnetmap-status-badge" style="display: none;"></span>
@@ -1364,7 +1364,7 @@ async function saveProfile() {
     var healthEl = document.getElementById('rptHealthCheck');
     data.rpt_health_check = healthEl ? healthEl.checked : true;
     var vnetmapEl = document.getElementById('rptRunVnetmap');
-    data.rpt_run_vnetmap = vnetmapEl ? vnetmapEl.checked : false;
+    data.rpt_run_vnetmap = vnetmapEl ? vnetmapEl.checked : true;
     try {
         var resp = await fetch('/profiles', {
             method: 'POST',

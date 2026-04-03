@@ -294,6 +294,10 @@ jobs:
           key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements.txt') }}
           restore-keys: ${{ runner.os }}-pip-build-
 
+      - name: Install Cairo (macOS only, required for cairosvg SVG diagrams)
+        if: runner.os == 'macOS'
+        run: brew install cairo
+
       - name: Install runtime and PyInstaller
         run: |
           pip install --upgrade pip

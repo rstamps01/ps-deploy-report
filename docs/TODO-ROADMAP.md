@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-04-03 (v1.5.0-rc1: vnetmap integration, SVG diagrams, health check license/call-home fixes, rack diagram U-position fix, dedup_active cleanup, docs refresh)  
+**Last updated:** 2026-04-03 (v1.5.0-rc1: deployment packaging fixes — SVG multi-backend fallback, PyInstaller spec overhaul, macOS Cairo bundling, CI Cairo install, N-switch rack placement, vnetmap default enabled)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---
@@ -264,12 +264,16 @@
 | RPT-5 | **Rack diagram U-position fix:** Bottom-based positioning; device extends upward from base U | rack_diagram.py |
 | VNET-1 | **Vnetmap integration:** Run Vnetmap checkbox, `/api/vnetmap-status`, hardware fingerprint comparison, three-source port mapping priority, LLDP IPL parsing | app.py, data_extractor.py, vnetmap_parser.py, reporter.html |
 | SVG-1 | **SVG diagram support:** svgwrite + cairosvg deps, landscape page template, macOS libcairo path | requirements.txt, report_builder.py, app.py, main.py |
+| PKG-1 | **SVG multi-backend fallback:** cairosvg → PyMuPDF → SVG file; eliminates hard failure on Windows and clean macOS | network_diagram_v2.py |
+| PKG-2 | **PyInstaller spec overhaul:** 15+ hidden imports for SVG chain and transitive deps; cairocffi/pycairo removed from excludes; libcairo.dylib collected on macOS | vast-reporter.spec |
+| PKG-3 | **macOS build Cairo install:** build-mac.sh + CI workflows install Cairo before build | build-mac.sh, build-release.yml, ci.yml |
+| PKG-4 | **N-switch rack placement:** Generalized placement strategies for 2+ switches per rack | rack_diagram.py |
 
 ---
 
 ## Next steps (current focus)
 
-1. **v1.5.0-rc1 deployment testing:** RC1 tag pushed to trigger CI build-release workflow. Validate macOS .dmg and Windows .zip artifacts, then run smoke tests on both platforms.
+1. **v1.5.0-rc1 deployment testing:** RC1 tag updated with deployment packaging fixes. Validate macOS .dmg and Windows .zip artifacts from CI, then run smoke tests on both platforms — confirm SVG diagrams render on Windows (via PyMuPDF fallback) and macOS (via bundled libcairo).
 2. **v1.5.0 release:** After RC1 validation, merge feature branch to develop, then to main, tag v1.5.0. Release notes (DOC-9) to be finalized.
 3. **Documentation refresh (remaining):** DOC-9 (release notes), DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
 4. **UI Enhancement Phase (UI-1 through UI-9):** Switch Placement Editor modal, stepper action bar, and progress tracker complete. Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9).

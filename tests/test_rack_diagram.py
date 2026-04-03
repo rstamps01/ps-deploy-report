@@ -150,23 +150,23 @@ class TestSwitchPlacement(unittest.TestCase):
         self.assertEqual(positions, [])
 
     def test_above_placement_success(self):
-        positions = self.rack._try_above_placement(highest_cbox_top=30, switch_height=1, rack_height=42)
+        positions = self.rack._try_above_placement(highest_device_top=30, switch_height=1, rack_height=42)
         self.assertEqual(len(positions), 2)
         self.assertTrue(all(p > 30 for p in positions))
         self.assertTrue(all(p <= 42 for p in positions))
 
     def test_above_placement_at_rack_top(self):
-        positions = self.rack._try_above_placement(highest_cbox_top=40, switch_height=1, rack_height=42)
+        positions = self.rack._try_above_placement(highest_device_top=40, switch_height=1, rack_height=42)
         self.assertEqual(positions, [])
 
     def test_below_placement_success(self):
-        positions = self.rack._try_below_placement(lowest_dbox_bottom=10, switch_height=1)
+        positions = self.rack._try_below_placement(lowest_device_bottom=10, switch_height=1)
         self.assertEqual(len(positions), 2)
         self.assertTrue(all(p < 10 for p in positions))
         self.assertTrue(all(p >= 1 for p in positions))
 
     def test_below_placement_at_rack_bottom(self):
-        positions = self.rack._try_below_placement(lowest_dbox_bottom=3, switch_height=1)
+        positions = self.rack._try_below_placement(lowest_device_bottom=3, switch_height=1)
         self.assertEqual(positions, [])
 
     def test_calculate_switch_positions_cascading(self):

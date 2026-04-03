@@ -20,6 +20,15 @@ ROOT = Path(SPECPATH).parent  # project root (one level up from packaging/)
 IS_MAC = platform.system() == "Darwin"
 IS_WIN = platform.system() == "Windows"
 
+# Collect Cairo shared library on macOS (required by cairosvg for SVG diagram rendering)
+_extra_binaries = []
+if IS_MAC:
+    for _cairo_dir in [Path("/opt/homebrew/lib"), Path("/usr/local/lib")]:
+        _cairo_dylib = _cairo_dir / "libcairo.2.dylib"
+        if _cairo_dylib.exists():
+            _extra_binaries.append((str(_cairo_dylib), "."))
+            break
+
 APP_NAME = "VAST Reporter"
 _icon_mac = ROOT / "packaging" / "icons" / "icon.icns"
 _icon_win = ROOT / "packaging" / "icons" / "icon.ico"
@@ -38,7 +47,7 @@ src_dir = ROOT / "src"
 a = Analysis(
     [str(src_dir / "main.py")],
     pathex=[str(src_dir)],
-    binaries=[],
+    binaries=_extra_binaries,
     datas=[
         # Frontend templates and static files
         (str(ROOT / "frontend" / "templates"), "frontend/templates"),
@@ -70,7 +79,11 @@ a = Analysis(
         "markupsafe",
         "reportlab",
         "reportlab.graphics",
+        "reportlab.graphics.renderPDF",
+        "reportlab.graphics.renderPM",
         "reportlab.lib",
+        "reportlab.lib.utils",
+        "reportlab.pdfbase.pdfmetrics",
         "reportlab.pdfgen",
         "reportlab.platypus",
         "PIL",
@@ -82,14 +95,26 @@ a = Analysis(
         "paramiko",
         "requests",
         "urllib3",
+        "svgwrite",
+        "cairosvg",
+        "cairocffi",
+        "cffi",
+        "_cffi_backend",
+        "cssselect2",
+        "defusedxml",
+        "tinycss2",
+        "webencodings",
+        "fitz",
+        "pymupdf",
+        "scp",
+        "click",
+        "markdown",
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
         "weasyprint",
-        "cairocffi",
-        "pycairo",
         "tkinter",
         "matplotlib",
         "scipy",

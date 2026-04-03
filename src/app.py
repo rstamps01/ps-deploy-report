@@ -1205,7 +1205,7 @@ def _register_routes(app: Flask) -> None:
             "rpt_pre_validation": True,
             "rpt_run_reporter": True,
             "rpt_health_check": True,
-            "rpt_run_vnetmap": False,
+            "rpt_run_vnetmap": True,
         }
 
         merged = {field: existing.get(field, default) for field, default in ALL_FIELDS.items()}

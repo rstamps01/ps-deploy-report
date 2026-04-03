@@ -334,14 +334,15 @@ See [Advanced Operations Guide](docs/ADVANCED-OPERATIONS.md) and [Post-Install V
 ```bash
 # Prerequisites
 pip install pyinstaller
-brew install create-dmg   # optional, for .dmg
+brew install cairo         # required for SVG diagram rendering (cairosvg)
+brew install create-dmg    # optional, for .dmg
 
 # From project root (activate venv so pyinstaller is on PATH)
 source venv/bin/activate
 bash packaging/build-mac.sh
 ```
 
-**Output:** `dist/VAST Reporter.app` and, if `create-dmg` is installed, `dist/VAST-Reporter-vX.Y.Z-mac.dmg`.
+**Output:** `dist/VAST Reporter.app` and, if `create-dmg` is installed, `dist/VAST-Reporter-vX.Y.Z-mac.dmg`. The build script will install Cairo automatically if not already present.
 
 ### Windows (.exe)
 
@@ -350,7 +351,7 @@ pip install pyinstaller
 powershell -File packaging/build-windows.ps1
 ```
 
-Build definition: `packaging/vast-reporter.spec`.
+Build definition: `packaging/vast-reporter.spec`. SVG network diagrams use PyMuPDF for PNG conversion on Windows (Cairo is not required).
 
 ---
 

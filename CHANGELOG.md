@@ -49,6 +49,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Port-aware connectivity check:** `/api/discover` pre-flight probe now uses port 22 for Tech Port connections and port 443 for VMS VIP connections (previously always probed 443, causing false "unreachable" errors for Tech Port IPs)
 - **Contextual error message:** Failure message now includes connection type label ("SSH (Tech Port)" or "HTTPS")
 
+### Fixed (Deployment Packaging — SVG Diagram Dependencies)
+- **Multi-backend SVG-to-PNG fallback:** `network_diagram_v2.py` now tries three backends in priority order: (1) cairosvg (best quality, requires system libcairo), (2) PyMuPDF/fitz (pure-Python, works on all platforms), (3) SVG file fallback with compact diagram mode — eliminates the hard failure on Windows and clean macOS installs where Cairo is absent
+- **PyInstaller spec overhaul:** Added 15 hidden imports for the SVG diagram chain (`svgwrite`, `cairosvg`, `cairocffi`, `cffi`, `_cffi_backend`, `cssselect2`, `defusedxml`, `tinycss2`, `webencodings`, `fitz`, `pymupdf`, `scp`, `click`, `markdown`, `reportlab.graphics.renderPM`); removed `cairocffi`/`pycairo` from excludes list that was blocking Cairo bindings; added `reportlab.graphics.renderPDF`, `reportlab.lib.utils`, `reportlab.pdfbase.pdfmetrics` for lazy-imported report modules
+- **macOS libcairo bundling:** PyInstaller spec now collects `libcairo.2.dylib` from Homebrew paths (`/opt/homebrew/lib` or `/usr/local/lib`) into the app bundle so cairosvg works in the packaged .dmg without requiring a system Homebrew install
+- **macOS build script (`build-mac.sh`):** Added pre-build step to install Cairo via Homebrew (`brew install cairo`) if not already present
+- **CI workflow updates:** Both `build-release.yml` (release builds) and `ci.yml` (build-smoke tests) now install Cairo on macOS runners before building, ensuring cairosvg functions in CI-produced artifacts
+
+### Fixed (Rack Diagram — N-Switch Placement)
+- **Generalized switch placement:** Rack diagram switch placement strategies (center gap, above, below) now accept any number of switches instead of being hardcoded for exactly 2 — resolves the `Switch placement logic currently only supports 2 switches, got 3` warning for clusters with 3+ switches per rack
+
 ### Fixed (macOS — cairosvg Library Path)
 - **DYLD_FALLBACK_LIBRARY_PATH:** Both `app.py` and `main.py` now prepend `/opt/homebrew/lib` to the dynamic library fallback path on macOS, enabling cairosvg to find Homebrew-installed libcairo without manual environment setup
 

@@ -772,17 +772,19 @@ class RackDiagram:
             "lowest_ebox_bottom": min(ebox_bottoms) if ebox_bottoms else None,
         }
 
+    @staticmethod
+    def _total_switch_span(num_switches: int, switch_height: int) -> int:
+        """Total U needed for *num_switches* stacked with 1U gaps between them."""
+        return num_switches * switch_height + (num_switches - 1)
+
     def _try_center_placement(
         self,
         lowest_cbox_bottom: int,
         highest_dbox_top: int,
         switch_height: int,
+        num_switches: int = 2,
     ) -> List[int]:
-        """
-        Strategy A: place switches in the center gap between CBoxes and DBoxes.
-
-        Returns list of [SW1_base, SW2_base] positions (base U) or empty list on failure.
-        """
+        """Strategy A: place switches centered in the gap between CBoxes and DBoxes."""
         gap_top = lowest_cbox_bottom - 1
         gap_bottom = highest_dbox_top + 1
 
@@ -791,89 +793,64 @@ class RackDiagram:
             return []
 
         gap_size = gap_top - gap_bottom + 1
-        logger.info(f"Strategy A (center): gap={gap_size}U (U{gap_bottom}–U{gap_top})")
+        needed = self._total_switch_span(num_switches, switch_height)
+        logger.info(f"Strategy A (center): gap={gap_size}U (U{gap_bottom}–U{gap_top}), need {needed}U")
 
-        if switch_height == 2:
-            if gap_size < 9:
-                logger.info(f"Strategy A (center): gap {gap_size}U too small for 2x 2U switches (need 9U)")
-                return []
-            sw1_base = gap_bottom + 2
-            sw2_base = gap_top - switch_height - 1
-            logger.info(
-                f"Strategy A (center): 2U switches — SW-1 U{sw1_base}-U{sw1_base + 1}, "
-                f"SW-2 U{sw2_base}-U{sw2_base + 1}"
-            )
-            return [sw1_base, sw2_base]
-
-        # 1U switches
-        if gap_size < 2:
-            logger.info(f"Strategy A (center): gap {gap_size}U too small for 2x 1U switches (need 2U)")
+        if gap_size < needed:
+            logger.info(f"Strategy A (center): gap {gap_size}U too small for {num_switches}x {switch_height}U switches")
             return []
 
-        if gap_size % 2 == 0:
-            center_top = gap_bottom + (gap_size // 2)
-            center_bottom = center_top - 1
-            logger.info(f"Strategy A (center): even gap — SW-1 at U{center_bottom}, SW-2 at U{center_top}")
-            return [center_bottom, center_top]
-
-        center_u = gap_bottom + (gap_size // 2)
-        sw_bottom = center_u - 1
-        sw_top = center_u + 1
-        logger.info(f"Strategy A (center): odd gap — SW-1 at U{sw_bottom}, SW-2 at U{sw_top} (U{center_u} empty)")
-        return [sw_bottom, sw_top]
+        start = gap_bottom + (gap_size - needed) // 2
+        positions = []
+        for i in range(num_switches):
+            positions.append(start + i * (switch_height + 1))
+        logger.info(f"Strategy A (center): placed {num_switches} switches at U{positions}")
+        return positions
 
     def _try_above_placement(
         self,
-        highest_cbox_top: int,
+        highest_device_top: int,
         switch_height: int,
         rack_height: int,
+        num_switches: int = 2,
     ) -> List[int]:
-        """
-        Strategy B: place switches above the topmost device.
+        """Strategy B: stack switches above the topmost device."""
+        positions = []
+        base = highest_device_top + 2
+        for i in range(num_switches):
+            sw_base = base + i * (switch_height + 1)
+            positions.append(sw_base)
 
-        SW-1 sits 1U above the top device, SW-2 sits 1U above SW-1.
-        Returns list of [SW1_base, SW2_base] positions (base U) or empty list if exceeds rack.
-        """
-        sw1_base = highest_cbox_top + 2  # 1U gap above device top + start of switch
-        sw2_base = sw1_base + switch_height + 1  # switch height + 1U gap
-        sw2_top_u = sw2_base + switch_height - 1
-
-        if sw2_top_u > rack_height:
+        top_u = positions[-1] + switch_height - 1
+        if top_u > rack_height:
             logger.info(
-                f"Strategy B (above): SW-2 top would be U{sw2_top_u}, exceeds rack height {rack_height}U"
+                f"Strategy B (above): top switch reaches U{top_u}, exceeds rack height {rack_height}U"
             )
             return []
 
-        logger.info(
-            f"Strategy B (above): SW-1 U{sw1_base}-U{sw1_base + switch_height - 1}, "
-            f"SW-2 U{sw2_base}-U{sw2_top_u} (rack height {rack_height}U)"
-        )
-        return [sw1_base, sw2_base]
+        logger.info(f"Strategy B (above): placed {num_switches} switches at U{positions}")
+        return positions
 
     def _try_below_placement(
         self,
-        lowest_dbox_bottom: int,
+        lowest_device_bottom: int,
         switch_height: int,
+        num_switches: int = 2,
     ) -> List[int]:
-        """
-        Strategy C: place switches below the bottommost DBox.
+        """Strategy C: stack switches below the bottommost device."""
+        positions = []
+        for i in range(num_switches):
+            sw_top = lowest_device_bottom - 2 - i * (switch_height + 1)
+            sw_base = sw_top - switch_height + 1
+            positions.append(sw_base)
 
-        SW-2 sits 1U below the bottom DBox, SW-1 sits 1U below SW-2.
-        Returns list of [SW1_base, SW2_base] positions (base U) or empty list if below U1.
-        """
-        sw2_top_u = lowest_dbox_bottom - 2  # 1U gap below DBox, top of SW-2
-        sw2_base = sw2_top_u - switch_height + 1
-        sw1_top_u = sw2_base - 2  # 1U gap below SW-2, top of SW-1
-        sw1_base = sw1_top_u - switch_height + 1
-
-        if sw1_base < 1:
-            logger.info(f"Strategy C (below): SW-1 base would be U{sw1_base}, below rack floor")
+        if positions[-1] < 1:
+            logger.info(f"Strategy C (below): lowest switch base U{positions[-1]} below rack floor")
             return []
 
-        logger.info(
-            f"Strategy C (below): SW-1 U{sw1_base}-U{sw1_top_u}, SW-2 U{sw2_base}-U{sw2_top_u}"
-        )
-        return [sw1_base, sw2_base]
+        positions.reverse()
+        logger.info(f"Strategy C (below): placed {num_switches} switches at U{positions}")
+        return positions
 
     def _calculate_switch_positions(
         self,
@@ -893,7 +870,7 @@ class RackDiagram:
         Args:
             cboxes: List of CBox device dictionaries
             dboxes: List of DBox device dictionaries
-            num_switches: Number of switches to place (currently only supports 2)
+            num_switches: Number of switches to place
             switches: Optional list of switch dictionaries to determine switch height
             rack_height: Rack height in U (defaults to self.rack_height_u)
             eboxes: Optional list of EBox device dictionaries (for ebox clusters)
@@ -901,8 +878,7 @@ class RackDiagram:
         Returns:
             List of U positions (base U) for switches, or empty list if all strategies fail
         """
-        if num_switches != 2:
-            logger.warning(f"Switch placement logic currently only supports 2 switches, got {num_switches}")
+        if num_switches < 1:
             return []
 
         eboxes = eboxes or []
@@ -928,6 +904,7 @@ class RackDiagram:
                 bounds["highest_ebox_top"],
                 switch_height,
                 effective_rack_height,
+                num_switches,
             )
             if positions:
                 logger.info("Using switch placement: above EBox hardware")
@@ -935,6 +912,7 @@ class RackDiagram:
             positions = self._try_below_placement(
                 bounds["lowest_ebox_bottom"],
                 switch_height,
+                num_switches,
             )
             if positions:
                 logger.info("Using switch placement: below EBox hardware")
@@ -946,6 +924,7 @@ class RackDiagram:
                 bounds["lowest_cbox_bottom"],
                 bounds["highest_dbox_top"],
                 switch_height,
+                num_switches,
             )
             if positions:
                 return positions
@@ -956,6 +935,7 @@ class RackDiagram:
                 bounds["highest_cbox_top"],
                 switch_height,
                 effective_rack_height,
+                num_switches,
             )
             if positions:
                 return positions
@@ -965,6 +945,7 @@ class RackDiagram:
             positions = self._try_below_placement(
                 bounds["lowest_dbox_bottom"],
                 switch_height,
+                num_switches,
             )
             if positions:
                 return positions

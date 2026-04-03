@@ -1092,24 +1092,55 @@ class RackCentricDiagramGenerator:
     # ------------------------------------------------------------------
     @staticmethod
     def _svg_to_png(svg_content: str, output_path: str, dpi: int = 150) -> None:
-        """Convert SVG string to PNG file via cairosvg."""
-        if not _CAIROSVG_AVAILABLE:
-            logger.error(
-                "cairosvg is not available — cannot convert SVG to PNG. "
-                "Install with: brew install cairo && pip install cairosvg"
-            )
-            return
-        try:
-            import cairosvg
+        """Convert SVG string to PNG using the best available backend.
 
-            scale = dpi / 96.0
-            cairosvg.svg2png(
-                bytestring=svg_content.encode("utf-8"),
-                write_to=output_path,
-                scale=scale,
-            )
+        Backends tried in order:
+        1. cairosvg  (requires system libcairo — best quality)
+        2. PyMuPDF/fitz  (pure-Python, already a project dependency)
+        3. Log warning and write the SVG file so the report can still reference it
+        """
+        scale = dpi / 96.0
+        svg_bytes = svg_content.encode("utf-8")
+
+        # --- Backend 1: cairosvg (best quality) ---
+        if _CAIROSVG_AVAILABLE:
+            try:
+                import cairosvg
+
+                cairosvg.svg2png(
+                    bytestring=svg_bytes,
+                    write_to=output_path,
+                    scale=scale,
+                )
+                return
+            except Exception as e:
+                logger.debug("cairosvg backend failed: %s", e)
+
+        # --- Backend 2: PyMuPDF (fitz) — works on all platforms ---
+        try:
+            import fitz
+
+            svg_doc = fitz.open(stream=svg_bytes, filetype="svg")
+            if len(svg_doc) > 0:
+                page = svg_doc[0]
+                mat = fitz.Matrix(scale, scale)
+                pix = page.get_pixmap(matrix=mat)
+                pix.save(output_path)
+                svg_doc.close()
+                logger.info("SVG converted to PNG via PyMuPDF: %s", Path(output_path).name)
+                return
+            svg_doc.close()
         except Exception as e:
-            logger.error("SVG to PNG conversion failed: %s", e)
+            logger.debug("PyMuPDF SVG backend failed: %s", e)
+
+        # --- No backend available — save SVG as fallback ---
+        svg_fallback = Path(output_path).with_suffix(".svg")
+        svg_fallback.write_text(svg_content, encoding="utf-8")
+        logger.warning(
+            "No SVG-to-PNG backend available (install cairosvg or pymupdf). "
+            "SVG saved to %s — network diagram will use compact fallback.",
+            svg_fallback.name,
+        )
 
 
 # ---------------------------------------------------------------------------
