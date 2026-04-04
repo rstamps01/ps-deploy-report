@@ -1,6 +1,6 @@
 # Windows ZIP Package Review and Installation/Uninstallation Workflows
 
-**Applies to:** `VAST-Reporter-vX.Y.Z-win.zip` (e.g. `VAST-Reporter-v1.4.2-win.zip`) from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases).
+**Applies to:** `VAST-Reporter-vX.Y.Z-win.zip` (e.g. `VAST-Reporter-v1.5.0-win.zip`) from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases).
 
 ---
 

@@ -18,6 +18,12 @@ DIST_DIR="$PROJECT_ROOT/dist"
 echo "=== VAST Reporter macOS Build ==="
 echo "Project root: $PROJECT_ROOT"
 
+# 0. Ensure system-level Cairo is installed (required by cairosvg for SVG diagrams)
+if ! pkg-config --exists cairo 2>/dev/null; then
+    echo "Installing Cairo via Homebrew (required for SVG diagram rendering)..."
+    brew install cairo
+fi
+
 # 1. Clean previous build
 rm -rf "$DIST_DIR" "$PROJECT_ROOT/build"
 

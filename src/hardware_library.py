@@ -48,6 +48,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "dell_turin_r6715_cbox_1u.png",
         "description": "Dell Gen6 Turin CBox (R6715)",
     },
+    "supermicro_turin_cbox": {
+        "type": "cbox",
+        "height_u": 1,
+        "image_filename": "smc_turin_cbox_1u.png",
+        "description": "SMC Gen6 Turin CBox",
+    },
     "smc_turin_cbox": {
         "type": "cbox",
         "height_u": 1,
@@ -66,9 +72,21 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "cascadelake_cbox_2u.png",
         "description": "CascadeLake 2U CBox",
     },
+    "hpe": {
+        "type": "cbox",
+        "height_u": 2,
+        "image_filename": "hpe_il_cbox_2u.png",
+        "description": "HPE CBox (generic)",
+    },
     # =========================================================================
     # DBoxes (Data Boxes)
     # =========================================================================
+    "bluefield": {
+        "type": "dbox",
+        "height_u": 1,
+        "image_filename": "ceres_v2_1u.png",
+        "description": "Ceres V1 1U DBox",
+    },
     "ceres_v2": {
         "type": "dbox",
         "height_u": 1,

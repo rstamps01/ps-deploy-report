@@ -70,7 +70,6 @@ class VastClusterInfo:
     # Cluster feature flags and configuration
     enabled: Optional[bool] = None
     enable_similarity: Optional[bool] = None
-    dedup_active: Optional[bool] = None
     is_wb_raid_enabled: Optional[bool] = None
     wb_raid_layout: Optional[str] = None
     dbox_ha_support: Optional[bool] = None
@@ -110,6 +109,7 @@ class VastClusterInfo:
     b2b_ipmi: Optional[bool] = None
     eth_mtu: Optional[int] = None
     ib_mtu: Optional[int] = None
+    nb_eth_mtu: Optional[int] = None
     ipmi_gateway: Optional[str] = None
     ipmi_netmask: Optional[str] = None
 
@@ -191,6 +191,7 @@ class VastApiHandler:
         password: Optional[str] = None,
         token: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
+        tunnel_address: Optional[str] = None,
     ):
         """
         Initialize the VAST API handler.
@@ -201,9 +202,14 @@ class VastApiHandler:
             password (str, optional): Password for authentication
             token (str, optional): API token for authentication
             config (Dict[str, Any], optional): Configuration dictionary
+            tunnel_address (str, optional): ``host:port`` of a local VMS tunnel
+                (e.g. ``127.0.0.1:54321``).  When provided, all API requests
+                are routed through this address instead of *cluster_ip*.
+                *cluster_ip* is preserved for metadata / reporting.
         """
         self.logger = get_logger(__name__)
         self.cluster_ip = cluster_ip
+        self._api_host = tunnel_address or cluster_ip
         self.username = username
         self.password = password
         self.token = token
@@ -215,6 +221,13 @@ class VastApiHandler:
         self.max_retries = self.api_config.get("max_retries", 3)
         self.retry_delay = self.api_config.get("retry_delay", 2)
         self.verify_ssl = self.api_config.get("verify_ssl", True)
+
+        if tunnel_address and self.verify_ssl:
+            self.verify_ssl = False
+            self.logger.info(
+                "SSL verification auto-disabled for tunnel (cert won't match %s)",
+                tunnel_address,
+            )
 
         self.logger.debug(f"API config loaded: {self.api_config}")
         self.logger.debug(f"SSL verification setting: {self.verify_ssl}")
@@ -297,7 +310,7 @@ class VastApiHandler:
         for version in api_versions:
             try:
                 # Test the version by making a simple API call
-                test_url = f"https://{self.cluster_ip}/api/{version}/vms/"
+                test_url = f"https://{self._api_host}/api/{version}/vms/"
                 self.logger.debug(f"Testing API version {version} with URL: {test_url}")
 
                 response = self.session.get(
@@ -330,7 +343,7 @@ class VastApiHandler:
         """
         self.api_version = version
         self.detected_api_version = version
-        self.base_url = f"https://{self.cluster_ip}/api/{version}/"
+        self.base_url = f"https://{self._api_host}/api/{version}/"
         self.logger.info(f"Using API version: {version}")
 
     def authenticate(self) -> bool:
@@ -908,7 +921,6 @@ class VastApiHandler:
             # Extract cluster feature flags and configuration
             cluster_info.enabled = cluster_data.get("enabled", None)
             cluster_info.enable_similarity = cluster_data.get("enable_similarity", None)
-            cluster_info.dedup_active = cluster_data.get("dedup_active", None)
             cluster_info.is_wb_raid_enabled = cluster_data.get("is_wb_raid_enabled", None)
             cluster_info.wb_raid_layout = cluster_data.get("wb_raid_layout", "Unknown")
             cluster_info.dbox_ha_support = cluster_data.get("dbox_ha_support", None)
@@ -963,6 +975,7 @@ class VastApiHandler:
             cluster_info.b2b_ipmi = cluster_data.get("b2b_ipmi", "Not Configured")
             cluster_info.eth_mtu = cluster_data.get("eth_mtu", "Not Configured")
             cluster_info.ib_mtu = cluster_data.get("ib_mtu", "Not Configured")
+            cluster_info.nb_eth_mtu = cluster_data.get("nb_eth_mtu", "Not Configured")
             cluster_info.ipmi_gateway = cluster_data.get("ipmi_gateway", "Not Configured")
             cluster_info.ipmi_netmask = cluster_data.get("ipmi_netmask", "Not Configured")
 
@@ -1449,14 +1462,10 @@ class VastApiHandler:
                 self.logger.warning("DNS configuration not available")
                 network_config["dns"] = None
 
-            # NTP configuration
-            ntp_data = self._make_api_request("ntps/")
-            if ntp_data:
-                network_config["ntp"] = ntp_data
-                self.logger.debug("Retrieved NTP configuration")
-            else:
-                self.logger.warning("NTP configuration not available")
-                network_config["ntp"] = None
+            # NTP configuration - Retrieved from /api/clusters/ endpoint (see get_cluster_info)
+            # The /api/ntps/ endpoint does not exist per official VAST API documentation
+            # NTP is a cluster-level network setting, already stored in cluster_info.ntp
+            network_config["ntp"] = None  # Placeholder; actual NTP from cluster_info
 
             # VIP pools
             vippool_data = self._make_api_request("vippools/")
@@ -1545,6 +1554,7 @@ class VastApiHandler:
                 "b2b_ipmi": data.get("b2b_ipmi", False),
                 "eth_mtu": data.get("eth_mtu", "Unknown"),
                 "ib_mtu": data.get("ib_mtu", "Unknown"),
+                "nb_eth_mtu": data.get("nb_eth_mtu", "Unknown"),
                 "ipmi_gateway": data.get("ipmi_gateway", "Unknown"),
                 "ipmi_netmask": data.get("ipmi_netmask", "Unknown"),
                 "net_type": net_type,
@@ -1737,7 +1747,7 @@ class VastApiHandler:
                 security_config["ldap"] = ldap_data
                 self.logger.debug("Retrieved LDAP configuration")
             else:
-                self.logger.warning("LDAP configuration not available")
+                self.logger.debug("LDAP not configured on this cluster (optional)")
                 security_config["ldap"] = None
 
             # NIS
@@ -1746,7 +1756,7 @@ class VastApiHandler:
                 security_config["nis"] = nis_data
                 self.logger.debug("Retrieved NIS configuration")
             else:
-                self.logger.warning("NIS configuration not available")
+                self.logger.debug("NIS not configured on this cluster (optional)")
                 security_config["nis"] = None
 
             self.logger.info("Security configuration collection completed")
@@ -1774,7 +1784,7 @@ class VastApiHandler:
                 protection_config["snapprograms"] = snapprograms_data
                 self.logger.debug("Retrieved snapshot programs configuration")
             else:
-                self.logger.warning("Snapshot programs configuration not available")
+                self.logger.debug("Snapshot programs not configured (optional)")
                 protection_config["snapprograms"] = None
 
             # Protection policies
@@ -1888,34 +1898,11 @@ class VastApiHandler:
         try:
             self.logger.info("Collecting monitoring configuration")
 
-            monitoring_data = {}
-
-            # SNMP configuration (if available via API)
-            snmp_data = self._make_api_request("snmp/")
-            if snmp_data:
-                monitoring_data["snmp"] = snmp_data
-                self.logger.debug("Retrieved SNMP configuration")
-            else:
-                self.logger.warning("SNMP configuration not available")
-                monitoring_data["snmp"] = None
-
-            # Syslog configuration (if available via API)
-            syslog_data = self._make_api_request("syslog/")
-            if syslog_data:
-                monitoring_data["syslog"] = syslog_data
-                self.logger.debug("Retrieved syslog configuration")
-            else:
-                self.logger.warning("Syslog configuration not available")
-                monitoring_data["syslog"] = None
-
-            # Alert policies (if available via API)
-            alerts_data = self._make_api_request("alerts/")
-            if alerts_data:
-                monitoring_data["alerts"] = alerts_data
-                self.logger.debug("Retrieved alert policies")
-            else:
-                self.logger.warning("Alert policies not available")
-                monitoring_data["alerts"] = None
+            monitoring_data: Dict[str, Any] = {
+                "snmp": None,
+                "syslog": None,
+                "alerts": None,
+            }
 
             self.logger.info("Monitoring configuration collection completed")
             return monitoring_data
@@ -2185,7 +2172,7 @@ class VastApiHandler:
 
             # The switches endpoint is only available in v1 API
             # Construct the full v1 API URL
-            base_url = f"https://{self.cluster_ip}/api/v1"
+            base_url = f"https://{self._api_host}/api/v1"
             switches_url = f"{base_url}/switches/"
 
             response = self.session.get(switches_url, verify=False, timeout=self.timeout)
@@ -2220,7 +2207,7 @@ class VastApiHandler:
 
             # The ports endpoint is only available in v1 API
             # Construct the full v1 API URL
-            base_url = f"https://{self.cluster_ip}/api/v1"
+            base_url = f"https://{self._api_host}/api/v1"
             ports_url = f"{base_url}/ports/"
 
             response = self.session.get(ports_url, verify=False, timeout=self.timeout)
@@ -2356,15 +2343,99 @@ class VastApiHandler:
         try:
             self.logger.info("Fetching rack inventory information")
             response = self._make_api_request("racks/")
-            if response and isinstance(response, list):
-                self.logger.info(f"Retrieved {len(response)} racks")
-                return response
+            racks = self._normalize_list_response(response)
+            if racks:
+                self.logger.info(f"Retrieved {len(racks)} racks")
+                return racks
             else:
                 self.logger.warning("No rack data returned or unexpected format")
                 return []
         except Exception as e:
             self.logger.warning(f"Error fetching racks data: {e}")
             return []
+
+    def get_alarms(self) -> List[Dict[str, Any]]:
+        """GET /api/alarms/ -- active cluster alarms. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting active alarms")
+            data = self._make_api_request("alarms/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} active alarms")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No active alarms or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve alarms: {e}")
+            return []
+
+    def get_events(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """GET /api/events/ -- event history. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting cluster events")
+            data = self._make_api_request(f"events/?page_size={limit}")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} events")
+                return data
+            elif data and isinstance(data, dict):
+                results = data.get("results", data.get("objects", [data]))
+                if isinstance(results, list):
+                    return results
+                return [data]
+            self.logger.info("No events or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve events: {e}")
+            return []
+
+    def get_snapshots(self) -> List[Dict[str, Any]]:
+        """GET /api/snapshots/ -- snapshot inventory. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting snapshot inventory")
+            data = self._make_api_request("snapshots/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} snapshots")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No snapshots or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve snapshots: {e}")
+            return []
+
+    def get_quotas(self) -> List[Dict[str, Any]]:
+        """GET /api/quotas/ -- quota configuration. Returns [] on 404."""
+        try:
+            self.logger.info("Collecting quota configuration")
+            data = self._make_api_request("quotas/")
+            if data and isinstance(data, list):
+                self.logger.info(f"Retrieved {len(data)} quotas")
+                return data
+            elif data and isinstance(data, dict):
+                return [data]
+            self.logger.info("No quotas or endpoint unavailable")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Failed to retrieve quotas: {e}")
+            return []
+
+    def get_prometheus_metrics(self, metric_path: str = "devices") -> str:
+        """GET /api/prometheusmetrics/{metric_path} -- returns raw text/plain.
+        Uses requests.get directly since response is text, not JSON.
+        Returns empty string on failure."""
+        try:
+            url = f"https://{self._api_host}/api/prometheusmetrics/{metric_path}"
+            self.logger.info(f"Fetching Prometheus metrics: {metric_path}")
+            response = self.session.get(url, verify=self.verify_ssl, timeout=self.timeout)
+            if response.status_code == 200:
+                return response.text
+            self.logger.warning(f"Prometheus metrics {metric_path} returned {response.status_code}")
+            return ""
+        except Exception as e:
+            self.logger.warning(f"Failed to fetch Prometheus metrics {metric_path}: {e}")
+            return ""
 
     def get_all_data(self) -> Dict[str, Any]:
         """
@@ -2421,7 +2492,6 @@ class VastApiHandler:
                     # Cluster feature flags and configuration
                     "enabled": cluster_info.enabled,
                     "enable_similarity": cluster_info.enable_similarity,
-                    "dedup_active": cluster_info.dedup_active,
                     "is_wb_raid_enabled": cluster_info.is_wb_raid_enabled,
                     "wb_raid_layout": cluster_info.wb_raid_layout,
                     "dbox_ha_support": cluster_info.dbox_ha_support,
@@ -2461,6 +2531,7 @@ class VastApiHandler:
                     "b2b_ipmi": cluster_info.b2b_ipmi,
                     "eth_mtu": cluster_info.eth_mtu,
                     "ib_mtu": cluster_info.ib_mtu,
+                    "nb_eth_mtu": cluster_info.nb_eth_mtu,
                     "ipmi_gateway": cluster_info.ipmi_gateway,
                     "ipmi_netmask": cluster_info.ipmi_netmask,
                 }
@@ -2545,6 +2616,12 @@ class VastApiHandler:
             # Raw switch ports data (needed for IPL/MLAG detection)
             all_data["switch_ports"] = self.get_switch_ports()
 
+            # Health check data
+            all_data["alarms"] = self.get_alarms()
+            all_data["events"] = self.get_events()
+            all_data["snapshots"] = self.get_snapshots()
+            all_data["quotas"] = self.get_quotas()
+
             self.logger.info("Comprehensive data collection completed successfully")
             return all_data
 
@@ -2578,6 +2655,7 @@ def create_vast_api_handler(
     password: Optional[str] = None,
     token: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
+    tunnel_address: Optional[str] = None,
 ) -> VastApiHandler:
     """
     Create and return a configured VastApiHandler instance.
@@ -2588,11 +2666,13 @@ def create_vast_api_handler(
         password (str, optional): Password for authentication
         token (str, optional): API token for authentication
         config (Dict[str, Any], optional): Configuration dictionary
+        tunnel_address (str, optional): Local tunnel endpoint (``host:port``)
+            when using Tech Port mode
 
     Returns:
         VastApiHandler: Configured API handler instance
     """
-    return VastApiHandler(cluster_ip, username, password, token, config)
+    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address)
 
 
 if __name__ == "__main__":

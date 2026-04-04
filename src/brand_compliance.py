@@ -69,6 +69,7 @@ class VastColorPalette:
     WARNING_ORANGE = HexColor("#FFC107")
     ERROR_RED = HexColor("#DC3545")
     INFO_BLUE = HexColor("#17A2B8")
+    ACCENT_BLUE = HexColor("#1A6FB5")
 
     # Neutral Grays
     LIGHT_GRAY = HexColor("#F8F9FA")
@@ -316,7 +317,14 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_table(self, data: List[List[str]], title: str = None, headers: List[str] = None) -> List[Any]:
+    def create_vast_table(
+        self,
+        data: List[List[str]],
+        title: str = None,
+        headers: List[str] = None,
+        col_widths: List[float] = None,
+        compact: bool = False,
+    ) -> List[Any]:
         """
         Create VAST brand-compliant table with gradient styling.
 
@@ -324,6 +332,10 @@ class VastBrandCompliance:
             data (List[List[str]]): Table data
             title (str, optional): Table title
             headers (List[str], optional): Column headers
+            col_widths (List[float], optional): Proportional column weights
+                (e.g. [3, 2, 1] → 3/6, 2/6, 1/6 of page width).
+                When None every column gets equal width.
+            compact (bool): Use smaller font and tighter padding for dense tables.
 
         Returns:
             List[Any]: Table elements (wrapped in KeepTogether if title provided)
@@ -343,29 +355,41 @@ class VastBrandCompliance:
             table_data.append(headers)
         table_data.extend(data)
 
-        # Create table with VAST styling and page-width sizing
-        page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
+        em = getattr(self, "effective_margins", None)
+        if em:
+            page_width = A4[0] - em["left"] - em["right"]
+        else:
+            page_width = A4[0] - 1.0 * inch
         num_cols = len(table_data[0]) if table_data else 1
-        col_width = page_width / num_cols if num_cols > 0 else page_width
+
+        if col_widths and len(col_widths) == num_cols:
+            total_weight = sum(col_widths)
+            computed_widths = [(w / total_weight) * page_width for w in col_widths]
+        else:
+            col_width = page_width / num_cols if num_cols > 0 else page_width
+            computed_widths = [col_width] * num_cols
 
         # Create table with repeat headers on page breaks
-        table = Table(table_data, colWidths=[col_width] * num_cols, repeatRows=1)
+        table = Table(table_data, colWidths=computed_widths, repeatRows=1)
 
         # Apply VAST brand table styling
+        font_sz = (self.typography.BODY_SIZE - 2) if compact else self.typography.BODY_SIZE
+        cell_pad = 4 if compact else 8
+        lr_pad = 6 if compact else 12
         table_style = TableStyle(
             [
                 # Header row styling
                 ("BACKGROUND", (0, 0), (-1, 0), self.colors.BACKGROUND_DARK),
                 ("TEXTCOLOR", (0, 0), (-1, 0), self.colors.PURE_WHITE),
                 ("FONTNAME", (0, 0), (-1, 0), self.typography.PRIMARY_FONT),
-                ("FONTSIZE", (0, 0), (-1, 0), self.typography.BODY_SIZE),
+                ("FONTSIZE", (0, 0), (-1, 0), font_sz),
                 ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 # Data rows styling with gradient effect
                 ("BACKGROUND", (0, 1), (-1, -1), self.colors.VAST_BLUE_LIGHTEST),
                 ("TEXTCOLOR", (0, 1), (-1, -1), self.colors.DARK_GRAY),
                 ("FONTNAME", (0, 1), (-1, -1), self.typography.BODY_FONT),
-                ("FONTSIZE", (0, 1), (-1, -1), self.typography.BODY_SIZE),
+                ("FONTSIZE", (0, 1), (-1, -1), font_sz),
                 # Borders and spacing
                 ("GRID", (0, 0), (-1, -1), 1, self.colors.BACKGROUND_DARK),
                 (
@@ -374,9 +398,9 @@ class VastBrandCompliance:
                     (-1, -1),
                     [self.colors.PURE_WHITE, self.colors.ALTERNATING_ROW],
                 ),
-                ("PADDING", (0, 0), (-1, -1), 8),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("PADDING", (0, 0), (-1, -1), cell_pad),
+                ("LEFTPADDING", (0, 0), (-1, -1), lr_pad),
+                ("RIGHTPADDING", (0, 0), (-1, -1), lr_pad),
                 ("WORDWRAP", (0, 0), (-1, -1), "CJK"),
             ]
         )
@@ -505,7 +529,11 @@ class VastBrandCompliance:
             full_table_data.append(headers)
         full_table_data.extend(table_data)
 
-        page_width = A4[0] - 1.0 * inch  # A4 width minus margins
+        em = getattr(self, "effective_margins", None)
+        if em:
+            page_width = A4[0] - em["left"] - em["right"]
+        else:
+            page_width = A4[0] - 1.0 * inch
         num_cols = len(headers)
 
         # Hardware Inventory: content-based column widths (6-col or 5-col EBox-only)
@@ -802,13 +830,23 @@ class VastBrandCompliance:
 
         return elements
 
-    def create_vast_page_template(self, generation_info: Dict[str, Any], page_size=None) -> Any:
+    def create_vast_page_template(
+        self,
+        generation_info: Dict[str, Any],
+        page_size=None,
+        margins: Optional[Dict[str, float]] = None,
+        organization: Optional[str] = None,
+        include_page_numbers: bool = True,
+    ) -> Any:
         """
         Create VAST brand-compliant page template with footer that repeats on all pages.
 
         Args:
             generation_info (Dict[str, Any]): Report generation information
             page_size: Tuple of (width, height) in points. Defaults to A4.
+            margins: Dict with margin_left/right/top/bottom in inches.
+            organization: Organization name for footer. Defaults to VAST Professional Services.
+            include_page_numbers: Whether to draw page numbers in the footer.
 
         Returns:
             Any: Page template with footer
@@ -820,14 +858,35 @@ class VastBrandCompliance:
         if page_size is None:
             page_size = A4
         page_width, page_height = page_size
-        left_margin = 0.5 * inch
-        right_margin = 0.5 * inch
-        top_margin = 0.5 * inch
-        bottom_margin = 0.75 * inch  # Extra space for footer
+        m = margins or {}
+        left_margin = m.get("margin_left", 0.5) * inch
+        right_margin = m.get("margin_right", 0.5) * inch
+        top_margin = m.get("margin_top", 0.5) * inch
+        bottom_margin = max(m.get("margin_bottom", 0.5), 0.75) * inch
+        org_name = organization or "VAST Professional Services"
 
-        # Calculate frame dimensions
+        MIN_FRAME_W = 360
+        MIN_FRAME_H = 600
         frame_width = page_width - left_margin - right_margin
         frame_height = page_height - top_margin - bottom_margin
+        if frame_width < MIN_FRAME_W or frame_height < MIN_FRAME_H:
+            self.logger.warning(
+                "Margins too large (frame %.0fx%.0f pt); clamping to safe defaults.",
+                frame_width,
+                frame_height,
+            )
+            left_margin = right_margin = 0.5 * inch
+            top_margin = 0.5 * inch
+            bottom_margin = 0.75 * inch
+            frame_width = page_width - left_margin - right_margin
+            frame_height = page_height - top_margin - bottom_margin
+
+        self.effective_margins = {
+            "left": left_margin,
+            "right": right_margin,
+            "top": top_margin,
+            "bottom": bottom_margin,
+        }
 
         # Create main frame for content
         main_frame = Frame(
@@ -902,10 +961,10 @@ class VastBrandCompliance:
                 mgmt_vip = generation_info.get("mgmt_vip", "Unknown")
 
                 generated_text = timestamp
-                center_text = f"VAST Professional Services | Automated As-Built Report | {mgmt_vip}"
+                center_text = f"{org_name} | Automated As-Built Report | {mgmt_vip}"
             else:
                 generated_text = "Unknown"
-                center_text = "VAST Professional Services | Automated As-Built Report"
+                center_text = f"{org_name} | Automated As-Built Report"
 
             # Draw horizontal line
             canvas.setStrokeColor(self.colors.BACKGROUND_DARK)
@@ -925,14 +984,15 @@ class VastBrandCompliance:
             # Draw "Generated:" on far left
             canvas.drawString(left_margin, y_position, generated_text)
 
-            # Draw center text (VAST PS | Documentation | Management VIP)
+            # Draw center text (Organization | Documentation | Management VIP)
             center_text_width = canvas.stringWidth(center_text, self.typography.BODY_FONT, self.typography.CAPTION_SIZE)
             center_x_position = (page_width - center_text_width) / 2
             canvas.drawString(center_x_position, y_position, center_text)
 
             # Draw page number (right aligned on same line)
-            page_text = f"Page {page_num}"
-            canvas.drawRightString(page_width - right_margin, y_position, page_text)
+            if include_page_numbers:
+                page_text = f"Page {page_num}"
+                canvas.drawRightString(page_width - right_margin, y_position, page_text)
 
         # Create page template
         page_template = PageTemplate(

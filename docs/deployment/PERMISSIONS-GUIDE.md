@@ -37,14 +37,13 @@ The report generator requires read access to the following endpoints:
 #### Hardware Inventory
 - `GET /api/v7/cnodes/` - Compute node details
 - `GET /api/v7/dnodes/` - Data node details
-- `GET /api/v1/cboxes/` - CBox hardware information
+- `GET /api/v7/cboxes/` - CBox hardware information
 - `GET /api/v7/dboxes/` - DBox hardware information
 - `GET /api/v7/dtrays/` - Storage tray details
 
 #### Network Configuration
 - `GET /api/v7/vms/1/network_settings/` - Network settings for all nodes
 - `GET /api/v7/dns/` - DNS configuration
-- `GET /api/v7/ntps/` - NTP configuration
 - `GET /api/v7/vippools/` - VIP pool configuration
 
 #### Logical Configuration
@@ -340,6 +339,6 @@ python3 -m src.main --cluster-ip <CLUSTER_IP> --output-dir reports
 
 ---
 
-**Last Updated**: October 18, 2025
-**Version**: 1.0.0
+**Last Updated**: March 21, 2026
+**Version**: 1.5.0
 **Applies To**: VAST Cluster 5.3+

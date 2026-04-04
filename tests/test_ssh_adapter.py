@@ -69,6 +69,7 @@ class TestParamikoExec(unittest.TestCase):
     def _make_mock_paramiko(self):
         mock_paramiko = MagicMock()
         mock_paramiko.AuthenticationException = type("AuthenticationException", (Exception,), {})
+        mock_paramiko.SSHException = type("SSHException", (Exception,), {})
         mock_paramiko.AutoAddPolicy.return_value = "policy"
         return mock_paramiko
 
@@ -254,7 +255,7 @@ class TestPublicAPIRouting(unittest.TestCase):
         self.assertEqual(out, "interactive")
 
     @patch("utils.ssh_adapter.IS_WINDOWS", True)
-    @patch("utils.ssh_adapter._paramiko_exec", return_value=(0, "win-int", ""))
+    @patch("utils.ssh_adapter._paramiko_shell", return_value=(0, "win-int", ""))
     def test_run_interactive_ssh_windows(self, mock_ssh):
         rc, out, err = run_interactive_ssh("h", "u", "p", "cmd")
         self.assertEqual(out, "win-int")

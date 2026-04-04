@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Hardware Device Library</h1>
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>Hardware Device Library</h1>
     <p class="subtitle">Manage device definitions and images used in rack and network diagrams</p>
 </div>
 
@@ -21,10 +21,6 @@
 
 <div class="card">
     <h3>Add Device</h3>
-    <p class="lib-requirements">
-        <strong>Image requirements:</strong> PNG or JPEG &middot; 60–2000 px wide &middot; max 1 MB &middot;
-        ~240 px wide recommended for consistency
-    </p>
     <form id="addDeviceForm" class="lib-add-form" enctype="multipart/form-data">
         <div class="lib-form-grid">
             <div class="form-group">
@@ -52,12 +48,31 @@
                 <input type="text" id="libDesc" name="description" placeholder="Optional label">
             </div>
             <div class="form-group lib-image-group">
-                <label for="libImage">Device Image</label>
+                <label class="lib-image-label">
+                    Device Image
+                    <span class="lib-info-icon" tabindex="0">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <span class="lib-info-tooltip">
+                            <strong>Guidelines</strong><br>
+                            &bull; Format — PNG or JPEG<br>
+                            &bull; Width — 60–2000 px<br>
+                            &bull; Size — 1 MB max<br>
+                            &bull; Empty — generic placeholder<br><br>
+                            <strong>1U sizes (pixels)</strong><br>
+                            &bull; 626W &times; 64H — res 72 / 144 px/in<br>
+                            &bull; 313W &times; 32H — res 72 / 144 px/in<br><br>
+                            <strong>2U sizes (pixels)</strong><br>
+                            &bull; 626W &times; 128H — res 72 / 144 px/in<br>
+                            &bull; 313W &times; 64H — res 72 / 144 px/in
+                        </span>
+                    </span>
+                </label>
                 <div class="lib-upload-row">
-                    <input type="file" id="libImage" name="image" accept=".png,.jpg,.jpeg">
+                    <input type="file" id="libImage" name="image" accept=".png,.jpg,.jpeg" class="lib-file-hidden">
+                    <button type="button" class="btn btn-sm" id="libImageBtn" onclick="document.getElementById('libImage').click()">Choose Image</button>
+                    <span id="libFileName" class="lib-file-name"></span>
                     <div id="libPreview" class="lib-preview hidden"></div>
                 </div>
-                <small class="text-muted">Leave empty to use generic placeholder</small>
             </div>
         </div>
         <div class="lib-form-actions">
@@ -167,15 +182,18 @@ async function deleteDevice(key, rowId) {
 }
 
 document.getElementById('libImage').addEventListener('change', function() {
-    const preview = document.getElementById('libPreview');
+    var preview = document.getElementById('libPreview');
+    var nameEl = document.getElementById('libFileName');
     if (this.files && this.files[0]) {
-        const reader = new FileReader();
+        nameEl.textContent = this.files[0].name;
+        var reader = new FileReader();
         reader.onload = function(e) {
             preview.innerHTML = '<img src="' + e.target.result + '" alt="Preview">';
             preview.classList.remove('hidden');
         };
         reader.readAsDataURL(this.files[0]);
     } else {
+        nameEl.textContent = '';
         preview.innerHTML = '';
         preview.classList.add('hidden');
     }

@@ -36,6 +36,13 @@ def test_endpoint_failure_returns_unavailable(self, mock_session):
 - **api_handler**: auth flows, endpoint responses, retry behavior, error mapping
 - **data_extractor**: section extraction, completeness calculation, missing data handling
 - **report_builder**: config validation, section rendering (mock ReportLab), TOC generation
+- **health_checker**: tier execution, check pass/fail/warning, SSH timeout, cancellation, remediation report
+- **advanced_ops**: workflow registration, step execution, state management, cancel/reset
+- **oneshot_runner**: pre-validation checks (credentials, reachability, internet, tool freshness), phased sequential execution, cancellation between phases, auto-bundling with cluster scoping
+- **workflows**: per-workflow step execution, credential passing, output parsing, error handling
+- **script_runner**: SSH/SCP operations, output classification, remote file transfer
+- **tool_manager**: tool info, local cache, download/deploy operations
+- **result_bundler**: cluster-scoped file collection, bundle creation, metadata filtering
 
 ## Running Tests
 ```bash

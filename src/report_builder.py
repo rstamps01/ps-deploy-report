@@ -20,7 +20,7 @@ Date: September 26, 2025
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
@@ -49,6 +49,7 @@ try:
         Frame,
         Image,
         KeepTogether,
+        NextPageTemplate,
         PageBreak,
         PageTemplate,
         Paragraph,
@@ -78,8 +79,23 @@ class ReportConfig:
     heading_font_size: int = 12
     line_spacing: float = 1.2
     include_toc: bool = True
+    include_page_numbers: bool = True
     include_timestamp: bool = True
     include_enhanced_features: bool = True
+    organization: str = "VAST Professional Services"
+    sections: Dict[str, bool] = field(default_factory=dict)
+    network_diagram: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "mode": "detailed",
+            "show_port_labels": False,
+            "device_icons": "flat",
+            "orientation": "portrait",
+        }
+    )
+
+    def section_enabled(self, key: str) -> bool:
+        """Return whether a report section should be rendered (default True)."""
+        return self.sections.get(key, True)
 
     @classmethod
     def from_yaml(cls, config: Dict[str, Any]) -> "ReportConfig":
@@ -109,8 +125,19 @@ class ReportConfig:
         _set("heading_font_size", pdf.get("heading_font_size", report.get("heading_font_size")), int)
         _set("line_spacing", report.get("line_spacing"), float)
         _set("include_toc", pdf.get("include_toc", report.get("include_toc")), bool)
+        _set("include_page_numbers", pdf.get("include_page_numbers", report.get("include_page_numbers")), bool)
         _set("include_timestamp", report.get("include_timestamp"), bool)
         _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
+        _set("organization", report.get("organization"), str)
+
+        dc = config.get("data_collection", {})
+        raw_sections = dc.get("sections", {})
+        if isinstance(raw_sections, dict):
+            kwargs["sections"] = {k: bool(v) for k, v in raw_sections.items()}
+
+        nd = config.get("network_diagram", {})
+        if isinstance(nd, dict) and nd:
+            kwargs["network_diagram"] = nd
 
         return cls(**kwargs)
 
@@ -189,6 +216,35 @@ class VastReportBuilder:
 
         self.logger.info("Report builder initialized with VAST brand compliance")
 
+    def _font(self, variant: str = "normal") -> str:
+        """Return the ReportLab font name for the configured font family.
+
+        Variant is one of: normal, bold, italic, bold-italic.
+        """
+        base = self.config.font_name
+        _MAP = {
+            "Helvetica": {
+                "normal": "Helvetica",
+                "bold": "Helvetica-Bold",
+                "italic": "Helvetica-Oblique",
+                "bold-italic": "Helvetica-BoldOblique",
+            },
+            "Times-Roman": {
+                "normal": "Times-Roman",
+                "bold": "Times-Bold",
+                "italic": "Times-Italic",
+                "bold-italic": "Times-BoldItalic",
+            },
+            "Courier": {
+                "normal": "Courier",
+                "bold": "Courier-Bold",
+                "italic": "Courier-Oblique",
+                "bold-italic": "Courier-BoldOblique",
+            },
+        }
+        family = _MAP.get(base, _MAP["Helvetica"])
+        return family.get(variant, family["normal"])
+
     def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
         Generate a professional PDF report from processed data.
@@ -212,6 +268,33 @@ class VastReportBuilder:
         except Exception as e:
             self.logger.error(f"Error generating PDF report: {e}")
             return False
+
+    def _create_landscape_template(self, portrait_size: tuple, margins: Dict[str, float]) -> Any:
+        """Build a landscape PageTemplate for wide diagrams."""
+        from reportlab.platypus import Frame, PageTemplate
+
+        landscape_w = portrait_size[1]
+        landscape_h = portrait_size[0]
+        left = margins.get("left", 36)
+        right = margins.get("right", 36)
+        top = margins.get("top", 36)
+        bottom = margins.get("bottom", 54)
+
+        frame = Frame(
+            left,
+            bottom,
+            landscape_w - left - right,
+            landscape_h - top - bottom,
+            leftPadding=0,
+            bottomPadding=0,
+            rightPadding=0,
+            topPadding=0,
+        )
+        return PageTemplate(
+            id="landscape",
+            frames=[frame],
+            pagesize=(landscape_w, landscape_h),
+        )
 
     def _build_report_story(
         self,
@@ -248,95 +331,137 @@ class VastReportBuilder:
             story.append(PageBreak())
 
         # Add executive summary
-        story.extend(
-            self._create_executive_summary(processed_data, page_tracker, "exec_summary" if is_first_pass else None)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("executive_summary"):
+            story.extend(
+                self._create_executive_summary(processed_data, page_tracker, "exec_summary" if is_first_pass else None)
+            )
+            story.append(PageBreak())
 
         # Add cluster information
-        story.extend(
-            self._create_cluster_information(processed_data, page_tracker, "cluster_info" if is_first_pass else None)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("cluster_information"):
+            story.extend(
+                self._create_cluster_information(
+                    processed_data, page_tracker, "cluster_info" if is_first_pass else None
+                )
+            )
+            story.append(PageBreak())
 
         # Add hardware inventory (includes Physical Rack Layout)
-        # Pass hardware_summary key for main section, and rack_layout key if rack positions are available
-        hardware_section_key = "hardware_summary" if is_first_pass else None
-        rack_layout_key = (
-            "rack_layout"
-            if (is_first_pass and processed_data.get("hardware_inventory", {}).get("rack_positions_available", False))
-            else None
-        )
-        story.extend(
-            self._create_hardware_inventory(processed_data, page_tracker, hardware_section_key, rack_layout_key)
-        )
-        story.append(PageBreak())
+        if self.config.section_enabled("hardware_inventory"):
+            hardware_section_key = "hardware_summary" if is_first_pass else None
+            rack_layout_key = (
+                "rack_layout"
+                if (
+                    is_first_pass
+                    and processed_data.get("hardware_inventory", {}).get("rack_positions_available", False)
+                )
+                else None
+            )
+            story.extend(
+                self._create_hardware_inventory(processed_data, page_tracker, hardware_section_key, rack_layout_key)
+            )
+            story.append(PageBreak())
 
         # Add comprehensive network configuration
-        story.extend(
-            self._create_comprehensive_network_configuration(
-                processed_data,
-                page_tracker,
-                "network_config" if is_first_pass else None,
-            )
-        )
-
-        # Add switch configuration section (no PageBreak - let content flow naturally)
-        story.extend(
-            self._create_switch_configuration(processed_data, page_tracker, "switch_config" if is_first_pass else None)
-        )
-
-        # Add port mapping (if available) - method includes its own PageBreak at start
-        port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
-        port_mapping_data = port_mapping_section.get("data", {})
-        port_mapping_enabled = port_mapping_data.get("available") and port_mapping_section.get("status") == "complete"
-
-        if port_mapping_enabled:
-            # Extract port mapping data and switches for the method
-            hardware = processed_data.get("hardware_inventory", {})
-            switches = hardware.get("switches") or []
+        if self.config.section_enabled("network_configuration"):
             story.extend(
-                self._create_port_mapping_section(
-                    port_mapping_data,
-                    switches,
-                    page_tracker,
-                    "port_mapping" if is_first_pass else None,
-                )
-            )
-            story.append(PageBreak())
-
-            # Add logical network diagram (only when port mapping is enabled)
-            story.extend(
-                self._create_logical_network_diagram(
+                self._create_comprehensive_network_configuration(
                     processed_data,
                     page_tracker,
-                    "network_diagram" if is_first_pass else None,
+                    "network_config" if is_first_pass else None,
                 )
             )
-            story.append(PageBreak())
+
+        # Add switch configuration section
+        if self.config.section_enabled("switch_configuration"):
+            story.extend(
+                self._create_switch_configuration(
+                    processed_data, page_tracker, "switch_config" if is_first_pass else None
+                )
+            )
+
+        # Add port mapping (if available and enabled in config)
+        if self.config.section_enabled("port_mapping"):
+            port_mapping_section = processed_data.get("sections", {}).get("port_mapping", {})
+            port_mapping_data = port_mapping_section.get("data", {})
+            port_mapping_enabled = (
+                port_mapping_data.get("available") and port_mapping_section.get("status") == "complete"
+            )
+
+            if port_mapping_enabled:
+                hardware = processed_data.get("hardware_inventory", {})
+                switches = hardware.get("switches") or []
+                story.extend(
+                    self._create_port_mapping_section(
+                        port_mapping_data,
+                        switches,
+                        page_tracker,
+                        "port_mapping" if is_first_pass else None,
+                    )
+                )
+                story.append(PageBreak())
+
+                story.extend(
+                    self._create_logical_network_diagram(
+                        processed_data,
+                        page_tracker,
+                        "network_diagram" if is_first_pass else None,
+                    )
+                )
+                story.append(PageBreak())
+            else:
+                story.append(PageBreak())
         else:
-            # No port mapping - skip network diagram section entirely
             story.append(PageBreak())
 
         # Add logical configuration
-        story.extend(
-            self._create_logical_configuration(
-                processed_data,
-                page_tracker,
-                "logical_config" if is_first_pass else None,
+        if self.config.section_enabled("logical_configuration"):
+            story.extend(
+                self._create_logical_configuration(
+                    processed_data,
+                    page_tracker,
+                    "logical_config" if is_first_pass else None,
+                )
             )
-        )
-        story.append(PageBreak())
+            story.append(PageBreak())
 
         # Add security configuration
-        story.extend(
-            self._create_security_configuration(
-                processed_data,
-                page_tracker,
-                "security_config" if is_first_pass else None,
+        if self.config.section_enabled("security_authentication"):
+            story.extend(
+                self._create_security_configuration(
+                    processed_data,
+                    page_tracker,
+                    "security_config" if is_first_pass else None,
+                )
             )
-        )
-        story.append(PageBreak())
+            story.append(PageBreak())
+
+        # Health Check Results (optional)
+        sections = processed_data.get("sections", {})
+        health_data = sections.get("health_check", {}).get("data")
+        if health_data and self.config.section_enabled("health_check"):
+            story.extend(
+                self._create_health_check_section(
+                    health_data,
+                    page_tracker,
+                    "health_check" if is_first_pass else None,
+                    processed_data=processed_data,
+                )
+            )
+            story.append(PageBreak())
+
+        # Post Deployment Activities (next steps checklist)
+        activities_data = sections.get("post_deployment_activities", {}).get("data")
+        if activities_data and self.config.section_enabled("post_deployment_activities"):
+            story.extend(
+                self._create_post_deployment_activities_section(
+                    activities_data,
+                    page_tracker,
+                    "post_deploy_activities" if is_first_pass else None,
+                    processed_data=processed_data,
+                )
+            )
+            story.append(PageBreak())
 
         return story
 
@@ -413,7 +538,22 @@ class VastReportBuilder:
                 "completeness": processed_data.get("metadata", {}).get("overall_completeness", 0.0),
                 "mgmt_vip": processed_data.get("cluster_summary", {}).get("mgmt_vip", "Unknown"),
             }
-            page_template = self.brand_compliance.create_vast_page_template(generation_info, page_size=page_size)
+            page_template = self.brand_compliance.create_vast_page_template(
+                generation_info,
+                page_size=page_size,
+                margins={
+                    "margin_left": self.config.margin_left,
+                    "margin_right": self.config.margin_right,
+                    "margin_top": self.config.margin_top,
+                    "margin_bottom": self.config.margin_bottom,
+                },
+                organization=getattr(self.config, "organization", None),
+                include_page_numbers=getattr(self.config, "include_page_numbers", True),
+            )
+
+            em = self.brand_compliance.effective_margins
+            self._frame_width = page_size[0] - em["left"] - em["right"]
+            self._frame_height = page_size[1] - em["top"] - em["bottom"]
 
             # Create document with page template
             from reportlab.platypus import BaseDocTemplate
@@ -431,18 +571,16 @@ class VastReportBuilder:
                 temp_doc = BaseDocTemplate(
                     temp_path,
                     pagesize=page_size,
-                    rightMargin=self.config.margin_right * inch,
-                    leftMargin=self.config.margin_left * inch,
-                    topMargin=self.config.margin_top * inch,
-                    bottomMargin=self.config.margin_bottom * inch,
+                    rightMargin=em["right"],
+                    leftMargin=em["left"],
+                    topMargin=em["top"],
+                    bottomMargin=em["bottom"],
                 )
-                temp_doc.addPageTemplates([page_template])
+                landscape_template = self._create_landscape_template(page_size, em)
+                temp_doc.addPageTemplates([page_template, landscape_template])
 
                 # Build story with page markers
                 story_pass1 = self._build_report_story(processed_data, page_tracker)
-
-                # Add page template directive
-                from reportlab.platypus import NextPageTemplate
 
                 story_pass1.insert(0, NextPageTemplate("VastPage"))
 
@@ -466,18 +604,16 @@ class VastReportBuilder:
             doc = BaseDocTemplate(
                 output_path,
                 pagesize=page_size,
-                rightMargin=self.config.margin_right * inch,
-                leftMargin=self.config.margin_left * inch,
-                topMargin=self.config.margin_top * inch,
-                bottomMargin=self.config.margin_bottom * inch,
+                rightMargin=em["right"],
+                leftMargin=em["left"],
+                topMargin=em["top"],
+                bottomMargin=em["bottom"],
             )
-            doc.addPageTemplates([page_template])
+            landscape_template = self._create_landscape_template(page_size, em)
+            doc.addPageTemplates([page_template, landscape_template])
 
             # Build story with captured page numbers (no markers needed in second pass)
             story_pass2 = self._build_report_story(processed_data, page_tracker)
-
-            # Add page template directive
-            from reportlab.platypus import NextPageTemplate
 
             story_pass2.insert(0, NextPageTemplate("VastPage"))
 
@@ -626,7 +762,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -643,7 +779,7 @@ class VastReportBuilder:
             return content
 
         # Read TOC data from Excel (A1:C60)
-        available_width = A4[0] - 1.0 * inch
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         for row in range(1, 61):
@@ -714,15 +850,15 @@ class VastReportBuilder:
 
             # Set font properties (use Excel formatting if available)
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = text_color_excel if text_color_excel else self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = text_size_excel if text_size_excel else (self.config.font_size - 1)
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = text_color if text_color else self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = text_size
                 extra_space = 3
             else:
-                text_font = "Helvetica-Oblique" if is_italic_excel else "Helvetica"
+                text_font = self._font("italic") if is_italic_excel else self._font()
                 text_color = text_color_excel if text_color_excel else colors.HexColor("#000000")
                 text_size = text_size_excel if text_size_excel else (self.config.font_size - 2)
                 page_font = text_font
@@ -751,7 +887,7 @@ class VastReportBuilder:
                 spacing_buffer = 0.1 * inch
                 available_for_dots = available_width - text_width - page_width - spacing_buffer
 
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(available_for_dots / dot_width)
                     num_dots = max(3, num_dots)
@@ -858,7 +994,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -907,17 +1043,52 @@ class VastReportBuilder:
             ("Security & Authentication", 0, "security_config", True),
             ("Encryption Configuration", 1, None, False),
             ("Authentication Services", 1, None, False),
+            # Health Check section (optional)
+            ("Cluster Health Check Results", 0, "health_check", True),
+            # Post Deployment Activities section
+            ("Post Deployment Activities", 0, "post_deploy_activities", True),
         ]
 
-        # Filter out optional sections that weren't captured
-        filtered_structure = []
+        # Map TOC section keys to config toggle keys so disabled sections
+        # (and their child indent-1 items) are excluded from the TOC.
+        _toc_key_to_config: Dict[str, str] = {
+            "exec_summary": "executive_summary",
+            "cluster_info": "cluster_information",
+            "hardware_summary": "hardware_inventory",
+            "rack_layout": "hardware_inventory",
+            "network_config": "network_configuration",
+            "switch_config": "switch_configuration",
+            "port_mapping": "port_mapping",
+            "network_diagram": "port_mapping",
+            "logical_config": "logical_configuration",
+            "security_config": "security_authentication",
+            "health_check": "health_check",
+            "post_deploy_activities": "post_deployment_activities",
+        }
+
+        # First pass: remove config-disabled sections and their children
+        config_filtered: list[tuple[str, int, Optional[str], bool]] = []
+        skip_children = False
         for entry in toc_structure:
+            _text, indent_level, section_key, _is_bold = entry
+            if indent_level == 0:
+                cfg_key = _toc_key_to_config.get(section_key or "", "")
+                skip_children = not self.config.section_enabled(cfg_key) if cfg_key else False
+            if skip_children and indent_level > 0:
+                continue
+            if indent_level == 0 and skip_children:
+                continue
+            config_filtered.append(entry)
+
+        # Second pass: remove optional sections that weren't captured in page_tracker
+        filtered_structure: list[tuple[str, int, Optional[str], bool]] = []
+        for entry in config_filtered:
             text, indent_level, section_key, is_bold = entry
             if section_key is None or section_key in page_tracker:
                 filtered_structure.append(entry)
 
         # Build TOC table with calculated dot leaders
-        available_width = A4[0] - 1.0 * inch
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them
@@ -931,6 +1102,8 @@ class VastReportBuilder:
             "Device Mapping",
             "Logical Network Diagram",
             "Protection Policies",
+            "Authentication Services",
+            "Cluster Health Check Results",
         ]
 
         for idx, (text, indent_level, section_key, is_bold) in enumerate(filtered_structure):
@@ -945,18 +1118,18 @@ class VastReportBuilder:
 
             # Create styles for text and page number
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = self.config.font_size - 1
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = self.config.font_size - 1
                 extra_space = 0 if idx == 0 else 12
             else:
-                text_font = "Helvetica"
+                text_font = self._font()
                 text_color = colors.HexColor("#000000")
                 text_size = self.config.font_size - 2
-                page_font = "Helvetica"
+                page_font = self._font()
                 page_color = colors.HexColor("#000000")
                 page_size = self.config.font_size - 2
                 extra_space = 0
@@ -992,7 +1165,7 @@ class VastReportBuilder:
                     dot_leader_length = 4.75 * inch
 
                 # Calculate how many dots fit in the specified space
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(dot_leader_length / dot_width)
                     num_dots = max(3, num_dots)
@@ -1073,7 +1246,7 @@ class VastReportBuilder:
             spaceAfter=20,
             alignment=TA_LEFT,
             textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-            fontName="Helvetica-Bold",
+            fontName=self._font("bold"),
         )
 
         content = []
@@ -1125,10 +1298,34 @@ class VastReportBuilder:
             ("Authentication Services", 1, None, False),
         ]
 
+        _label_to_config: Dict[str, str] = {
+            "Executive Summary": "executive_summary",
+            "Cluster Information": "cluster_information",
+            "Hardware Summary": "hardware_inventory",
+            "Physical Rack Layout": "hardware_inventory",
+            "Network Configuration": "network_configuration",
+            "Switch Configuration": "switch_configuration",
+            "Port Mapping": "port_mapping",
+            "Logical Network Diagram": "port_mapping",
+            "Logical Configuration": "logical_configuration",
+            "Security & Authentication": "security_authentication",
+        }
+        config_filtered_ph: list[tuple[str, int, Optional[str], bool]] = []
+        skip_children = False
+        for entry in toc_structure:
+            _text, indent_level, _page, _bold = entry
+            if indent_level == 0:
+                cfg_key = _label_to_config.get(_text, "")
+                skip_children = not self.config.section_enabled(cfg_key) if cfg_key else False
+            if skip_children:
+                continue
+            config_filtered_ph.append(entry)
+        toc_structure = config_filtered_ph
+
         # Build TOC table with calculated dot leaders for perfect alignment
         from reportlab.pdfbase.pdfmetrics import stringWidth
 
-        available_width = A4[0] - 1.0 * inch  # Page width minus margins
+        available_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         toc_table_data: list[Any] = []
 
         # List of subsections that should have extra space after them (to separate section groups)
@@ -1142,6 +1339,8 @@ class VastReportBuilder:
             "Device Mapping",
             "Logical Network Diagram",
             "Protection Policies",
+            "Authentication Services",
+            "Cluster Health Check Results",
         ]
 
         for idx, (text, indent_level, page_num, is_bold) in enumerate(toc_structure):
@@ -1151,19 +1350,19 @@ class VastReportBuilder:
 
             # Create styles for text and page number
             if is_bold:
-                text_font = "Helvetica-Bold"
+                text_font = self._font("bold")
                 text_color = self.brand_compliance.colors.BACKGROUND_DARK
                 text_size = self.config.font_size - 1  # Slightly smaller for compact view
-                page_font = "Helvetica-Bold"
+                page_font = self._font("bold")
                 page_color = self.brand_compliance.colors.BACKGROUND_DARK
                 page_size = self.config.font_size - 1
                 # More space before main sections (except first one) to separate from subsections above
                 extra_space = 0 if idx == 0 else 12
             else:
-                text_font = "Helvetica"
+                text_font = self._font()
                 text_color = colors.HexColor("#000000")
                 text_size = self.config.font_size - 2  # Smaller for subsections
-                page_font = "Helvetica"
+                page_font = self._font()
                 page_color = colors.HexColor("#000000")
                 page_size = self.config.font_size - 2
                 extra_space = 0
@@ -1199,7 +1398,7 @@ class VastReportBuilder:
                     dot_leader_length = 4.75 * inch  # Default for all other entries
 
                 # Calculate how many dots fit in the specified space
-                dot_width = stringWidth(".", "Helvetica", text_size - 1)
+                dot_width = stringWidth(".", self._font(), text_size - 1)
                 if dot_width > 0:
                     num_dots = int(dot_leader_length / dot_width)
                     num_dots = max(3, num_dots)  # Minimum 3 dots
@@ -1424,13 +1623,13 @@ class VastReportBuilder:
         ebox_list = list(eboxes.values())
 
         def ebox_sort_key(e: Dict[str, Any]) -> tuple:
-            eid = e.get("id")
-            if eid is None:
-                return (True, 0)
+            rack = e.get("rack_name") or "Unknown"
+            ru = e.get("rack_unit") or ""
             try:
-                return (False, int(eid)) if str(eid).isdigit() else (False, 0)
+                u_val = int(ru.upper().replace("U", ""))
             except (TypeError, ValueError):
-                return (False, 0)
+                u_val = 0
+            return (rack, -u_val)
 
         ebox_list.sort(key=ebox_sort_key)
         all_rows: List[List[str]] = []
@@ -1465,7 +1664,11 @@ class VastReportBuilder:
                 all_rows.append([rack_name, "", "N/A", "Unknown", rack_unit])
 
             # Up to 2 DNode rows (no Model value; Status = ACTIVE/FAILED from API)
-            matching_dnodes = [d for d in dnodes if d.get("ebox_id") == ebox_id]
+            matching_dnodes = sorted(
+                [d for d in dnodes if d.get("ebox_id") == ebox_id],
+                key=lambda d: d.get("name") or "",
+                reverse=True,
+            )
             for d in matching_dnodes[:2]:
                 dnode_name = d.get("name") or f"dnode-{d.get('id', 'Unknown')}"
                 dnode_state = d.get("status") or d.get("state") or ""
@@ -1755,36 +1958,35 @@ class VastReportBuilder:
         if not all_rows:
             return []
 
-        # Sort all rows by rack name first, then by hardware type (CBox, DBox, Switch)
-        # For CBoxes/DBoxes, sort by CNode/DNode name; for switches, use Name/Serial Number column
-        def sort_key(row):
-            rack_name = row[0] or "Unknown"
-            node_col = row[1] or ""  # CNode/DNode column
-            name_col = row[3] or ""  # Name/Serial Number column
+        def _parse_u(val: str) -> int:
+            """Parse 'U24' → 24, return 0 on failure."""
+            try:
+                return int(str(val).upper().replace("U", ""))
+            except (TypeError, ValueError):
+                return 0
 
-            # Determine hardware type based on CNode/DNode column content
+        def _dev_order(row) -> int:
+            """Device-type priority: CBox/EBox=0, CNode=1, DNode=2, DBox(no-node)=3, Switch=4."""
+            node_col = row[1] or ""
+            name_col = row[3] or ""
             if node_col == "EBox":
-                hw_type = "C"  # EBox
-                sort_value = name_col
-            elif node_col and node_col != "N/A":
-                # Check if it's a CNode or DNode by the prefix
-                if node_col.startswith("cnode-"):
-                    hw_type = "A"  # CBox
-                elif node_col.startswith("dnode-"):
-                    hw_type = "B"  # DBox
-                else:
-                    hw_type = "A"  # Default to CBox for unknown node types
-                sort_value = node_col  # Sort by node name
-            elif name_col and (name_col.startswith("dbox-") or "DB-" in name_col):
-                hw_type = "B"  # DBox (no nodes found)
-                sort_value = name_col
-            else:
-                hw_type = "D"  # Switch
-                sort_value = name_col
+                return 0
+            if node_col.startswith("cnode-"):
+                return 1
+            if node_col.startswith("dnode-"):
+                return 2
+            if name_col.startswith("cbox-") or name_col.startswith("CB-"):
+                return 0
+            if name_col.startswith("dbox-") or "DB-" in name_col:
+                return 0
+            if node_col == "N/A":
+                return 3
+            return 4
 
-            return (rack_name, hw_type, sort_value or "")
-
-        all_rows.sort(key=sort_key)
+        # Two-pass stable sort: name descending first, then primary criteria ascending.
+        # Python's stable sort preserves name order within identical primary keys.
+        all_rows.sort(key=lambda r: (r[3] or r[1] or ""), reverse=True)
+        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[5] or ""), _dev_order(r)))
 
         # Create table with VAST styling
         return cast(
@@ -1871,14 +2073,6 @@ class VastReportBuilder:
                     "Yes"
                     if cluster_info.get("enable_similarity")
                     else ("No" if cluster_info.get("enable_similarity") is not None else "Unknown")
-                ),
-            ],
-            [
-                "Deduplication Active",
-                (
-                    "Yes"
-                    if cluster_info.get("dedup_active")
-                    else ("No" if cluster_info.get("dedup_active") is not None else "Unknown")
                 ),
             ],
             [
@@ -2104,19 +2298,25 @@ class VastReportBuilder:
             self.manual_rack_placements: Dict[str, list] = {}
 
             manual_placements = data.get("manual_switch_placements")
-            if manual_placements and switches:
-                # --- Manual placement: user-specified rack + U position ---
-                sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches}
+            if manual_placements:
+                sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches} if switches else {}
                 for idx, mp in enumerate(manual_placements, start=1):
                     rn = mp.get("rack_name", "Unknown")
                     u_pos = int(mp.get("u_position", 0))
                     self.switch_positions[idx] = u_pos
-                    self.manual_rack_placements.setdefault(rn, []).append(
-                        {**sw_by_name.get(mp.get("switch_name"), {}), "u_position": u_pos}
-                    )
+                    sw_data = dict(sw_by_name.get(mp.get("switch_name"), {}))
+                    sw_data["u_position"] = u_pos
+                    sw_data.setdefault("name", mp.get("switch_name", ""))
+                    if mp.get("model_key"):
+                        sw_data["model"] = mp["model_key"]
+                    elif mp.get("model") and "model" not in sw_data:
+                        sw_data["model"] = mp["model"]
+                    if mp.get("height_u"):
+                        sw_data["height_u"] = mp["height_u"]
+                    self.manual_rack_placements.setdefault(rn, []).append(sw_data)
                 self.switch_rack_name = sorted(self.manual_rack_placements.keys())[0]
                 self.logger.info("Manual switch placement: %s", self.switch_positions)
-            elif switches and len(switches) == 2:
+            if (not manual_placements) and switches and len(switches) == 2:
                 # --- Auto placement: cascade through racks (same logic for ebox: above ebox then below ebox) ---
                 hw_cnodes = hardware.get("cnodes") or []
                 hw_dboxes_raw = hardware.get("dboxes") or {}
@@ -2219,15 +2419,9 @@ class VastReportBuilder:
             )
             content.extend(inventory_elements)
 
-            # Add page break if we have many devices to prevent layout issues
-            total_devices = len(cboxes) + len(dboxes) + len(eboxes) + len(switches)
-            if total_devices > 15:  # Threshold for large inventories
-                content.append(PageBreak())
-
-        # Add Physical Rack Layout - force to start at top of Page 6
+        # Add Physical Rack Layout
         rack_positions = hardware.get("rack_positions_available", False)
         if rack_positions:
-            # Force page break to move heading to top of Page 6
             content.append(PageBreak())
 
             # Note: Section heading will be combined with first rack heading
@@ -2273,6 +2467,7 @@ class VastReportBuilder:
                                 break
                     cbox_entry = {
                         "id": cbox_data.get("id"),
+                        "name": cbox_name,
                         "model": model,
                         "rack_unit": rack_unit,
                         "state": cbox_data.get("state", "ACTIVE"),
@@ -2296,6 +2491,7 @@ class VastReportBuilder:
 
                         dbox_data = {
                             "id": dbox_info.get("id"),
+                            "name": dbox_name,
                             "model": dbox_info.get("hardware_type", "Unknown"),
                             "rack_unit": rack_unit,
                             "state": dbox_info.get("state", "ACTIVE"),
@@ -2327,6 +2523,7 @@ class VastReportBuilder:
                                 break
                         ebox_data = {
                             "id": ebox_info.get("id"),
+                            "name": ebox_info.get("name", ""),
                             "model": model_key,
                             "hardware_type": model_key,
                             "rack_unit": rack_unit,
@@ -2341,9 +2538,32 @@ class VastReportBuilder:
                 if manual_rack_map:
                     # Manual placement: distribute switches to their specified racks
                     # with explicit rack_unit so generate_rack_diagram uses them directly.
+                    # Build a case-insensitive lookup for rack name resolution.
+                    racks_data_lower = {k.lower().strip(): k for k in racks_data}
+                    assigned_any = False
                     for rn, placements in manual_rack_map.items():
+                        target_rn = rn
                         if rn not in racks_data:
-                            continue
+                            # Try case-insensitive match
+                            resolved = racks_data_lower.get(rn.lower().strip())
+                            if resolved:
+                                self.logger.info(
+                                    f"Manual switch placement rack '{rn}' resolved to '{resolved}' (case-insensitive)"
+                                )
+                                target_rn = resolved
+                            elif len(racks_data) == 1:
+                                # Single hardware rack — assign there with a warning
+                                target_rn = next(iter(racks_data))
+                                self.logger.warning(
+                                    f"Manual switch placement rack '{rn}' not found in racks_data — "
+                                    f"falling back to only available rack '{target_rn}'"
+                                )
+                            else:
+                                self.logger.warning(
+                                    f"Manual switch placement rack '{rn}' not found in racks_data "
+                                    f"(available: {list(racks_data.keys())}). Skipping these switches."
+                                )
+                                continue
                         sw_list = []
                         for p in placements:
                             sw_list.append(
@@ -2354,9 +2574,15 @@ class VastReportBuilder:
                                     "rack_unit": f"U{p['u_position']}",
                                 }
                             )
-                        racks_data[rn]["switches"] = sw_list
-                        self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{rn}'")
-                elif switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
+                        racks_data[target_rn]["switches"] = sw_list
+                        assigned_any = True
+                        self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{target_rn}'")
+                    if not assigned_any:
+                        self.logger.warning(
+                            "Manual switch placement produced no assignments — falling back to auto-placement"
+                        )
+                _manual_ok = bool(manual_rack_map) and assigned_any if manual_rack_map else False
+                if not _manual_ok and switches and hasattr(self, "switch_rack_name") and self.switch_rack_name:
                     # Auto placement: all switches go to the single winning rack.
                     switches_data = []
                     for switch in switches:
@@ -2373,6 +2599,52 @@ class VastReportBuilder:
                         self.logger.info(f"Auto: assigned {len(switches_data)} switches to rack '{target_rack}'")
                     else:
                         self.logger.warning(f"Switch target rack '{target_rack}' not found in racks_data")
+
+                # Build node_status_map for rack diagram status indicators
+                hw_cnodes_all = hardware.get("cnodes") or []
+                hw_dnodes_all = hardware.get("dnodes") or []
+                hw_switches_inv = hardware.get("switches") or []
+
+                cnodes_by_cbox: dict[int, list[dict[str, Any]]] = {}
+                cnode_by_ebox: dict[int, dict[str, Any]] = {}
+                dnodes_by_dbox: dict[int, list[dict[str, Any]]] = {}
+                dnodes_by_ebox: dict[int, list[dict[str, Any]]] = {}
+                switch_in_inventory: dict[str, str] = {}
+
+                for cn in hw_cnodes_all:
+                    cn_status = str(cn.get("status") or cn.get("state") or "ACTIVE").upper()
+                    cn_is_mgmt = bool(cn.get("is_mgmt", False))
+                    entry = {"status": cn_status, "is_mgmt": cn_is_mgmt}
+                    cbox_id = cn.get("cbox_id")
+                    ebox_id = cn.get("ebox_id")
+                    if cbox_id is not None:
+                        cnodes_by_cbox.setdefault(cbox_id, []).append(entry)
+                    if ebox_id is not None:
+                        cnode_by_ebox[ebox_id] = entry
+
+                for dn in hw_dnodes_all:
+                    dn_status = str(dn.get("status") or dn.get("state") or "ACTIVE").upper()
+                    entry = {"status": dn_status}
+                    dbox_id = dn.get("dbox_id")
+                    ebox_id = dn.get("ebox_id")
+                    if dbox_id is not None:
+                        dnodes_by_dbox.setdefault(dbox_id, []).append(entry)
+                    if ebox_id is not None:
+                        dnodes_by_ebox.setdefault(ebox_id, []).append(entry)
+
+                for sw in hw_switches_inv:
+                    sw_name = str(sw.get("name") or "").strip()
+                    sw_state = str(sw.get("state") or sw.get("status") or "ACTIVE").upper()
+                    if sw_name:
+                        switch_in_inventory[sw_name] = sw_state
+
+                node_status_map: dict[str, Any] = {
+                    "cnodes_by_cbox": cnodes_by_cbox,
+                    "cnode_by_ebox": cnode_by_ebox,
+                    "dnodes_by_dbox": dnodes_by_dbox,
+                    "dnodes_by_ebox": dnodes_by_ebox,
+                    "switch_in_inventory": switch_in_inventory,
+                }
 
                 # Generate one diagram per rack
                 if racks_data:
@@ -2430,35 +2702,20 @@ class VastReportBuilder:
                         rack_eboxes = rack_hw.get("eboxes") or []
                         rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
 
-                        # Add placeholder Arista switches only when the cluster
-                        # has NO discovered switches at all (e.g., pre-deployment).
-                        # When real switches exist they are assigned to a single rack;
-                        # other racks intentionally have no switches.
-                        has_real_switches = bool(hardware.get("switches"))
-                        if not rack_switches and not has_real_switches and (rack_cboxes or rack_dboxes):
-                            rack_switches = [
-                                {
-                                    "id": "SWA",
-                                    "name": "SWA",
-                                    "model": "arista_7060dx5",
-                                    "state": "ACTIVE",
-                                },
-                                {
-                                    "id": "SWB",
-                                    "name": "SWB",
-                                    "model": "arista_7060dx5",
-                                    "state": "ACTIVE",
-                                },
-                            ]
-                            self.logger.info(f"Added 2 placeholder Arista switches to rack {rack_name}")
-
                         # Only generate diagram if rack has hardware (cboxes, dboxes, or eboxes)
                         if rack_cboxes or rack_dboxes or rack_eboxes:
                             # Get rack height for this rack (default to 42U if not found)
                             rack_height_u = rack_height_map.get(rack_name, 42)
 
                             # Create rack diagram generator with appropriate rack height
+                            # Reserve headroom for the heading, spacer, and table padding
+                            # that share the page with the diagram
+                            fw = getattr(self, "_frame_width", 7.27 * inch)
+                            fh = getattr(self, "_frame_height", 8.5 * inch)
+                            rack_page_h = fh - 1.0 * inch
                             rack_gen = RackDiagram(
+                                page_width=fw,
+                                page_height=rack_page_h,
                                 rack_height_u=rack_height_u,
                                 library_path=self.library_path,
                                 user_images_dir=self.user_images_dir,
@@ -2468,13 +2725,13 @@ class VastReportBuilder:
                             diagram_dboxes = [] if is_ebox_cluster else rack_dboxes
                             diagram_eboxes = rack_eboxes if is_ebox_cluster else []
 
-                            # Generate rack diagram with rack name
                             rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
                                 rack_cboxes,
                                 diagram_dboxes,
                                 rack_switches,
                                 rack_name=rack_name,
                                 eboxes=diagram_eboxes,
+                                node_status_map=node_status_map,
                             )
 
                             # Add rack name heading before diagram
@@ -2504,17 +2761,20 @@ class VastReportBuilder:
                             # Center the rack diagram on the page using a table
                             from reportlab.platypus import Table as RLTable
 
-                            # Use letter page width (8.5 inches)
-                            page_width = 8.5 * inch
+                            fw = getattr(self, "_frame_width", 7.5 * inch)
                             rack_table = RLTable(
                                 [[rack_drawing]],
-                                colWidths=[page_width - (2 * 0.5 * inch)],  # Page width minus margins
+                                colWidths=[fw],
                             )
                             rack_table.setStyle(
                                 TableStyle(
                                     [
                                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                                         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
                                     ]
                                 )
                             )
@@ -2670,6 +2930,10 @@ class VastReportBuilder:
             ib_mtu_display = ib_mtu if ib_mtu is not None else "Not Configured"
             content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
 
+            nb_eth_mtu = cluster_summary.get("nb_eth_mtu")
+            nb_eth_mtu_display = nb_eth_mtu if nb_eth_mtu is not None else "Not Configured"
+            content.append(Paragraph(f"• NVMe/TCP Ethernet MTU: {nb_eth_mtu_display}", normal_style))
+
         return content
 
     def _create_cluster_network_configuration(self, data: Dict[str, Any]) -> List[Any]:
@@ -2776,6 +3040,10 @@ class VastReportBuilder:
             ib_mtu_display = ib_mtu if ib_mtu != "Unknown" else "Not Configured"
             content.append(Paragraph(f"• InfiniBand MTU: {ib_mtu_display}", normal_style))
 
+            nb_eth_mtu = cluster_network_config.get("nb_eth_mtu", "Unknown")
+            nb_eth_mtu_display = nb_eth_mtu if nb_eth_mtu != "Unknown" else "Not Configured"
+            content.append(Paragraph(f"• NVMe/TCP Ethernet MTU: {nb_eth_mtu_display}", normal_style))
+
             # IPMI Gateway and Netmask
             ipmi_gateway = cluster_network_config.get("ipmi_gateway", "Unknown")
             ipmi_gateway_display = ipmi_gateway if ipmi_gateway != "Unknown" else "Not Configured"
@@ -2856,8 +3124,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             table = Table(
                 table_data,
                 colWidths=[
@@ -2879,7 +3146,7 @@ class VastReportBuilder:
                         ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
                         ("FONTSIZE", (0, 0), (-1, 0), 8),
                         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                         ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
@@ -2966,8 +3233,7 @@ class VastReportBuilder:
                     ]
                 )
 
-            # Create table with page-width sizing (A4 width - 1" margins = 7.5")
-            page_width = A4[0] - 1.0 * inch  # A4 width minus 0.5" margins on each side
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             table = Table(
                 table_data,
                 colWidths=[
@@ -2989,7 +3255,7 @@ class VastReportBuilder:
                         ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
                         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, -1), self._font("bold")),
                         ("FONTSIZE", (0, 0), (-1, 0), 8),
                         ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
                         ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
@@ -3164,6 +3430,16 @@ class VastReportBuilder:
                     [
                         "InfiniBand MTU",
                         str(cluster_network_config.get("ib_mtu", "Not Configured")),
+                    ]
+                )
+            if (
+                cluster_network_config.get("nb_eth_mtu")
+                and cluster_network_config.get("nb_eth_mtu") != "Not Configured"
+            ):
+                network_summary_data.append(
+                    [
+                        "NVMe/TCP Ethernet MTU",
+                        str(cluster_network_config.get("nb_eth_mtu", "Not Configured")),
                     ]
                 )
 
@@ -3406,65 +3682,97 @@ class VastReportBuilder:
         )
         content.append(Spacer(1, 16))
 
+        # Determine diagram mode from config
+        diagram_mode = self.config.network_diagram.get("mode", "detailed")
+
+        # Prepare shared data for either renderer
+        port_mapping_section = data.get("sections", {}).get("port_mapping", {})
+        port_mapping_data = port_mapping_section.get("data", {}) if isinstance(port_mapping_section, dict) else {}
+        hardware_inventory = data.get("hardware_inventory", {})
+
+        cboxes_data = hardware_inventory.get("cboxes") or {}
+        dboxes_data = hardware_inventory.get("dboxes") or {}
+        eboxes_data = hardware_inventory.get("eboxes") or {}
+        switches_data = hardware_inventory.get("switches") or []
+
+        cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
+        dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
+        eboxes_list = list(eboxes_data.values()) if isinstance(eboxes_data, dict) else eboxes_data
+        switches_list = switches_data if isinstance(switches_data, list) else []
+
+        cnodes_data = hardware_inventory.get("cnodes") or {}
+        dnodes_data = hardware_inventory.get("dnodes") or {}
+        cnodes_list = list(cnodes_data.values()) if isinstance(cnodes_data, dict) else cnodes_data
+        dnodes_list = list(dnodes_data.values()) if isinstance(dnodes_data, dict) else dnodes_data
+
+        hardware_data = {
+            "cboxes": cboxes_list,
+            "dboxes": dboxes_list,
+            "eboxes": eboxes_list,
+            "switches": switches_list,
+            "cnodes": cnodes_list,
+            "dnodes": dnodes_list,
+        }
+
+        self.logger.info(
+            f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
+            f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['eboxes'])} EBoxes, "
+            f"{len(hardware_data['switches'])} Switches"
+        )
+
+        diagrams_dir = get_data_dir() / "output" / "diagrams"
+        diagrams_dir.mkdir(parents=True, exist_ok=True)
+
+        generated_paths: list = []
+
+        # ---------- Detailed mode (rack-centric SVG) ----------
+        if diagram_mode == "detailed":
+            try:
+                from network_diagram_v2 import create_rack_centric_diagram_generator
+
+                gen = create_rack_centric_diagram_generator(
+                    config=self.config.network_diagram,
+                    assets_path=str(get_bundle_dir() / "assets"),
+                    library_path=self.library_path,
+                    user_images_dir=self.user_images_dir,
+                )
+                generated_paths = gen.generate(
+                    port_mapping_data=port_mapping_data,
+                    hardware_data=hardware_data,
+                    output_dir=str(diagrams_dir),
+                )
+                self.logger.info("Detailed diagram generated %d page(s)", len(generated_paths))
+            except Exception as e:
+                self.logger.warning("Detailed diagram failed, falling back to compact: %s", e)
+                diagram_mode = "compact"
+
+        # ---------- Compact mode (legacy ReportLab) ----------
+        if diagram_mode == "compact" or not generated_paths:
+            try:
+                from network_diagram import NetworkDiagramGenerator
+
+                diagram_generator = NetworkDiagramGenerator(
+                    assets_path=str(get_bundle_dir() / "assets"),
+                    library_path=self.library_path,
+                    user_images_dir=self.user_images_dir,
+                )
+                diagram_path = diagrams_dir / "network_topology.pdf"
+                target_diagram_width = 6.5 * inch
+                target_diagram_height = 6.0 * inch
+
+                gen_path = diagram_generator.generate_network_diagram(
+                    port_mapping_data=port_mapping_data,
+                    hardware_data=hardware_data,
+                    output_path=str(diagram_path),
+                    drawing_size=(target_diagram_width, target_diagram_height),
+                )
+                if gen_path and Path(gen_path).exists():
+                    generated_paths = [gen_path]
+            except Exception as e:
+                self.logger.error("Error generating compact network diagram: %s", e, exc_info=True)
+
         # Generate network diagram dynamically
         try:
-            from network_diagram import NetworkDiagramGenerator
-
-            # Get required data
-            port_mapping_section = data.get("sections", {}).get("port_mapping", {})
-            port_mapping_data = port_mapping_section.get("data", {}) if isinstance(port_mapping_section, dict) else {}
-
-            # Prepare hardware data from hardware_inventory
-            hardware_inventory = data.get("hardware_inventory", {})
-
-            # Convert cboxes/dboxes/eboxes from dict to list if needed
-            cboxes_data = hardware_inventory.get("cboxes") or {}
-            dboxes_data = hardware_inventory.get("dboxes") or {}
-            eboxes_data = hardware_inventory.get("eboxes") or {}
-            switches_data = hardware_inventory.get("switches") or []
-
-            # If cboxes/dboxes/eboxes are dicts (keyed by name), convert to list of values
-            cboxes_list = list(cboxes_data.values()) if isinstance(cboxes_data, dict) else cboxes_data
-            dboxes_list = list(dboxes_data.values()) if isinstance(dboxes_data, dict) else dboxes_data
-            eboxes_list = list(eboxes_data.values()) if isinstance(eboxes_data, dict) else eboxes_data
-            switches_list = switches_data if isinstance(switches_data, list) else []
-
-            hardware_data = {
-                "cboxes": cboxes_list,
-                "dboxes": dboxes_list,
-                "eboxes": eboxes_list,
-                "switches": switches_list,
-            }
-
-            self.logger.info(
-                f"Hardware data for diagram: {len(hardware_data['cboxes'])} CBoxes, "
-                f"{len(hardware_data['dboxes'])} DBoxes, {len(hardware_data['eboxes'])} EBoxes, "
-                f"{len(hardware_data['switches'])} Switches"
-            )
-
-            diagrams_dir = get_data_dir() / "output" / "diagrams"
-            diagrams_dir.mkdir(parents=True, exist_ok=True)
-
-            diagram_generator = NetworkDiagramGenerator(
-                assets_path=str(get_bundle_dir() / "assets"),
-                library_path=self.library_path,
-                user_images_dir=self.user_images_dir,
-            )
-
-            diagram_path = diagrams_dir / "network_topology.pdf"
-
-            # Use standard width but reduce height to fit on page 11
-            # Width: standard letter - margins, Height: reduced to fit
-            target_diagram_width = 6.5 * inch
-            target_diagram_height = 6.0 * inch  # Reduced from ~9" to fit on page
-
-            generated_path = diagram_generator.generate_network_diagram(
-                port_mapping_data=port_mapping_data,
-                hardware_data=hardware_data,
-                output_path=str(diagram_path),
-                drawing_size=(target_diagram_width, target_diagram_height),
-            )
-
             # Add color legend
             legend_style = ParagraphStyle(
                 "Diagram_Legend",
@@ -3476,47 +3784,40 @@ class VastReportBuilder:
             )
             content.append(
                 Paragraph(
-                    "<font color='#00aa00'><b>■</b> Green</font> = Switch A connections | "
-                    "<font color='#0066cc'><b>■</b> Blue</font> = Switch B connections | "
-                    "<font color='#9933cc'><b>■</b> Purple</font> = IPL/MLAG connections",
+                    "<font color='#0F9D58'><b>■</b> Green</font> = Network A | "
+                    "<font color='#4285F4'><b>■</b> Blue</font> = Network B | "
+                    "<font color='#7B1FA2'><b>■</b> Purple</font> = IPL/MLAG | "
+                    "<font color='#757575'><b>■</b> Gray</font> = Spine",
                     legend_style,
                 )
             )
             content.append(Spacer(1, 12))
 
-            if generated_path and Path(generated_path).exists():
-                self.logger.info(f"Network diagram generated: {generated_path}")
+            if generated_paths:
+                from PIL import Image as PILImage
 
-                # Embed the generated diagram (PNG)
-                try:
-                    # Calculate available space on page
-                    if self.config.page_size == "Letter":
-                        page_width = 8.5 * inch
-                        page_height = 11 * inch
-                    else:  # A4
-                        page_width = 8.27 * inch
-                        page_height = 11.69 * inch
+                for gp in generated_paths:
+                    if not Path(gp).exists():
+                        continue
+                    self.logger.info(f"Network diagram generated: {gp}")
 
-                    # Account for margins and header/footer
-                    available_width = page_width - (2 * 0.5 * inch)
-                    available_height = page_height - (2 * 0.75 * inch)  # Top and bottom margins
+                    available_width = getattr(self, "_frame_width", 7.5 * inch)
+                    available_height = getattr(self, "_frame_height", 10.19 * inch)
 
-                    # Reserve space for heading and spacing (approximately 1 inch)
+                    orientation = self.config.network_diagram.get("orientation", "portrait")
+                    use_landscape = orientation == "landscape"
+                    if use_landscape and diagram_mode == "detailed":
+                        available_width = 10.0 * inch
+                        available_height = 7.0 * inch
+
                     max_diagram_height = available_height - 1.5 * inch
 
-                    # Get actual image dimensions to calculate aspect ratio
-                    from PIL import Image as PILImage
-
-                    with PILImage.open(str(generated_path)) as pil_img:
+                    with PILImage.open(str(gp)) as pil_img:
                         img_width, img_height = pil_img.size
                         aspect_ratio = img_width / img_height
 
-                    # Calculate dimensions to fit within available space while maintaining aspect ratio
-                    # Try fitting by width first
-                    target_width = available_width * 0.95  # Use 95% of available width
+                    target_width = available_width * 0.95
                     target_height = target_width / aspect_ratio
-
-                    # If height exceeds available space, scale by height instead
                     if target_height > max_diagram_height:
                         target_height = max_diagram_height
                         target_width = target_height * aspect_ratio
@@ -3527,14 +3828,8 @@ class VastReportBuilder:
                         f"available={available_width:.1f}x{max_diagram_height:.1f}"
                     )
 
-                    # Load and add the dynamically generated diagram with calculated dimensions
-                    img = Image(
-                        str(generated_path),
-                        width=target_width,
-                        height=target_height,
-                    )
+                    img = Image(str(gp), width=target_width, height=target_height)
 
-                    # Center the image using a table
                     from reportlab.platypus import Table as RLTable
 
                     image_table = RLTable(
@@ -3549,17 +3844,22 @@ class VastReportBuilder:
                             ]
                         )
                     )
+
+                    if use_landscape and diagram_mode == "detailed":
+                        content.append(NextPageTemplate("landscape"))
+                        content.append(PageBreak())
+
                     content.append(image_table)
 
-                    self.logger.info("Embedded dynamically generated network diagram")
-                    return content
+                    if use_landscape and diagram_mode == "detailed":
+                        content.append(NextPageTemplate("VastPage"))
+                        content.append(PageBreak())
 
-                except Exception as e:
-                    self.logger.error(f"Error embedding generated diagram: {e}", exc_info=True)
-                    # Fall through to show "no data" message
+                self.logger.info("Embedded network diagram (%s mode)", diagram_mode)
+                return content
 
             else:
-                self.logger.warning("Network diagram PNG not available (renderPM and PDF fallback failed)")
+                self.logger.warning("Network diagram PNG not available")
 
         except Exception as e:
             self.logger.error(f"Error generating network diagram: {e}", exc_info=True)
@@ -3623,6 +3923,107 @@ class VastReportBuilder:
         else:
             # Other speeds (40G, 10G, etc.)
             return "Data Plane"
+
+    def _create_vnetmap_topology_tables(
+        self,
+        port_map: List[Dict[str, Any]],
+        switches: List[Dict[str, Any]],
+        styles: Any,
+    ) -> List[Any]:
+        """Render vnetmap 'Full Topology' and per-switch topology tables."""
+        content: List[Any] = []
+
+        unique_nodes = {e.get("node_hostname", "") for e in port_map if e.get("node_hostname")}
+        unique_switches = {e.get("switch_ip", "") for e in port_map if e.get("switch_ip")}
+
+        summary_style = ParagraphStyle(
+            "VnetmapSummary",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size,
+            spaceAfter=6,
+            spaceBefore=4,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+        )
+        content.append(
+            Paragraph(
+                f"<b>Topology Discovery:</b> Mapping nodes <b>{len(unique_nodes)}</b> "
+                f"Switches <b>{len(unique_switches)}</b>",
+                summary_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        # --- Full Topology table ---
+        # Proportional weights: Node(wide) | Switch IP | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
+        full_headers = ["Node", "Switch IP", "Port", "Data IP", "Interface", "MAC", "Net"]
+        full_col_weights = [5, 3, 1.2, 2.5, 2, 3.5, 0.8]
+        full_data = []
+        for e in sorted(port_map, key=lambda x: (x.get("node_hostname", ""), x.get("network", ""))):
+            full_data.append(
+                [
+                    e.get("node_hostname", ""),
+                    e.get("switch_ip", ""),
+                    e.get("port", ""),
+                    e.get("node_ip", ""),
+                    e.get("interface", ""),
+                    e.get("mac", "") or "",
+                    e.get("network", ""),
+                ]
+            )
+
+        full_topo_elements = self.brand_compliance.create_vast_table(
+            full_data,
+            "Full Topology",
+            full_headers,
+            col_widths=full_col_weights,
+            compact=True,
+        )
+        content.extend(full_topo_elements)
+
+        # --- Per-switch topology tables ---
+        # Proportional weights: Node(wide) | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
+        sw_col_weights = [5, 1.2, 2.5, 2, 3.5, 0.8]
+
+        switch_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for e in port_map:
+            sip = e.get("switch_ip", "")
+            if sip:
+                switch_groups.setdefault(sip, []).append(e)
+
+        leaf_ips = sorted(switch_groups.keys())
+        for switch_ip in leaf_ips:
+            entries = switch_groups[switch_ip]
+            networks = sorted({e.get("network", "?") for e in entries})
+            subnets = sorted({e.get("node_ip", "").rsplit(".", 1)[0] for e in entries if e.get("node_ip")})
+            net_label = ", ".join(networks) if networks else "?"
+
+            sw_headers = ["Node", "Port", "Data IP", "Interface", "MAC", "Net"]
+            sw_data = []
+            for e in sorted(entries, key=lambda x: (x.get("node_hostname", ""), x.get("port", ""))):
+                sw_data.append(
+                    [
+                        e.get("node_hostname", ""),
+                        e.get("port", ""),
+                        e.get("node_ip", ""),
+                        e.get("interface", ""),
+                        e.get("mac", "") or "",
+                        e.get("network", ""),
+                    ]
+                )
+
+            subnet_display = ", ".join(subnets) if subnets else ""
+            sw_title = f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
+            sw_elements = self.brand_compliance.create_vast_table(
+                sw_data,
+                sw_title,
+                sw_headers,
+                col_widths=sw_col_weights,
+                compact=True,
+            )
+            content.extend(sw_elements)
+
+        content.append(Spacer(1, 8))
+        return content
 
     def _create_port_mapping_section(
         self,
@@ -3697,6 +4098,10 @@ class VastReportBuilder:
             content.append(Paragraph("No port mapping data available", styles["Normal"]))
             return content
 
+        # --- Vnetmap Topology Detail ---
+        if port_mapping_data.get("data_source", "").startswith("vnetmap"):
+            content.extend(self._create_vnetmap_topology_tables(port_map, switches, styles))
+
         # Group ports by switch
         ports_by_switch: dict[str, Any] = {}
         for entry in port_map:
@@ -3713,10 +4118,35 @@ class VastReportBuilder:
                 )
             )
 
-        # Find switch info from switches list to get switch numbers
+        # Only number switches that actually appear in the port map (leaf switches)
+        port_map_switch_ips = {e["switch_ip"] for e in port_map if e.get("switch_ip")}
+        leaf_switches = [sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips]
+        if not leaf_switches:
+            leaf_switches = list(switches)
+        leaf_switches.sort(key=lambda s: s.get("mgmt_ip", ""))
+
         switch_ip_to_number = {}
-        for idx, switch in enumerate(switches, start=1):
-            switch_ip_to_number[switch.get("mgmt_ip")] = idx
+        switch_port_speed_lookup: dict[str, dict[str, str]] = {}
+        for idx, switch in enumerate(leaf_switches, start=1):
+            mgmt_ip = switch.get("mgmt_ip")
+            switch_ip_to_number[mgmt_ip] = idx
+            speed_map: dict[str, str] = {}
+            for port_info in switch.get("ports", []):
+                port_name = port_info.get("name", "")
+                port_speed = port_info.get("speed", "")
+                if port_name and port_speed:
+                    speed_map[port_name] = port_speed
+                    if port_name.startswith("Eth") and "/" in port_name:
+                        parts = port_name.split("/")
+                        if len(parts) == 2:
+                            speed_map[f"swp{parts[1]}"] = port_speed
+                        elif len(parts) == 3:
+                            speed_map[f"swp{parts[1]}/{parts[2]}"] = port_speed
+                            parent_key = f"Eth{parts[0]}/{parts[1]}"
+                            if parent_key not in speed_map:
+                                speed_map[parent_key] = port_speed
+            if mgmt_ip:
+                switch_port_speed_lookup[mgmt_ip] = speed_map
 
         # Sort switches by switch number (Switch 1 before Switch 2)
         sorted_switch_ips = sorted(ports_by_switch.keys(), key=lambda ip: switch_ip_to_number.get(ip, 999))
@@ -3779,7 +4209,14 @@ class VastReportBuilder:
                     continue
                 seen_connections.add(conn_key)
 
-                speed = "200G"  # Default, would need to get from switch port data
+                port_name_raw = conn.get("port", "")
+                speed = (
+                    switch_port_speed_lookup.get(switch_ip, {}).get(
+                        port_name_raw,
+                        switch_port_speed_lookup.get(switch_ip, {}).get(conn.get("original_port", ""), ""),
+                    )
+                    or "Unknown"
+                )
 
                 # Use notes from port map entry
                 # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
@@ -3798,45 +4235,31 @@ class VastReportBuilder:
                 table_data.append([port_display, node_display, network, speed, notes_str])
 
             # Add IPL/MLAG connections to this switch's table
-            # Use the new deduplicated ipl_connections format
             ipl_connections = port_mapping_data.get("ipl_connections", [])
             if ipl_connections:
-                # Add IPL connections for this switch
                 for ipl_conn in ipl_connections:
-                    # ipl_conn format (stored from Switch 1's perspective):
-                    # {
-                    #   'switch_designation': 'SWA-P29',  (always Switch 1)
-                    #   'node_designation': 'SWB-P29',     (always Switch 2)
-                    #   'notes': 'IPL',
-                    #   'connection_type': 'IPL',
-                    #   ...
-                    # }
+                    sw_des = ipl_conn.get("switch_designation", "")
+                    peer_des = ipl_conn.get("node_designation", "")
+                    ipl_note = ipl_conn.get("notes", "IPL")
 
-                    # Check which switch this is and format accordingly
-                    switch_des = ipl_conn.get("switch_designation", "")
-                    node_des = ipl_conn.get("node_designation", "")
-
-                    # Extract switch letter from designation (SWA-P29 -> A, SWB-P29 -> B)
-                    if "SWA" in switch_des and switch_num == 1:
-                        # This is Switch 1: show SWA-P29 → SWB-P29
+                    if switch_num == 1:
                         table_data.append(
                             [
-                                switch_des,  # SWA-P29
-                                node_des,  # SWB-P29
-                                "A/B",  # Network (both)
-                                "100G",  # Speed
-                                ipl_conn.get("notes", "IPL"),  # IPL
+                                sw_des or "SWA",
+                                peer_des or "SWB",
+                                "A/B",
+                                "",
+                                ipl_note,
                             ]
                         )
-                    elif "SWB" in node_des and switch_num == 2:
-                        # This is Switch 2: swap the columns to show SWB-P29 → SWA-P29
+                    elif switch_num == 2:
                         table_data.append(
                             [
-                                node_des,  # SWB-P29 (was in node_designation)
-                                switch_des,  # SWA-P29 (was in switch_designation)
-                                "A/B",  # Network (both)
-                                "100G",  # Speed
-                                ipl_conn.get("notes", "IPL"),  # IPL
+                                peer_des or "SWB",
+                                sw_des or "SWA",
+                                "A/B",
+                                "",
+                                ipl_note,
                             ]
                         )
 
@@ -4100,7 +4523,7 @@ class VastReportBuilder:
 
                 # Create custom port summary table with specific column widths
                 # Port Count: 15%, Speed: 15%, Port Numbers: 70%
-                page_width = A4[0] - 1.0 * inch
+                page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
                 col_widths = [
                     page_width * 0.15,  # Port Count (matches Speed column)
                     page_width * 0.15,  # Speed (reduced by 50%)
@@ -4589,6 +5012,503 @@ class VastReportBuilder:
             )
 
         return content
+
+    # ------------------------------------------------------------------
+    # Health Check & Post-Deployment Validation sections
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _fixup_health_results(
+        health_data: Dict[str, Any],
+        processed_data: Optional[Dict[str, Any]],
+    ) -> None:
+        """Correct stale health-check results from older JSON exports.
+
+        Applies render-time patches so reports regenerated from pre-fix JSON
+        files reflect current check logic without requiring a new live run.
+        """
+        results = health_data.get("results")
+        if not results:
+            return
+
+        summary = health_data.get("summary")
+
+        node_ssh = [r for r in results if r.get("category") == "node_ssh"]
+        if node_ssh:
+            kept = [r for r in results if r.get("category") != "node_ssh"]
+            health_data["results"] = kept
+            results = kept
+            if summary:
+                for r in node_ssh:
+                    bucket = r.get("status", "error")
+                    if bucket in summary:
+                        summary[bucket] = max(0, summary[bucket] - 1)
+                summary["total"] = sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))
+
+        cluster_summary = (processed_data or {}).get("cluster_summary", {})
+        mgmt_cnode = cluster_summary.get("mgmt_cnode", "")
+
+        hw = (processed_data or {}).get("hardware_inventory", {})
+        cnodes_list = hw.get("cnodes") or []
+        mgmt_names: set = set()
+        if mgmt_cnode:
+            mgmt_names.add(mgmt_cnode)
+        for cn in cnodes_list:
+            if cn.get("is_mgmt"):
+                mgmt_names.add(cn.get("name", ""))
+
+        for r in results:
+            name = r.get("check_name", "")
+            status = r.get("status", "")
+
+            if name == "CNode Status" and status == "fail" and mgmt_names:
+                msg = r.get("message", "")
+                inactive = r.get("details", {}).get("inactive", [])
+                only_mgmt = inactive and all(n in mgmt_names for n in inactive)
+                disabled = r.get("details", {}).get("disabled", [])
+                if only_mgmt and not disabled:
+                    total = r.get("details", {}).get("total", len(inactive))
+                    mgmt_label = inactive[0] if inactive else mgmt_cnode
+                    r["status"] = "pass"
+                    r["message"] = f"All {total} CNodes healthy (VMS on {mgmt_label})"
+                    if summary:
+                        summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                        summary["pass"] = summary.get("pass", 0) + 1
+
+            elif name == "Active Alarms" and status == "fail":
+                r["status"] = "warning"
+                if summary:
+                    summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                    summary["warning"] = summary.get("warning", 0) + 1
+
+            elif name == "Switches in VMS" and status == "warning":
+                msg = r.get("message", "")
+                if "No switches registered" in msg or "no switches" in msg.lower():
+                    r["status"] = "skipped"
+                    r["message"] = "No switches registered"
+                    if summary:
+                        summary["warning"] = max(0, summary.get("warning", 1) - 1)
+                        summary["skipped"] = summary.get("skipped", 0) + 1
+
+            elif name == "Monitoring Config":
+                r["status"] = "skipped"
+                r["message"] = "Check removed — API endpoints unavailable"
+                if summary and status != "skipped":
+                    old_bucket = status if status in ("pass", "fail", "warning", "error") else "error"
+                    summary[old_bucket] = max(0, summary.get(old_bucket, 1) - 1)
+                    summary["skipped"] = summary.get("skipped", 0) + 1
+
+            elif name == "Switch Config Backup":
+                r["check_name"] = "Switch Config Readability"
+
+            elif name == "VIP Pools" and status == "fail":
+                msg = r.get("message", "")
+                if "No VIP pools configured" in msg or "No enabled VIP pools" in msg:
+                    r["status"] = "warning"
+                    if summary:
+                        summary["fail"] = max(0, summary.get("fail", 1) - 1)
+                        summary["warning"] = summary.get("warning", 0) + 1
+
+    def _create_health_check_section(
+        self,
+        health_data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+        processed_data: Optional[Dict[str, Any]] = None,
+    ) -> List[Any]:
+        """Create the Cluster Health Check Results section.
+
+        Args:
+            health_data: Health check results dict with 'summary' and 'results' keys.
+            page_tracker: Optional page tracker for TOC page capture.
+            section_key: Section key for PageMarker registration.
+            processed_data: Full report data for render-time corrections on stale JSON.
+
+        Returns:
+            List of flowables for the section.
+        """
+        self._fixup_health_results(health_data, processed_data)
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content: List[Any] = []
+        content.append(Paragraph("Cluster Health Check Results", heading_style))
+        content.append(Spacer(1, 12))
+
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
+
+        content.append(
+            Paragraph(
+                "This section presents the results of automated cluster health checks "
+                "performed against the VAST Data cluster. Each check validates a specific "
+                "aspect of cluster health including connectivity, service status, and "
+                "configuration consistency. Results are summarised below with individual "
+                "check details following the summary table.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        # Colour helpers for status cells
+        status_colors = {
+            "pass": self.brand_compliance.colors.SUCCESS_GREEN,
+            "fail": self.brand_compliance.colors.ERROR_RED,
+            "warning": self.brand_compliance.colors.WARNING_ORANGE,
+            "skipped": self.brand_compliance.colors.MEDIUM_GRAY,
+            "error": self.brand_compliance.colors.MEDIUM_GRAY,
+        }
+
+        # --- Summary table ---------------------------------------------------
+        summary = health_data.get("summary", {})
+        if summary:
+            summary_headers = ["Pass", "Fail", "Warning", "Skipped", "Error", "Total"]
+            summary_row = [
+                self._safe_table_value(summary.get("pass", 0)),
+                self._safe_table_value(summary.get("fail", 0)),
+                self._safe_table_value(summary.get("warning", 0)),
+                self._safe_table_value(summary.get("skipped", 0)),
+                self._safe_table_value(summary.get("error", 0)),
+                self._safe_table_value(summary.get("total", 0)),
+            ]
+
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+            col_width = page_width / len(summary_headers)
+            summary_table = Table(
+                [summary_headers, summary_row],
+                colWidths=[col_width] * len(summary_headers),
+                repeatRows=1,
+            )
+
+            cell_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
+                ("FONTSIZE", (0, 0), (-1, -1), self.config.font_size),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 8),
+                # Per-column colour coding for data row
+                ("BACKGROUND", (0, 1), (0, 1), status_colors["pass"]),
+                ("TEXTCOLOR", (0, 1), (0, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (1, 1), (1, 1), status_colors["fail"]),
+                ("TEXTCOLOR", (1, 1), (1, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (2, 1), (2, 1), status_colors["warning"]),
+                ("TEXTCOLOR", (2, 1), (2, 1), self.brand_compliance.colors.DARK_GRAY),
+                ("BACKGROUND", (3, 1), (3, 1), status_colors["skipped"]),
+                ("TEXTCOLOR", (3, 1), (3, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (4, 1), (4, 1), status_colors["error"]),
+                ("TEXTCOLOR", (4, 1), (4, 1), self.brand_compliance.colors.PURE_WHITE),
+                ("BACKGROUND", (5, 1), (5, 1), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (5, 1), (5, 1), self.brand_compliance.colors.PURE_WHITE),
+            ]
+
+            summary_table.setStyle(TableStyle(cell_styles))
+            content.append(Paragraph("<b>Health Check Summary</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(summary_table)
+            content.append(Spacer(1, 16))
+
+        # --- Detailed results table -------------------------------------------
+        results = health_data.get("results", [])
+        if results:
+            detail_headers = ["Check Name", "Category", "Status", "Message"]
+            detail_data = [detail_headers]
+
+            cell_font = self._font("regular")
+            cell_size = self.config.font_size - 1
+            cell_style = ParagraphStyle(
+                "HealthCell",
+                parent=styles["Normal"],
+                fontName=cell_font,
+                fontSize=cell_size,
+                leading=cell_size + 2,
+                alignment=1,
+                wordWrap="CJK",
+            )
+            msg_style = ParagraphStyle(
+                "HealthMsg",
+                parent=cell_style,
+                alignment=0,
+            )
+
+            for r in results:
+                detail_data.append(
+                    [
+                        Paragraph(self._safe_table_value(r.get("check_name")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("category")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("status")), cell_style),
+                        Paragraph(self._safe_table_value(r.get("message")), msg_style),
+                    ]
+                )
+
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+            col_widths = [
+                page_width * 0.22,  # Check Name
+                page_width * 0.12,  # Category
+                page_width * 0.10,  # Status
+                page_width * 0.56,  # Message
+            ]
+
+            detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
+
+            detail_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
+                ("FONTSIZE", (0, 0), (-1, 0), self.config.font_size - 1),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                ),
+            ]
+
+            # Per-row status colour in the Status column (index 2)
+            for row_idx, r in enumerate(results, start=1):
+                status_key = str(r.get("status", "")).lower()
+                bg = status_colors.get(status_key, self.brand_compliance.colors.ALTERNATING_ROW)
+                fg = (
+                    self.brand_compliance.colors.DARK_GRAY
+                    if status_key == "warning"
+                    else self.brand_compliance.colors.PURE_WHITE
+                )
+                detail_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
+                detail_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), fg))
+
+            detail_table.setStyle(TableStyle(detail_styles))
+            content.append(Paragraph("<b>Detailed Check Results</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(detail_table)
+            content.append(Spacer(1, 12))
+        elif not summary:
+            content.append(
+                Paragraph(
+                    "No health check data available.",
+                    ParagraphStyle("Normal", parent=styles["Normal"], fontSize=self.config.font_size),
+                )
+            )
+
+        return content
+
+    def _create_post_deployment_activities_section(
+        self,
+        activities_data: Dict[str, Any],
+        page_tracker: Optional[Dict[str, int]] = None,
+        section_key: Optional[str] = None,
+        processed_data: Optional[Dict[str, Any]] = None,
+    ) -> List[Any]:
+        """Create the Post Deployment Activities section with next-steps checklist.
+
+        Args:
+            activities_data: Dict with 'next_steps' list of {item, description, status} dicts.
+            page_tracker: Optional page tracker for TOC page capture.
+            section_key: Section key for PageMarker registration.
+            processed_data: Full report data for render-time status resolution fallback.
+
+        Returns:
+            List of flowables for the section.
+        """
+        styles = getSampleStyleSheet()
+
+        heading_style = ParagraphStyle(
+            "Section_Heading",
+            parent=styles["Heading1"],
+            fontSize=self.config.heading_font_size,
+            spaceAfter=12,
+        )
+
+        overview_style = ParagraphStyle(
+            "Section_Overview",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            spaceAfter=12,
+            spaceBefore=8,
+            leftIndent=12,
+            rightIndent=12,
+        )
+
+        content: List[Any] = []
+        content.append(Paragraph("Post Deployment Activities", heading_style))
+        content.append(Spacer(1, 12))
+
+        if page_tracker is not None and section_key:
+            content.append(PageMarker(section_key, page_tracker))
+
+        content.append(
+            Paragraph(
+                "This section outlines the recommended next steps to complete after "
+                "cluster installation and validation. Each item should be addressed "
+                "before handing the cluster over to the customer for production use. "
+                "Refer to the VAST Installation Template for detailed procedures.",
+                overview_style,
+            )
+        )
+        content.append(Spacer(1, 8))
+
+        next_steps = activities_data.get("next_steps", [])
+
+        if next_steps and not next_steps[0].get("status"):
+            self._resolve_post_deploy_status_at_render(next_steps, processed_data or {})
+
+        if next_steps:
+            cell_font_size = self.config.font_size - 1
+
+            cell_style = ParagraphStyle(
+                "ChecklistCell",
+                parent=styles["Normal"],
+                fontSize=cell_font_size,
+                leading=cell_font_size + 2,
+                wordWrap="CJK",
+            )
+            cell_style_bold = ParagraphStyle(
+                "ChecklistCellBold",
+                parent=cell_style,
+                fontName=self._font("bold"),
+            )
+            cell_style_center = ParagraphStyle(
+                "ChecklistCellCenter",
+                parent=cell_style,
+                alignment=1,
+            )
+            header_style_cell = ParagraphStyle(
+                "ChecklistHeader",
+                parent=cell_style,
+                fontName=self._font("bold"),
+                textColor=self.brand_compliance.colors.PURE_WHITE,
+            )
+
+            checklist_data = [
+                [
+                    Paragraph("Item", header_style_cell),
+                    Paragraph("Description", header_style_cell),
+                    Paragraph("Status", header_style_cell),
+                ]
+            ]
+
+            status_colors = {
+                "Completed": self.brand_compliance.colors.SUCCESS_GREEN,
+                "Optional": self.brand_compliance.colors.ACCENT_BLUE,
+                "Pending": self.brand_compliance.colors.WARNING_ORANGE,
+            }
+
+            for step in next_steps:
+                step_status = step.get("status", "Pending")
+                checklist_data.append(
+                    [
+                        Paragraph(self._safe_table_value(step.get("item")), cell_style_bold),
+                        Paragraph(self._safe_table_value(step.get("description")), cell_style),
+                        Paragraph(step_status, cell_style_center),
+                    ]
+                )
+
+            page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+            col_widths = [page_width * 0.25, page_width * 0.55, page_width * 0.20]
+
+            checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)
+
+            checklist_styles = [
+                ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("GRID", (0, 0), (-1, -1), 1, self.brand_compliance.colors.BACKGROUND_DARK),
+                ("PADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 1), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                ),
+            ]
+
+            for row_idx, step in enumerate(next_steps, start=1):
+                step_status = step.get("status", "Pending")
+                bg = status_colors.get(step_status, self.brand_compliance.colors.WARNING_ORANGE)
+                text_color = (
+                    self.brand_compliance.colors.PURE_WHITE
+                    if step_status in ("Completed", "Optional")
+                    else self.brand_compliance.colors.DARK_GRAY
+                )
+                checklist_styles.append(("BACKGROUND", (2, row_idx), (2, row_idx), bg))
+                checklist_styles.append(("TEXTCOLOR", (2, row_idx), (2, row_idx), text_color))
+
+            checklist_table.setStyle(TableStyle(checklist_styles))
+            content.append(Paragraph("<b>Next Steps — Get Started Using VAST Data</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            content.append(checklist_table)
+            content.append(Spacer(1, 12))
+        else:
+            content.append(
+                Paragraph(
+                    "No post-deployment activity items available.",
+                    ParagraphStyle("Normal", parent=styles["Normal"], fontSize=self.config.font_size),
+                )
+            )
+
+        return content
+
+    @staticmethod
+    def _resolve_post_deploy_status_at_render(next_steps: List[Dict[str, Any]], processed_data: Dict[str, Any]) -> None:
+        """Render-time fallback: resolve post-deploy status from health check data in the report JSON."""
+        hc_results: Dict[str, str] = {}
+        hc_section = processed_data.get("sections", {}).get("health_check", {})
+        for r in hc_section.get("data", {}).get("results", []):
+            hc_results[r.get("check_name", "")] = r.get("status", "")
+
+        cluster = processed_data.get("cluster_summary", {})
+        license_val = str(cluster.get("license", "") or "").strip().lower()
+
+        auto_checks: Dict[str, bool] = {
+            "Configure Call Home w/ Cloud Integration": hc_results.get("Call Home Status") == "pass",
+            "Create VIP": hc_results.get("VIP Pools") == "pass",
+            "Activate License": (
+                hc_results.get("License") == "pass"
+                or (bool(license_val) and license_val not in ("", "none", "unknown"))
+            ),
+        }
+        manual_items = {
+            "Test Fail-over Behavior",
+            "Confirm VIP Movement and ARP Updates",
+            "Change Default Passwords",
+        }
+
+        for step in next_steps:
+            item = step.get("item", "")
+            if item in manual_items:
+                step["status"] = "Optional"
+            elif item in auto_checks:
+                step["status"] = "Completed" if auto_checks[item] else "Pending"
+            else:
+                step["status"] = "Pending"
 
     def _create_data_protection_configuration(self, data: Dict[str, Any]) -> List[Any]:
         """Create data protection configuration section."""

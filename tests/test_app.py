@@ -57,9 +57,32 @@ class TestDashboardRoute(unittest.TestCase):
 
     def test_dashboard_contains_nav_links(self):
         resp = self.client.get("/")
-        self.assertIn(b"Generate", resp.data)
-        self.assertIn(b"Reports", resp.data)
-        self.assertIn(b"Configuration", resp.data)
+        self.assertIn(b"Dashboard", resp.data)
+        self.assertIn(b"Reporter", resp.data)
+        self.assertIn(b"Results", resp.data)
+        self.assertIn(b"Library", resp.data)
+        self.assertIn(b"Docs", resp.data)
+
+    def test_dashboard_quick_start_content(self):
+        resp = self.client.get("/")
+        self.assertIn(b"Quick Start", resp.data)
+        self.assertIn(b"Prerequisites", resp.data)
+        self.assertIn(b"Getting Started", resp.data)
+        self.assertIn(b"Connection Settings", resp.data)
+        self.assertIn(b"Run Report", resp.data)
+        self.assertIn(b"Review", resp.data)
+
+    def test_dashboard_status_api(self):
+        resp = self.client.get("/api/dashboard/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertIn("job_status", data)
+        self.assertIn("job_active", data)
+        self.assertIn("tools_cached", data)
+        self.assertIn("tools_total", data)
+        self.assertIn("profiles_count", data)
+        self.assertIn("total_reports", data)
+        self.assertFalse(data["job_active"])
 
 
 class TestGenerateRoutes(unittest.TestCase):
@@ -118,7 +141,7 @@ class TestGenerateRoutes(unittest.TestCase):
 class TestConfigRoutes(unittest.TestCase):
 
     def setUp(self):
-        self.app = create_flask_app()
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
         self.client = self.app.test_client()
         self.tmpdir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.tmpdir, "config.yaml")
@@ -401,9 +424,11 @@ class TestApiDiscover(unittest.TestCase):
         self.assertIn("error", body)
         self.assertIn("Cluster IP", body["error"])
 
+    @patch("socket.create_connection")
     @patch("rack_diagram.RackDiagram")
     @patch("api_handler.create_vast_api_handler")
-    def test_api_discover_auth_failure_returns_401(self, mock_create_handler, mock_rack_diagram):
+    def test_api_discover_auth_failure_returns_401(self, mock_create_handler, mock_rack_diagram, mock_socket):
+        mock_socket.return_value = MagicMock()
         mock_handler = MagicMock()
         mock_handler.authenticate.return_value = False
         mock_create_handler.return_value = mock_handler
@@ -420,9 +445,11 @@ class TestApiDiscover(unittest.TestCase):
         mock_handler.get_racks.assert_not_called()
         mock_handler.close.assert_not_called()
 
+    @patch("socket.create_connection")
     @patch("rack_diagram.RackDiagram")
     @patch("api_handler.create_vast_api_handler")
-    def test_api_discover_success_returns_racks_and_switches(self, mock_create_handler, mock_rack_diagram):
+    def test_api_discover_success_returns_racks_and_switches(self, mock_create_handler, mock_rack_diagram, mock_socket):
+        mock_socket.return_value = MagicMock()
         mock_handler = MagicMock()
         mock_handler.authenticate.return_value = True
         mock_handler.get_racks.return_value = [
@@ -606,6 +633,44 @@ class TestSSEStream(unittest.TestCase):
         self.assertTrue(resp.content_type.startswith("text/event-stream"))
 
 
+class TestHealthRoutes(unittest.TestCase):
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    def test_health_page_loads(self):
+        resp = self.client.get("/health")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_health_run_missing_ip(self):
+        resp = self.client.post("/health/run", data={"cluster_ip": ""})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("message", body)
+
+    def test_health_run_already_running(self):
+        self.app.config["HEALTH_JOB_RUNNING"] = True
+        resp = self.client.post("/health/run", data={"cluster_ip": "10.0.0.1"})
+        self.assertEqual(resp.status_code, 409)
+
+    def test_health_status_no_job(self):
+        resp = self.client.get("/health/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["running"])
+
+    def test_health_cancel_no_job(self):
+        resp = self.client.post("/health/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "no_job")
+
+    def test_health_results_no_data(self):
+        resp = self.client.get("/health/results")
+        self.assertEqual(resp.status_code, 404)
+
+
 class TestHelperFunctions(unittest.TestCase):
 
     def test_list_reports_empty_dir(self):
@@ -654,6 +719,298 @@ class TestHelperFunctions(unittest.TestCase):
             self.assertIn("updated: true", result)
         finally:
             os.unlink(path)
+
+
+class TestProfileMergeSave(unittest.TestCase):
+    """Tests for profile merge-save behavior (POST /profiles)."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["PROFILES_PATH"] = os.path.join(self.tmpdir, "profiles.json")
+
+    def tearDown(self):
+        import shutil
+
+        if os.path.exists(self.tmpdir):
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_save_preserves_existing_fields(self, mock_load, mock_save):
+        mock_load.return_value = {
+            "my-cluster": {
+                "cluster_ip": "10.0.0.1",
+                "auth_method": "password",
+                "username": "admin",
+                "password": "secret",
+                "token": "",
+                "output_dir": "/tmp/reports",
+                "enable_port_mapping": True,
+                "switch_user": "cumulus",
+                "switch_password": "sw_pass",
+                "node_user": "vastdata",
+                "node_password": "nd_pass",
+                "vip_pool": "main",
+                "switch_placement": "auto",
+                "use_default_creds": True,
+            }
+        }
+        resp = self.client.post(
+            "/profiles",
+            json={"name": "my-cluster", "cluster_ip": "10.0.0.99"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_save.assert_called_once()
+        profile = mock_save.call_args[0][1]["my-cluster"]
+        self.assertEqual(profile["cluster_ip"], "10.0.0.99")
+        self.assertEqual(profile["username"], "admin")
+        self.assertEqual(profile["password"], "secret")
+        self.assertEqual(profile["switch_user"], "cumulus")
+        self.assertEqual(profile["switch_password"], "sw_pass")
+        self.assertTrue(profile["enable_port_mapping"])
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_save_normalizes_api_token_to_token(self, mock_load, mock_save):
+        mock_load.return_value = {}
+        resp = self.client.post(
+            "/profiles",
+            json={"name": "tok-cluster", "cluster_ip": "10.0.0.5", "api_token": "my_api_token_123"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_save.assert_called_once()
+        profile = mock_save.call_args[0][1]["tok-cluster"]
+        self.assertEqual(profile["token"], "my_api_token_123")
+        self.assertNotIn("api_token", profile)
+
+    @patch("app._save_profiles")
+    @patch("app._load_profiles")
+    def test_save_applies_defaults_for_new_profile(self, mock_load, mock_save):
+        mock_load.return_value = {}
+        resp = self.client.post(
+            "/profiles",
+            json={"name": "new-cluster", "cluster_ip": "10.0.0.10"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        mock_save.assert_called_once()
+        profile = mock_save.call_args[0][1]["new-cluster"]
+        self.assertEqual(profile["cluster_ip"], "10.0.0.10")
+        self.assertEqual(profile["auth_method"], "password")
+        self.assertEqual(profile["switch_user"], "cumulus")
+        self.assertEqual(profile["node_user"], "vastdata")
+        self.assertEqual(profile["vip_pool"], "main")
+        self.assertTrue(profile["use_default_creds"])
+
+    def test_save_without_name_returns_error(self):
+        resp = self.client.post(
+            "/profiles",
+            json={"cluster_ip": "10.0.0.1"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        self.assertIn("name", body["error"].lower())
+
+
+class TestAdvancedOpsRoutes(unittest.TestCase):
+    """Tests for Advanced Operations endpoints (/advanced-ops/*)."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    def test_advanced_ops_page_requires_dev_mode(self):
+        app = create_flask_app()
+        client = app.test_client()
+        resp = client.get("/advanced-ops")
+        self.assertEqual(resp.status_code, 403)
+        body = json.loads(resp.data)
+        self.assertIn("Developer Mode required", body["error"])
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_workflows_list_returns_json(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr.get_workflows.return_value = [
+            {"id": "vnetmap", "name": "VAST vnetmap", "description": "Test", "step_count": 7, "enabled": True}
+        ]
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.get("/advanced-ops/workflows")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("workflows", body)
+        self.assertEqual(len(body["workflows"]), 1)
+        self.assertEqual(body["workflows"][0]["id"], "vnetmap")
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_start_workflow_missing_id_returns_error(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr.is_running.return_value = False
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.post("/advanced-ops/start", data={})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        self.assertIn("workflow_id", body["error"])
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_run_step_missing_step_id_returns_error(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.post("/advanced-ops/run-step", data={})
+        self.assertEqual(resp.status_code, 400)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+        self.assertIn("step_id", body["error"])
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_cancel_when_not_running(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr.cancel.return_value = False
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.post("/advanced-ops/cancel")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "no_workflow")
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_reset_clears_state(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.post("/advanced-ops/reset")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["status"], "reset")
+        mock_mgr.reset.assert_called_once()
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_status_returns_json(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr.get_current_state.return_value = None
+        mock_mgr.is_running.return_value = False
+        mock_get_mgr.return_value = mock_mgr
+        resp = self.client.get("/advanced-ops/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("state", body)
+        self.assertIn("running", body)
+        self.assertFalse(body["running"])
+
+
+class TestAdvancedOpsToolRoutes(unittest.TestCase):
+    """Tests for tool management and bundle routes under /advanced-ops/."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    @patch("tool_manager.ToolManager")
+    def test_list_tools_returns_json(self, mock_tm_cls):
+        mock_tm = MagicMock()
+        mock_tm.get_all_tools_info.return_value = [{"name": "vnetmap.py", "cached": False}]
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.get("/advanced-ops/tools")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("tools", body)
+        self.assertEqual(len(body["tools"]), 1)
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    @patch("tool_manager.ToolManager")
+    def test_update_tools_triggers_download(self, mock_tm_cls, mock_get_mgr):
+        mock_get_mgr.return_value = MagicMock()
+        mock_tm = MagicMock()
+        mock_tm.update_all_tools.return_value = {"updated": 3, "failed": 0}
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.post("/advanced-ops/tools/update")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["updated"], 3)
+        mock_tm.update_all_tools.assert_called_once()
+
+    @patch("result_bundler.get_result_bundler")
+    def test_bundle_list_empty(self, mock_get_bundler):
+        mock_bundler = MagicMock()
+        mock_bundler.list_bundles.return_value = []
+        mock_get_bundler.return_value = mock_bundler
+        resp = self.client.get("/advanced-ops/bundles")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("bundles", body)
+        self.assertEqual(body["bundles"], [])
+
+    def test_bundle_download_not_found(self):
+        resp = self.client.get("/advanced-ops/bundle/download/nonexistent.zip")
+        self.assertEqual(resp.status_code, 404)
+        body = json.loads(resp.data)
+        self.assertIn("error", body)
+
+
+class TestStateSnapshotRoute(unittest.TestCase):
+    """Tests for /advanced-ops/state-snapshot endpoint."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    def test_state_snapshot_returns_json(self, mock_get_mgr):
+        mock_mgr = MagicMock()
+        mock_mgr._output_buffer = []
+        mock_mgr.is_running.return_value = False
+        mock_mgr.current_workflow_id = None
+        mock_mgr.get_state.return_value = None
+        mock_get_mgr.return_value = mock_mgr
+        self.app.config["ONESHOT_RUNNING"] = False
+        self.app.config["ONESHOT_RUNNER"] = None
+        self.app.config["ONESHOT_RESULT"] = None
+        resp = self.client.get("/advanced-ops/state-snapshot")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertIn("oneshot", body)
+        self.assertIn("workflow", body)
+        self.assertIn("output_count", body)
+        self.assertFalse(body["oneshot"]["running"])
+        self.assertFalse(body["workflow"]["running"])
+
+
+class TestLogCapacityRoutes(unittest.TestCase):
+    """Tests for /advanced-ops/logs/* endpoints."""
+
+    def setUp(self):
+        self.app = create_flask_app(config={"DEVELOPER_MODE": True})
+        self.client = self.app.test_client()
+
+    @patch("utils.ops_log_manager.OpsLogManager")
+    def test_capacity_returns_stats(self, mock_cls):
+        mock_inst = MagicMock()
+        mock_inst.check_capacity.return_value = {
+            "total_bytes": 500,
+            "file_count": 2,
+            "max_bytes": 1073741824,
+            "over_limit": False,
+            "usage_percent": 0.0,
+        }
+        mock_cls.return_value = mock_inst
+        resp = self.client.get("/advanced-ops/logs/capacity")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["over_limit"])
+
+    @patch("utils.ops_log_manager.OpsLogManager")
+    def test_purge_returns_result(self, mock_cls):
+        mock_inst = MagicMock()
+        mock_inst.purge_oldest.return_value = {"purged": 1, "freed_bytes": 1024}
+        mock_cls.return_value = mock_inst
+        resp = self.client.post("/advanced-ops/logs/purge")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["purged"], 1)
 
 
 if __name__ == "__main__":

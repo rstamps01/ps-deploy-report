@@ -93,6 +93,7 @@ def build_endpoint_catalog(cluster_ip: str, session: requests.Session, version: 
         "dns", "ntps", "vippools", "tenants", "views", "viewpolicies",
         "activedirectory", "ldap", "nis", "snapprograms", "protectionpolicies",
         "snmp", "syslog", "alerts", "racks", "apitokens",
+        "alarms", "events", "eventdefinitions", "monitors", "snapshots", "quotas",
     ]
 
     v1_endpoints = ["switches", "ports"]

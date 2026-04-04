@@ -1,0 +1,1397 @@
+{% extends "base.html" %}
+{% block title %}Advanced Operations - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="28" height="28" style="margin-right:8px;vertical-align:middle;">
+            <path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/>
+        </svg>
+        Advanced Operations
+        <span class="badge badge-dev">Developer Mode</span>
+    </h1>
+    <p class="page-subtitle">Run complex script-based validations with step-by-step execution</p>
+</div>
+
+<!-- Connection Settings Card -->
+<div class="card" id="connectionSettingsCard">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Connection Settings</h3>
+        <button type="button" class="btn-icon-collapse collapsed" onclick="toggleConnectionSettings()" id="btnCollapseConn" title="Expand settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+    </div>
+    <div class="card-body">
+        <form id="credentialsForm">
+            <div class="form-group" style="margin-bottom: 12px;">
+                <label for="profileSelect">Saved Profiles</label>
+                <div class="profile-controls">
+                    <select id="profileSelect" onchange="loadProfile()">
+                        <option value="">-- Select a profile --</option>
+                    </select>
+                    <button type="button" class="btn-icon-add" onclick="createProfile()" title="Create cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                </div>
+            </div>
+
+            <!-- Collapsible section: credential fields + bottom toolbar (collapsed on initial render) -->
+            <div id="connSettingsDetails" class="collapsed-section">
+                <div id="credentialFields" class="credential-fields">
+                    <div class="form-row creds-row-3">
+                        <div class="form-group">
+                            <label for="clusterIp">Cluster IP / VMS</label>
+                            <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+                        </div>
+                        <div class="form-group">
+                            <label for="username">API Username</label>
+                            <input type="text" id="username" name="username" class="form-control" placeholder="admin">
+                        </div>
+                        <div class="form-group">
+                            <label for="password">API Password</label>
+                            <input type="password" id="password" name="password" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-row creds-row-5">
+                        <div class="form-group">
+                            <label for="nodeUser">Node SSH User</label>
+                            <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
+                        </div>
+                        <div class="form-group">
+                            <label for="nodePassword">Node SSH Password</label>
+                            <input type="password" id="nodePassword" name="node_password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchUser">Switch SSH User</label>
+                            <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchPassword">Switch SSH Password</label>
+                            <input type="password" id="switchPassword" name="switch_password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="vipPool">VIP Pool Name <small style="color: #888;">(vperfsanity)</small></label>
+                            <input type="text" id="vipPool" name="vip_pool" class="form-control" value="main" placeholder="e.g., main, default">
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" {{ 'checked' if cfg_proxy_jump else '' }} style="width:auto;">
+                                <span>SSH Proxy Mode</span>
+                                <span class="info-icon" title="Enable when switches are not directly reachable from this machine (e.g., field deployments via tech port). SSH to switches will tunnel through the CNode using node credentials.">&#9432;</span>
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-top:8px;">
+                            <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                <input type="checkbox" name="tech_port" id="techPortToggle" {{ 'checked' if cfg_tech_port else '' }} style="width:auto;">
+                                <span>Tech Port Mode</span>
+                                <span class="info-icon" title="Connect via any CBox Tech Port (192.168.2.2). The app auto-discovers VMS and tunnels all API calls through the SSH connection. Requires Node SSH credentials.">&#9432;</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bottom toolbar: default-creds left, profile actions right -->
+                <div class="conn-settings-toolbar">
+                    <div class="conn-settings-toolbar-left">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="default-creds-heading">Autofill Default Passwords — Global Setting</span>
+                            <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH: cumulus / Vastdata1!&#10;Switch SSH (alt): admin / admin">&#9432;</span>
+                        </div>
+                        <div class="default-creds-widget">
+                            <span class="default-creds-label">Disable</span>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="default-creds-label">Enable</span>
+                        </div>
+                    </div>
+                    <div class="conn-settings-toolbar-right">
+                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Workflow Selection Card -->
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Select Operation</h3>
+        <div class="mode-toggle-widget">
+            <span class="mode-label" id="labelStepByStep">Step-by-Step</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="modeToggle" onchange="toggleOneShotMode()">
+                <span class="toggle-slider"></span>
+            </label>
+            <span class="mode-label" id="labelOneShot">One-Shot</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Step-by-Step Mode (default) -->
+        <div id="stepByStepPanel">
+            <div class="form-group">
+                <label for="operationSelect">Operation:</label>
+                <select id="operationSelect" class="form-control" style="max-width: 400px;">
+                    <option value="" disabled selected>Select an operation...</option>
+                </select>
+            </div>
+
+            <div id="workflowSteps" class="workflow-steps" style="display: none;"></div>
+
+            <div class="btn-group" style="margin-top: 20px;">
+                <button type="button" class="btn btn-primary" id="btnStart" disabled>Start Workflow</button>
+                <button type="button" class="btn btn-primary" id="btnRunAll" disabled style="display:none;">Run All Steps</button>
+                <button type="button" class="btn btn-danger" id="btnCancel" disabled style="display:none;">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="btnReset" disabled>Reset</button>
+                <button type="button" class="btn btn-secondary" id="btnDownload" disabled>Download Results</button>
+                <button type="button" class="btn btn-secondary" id="btnUpdateTools" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Update Tools
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnToolsInfo" onclick="showToolsStatus()" title="View deployment tools status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
+            </div>
+            <!-- Tools Status Panel -->
+            <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
+                </div>
+                <div id="toolsStatusContent" style="font-size: 12px;">
+                    <span style="color: #888;">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- One-Shot Mode (hidden by default) -->
+        <div id="oneShotPanel" style="display: none;">
+            <p class="text-muted" style="margin-bottom: 12px;">Select operations to run sequentially.</p>
+
+            <div class="oneshot-checklist" id="oneShotChecklist">
+                <div id="oneShotOpsContainer"></div>
+                <label class="oneshot-item">
+                    <input type="checkbox" id="oneShotIncludeReport">
+                    <span class="oneshot-item-name">Generate As-Built Report</span>
+                    <span class="oneshot-item-badge badge-optional">Optional</span>
+                </label>
+                <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
+                    <input type="checkbox" id="oneShotIncludeHealth" checked>
+                    <span class="oneshot-item-name">Include Health Checks (Tier 1 &amp; 3)</span>
+                    <span class="oneshot-item-badge badge-health">Recommended</span>
+                </label>
+            </div>
+
+            <!-- Pre-validation Results Panel -->
+            <div id="oneShotValidationPanel" style="display: none; margin-top: 16px;">
+                <div class="validation-header">Pre-Validation Results</div>
+                <div id="oneShotValidationResults"></div>
+                <div id="oneShotValidationActions" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,193,7,0.1); border: 1px solid #ffc107; border-radius: 6px;">
+                    <span style="color: #ffc107;">Warnings detected.</span>
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button type="button" class="btn btn-warning btn-sm" id="btnProceedAnyway" onclick="proceedOneShot()">Proceed Anyway</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnStopFix" onclick="stopAndFix()">Stop &amp; Fix</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- One-Shot Progress Tracking -->
+            <div id="oneShotProgress" style="display: none; margin-top: 16px;">
+                <div class="progress-phases" id="oneShotPhases">
+                    <span class="phase-item" data-phase="operations">Operations</span>
+                    <span class="phase-arrow">&rarr;</span>
+                    <span class="phase-item" data-phase="report">Report</span>
+                    <span class="phase-arrow">&rarr;</span>
+                    <span class="phase-item" data-phase="bundling">Bundling</span>
+                </div>
+                <div class="progress-detail" id="oneShotProgressDetail"></div>
+            </div>
+
+            <div class="btn-group" style="margin-top: 20px;">
+                <button type="button" class="btn btn-secondary" id="btnOneShotValidate" onclick="runOneShotValidation()">Run Pre-Validation</button>
+                <button type="button" class="btn btn-primary" id="btnOneShotStart" disabled onclick="startOneShot()">Start One-Shot</button>
+                <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
+                <button type="button" class="btn btn-secondary" id="btnOneShotDownload" style="display: none;" onclick="downloadResults()">Download Bundle</button>
+                <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                    Update Tools
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Output Results Pane -->
+<div class="output-section">
+    <div class="output-header">
+        <span class="output-title">OUTPUT RESULTS</span>
+        <div class="log-level-selector">
+            <button class="log-level-btn active" data-tier="status" onclick="setLogTier('status')">Status</button>
+            <button class="log-level-btn" data-tier="live" onclick="setLogTier('live')">Live</button>
+            <button class="log-level-btn" data-tier="debug" onclick="setLogTier('debug')">Debug</button>
+        </div>
+        <div class="output-menu">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnOutputMenu">Menu &#x25BE;</button>
+            <div class="output-dropdown" id="outputDropdown" style="display: none;">
+                <a href="#" id="menuCopy">Copy to Clipboard</a>
+                <a href="#" id="menuExpand">Expand / Minimize</a>
+                <a href="#" id="menuAutoScroll">Toggle Auto-scroll</a>
+                <div class="dropdown-divider"></div>
+                <a href="#" id="menuClear" class="text-danger">Clear Output</a>
+            </div>
+        </div>
+    </div>
+    <div class="output-pane" id="outputPane">
+        <div class="output-placeholder">
+            <p>Output will appear here when you run operations.</p>
+            <p class="text-muted">Results persist when navigating to other pages.</p>
+        </div>
+    </div>
+</div>
+
+<style>
+.badge-dev { background: #ff9800; color: #000; font-size: 11px; padding: 3px 8px; border-radius: 4px; margin-left: 10px; }
+
+/* --- Connection Settings bottom toolbar --- */
+.conn-settings-toolbar { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+.conn-settings-toolbar-left { display: flex; flex-direction: column; gap: 4px; }
+.conn-settings-toolbar-right { display: flex; align-items: center; gap: 6px; }
+.default-creds-heading { font-size: 0.7rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
+.default-creds-widget { display: flex; align-items: center; gap: 6px; }
+.default-creds-label { font-size: 0.8rem; font-weight: 500; color: var(--text-secondary); line-height: 1; }
+.btn-icon-collapse { background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-secondary); transition: color 0.15s, transform 0.2s; vertical-align: middle; line-height: 0; }
+.btn-icon-collapse:hover { color: var(--text-primary); }
+.btn-icon-collapse svg { width: 20px; height: 20px; }
+.btn-icon-collapse.collapsed { transform: rotate(180deg); }
+#connSettingsDetails.collapsed-section { display: none; }
+
+/* --- Credential fields (collapsible) --- */
+.credential-fields { padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.creds-row-3 .form-group { flex: 1 1 0; min-width: 0; }
+.creds-row-5 .form-group { flex: 1 1 0; min-width: 0; }
+
+/* --- Workflow & steps --- */
+.workflow-steps { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); }
+.workflow-step { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+.workflow-step:last-child { border-bottom: none; }
+.step-number { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-secondary); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; flex-shrink: 0; }
+.step-name { flex: 1; }
+.step-desc { color: var(--text-secondary); font-size: 12px; }
+.step-status { margin-left: 12px; padding: 4px 12px; border-radius: 4px; font-size: 12px; min-width: 80px; text-align: center; }
+.step-status.pending { background: var(--bg-secondary); color: var(--text-secondary); }
+.step-status.running { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.step-status.done { background: #4caf50; color: white; }
+.step-status.error { background: #f44336; color: white; }
+.step-status.skipped { background: #9e9e9e; color: white; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.step-run-btn { margin-left: 8px; }
+
+/* --- Output pane --- */
+.output-section { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; }
+.output-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.output-title { font-weight: bold; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.output-menu { position: relative; }
+.output-dropdown { position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; }
+.output-dropdown a { display: block; padding: 8px 12px; color: var(--text-primary); text-decoration: none; }
+.output-dropdown a:hover { background: var(--bg-secondary); }
+.dropdown-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+.output-pane { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; padding: 12px; overflow-y: auto; overflow-x: auto; width: 100%; min-height: 450px; max-height: calc(100vh - 260px); box-sizing: border-box; transition: max-height 0.3s ease; }
+.output-pane.creds-expanded { max-height: calc(100vh - 640px); }
+.output-pane.expanded { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; width: 100vw; max-height: calc(100vh - 60px); border-radius: 0; z-index: 999; }
+.output-placeholder { color: var(--text-secondary); text-align: center; padding: 40px; }
+.output-line { margin: 2px 0; white-space: pre-wrap; }
+.output-line .timestamp { color: #888; margin-right: 8px; }
+.output-line.info { color: #e0e0e0; }
+.output-line.warn, .output-line.warning { color: #ff9800; }
+.output-line.error, .output-line.fail, .output-line.critical { color: #f44336; }
+.output-line.success { color: #4caf50; }
+.output-line[data-tier="debug"] { color: #777; font-style: italic; }
+.output-line[data-tier="live"] { color: #b0bec5; }
+.output-line.tier-hidden { display: none !important; }
+.log-level-selector { display: flex; gap: 0; margin: 0 12px; }
+.log-level-btn { background: transparent; color: #888; border: 1px solid #444; padding: 3px 12px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+.log-level-btn:first-child { border-radius: 4px 0 0 4px; }
+.log-level-btn:last-child { border-radius: 0 4px 4px 0; }
+.log-level-btn:not(:first-child) { border-left: none; }
+.log-level-btn.active { background: var(--accent, #1a6fb5); color: #fff; border-color: var(--accent, #1a6fb5); }
+.log-level-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: #ccc; }
+.text-danger { color: #ff5252 !important; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- Mode toggle --- */
+.mode-toggle-widget { display: flex; align-items: center; gap: 8px; }
+.mode-label { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+.mode-label.active { color: var(--text-primary); font-weight: 700; }
+
+/* --- One-Shot checklist --- */
+.oneshot-checklist { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); overflow: hidden; }
+.oneshot-item { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border-color); cursor: pointer; gap: 10px; margin: 0; }
+.oneshot-item:last-child { border-bottom: none; }
+.oneshot-item:hover { background: var(--bg-secondary); }
+.oneshot-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2196f3; flex-shrink: 0; }
+.oneshot-item-name { flex: 1; font-size: 14px; }
+.oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; }
+.badge-health { background: #2196f3; color: white; }
+.badge-optional { background: var(--bg-secondary); color: var(--text-secondary); }
+.oneshot-sub-item { padding-left: 44px; background: var(--bg-secondary); }
+.oneshot-sub-item.hidden { display: none; }
+
+/* --- Validation results --- */
+.validation-header { font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+.validation-check { display: flex; align-items: center; padding: 6px 0; gap: 8px; font-size: 13px; }
+.validation-icon { width: 20px; text-align: center; font-weight: bold; flex-shrink: 0; }
+.validation-icon.pass { color: #4caf50; }
+.validation-icon.warn { color: #ffc107; }
+.validation-icon.fail { color: #f44336; }
+.validation-icon.info { color: #2196f3; }
+
+/* --- Progress phases --- */
+.progress-phases { display: flex; align-items: center; gap: 8px; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; flex-wrap: wrap; }
+.phase-item { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); }
+.phase-item.active { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.phase-item.completed { background: #4caf50; color: white; }
+.phase-item.error { background: #f44336; color: white; }
+.phase-item.skipped { background: var(--bg-secondary); color: var(--text-secondary); opacity: 0.5; text-decoration: line-through; }
+.phase-arrow { color: var(--text-secondary); font-size: 14px; }
+.progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+</style>
+
+<script>
+var OUTPUT_STORAGE_KEY = 'advanced_ops_output';
+var UI_STATE_KEY = 'advanced_ops_ui_state';
+var LOG_TIER_KEY = 'advanced_ops_log_tier';
+var SYNC_CURSOR_KEY = 'advanced_ops_sync_cursor';
+var outputPane, pollInterval = null;
+var currentLogTier = 'status';
+
+var CFG_DEFAULTS = {{ cfg_defaults | default({}) | tojson }};
+
+// --- Default credentials ---
+var DEFAULT_CREDENTIALS = {
+    username: 'support',     password: '654321',
+    node_user: 'vastdata',   node_password: 'vastdata',
+    switch_user: 'cumulus',  switch_password: 'Vastdata1!'
+};
+var SWITCH_PASSWORD_MAP = {
+    'cumulus': 'Vastdata1!',
+    'admin': 'admin'
+};
+
+// --- Profile field mapping (profile key -> form element ID) ---
+var profileFieldMap = {
+    'cluster_ip': 'clusterIp',
+    'username': 'username',
+    'password': 'password',
+    'node_user': 'nodeUser',
+    'node_password': 'nodePassword',
+    'switch_user': 'switchUser',
+    'switch_password': 'switchPassword',
+    'vip_pool': 'vipPool'
+};
+
+// --- Connection Settings tile collapse / expand ---
+function toggleConnectionSettings() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    var isCollapsed = details.classList.toggle('collapsed-section');
+    btn.classList.toggle('collapsed', isCollapsed);
+    btn.title = isCollapsed ? 'Expand settings' : 'Collapse settings';
+    document.getElementById('outputPane').classList.toggle('creds-expanded', !isCollapsed);
+    saveUIState();
+}
+
+function expandCredentials() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.remove('collapsed-section');
+    btn.classList.remove('collapsed');
+    btn.title = 'Collapse settings';
+    document.getElementById('outputPane').classList.add('creds-expanded');
+}
+
+function collapseCredentials() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.add('collapsed-section');
+    btn.classList.add('collapsed');
+    btn.title = 'Expand settings';
+    document.getElementById('outputPane').classList.remove('creds-expanded');
+}
+
+function isCredentialsExpanded() {
+    return !document.getElementById('connSettingsDetails').classList.contains('collapsed-section');
+}
+
+// --- Default credentials toggle ---
+function toggleDefaultCredentials() {
+    var on = document.getElementById('useDefaultCreds').checked;
+    if (on) {
+        for (var key in DEFAULT_CREDENTIALS) {
+            var elId = profileFieldMap[key] || key;
+            var el = document.getElementById(elId);
+            if (el) el.value = DEFAULT_CREDENTIALS[key];
+        }
+    } else {
+        document.getElementById('username').value = '';
+        ['password', 'node_password', 'switch_password'].forEach(function(k) {
+            var el = document.getElementById(profileFieldMap[k] || k);
+            if (el) el.value = '';
+        });
+    }
+}
+
+// --- Log Tier ---
+var TIER_HIERARCHY = { status: ['status'], live: ['status', 'live'], debug: ['status', 'live', 'debug'] };
+
+function setLogTier(tier) {
+    currentLogTier = tier;
+    document.querySelectorAll('.log-level-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tier === tier); });
+    var visible = TIER_HIERARCHY[tier] || ['status'];
+    document.querySelectorAll('.output-line[data-tier]').forEach(function(el) {
+        el.classList.toggle('tier-hidden', visible.indexOf(el.dataset.tier) === -1);
+    });
+    try { localStorage.setItem(LOG_TIER_KEY, tier); } catch(e) {}
+    saveUIState();
+    if (outputPane && outputPane.autoScroll) outputPane.container.scrollTop = outputPane.container.scrollHeight;
+}
+
+function restoreLogTier() {
+    try { var t = localStorage.getItem(LOG_TIER_KEY); if (t && TIER_HIERARCHY[t]) { setLogTier(t); } } catch(e) {}
+}
+
+// --- UI State Persistence ---
+function saveUIState() {
+    try {
+        var state = {
+            mode: oneShotMode ? 'oneshot' : 'step-by-step',
+            selectedProfile: document.getElementById('profileSelect').value,
+            selectedWorkflow: document.getElementById('operationSelect').value,
+            useDefaultCreds: document.getElementById('useDefaultCreds').checked,
+            logTier: currentLogTier,
+            connSettingsCollapsed: document.getElementById('connSettingsDetails').classList.contains('collapsed-section')
+        };
+        var proxyJump = document.getElementById('proxyJumpToggle');
+        if (proxyJump) state.proxy_jump = proxyJump.checked;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort) state.tech_port = techPort.checked;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl) state.includeHealth = healthEl.checked;
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl) state.includeReport = reportEl.checked;
+        var checks = [];
+        document.querySelectorAll('.oneshot-op-checkbox:checked').forEach(function(cb) { checks.push(cb.value); });
+        if (checks.length > 0) state.oneShotChecklist = checks;
+        state.cfgDefaults = CFG_DEFAULTS;
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
+    } catch(e) {}
+}
+
+function restoreUIState() {
+    try {
+        var s = localStorage.getItem(UI_STATE_KEY);
+        if (!s) return null;
+        return JSON.parse(s);
+    } catch(e) { return null; }
+}
+
+async function applySavedUIState(saved) {
+    if (!saved) return;
+    if (saved.mode === 'oneshot' && !oneShotMode) {
+        document.getElementById('modeToggle').checked = true;
+        oneShotMode = true;
+        document.getElementById('stepByStepPanel').style.display = 'none';
+        document.getElementById('oneShotPanel').style.display = '';
+        document.getElementById('labelStepByStep').classList.toggle('active', false);
+        document.getElementById('labelOneShot').classList.toggle('active', true);
+        await populateOneShotChecklist();
+    } else if (saved.mode === 'step-by-step' && oneShotMode) {
+        document.getElementById('modeToggle').checked = false;
+        oneShotMode = false;
+        document.getElementById('stepByStepPanel').style.display = '';
+        document.getElementById('oneShotPanel').style.display = 'none';
+        document.getElementById('labelStepByStep').classList.toggle('active', true);
+        document.getElementById('labelOneShot').classList.toggle('active', false);
+    }
+    if (saved.selectedProfile) {
+        var sel = document.getElementById('profileSelect');
+        if (sel) { sel.value = saved.selectedProfile; if (sel.value === saved.selectedProfile) loadProfile(saved.selectedProfile); }
+    }
+    if (saved.selectedWorkflow) {
+        var op = document.getElementById('operationSelect');
+        if (op) op.value = saved.selectedWorkflow;
+    }
+    if (saved.useDefaultCreds !== undefined) {
+        document.getElementById('useDefaultCreds').checked = saved.useDefaultCreds;
+        toggleDefaultCredentials();
+    }
+    var proxyJump = document.getElementById('proxyJumpToggle');
+    if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
+    var techPort = document.getElementById('techPortToggle');
+    if (techPort && saved.tech_port !== undefined) techPort.checked = saved.tech_port;
+    var defaultsChanged = JSON.stringify(saved.cfgDefaults || {}) !== JSON.stringify(CFG_DEFAULTS);
+    if (!defaultsChanged && saved.includeHealth !== undefined) {
+        var h = document.getElementById('oneShotIncludeHealth');
+        if (h) h.checked = saved.includeHealth;
+    }
+    if (!defaultsChanged && saved.includeReport !== undefined) {
+        var r = document.getElementById('oneShotIncludeReport');
+        if (r) {
+            r.checked = saved.includeReport;
+            var healthRow = document.getElementById('oneShotHealthRow');
+            if (saved.includeReport) healthRow.classList.remove('hidden');
+            else healthRow.classList.add('hidden');
+        }
+    }
+    if (!defaultsChanged && saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
+        document.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.checked = saved.oneShotChecklist.indexOf(cb.value) !== -1;
+        });
+    }
+    if (saved.connSettingsCollapsed === false) {
+        expandCredentials();
+    }
+}
+
+// --- State Snapshot Hydration ---
+async function hydrateFromBackend() {
+    try {
+        var resp = await fetch('/advanced-ops/state-snapshot');
+        var snap = await resp.json();
+
+        var localCount = outputPane ? outputPane.entries.length : 0;
+        var syncCursor = 0;
+        try { syncCursor = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); } catch(e) {}
+
+        if (snap.output_count > syncCursor) {
+            var outResp = await fetch('/advanced-ops/output?since=' + syncCursor);
+            var outData = await outResp.json();
+            if (outData.entries && outData.entries.length > 0) {
+                outData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            }
+            try { sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count)); } catch(e) {}
+        }
+
+        if (snap.oneshot && snap.oneshot.running) {
+            if (!oneShotMode) { document.getElementById('modeToggle').checked = true; toggleOneShotMode(); }
+            showOneShotProgress(snap.oneshot.state);
+            startOneShotPolling();
+            return true;
+        }
+
+        if (snap.workflow && snap.workflow.running && snap.workflow.workflow_id) {
+            if (oneShotMode) { document.getElementById('modeToggle').checked = false; toggleOneShotMode(); }
+            var op = document.getElementById('operationSelect');
+            if (op) { op.value = snap.workflow.workflow_id; await loadWorkflowSteps(snap.workflow.workflow_id); }
+            if (snap.workflow.state && snap.workflow.state.steps) {
+                snap.workflow.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); });
+            }
+            startPolling();
+            return true;
+        }
+
+        return false;
+    } catch(e) {
+        return false;
+    }
+}
+
+function showOneShotProgress(state) {
+    if (!state) return;
+    var phaseOrder = ['operations', 'report', 'bundling'];
+    var phases = document.querySelectorAll('.phase-item');
+    var currentIdx = phaseOrder.indexOf(state.phase);
+    phases.forEach(function(p, i) {
+        var pName = p.dataset.phase;
+        var pIdx = phaseOrder.indexOf(pName);
+        if (pIdx < currentIdx) { p.classList.add('completed'); p.classList.remove('active'); }
+        else if (pIdx === currentIdx) { p.classList.add('active'); p.classList.remove('completed'); }
+        else { p.classList.remove('active', 'completed'); }
+    });
+    var progressEl = document.getElementById('oneShotProgress');
+    if (progressEl) progressEl.style.display = '';
+    var statusEl = document.getElementById('oneShotStatusText');
+    if (statusEl && state.current_operation) statusEl.textContent = state.current_operation;
+    var counterEl = document.getElementById('oneShotCounter');
+    if (counterEl && state.operation_index && state.total_operations) {
+        counterEl.textContent = state.operation_index + ' / ' + state.total_operations;
+    }
+}
+
+// --- OutputPane ---
+function OutputPaneCtor(containerId) {
+    this.container = document.getElementById(containerId);
+    this.autoScroll = true;
+    this.entries = [];
+    this._restore();
+}
+OutputPaneCtor.prototype.append = function(level, message, details, log_tier) {
+    details = details || null;
+    log_tier = log_tier || 'status';
+    var timestamp = new Date().toISOString().slice(11, 19);
+    var entry = { timestamp: timestamp, level: level, message: message, details: details, log_tier: log_tier };
+    this.entries.push(entry);
+    this._renderEntry(entry);
+    this._persist();
+    try { var c = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); sessionStorage.setItem(SYNC_CURSOR_KEY, String(c + 1)); } catch(e) {}
+    if (this.autoScroll) this.container.scrollTop = this.container.scrollHeight;
+};
+OutputPaneCtor.prototype._renderEntry = function(entry) {
+    var placeholder = this.container.querySelector('.output-placeholder');
+    if (placeholder) placeholder.remove();
+    var tier = entry.log_tier || 'status';
+    var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
+    var line = document.createElement('div');
+    var cls = entry.level;
+    var msgUpper = (entry.message || '').toUpperCase();
+    if (cls === 'info') {
+        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
+        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('FAIL') !== -1) cls = 'error';
+        else if (msgUpper.indexOf('SUCCESS') !== -1 || msgUpper.indexOf('COMPLETED') !== -1) cls = 'success';
+    }
+    line.className = 'output-line ' + cls;
+    line.setAttribute('data-tier', tier);
+    if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
+    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
+    if (entry.details) {
+        var d = document.createElement('div');
+        d.style.marginLeft = '20px';
+        d.style.color = '#aaa';
+        d.textContent = '> ' + entry.details;
+        line.appendChild(d);
+    }
+    this.container.appendChild(line);
+};
+OutputPaneCtor.prototype._escapeHtml = function(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
+OutputPaneCtor.prototype._persist = function() { try { sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(this.entries)); } catch(e) {} };
+OutputPaneCtor.prototype._restore = function() { try { var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY); if (s) { this.entries = JSON.parse(s); var self = this; this.entries.forEach(function(e) { self._renderEntry(e); }); } } catch(e) {} };
+OutputPaneCtor.prototype.clear = function() {
+    if (confirm('Clear all output?')) {
+        this.entries = [];
+        this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>';
+        sessionStorage.removeItem(OUTPUT_STORAGE_KEY);
+        fetch('/advanced-ops/state-snapshot').then(function(r) { return r.json(); }).then(function(snap) {
+            sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count || 0));
+        }).catch(function() { sessionStorage.removeItem(SYNC_CURSOR_KEY); });
+    }
+};
+OutputPaneCtor.prototype.copyToClipboard = function() { var t = this.entries.map(function(e) { return e.timestamp + ' [' + e.level.toUpperCase() + '] ' + e.message; }).join('\n'); navigator.clipboard.writeText(t).then(function() { alert('Copied!'); }); };
+OutputPaneCtor.prototype.toggleExpand = function() { this.container.classList.toggle('expanded'); };
+
+// --- Profile management ---
+async function fetchProfiles() {
+    try {
+        var resp = await fetch('/profiles');
+        var profiles = await resp.json();
+        var sel = document.getElementById('profileSelect');
+        var current = sel.value;
+        sel.innerHTML = '<option value="">-- Select a profile --</option>';
+        for (var name of Object.keys(profiles).sort()) {
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+        return profiles;
+    } catch (e) { return {}; }
+}
+
+async function loadProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) return;
+    var profiles = await fetchProfiles();
+    var p = profiles[name];
+    if (!p) return;
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        if (el) el.value = p[profileKey] || '';
+    }
+    var toggle = document.getElementById('useDefaultCreds');
+    toggle.checked = p.use_default_creds !== false;
+    toggleDefaultCredentials();
+    var pj = document.getElementById('proxyJumpToggle');
+    if (pj) pj.checked = p.proxy_jump !== false;
+    var tp = document.getElementById('techPortToggle');
+    if (tp) tp.checked = !!p.tech_port;
+}
+
+async function saveProfile() {
+    var name = document.getElementById('profileSelect').value;
+    if (!name) {
+        name = prompt('Profile name (e.g. "selab-var-202"):');
+        if (!name) return;
+    }
+    var data = { name: name, use_default_creds: document.getElementById('useDefaultCreds').checked };
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        data[profileKey] = el ? el.value : '';
+    }
+    var pj = document.getElementById('proxyJumpToggle');
+    data.proxy_jump = pj ? pj.checked : true;
+    var tpSave = document.getElementById('techPortToggle');
+    data.tech_port = tpSave ? tpSave.checked : false;
+    try {
+        var resp = await fetch('/profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        await resp.json();
+        await fetchProfiles();
+        document.getElementById('profileSelect').value = name;
+    } catch (e) {
+        alert('Failed to save profile: ' + e.message);
+    }
+}
+
+function createProfile() {
+    var sel = document.getElementById('profileSelect');
+    sel.value = '';
+    if (sel.options[0]) sel.options[0].text = '-- Create a profile --';
+    document.getElementById('clusterIp').value = '';
+    toggleDefaultCredentials();
+    document.getElementById('vipPool').value = 'main';
+    expandCredentials();
+    saveUIState();
+}
+
+async function deleteProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) { alert('Select a profile to delete.'); return; }
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+        await fetch('/profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+        await fetchProfiles();
+    } catch (e) {
+        alert('Failed to delete profile: ' + e.message);
+    }
+}
+
+function getCredentials() {
+    var pj = document.getElementById('proxyJumpToggle');
+    var tp = document.getElementById('techPortToggle');
+    return {
+        cluster_ip: document.getElementById('clusterIp').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        node_user: document.getElementById('nodeUser').value,
+        node_password: document.getElementById('nodePassword').value,
+        switch_user: document.getElementById('switchUser').value,
+        switch_password: document.getElementById('switchPassword').value,
+        vip_pool: document.getElementById('vipPool').value || 'main',
+        proxy_jump: pj ? pj.checked : true,
+        tech_port: tp ? tp.checked : false,
+    };
+}
+
+// --- Workflow operations ---
+async function loadWorkflows() {
+    try {
+        var resp = await fetch('/advanced-ops/workflows');
+        var data = await resp.json();
+        var select = document.getElementById('operationSelect');
+        select.innerHTML = '<option value="" disabled selected>Select an operation...</option>';
+        data.workflows.forEach(function(wf) {
+            if (wf.enabled) {
+                var opt = document.createElement('option');
+                opt.value = wf.id;
+                opt.textContent = wf.name + ' (' + wf.step_count + ' steps)';
+                select.appendChild(opt);
+            }
+        });
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflows: ' + e.message);
+    }
+}
+
+async function loadWorkflowSteps(workflowId) {
+    try {
+        var resp = await fetch('/advanced-ops/workflows/' + workflowId);
+        var wf = await resp.json();
+        var container = document.getElementById('workflowSteps');
+        container.innerHTML = wf.steps.map(function(s) {
+            return '<div class="workflow-step" data-step="' + s.id + '">' +
+            '<span class="step-number">' + s.id + '</span>' +
+            '<div class="step-name">' + s.name + '<div class="step-desc">' + (s.description || '') + '</div></div>' +
+            '<span class="step-status pending">Pending</span>' +
+            '<button type="button" class="btn btn-sm btn-primary step-run-btn" onclick="runStep(' + s.id + ')">Run</button>' +
+            '</div>';
+        }).join('');
+        container.style.display = 'block';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnReset').disabled = false;
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflow: ' + e.message);
+    }
+}
+
+function updateStepStatus(stepId, status) {
+    var step = document.querySelector('.workflow-step[data-step="' + stepId + '"]');
+    if (step) {
+        var statusEl = step.querySelector('.step-status');
+        statusEl.className = 'step-status ' + status;
+        statusEl.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    }
+}
+
+async function startWorkflow() {
+    var workflowId = document.getElementById('operationSelect').value;
+    if (!workflowId) return;
+    var creds = getCredentials();
+    var formData = new FormData();
+    formData.append('workflow_id', workflowId);
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        var resp = await fetch('/advanced-ops/start', { method: 'POST', body: formData });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', data.error); return; }
+        outputPane.append('info', 'Workflow started: ' + workflowId);
+        document.getElementById('btnStart').style.display = 'none';
+        document.getElementById('btnRunAll').style.display = '';
+        document.getElementById('btnRunAll').disabled = false;
+        document.getElementById('btnCancel').style.display = '';
+        document.getElementById('btnCancel').disabled = false;
+        startPolling();
+    } catch (e) { outputPane.append('error', 'Failed to start workflow: ' + e.message); }
+}
+
+async function runStep(stepId) {
+    updateStepStatus(stepId, 'running');
+    var creds = getCredentials();
+    var formData = new FormData();
+    formData.append('step_id', stepId);
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        var resp = await fetch('/advanced-ops/run-step', { method: 'POST', body: formData });
+        var data = await resp.json();
+        updateStepStatus(stepId, data.status);
+        outputPane.append(data.status === 'done' ? 'success' : data.status === 'error' ? 'error' : 'warn', data.message, data.details);
+    } catch (e) {
+        updateStepStatus(stepId, 'error');
+        outputPane.append('error', 'Step ' + stepId + ' failed: ' + e.message);
+    }
+}
+
+async function runAllSteps() {
+    var creds = getCredentials();
+    var formData = new FormData();
+    Object.keys(creds).forEach(function(k) { formData.append(k, creds[k]); });
+    try {
+        await fetch('/advanced-ops/run-all', { method: 'POST', body: formData });
+        outputPane.append('info', 'Running all steps...');
+    } catch (e) { outputPane.append('error', 'Failed to run all steps: ' + e.message); }
+}
+
+async function cancelWorkflow() {
+    try { await fetch('/advanced-ops/cancel', { method: 'POST' }); outputPane.append('warn', 'Cancellation requested'); }
+    catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
+}
+
+async function resetWorkflow() {
+    try {
+        await fetch('/advanced-ops/reset', { method: 'POST' });
+        document.querySelectorAll('.step-status').forEach(function(el) { el.className = 'step-status pending'; el.textContent = 'Pending'; });
+        document.getElementById('btnStart').style.display = '';
+        document.getElementById('btnStart').disabled = false;
+        document.getElementById('btnRunAll').style.display = 'none';
+        document.getElementById('btnCancel').style.display = 'none';
+        stopPolling();
+        outputPane.append('info', 'Workflow reset');
+    } catch (e) { outputPane.append('error', 'Failed to reset: ' + e.message); }
+}
+
+function startPolling() {
+    if (pollInterval) return;
+    var lastCount = 0;
+    pollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([fetch('/advanced-ops/status'), fetch('/advanced-ops/output?since=' + lastCount)]);
+            var status = await results[0].json();
+            var output = await results[1].json();
+            if (status.state && status.state.steps) { status.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); }); }
+            output.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastCount += output.count;
+            if (!status.running && status.state && status.state.status !== 'running') {
+                stopPolling();
+                document.getElementById('btnCancel').disabled = true;
+                document.getElementById('btnDownload').disabled = false;
+            }
+        } catch (e) { console.error('Poll error:', e); }
+    }, 1000);
+}
+
+function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollInterval = null; } }
+
+async function downloadResults() {
+    var creds = getCredentials();
+    outputPane.append('info', 'Collecting results for download...');
+    try {
+        var collectResp = await fetch('/advanced-ops/bundle/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var collectData = await collectResp.json();
+        if (collectData.count === 0) { outputPane.append('warn', 'No results found to bundle'); return; }
+        outputPane.append('success', 'Found ' + collectData.count + ' files to bundle');
+        var createResp = await fetch('/advanced-ops/bundle/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var createData = await createResp.json();
+        if (createData.status === 'error') { outputPane.append('error', createData.message); return; }
+        outputPane.append('success', 'Bundle created: ' + createData.name + ' (' + createData.size + ')');
+        var a = document.createElement('a'); a.href = '/advanced-ops/bundle/download/' + createData.name; a.download = createData.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        outputPane.append('success', 'Download started: ' + createData.name);
+    } catch (e) { outputPane.append('error', 'Failed to create bundle: ' + e.message); }
+}
+
+// --- One-Shot Mode ---
+var oneShotMode = false;
+var oneShotPollInterval = null;
+var oneShotValidated = false;
+
+async function toggleOneShotMode() {
+    oneShotMode = document.getElementById('modeToggle').checked;
+    document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
+    document.getElementById('oneShotPanel').style.display = oneShotMode ? '' : 'none';
+    document.getElementById('labelStepByStep').classList.toggle('active', !oneShotMode);
+    document.getElementById('labelOneShot').classList.toggle('active', oneShotMode);
+    if (oneShotMode) await populateOneShotChecklist();
+    saveUIState();
+}
+
+async function populateOneShotChecklist() {
+    try {
+        var wfResp = await fetch('/advanced-ops/workflows');
+        var wfData = await wfResp.json();
+
+        try {
+            var cfgResp = await fetch('/config/json');
+            var cfg = await cfgResp.json();
+            var liveDefaults = (cfg.advanced_operations || {}).defaults || {};
+            CFG_DEFAULTS = liveDefaults;
+        } catch (e) { /* keep existing CFG_DEFAULTS */ }
+
+        var container = document.getElementById('oneShotOpsContainer');
+        container.innerHTML = '';
+        wfData.workflows.forEach(function(wf) {
+            if (!wf.enabled) return;
+            var defaultOn = (CFG_DEFAULTS[wf.id] !== undefined) ? CFG_DEFAULTS[wf.id] : true;
+            var label = document.createElement('label');
+            label.className = 'oneshot-item';
+            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (defaultOn ? ' checked' : '') + '>' +
+                '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
+            container.appendChild(label);
+        });
+        container.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.addEventListener('change', function() { saveUIState(); });
+        });
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl && CFG_DEFAULTS.include_report !== undefined) reportEl.checked = CFG_DEFAULTS.include_report;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl && CFG_DEFAULTS.include_health !== undefined) healthEl.checked = CFG_DEFAULTS.include_health;
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflows: ' + e.message);
+    }
+}
+
+function getSelectedOneShotOps() {
+    var boxes = document.querySelectorAll('.oneshot-op-checkbox:checked');
+    return Array.from(boxes).map(function(cb) { return cb.value; });
+}
+
+var validationPollInterval = null;
+
+async function runOneShotValidation() {
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
+
+    document.getElementById('btnOneShotValidate').disabled = true;
+    document.getElementById('btnOneShotValidate').textContent = 'Validating...';
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotValidationPanel').style.display = '';
+    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #888;">Running checks... (this may take a moment)</span>';
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+
+    try {
+        var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+        var payload = Object.assign({}, creds, { selected_ops: selectedOps, include_health: includeHealth, use_default_creds: document.getElementById('useDefaultCreds').checked });
+        var resp = await fetch('/advanced-ops/oneshot/validate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) {
+            document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
+            resetValidationUI();
+            return;
+        }
+        startValidationPolling();
+    } catch (e) {
+        document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Validation failed: ' + e.message + '</span>';
+        resetValidationUI();
+    }
+}
+
+function startValidationPolling() {
+    if (validationPollInterval) return;
+    var lastOutputCount = 0;
+    validationPollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + lastOutputCount)
+            ]);
+            var statusData = await results[0].json();
+            var outputData = await results[1].json();
+
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastOutputCount += outputData.count;
+
+            if (!statusData.running && statusData.result && statusData.result.validation) {
+                stopValidationPolling();
+                renderValidationResults(statusData.result.validation);
+                resetValidationUI();
+            } else if (!statusData.running) {
+                stopValidationPolling();
+                if (statusData.state && statusData.state.status === 'cancelled') {
+                    document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #ffc107;">Pre-validation cancelled.</span>';
+                }
+                resetValidationUI();
+            }
+        } catch (e) { console.error('Validation poll error:', e); }
+    }, 1000);
+}
+
+function stopValidationPolling() { if (validationPollInterval) { clearInterval(validationPollInterval); validationPollInterval = null; } }
+
+function resetValidationUI() {
+    document.getElementById('btnOneShotValidate').disabled = false;
+    document.getElementById('btnOneShotValidate').textContent = 'Run Pre-Validation';
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+}
+
+function renderValidationResults(checks) {
+    var container = document.getElementById('oneShotValidationResults');
+    var hasIssues = false;
+    var hasFail = false;
+    container.innerHTML = '';
+    checks.forEach(function(c) {
+        var iconMap = { pass: '\u2713', warn: '\u26A0', fail: '\u2717', info: '\u2139' };
+        var div = document.createElement('div');
+        div.className = 'validation-check';
+        div.innerHTML = '<span class="validation-icon ' + c.status + '">' + (iconMap[c.status] || '?') + '</span>' +
+            '<span>' + c.name + ': ' + c.message + '</span>';
+        container.appendChild(div);
+        if (c.status === 'warn' || c.status === 'fail') hasIssues = true;
+        if (c.status === 'fail') hasFail = true;
+    });
+
+    if (hasIssues) {
+        document.getElementById('oneShotValidationActions').style.display = '';
+        document.getElementById('btnOneShotStart').disabled = true;
+        oneShotValidated = false;
+    } else {
+        document.getElementById('oneShotValidationActions').style.display = 'none';
+        document.getElementById('btnOneShotStart').disabled = false;
+        oneShotValidated = true;
+    }
+}
+
+function proceedOneShot() {
+    oneShotValidated = true;
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+    outputPane.append('info', 'User acknowledged warnings, proceeding with one-shot execution.');
+}
+
+function stopAndFix() {
+    oneShotValidated = false;
+    document.getElementById('btnOneShotStart').disabled = true;
+    outputPane.append('info', 'Fix the identified issues, then re-run pre-validation.');
+}
+
+async function startOneShot() {
+    if (!oneShotValidated) { outputPane.append('warn', 'Run pre-validation first.'); return; }
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    var includeReport = document.getElementById('oneShotIncludeReport').checked;
+
+    if (selectedOps.length === 0) { outputPane.append('warn', 'Select at least one operation.'); return; }
+
+    var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+    var payload = Object.assign({}, creds, {
+        selected_ops: selectedOps,
+        include_report: includeReport,
+        include_health: includeHealth,
+        use_default_creds: document.getElementById('useDefaultCreds').checked
+    });
+
+    document.getElementById('btnOneShotStart').disabled = true;
+    document.getElementById('btnOneShotValidate').disabled = true;
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotProgress').style.display = '';
+    resetOneShotPhases();
+
+    try {
+        var resp = await fetch('/advanced-ops/oneshot/start', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', data.error); resetOneShotUI(); return; }
+        outputPane.append('info', 'One-shot execution started with ' + selectedOps.length + ' operations');
+        startOneShotPolling();
+    } catch (e) {
+        outputPane.append('error', 'Failed to start one-shot: ' + e.message);
+        resetOneShotUI();
+    }
+}
+
+async function cancelOneShot() {
+    try {
+        await fetch('/advanced-ops/oneshot/cancel', { method: 'POST' });
+        outputPane.append('warn', 'Cancellation requested');
+        stopValidationPolling();
+    } catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
+}
+
+function startOneShotPolling() {
+    if (oneShotPollInterval) return;
+    var lastOutputCount = 0;
+    oneShotPollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + lastOutputCount)
+            ]);
+            var statusData = await results[0].json();
+            var outputData = await results[1].json();
+
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastOutputCount += outputData.count;
+
+            if (statusData.state) {
+                updateOneShotPhases(statusData.state.phase);
+                var detail = statusData.state.current_operation || '';
+                if (statusData.state.operation_index && statusData.state.total_operations) {
+                    detail += ' (' + statusData.state.operation_index + '/' + statusData.state.total_operations + ')';
+                }
+                document.getElementById('oneShotProgressDetail').textContent = detail;
+            }
+
+            if (!statusData.running) {
+                stopOneShotPolling();
+                var finalPhase = statusData.state ? statusData.state.phase : 'completed';
+                updateOneShotPhases(finalPhase);
+                document.getElementById('btnOneShotCancel').style.display = 'none';
+                document.getElementById('btnOneShotValidate').disabled = false;
+                if (finalPhase === 'completed') {
+                    document.getElementById('btnOneShotDownload').style.display = '';
+                    document.getElementById('btnOneShotDownload').disabled = false;
+                } else {
+                    document.getElementById('btnOneShotStart').disabled = false;
+                }
+            }
+        } catch (e) { console.error('One-shot poll error:', e); }
+    }, 1500);
+}
+
+function stopOneShotPolling() { if (oneShotPollInterval) { clearInterval(oneShotPollInterval); oneShotPollInterval = null; } }
+
+function resetOneShotPhases() {
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        el.classList.remove('active', 'completed', 'error', 'skipped');
+    });
+    var reportIncluded = document.getElementById('oneShotIncludeReport').checked;
+    if (!reportIncluded) {
+        var reportPhase = document.querySelector('.phase-item[data-phase="report"]');
+        if (reportPhase) reportPhase.classList.add('skipped');
+    }
+    document.getElementById('oneShotProgressDetail').textContent = '';
+}
+
+function updateOneShotPhases(currentPhase) {
+    var phases = ['operations', 'report', 'bundling'];
+    var currentIdx = phases.indexOf(currentPhase);
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        var phase = el.getAttribute('data-phase');
+        var idx = phases.indexOf(phase);
+        el.classList.remove('active', 'completed', 'error');
+        if (currentPhase === 'completed') {
+            el.classList.add('completed');
+        } else if (currentPhase === 'error' || currentPhase === 'cancelled') {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('error');
+        } else {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('active');
+        }
+    });
+}
+
+function resetOneShotUI() {
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('btnOneShotValidate').disabled = false;
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+    document.getElementById('oneShotProgress').style.display = 'none';
+    stopOneShotPolling();
+}
+
+// --- Initialization ---
+document.addEventListener('DOMContentLoaded', async function() {
+    outputPane = new OutputPaneCtor('outputPane');
+    await loadWorkflows();
+    await fetchProfiles();
+    toggleDefaultCredentials();
+    restoreLogTier();
+
+    var backendActive = await hydrateFromBackend();
+    if (!backendActive) {
+        var saved = restoreUIState();
+        if (saved) await applySavedUIState(saved);
+    }
+
+    // Switch user change: auto-update password when defaults toggle is ON
+    document.getElementById('switchUser').addEventListener('input', function() {
+        if (document.getElementById('useDefaultCreds').checked) {
+            var pw = SWITCH_PASSWORD_MAP[this.value] || '';
+            document.getElementById('switchPassword').value = pw;
+        }
+    });
+
+    // Menu toggle
+    document.getElementById('btnOutputMenu').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var d = document.getElementById('outputDropdown');
+        d.style.display = d.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
+
+    // Menu actions
+    document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
+    document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
+    document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
+    document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
+
+    // Operation selection
+    document.getElementById('operationSelect').addEventListener('change', function() {
+        if (this.value) loadWorkflowSteps(this.value);
+        saveUIState();
+    });
+
+    // Report checkbox toggles Health Check sub-item visibility
+    document.getElementById('oneShotIncludeReport').addEventListener('change', function() {
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (this.checked) { healthRow.classList.remove('hidden'); }
+        else { healthRow.classList.add('hidden'); }
+        saveUIState();
+    });
+    // Initialise health row visibility
+    (function() {
+        var reportChecked = document.getElementById('oneShotIncludeReport').checked;
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (!reportChecked) healthRow.classList.add('hidden');
+    })();
+
+    // Health checkbox change
+    document.getElementById('oneShotIncludeHealth').addEventListener('change', function() { saveUIState(); });
+
+    // Profile change listener
+    document.getElementById('profileSelect').addEventListener('change', function() { saveUIState(); });
+
+    // Default creds change listener
+    document.getElementById('useDefaultCreds').addEventListener('change', function() { saveUIState(); });
+
+    // Proxy Jump / Tech Port change listeners
+    document.getElementById('proxyJumpToggle').addEventListener('change', function() { saveUIState(); });
+    document.getElementById('techPortToggle').addEventListener('change', function() { saveUIState(); });
+
+    // Save state on page unload
+    window.addEventListener('beforeunload', function() { saveUIState(); });
+
+    // Update Deployment Tools helpers
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function formatDate(isoDate) {
+        if (!isoDate) return 'Never';
+        var d = new Date(isoDate);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+
+    function _showToolsStatus() {
+        var panel = document.getElementById('toolsStatusPanel');
+        var content = document.getElementById('toolsStatusContent');
+        panel.style.display = 'block';
+        content.innerHTML = '<span style="color: #888;">Loading...</span>';
+        fetch('/advanced-ops/tools')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                var html = '<table style="width: 100%; border-collapse: collapse; color: #ccc;">';
+                html += '<tr style="border-bottom: 1px solid #444;"><th style="text-align: left; padding: 4px 8px;">Tool</th><th style="text-align: left; padding: 4px 8px;">Status</th><th style="text-align: left; padding: 4px 8px;">Size</th><th style="text-align: left; padding: 4px 8px;">Last Updated</th></tr>';
+                data.tools.forEach(function(tool) {
+                    var st = tool.cached ? '<span style="color: #4ade80;">Cached</span>' : '<span style="color: #f87171;">Not Downloaded</span>';
+                    var sz = tool.cached ? formatFileSize(tool.cached_size) : '-';
+                    var dt = tool.cached ? formatDate(tool.cached_date) : '-';
+                    html += '<tr style="border-bottom: 1px solid #333;"><td style="padding: 6px 8px;"><strong>' + tool.name + '</strong><br><small style="color: #888;">' + tool.description + '</small></td><td style="padding: 6px 8px;">' + st + '</td><td style="padding: 6px 8px;">' + sz + '</td><td style="padding: 6px 8px;">' + dt + '</td></tr>';
+                });
+                html += '</table>';
+                content.innerHTML = html;
+            })
+            .catch(function(err) { content.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
+    }
+
+    function _hideToolsStatus() { document.getElementById('toolsStatusPanel').style.display = 'none'; }
+
+    function _updateDeploymentTools() {
+        var btn = document.getElementById('btnUpdateTools');
+        var originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
+        outputPane.append('info', 'Updating Deployment Tools');
+        fetch('/advanced-ops/tools/update', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            if (data.success) {
+                outputPane.append('success', 'All ' + data.updated + ' tools updated successfully!');
+                outputPane.append('info', 'Tools cached locally: output/tools/');
+                Object.keys(data.tools).forEach(function(toolName) {
+                    var tool = data.tools[toolName];
+                    if (tool.success) { outputPane.append('success', '  ' + tool.message); }
+                    else { outputPane.append('error', '  ' + toolName + ': ' + tool.message); }
+                });
+            } else {
+                outputPane.append('warn', 'Some tools failed to update (' + data.updated + '/' + (data.updated + data.failed) + ' succeeded)');
+            }
+            var panel = document.getElementById('toolsStatusPanel');
+            if (panel.style.display !== 'none') { _showToolsStatus(); }
+        })
+        .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
+    }
+
+    // Expose functions used by inline onclick handlers
+    window.showToolsStatus = _showToolsStatus;
+    window.hideToolsStatus = _hideToolsStatus;
+    window.updateDeploymentTools = _updateDeploymentTools;
+
+    // Button handlers
+    document.getElementById('btnStart').addEventListener('click', startWorkflow);
+    document.getElementById('btnRunAll').addEventListener('click', runAllSteps);
+    document.getElementById('btnCancel').addEventListener('click', cancelWorkflow);
+    document.getElementById('btnReset').addEventListener('click', resetWorkflow);
+    document.getElementById('btnDownload').addEventListener('click', downloadResults);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,3060 @@
+{% extends "base.html" %}
+{% block title %}Reporter - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>
+        </svg>
+        Reporter &amp; One-Shot Test Suite
+    </h1>
+    <p class="page-subtitle">Generate as-built reports with switch placement, health checks, and bundled validations</p>
+</div>
+
+<!-- Connection Settings Card -->
+<div class="card" id="connectionSettingsCard">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>Connection Settings</h3>
+        <button type="button" class="btn-icon-collapse" onclick="toggleConnectionSettings()" id="btnCollapseConn" title="Collapse settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 15l-6-6-6 6"/></svg></button>
+    </div>
+    <div class="card-body">
+        <p class="card-steps">
+            <span class="step-badge step-badge-filled">1</span> — <strong style="color:var(--accent);">Enter IP</strong> for Tech Port or VMS and <strong style="color:var(--accent);">Click Save.</strong>
+            <span class="info-icon" title="Tech Port: 192.168.2.2&#10; - Advanced Menu → Select Tech Port Mode&#10;&#10;Network: VMS VIP address&#10; - Advanced Menu → Uncheck Tech Port Mode&#10;&#10;Default passwords are pre-populated when Autofill is enabled (see Advanced).&#10;Edit any non-default passwords and save.">&#9432;</span>
+        </p>
+        <form id="credentialsForm">
+            <!-- Row 1: Profile dropdown + Cluster IP side by side -->
+            <div class="form-row creds-row-profile">
+                <div class="form-group" style="flex: 1;">
+                    <label for="profileSelect">Saved Profiles</label>
+                    <div class="profile-controls">
+                        <select id="profileSelect" onchange="loadProfile()">
+                            <option value="">- Create or Select a profile -</option>
+                        </select>
+                        <button type="button" class="btn-icon-add" onclick="createProfile()" title="Create cluster profile" id="btnAddProfile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+                <div class="form-group" style="flex: 1;">
+                    <label for="clusterIp"><span class="step-badge step-badge-filled">1</span> Tech Port IP / VMS VIP <span class="info-icon" title="Tech Port: 192.168.2.2&#10;Network: VMS VIP address (e.g. 10.143.10.100)">&#9432;</span></label>
+                    <input type="text" id="clusterIp" name="cluster_ip" class="form-control" placeholder="e.g., 10.143.10.100">
+                </div>
+            </div>
+
+            <!-- Collapsible section: credential fields + bottom toolbar -->
+            <div id="connSettingsDetails">
+                <div id="credentialFields" class="credential-fields">
+                    <!-- Row 2: Three user fields -->
+                    <div class="form-row creds-row-3">
+                        <div class="form-group">
+                            <label for="username">VMS User <span class="info-icon" title="VAST API requires &quot;support&quot; level authorization. Enter the &quot;support&quot; user.">&#9432;</span></label>
+                            <input type="text" id="username" name="username" class="form-control" placeholder="support">
+                        </div>
+                        <div class="form-group">
+                            <label for="nodeUser">Node User <span class="info-icon" title="SSH user for CNode access. Default: vastdata">&#9432;</span></label>
+                            <input type="text" id="nodeUser" name="node_user" class="form-control" value="vastdata">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchUser">Switch User <span class="info-icon" title="Mellanox/Cumulus: cumulus&#10;Mellanox/Onyx: admin&#10;Cisco &amp; Arista: admin">&#9432;</span></label>
+                            <input type="text" id="switchUser" name="switch_user" class="form-control" value="cumulus">
+                        </div>
+                    </div>
+                    <!-- Row 3: Three password fields -->
+                    <div class="form-row creds-row-3">
+                        <div class="form-group">
+                            <label for="password">VMS Password <span class="info-icon" title="Default support password: 654321">&#9432;</span></label>
+                            <input type="password" id="password" name="password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="nodePassword">Node Password <span class="info-icon" title="Default vastdata password: vastdata">&#9432;</span></label>
+                            <input type="password" id="nodePassword" name="node_password" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default password: Vastdata1!&#10; - Alt Passwords: VastData1! / cumulus / Cumu1usLinux!&#10; - onyx/Cisco/Arista: admin">&#9432;</span></label>
+                            <input type="password" id="switchPassword" name="switch_password" class="form-control">
+                        </div>
+                    </div>
+                    <input type="hidden" id="vipPool" name="vip_pool" value="main">
+                </div>
+
+                <!-- Action bar: Advanced + Save + Delete -->
+                <div class="conn-action-bar">
+                    <div class="conn-action-bar-left">
+                        <div class="conn-advanced-wrapper">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnAdvancedToggle" onclick="toggleAdvancedMenu()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                                Advanced
+                            </button>
+                            <div class="conn-advanced-menu" id="advancedMenu" style="display:none;">
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" name="proxy_jump" id="proxyJumpToggle" checked style="width:auto;">
+                                    <span>SSH Proxy Mode</span>
+                                    <span class="info-icon" title="Tunnel switch SSH through CNode. Enable for tech port or when switches are not directly reachable.">&#9432;</span>
+                                </label>
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" name="tech_port" id="techPortToggle" checked style="width:auto;">
+                                    <span>Tech Port Mode</span>
+                                    <span class="info-icon" title="Connect via CBox Tech Port (192.168.2.2). Auto-discovers VMS and tunnels API calls through SSH.">&#9432;</span>
+                                </label>
+                                <label class="adv-menu-item">
+                                    <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                                    <span>Autofill Passwords</span>
+                                    <span class="info-icon" title="Auto-populate default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!">&#9432;</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="conn-action-bar-right">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="saveProfile()" title="Save current form as profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path d="M20 6L9 17l-5-5"/></svg>
+                            Save
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="deleteProfile()" title="Delete selected profile">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg>
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Workflow Selection Card -->
+<div class="card">
+    <div class="op-mode-bar op-mode-bar-top">
+        <div class="seg-toggle" id="segToggle">
+            <input type="checkbox" id="modeToggle" onchange="toggleOneShotMode()">
+            <span class="seg-option seg-left" id="labelStepByStep" onclick="if(document.getElementById('modeToggle').checked){document.getElementById('modeToggle').checked=false;toggleOneShotMode();}">Reporter</span>
+            <span class="seg-option seg-right" id="labelOneShot" onclick="if(!document.getElementById('modeToggle').checked){document.getElementById('modeToggle').checked=true;toggleOneShotMode();}">Test Suite</span>
+            <span class="seg-slider"></span>
+        </div>
+    </div>
+    <div class="card-body">
+        <div class="op-title-row">
+            <h3>Select Operation</h3>
+            <div class="placement-pills" id="rptPlacementSummaryHeader">
+                <span class="pill pill-rack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg> <span id="rptPlacementCount">0</span> Racks</span>
+                <span class="pill pill-switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="7" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/></svg> <span id="rptManualCount">0</span> Switches Placed</span>
+                <button type="button" class="btn-open-editor" onclick="openPlacementModal()" title="Open Switch Placement Editor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    Open Editor
+                </button>
+            </div>
+        </div>
+        <!-- Reporter Mode (default) -->
+        <div id="stepByStepPanel">
+          <div class="panel-flex">
+          <div class="panel-flex-left">
+
+            <input type="hidden" id="rptSwitchPlacement" value="manual">
+            <input type="hidden" id="rptManualPlacements" value="[]">
+            <input type="hidden" id="rptManualSwitchIps" value="[]">
+
+            <p class="card-steps" style="margin-top:0;">
+                <span class="step-badge step-badge-filled">2</span> — <strong style="color:var(--accent);">Click Discovery</strong> to assign switch U-height.
+                <span class="info-icon" title="Run Discovery to find switches and place in racks. U-height assignment is used in report rack diagram.&#10;&#10;Optional: Use +Switch to add customer managed Leaf &amp; Spine switches.">&#9432;</span><br>
+                <span class="step-badge step-badge-filled">3</span> — <strong style="color:var(--accent);">Click Run</strong> to generate the Report.
+            </p>
+
+            <!-- Reporter Checklist -->
+            <div class="rpt-section" id="rptChecklistSection">
+                <div class="rpt-section-title">Reporter Checklist</div>
+                <div class="oneshot-checklist" id="reporterChecklist">
+                    <label class="oneshot-item">
+                        <input type="checkbox" id="rptPreValidation" checked>
+                        <span class="oneshot-item-name">Pre-Validation <span class="info-icon" title="Verify credentials, VMS access, rack config, switch config, SSH access">&#9432;</span></span>
+                    </label>
+                    <div class="oneshot-item" id="vnetmapItem" style="display: flex; align-items: center; gap: 8px;">
+                        <label style="display: flex; align-items: center; gap: 6px; margin: 0; cursor: pointer;">
+                            <input type="checkbox" id="rptRunVnetmap" checked>
+                            <span class="oneshot-item-name">Run Vnetmap <span class="info-icon" title="Run the VAST vnetmap topology tool before report generation for fresh port mapping and diagram data. Requires node SSH credentials.">&#9432;</span></span>
+                        </label>
+                        <span id="vnetmapStatus" class="vnetmap-status-badge" style="display: none;"></span>
+                    </div>
+                    <label class="oneshot-item">
+                        <input type="checkbox" id="rptRunReporter" checked>
+                        <span class="oneshot-item-name">Generate As-Built Report <span class="info-icon" title="Generate as-built report with current connection and placement settings">&#9432;</span></span>
+                        <span class="oneshot-item-badge badge-required">Required</span>
+                    </label>
+                    <label class="oneshot-item">
+                        <input type="checkbox" id="rptHealthCheck" checked>
+                        <span class="oneshot-item-name">Health Check <span class="info-icon" id="rptHealthTierHint" title="Tier 1 (API) always; +Tier 3 (Switch SSH) if switch credentials provided">&#9432;</span></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Pre-Validation Results Panel -->
+            <div id="rptValidationPanel" style="display: none; margin-top: 16px;">
+                <div class="validation-header">Pre-Validation Results</div>
+                <div id="rptValidationResults"></div>
+                <div id="rptValidationActions" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,193,7,0.1); border: 1px solid #ffc107; border-radius: 6px;">
+                    <span style="color: #ffc107;">Warnings detected.</span>
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button type="button" class="btn btn-warning btn-sm" onclick="rptProceedAnyway()">Proceed Anyway</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="rptStopAndFix()">Stop &amp; Fix</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tools Status Panel -->
+            <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
+                </div>
+                <div id="toolsStatusContent" style="font-size: 12px;">
+                    <span style="color: #888;">Loading...</span>
+                </div>
+            </div>
+          </div><!-- /.panel-flex-left -->
+          <div class="panel-flex-right" id="reporterProgressColumn">
+            <div id="reporterProgress" class="vast-progress-container"></div>
+          </div>
+          </div><!-- /.panel-flex -->
+
+          <!-- Reporter Stepper Action Bar -->
+          <div class="op-stepper-bar" id="reporterStepperBar">
+              <div class="stepper-track">
+                  <div class="stepper-line"><div class="stepper-line-fill" id="stepperLineFill"></div></div>
+                  <div class="stepper-dot active" id="stepDot1"></div>
+                  <div class="stepper-dot active" id="stepDot2"></div>
+                  <div class="stepper-dot disabled" id="stepDot3"></div>
+                  <div class="stepper-dot disabled" id="stepDot4"></div>
+                  <div class="stepper-dot disabled" id="stepDot5"></div>
+              </div>
+              <div class="stepper-buttons">
+                  <button type="button" class="btn btn-primary" id="btnDiscovery" onclick="openPlacementModal()"><span class="step-badge step-badge-outline">2</span>Discovery</button>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <div class="stepper-btn-slot">
+                      <button type="button" class="btn btn-primary" id="btnReporterRun" onclick="runReporterChecklist()"><span class="step-badge step-badge-outline">3</span>Run</button>
+                      <button type="button" class="btn btn-danger" id="btnReporterCancel" style="display:none;" onclick="cancelReporterRun()">Cancel</button>
+                  </div>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptViewPdf" href="#" target="_blank" class="btn btn-ghosted">View PDF</a>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptDownloadPdf" href="#" class="btn btn-ghosted">Download PDF</a>
+                  <span class="stepper-chevron">&rsaquo;</span>
+                  <a id="rptDownloadJson" href="#" class="btn btn-ghosted">Download JSON</a>
+              </div>
+          </div>
+        </div>
+
+        <!-- One-Shot Mode (hidden by default) -->
+        <div id="oneShotPanel" style="display: none;">
+          <div class="panel-flex">
+          <div class="panel-flex-left">
+            <p class="card-steps" style="margin-bottom: 12px;">
+                <strong>Step 3</strong> — Select operations, click <strong>Run</strong>.
+                <span class="info-icon" title="Re-Validation verifies credentials and connectivity before executing tests.&#10;Results are bundled for download when all selected operations complete.&#10;VIP Pool is required for vperfsanity — enable that checkbox to configure it.">&#9432;</span>
+            </p>
+
+            <div class="oneshot-checklist" id="oneShotChecklist">
+                <label class="oneshot-item">
+                    <input type="checkbox" id="oneShotPreValidation" checked>
+                    <span class="oneshot-item-name">Re-Validation</span>
+                    <span class="oneshot-item-badge badge-recommended">Recommended</span>
+                </label>
+                <div id="oneShotOpsContainer"></div>
+                <label class="oneshot-item">
+                    <input type="checkbox" id="oneShotIncludeReport" checked>
+                    <span class="oneshot-item-name">Generate As-Built Report</span>
+                </label>
+                <label class="oneshot-item oneshot-sub-item" id="oneShotHealthRow">
+                    <input type="checkbox" id="oneShotIncludeHealth" checked>
+                    <span class="oneshot-item-name">Include Health Checks (Tier 1 &amp; 3)</span>
+                </label>
+            </div>
+
+            <!-- Pre-validation Results Panel -->
+            <div id="oneShotValidationPanel" style="display: none; margin-top: 16px;">
+                <div class="validation-header">Pre-Validation Results</div>
+                <div id="oneShotValidationResults"></div>
+                <div id="oneShotValidationActions" style="display: none; margin-top: 10px; padding: 10px; background: rgba(255,193,7,0.1); border: 1px solid #ffc107; border-radius: 6px;">
+                    <span style="color: #ffc107;">Warnings detected.</span>
+                    <div class="btn-group" style="margin-top: 8px;">
+                        <button type="button" class="btn btn-warning btn-sm" id="btnProceedAnyway" onclick="proceedOneShot()">Proceed Anyway</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnStopFix" onclick="stopAndFix()">Stop &amp; Fix</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- One-Shot Progress Tracking -->
+            <div id="oneShotProgress" style="display: none; margin-top: 16px;">
+                <div class="progress-detail" id="oneShotProgressDetail"></div>
+            </div>
+
+            <!-- One-Shot Tools Status Panel -->
+            <div id="toolsStatusPanelOneshot" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatusOneshot()" style="padding: 2px 8px;">&times;</button>
+                </div>
+                <div id="toolsStatusContentOneshot" style="font-size: 12px;">
+                    <span style="color: #888;">Loading...</span>
+                </div>
+            </div>
+
+          </div><!-- /.panel-flex-left -->
+          <div class="panel-flex-right" id="oneShotProgressColumn">
+            <div id="oneShotProgressVast" class="vast-progress-container"></div>
+          </div>
+          </div><!-- /.panel-flex -->
+
+          <!-- Test Suite Action Bar -->
+          <div class="op-action-bar">
+              <div class="bar-left">
+                  <button type="button" class="btn btn-primary" id="btnOneShotStart" onclick="startOneShot()">Run</button>
+                  <button type="button" class="btn btn-danger" id="btnOneShotCancel" style="display: none;" onclick="cancelOneShot()">Cancel</button>
+              </div>
+              <div class="bar-center" id="oneShotResultPanel" style="display: none;">
+                  <span class="result-label">Bundle Generated Successfully</span>
+                  <button type="button" class="btn btn-accent btn-sm" onclick="downloadResults()">Download Bundle</button>
+              </div>
+              <div class="bar-spacer"></div>
+              <div class="bar-right">
+                  <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
+                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                      </svg>
+                      Update Tools
+                  </button>
+                  <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatusOneshot()" title="View deployment tools status">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
+                          <circle cx="12" cy="12" r="10"/>
+                          <line x1="12" y1="16" x2="12" y2="12"/>
+                          <line x1="12" y1="8" x2="12.01" y2="8"/>
+                      </svg>
+                  </button>
+              </div>
+          </div>
+        </div>
+    </div>
+</div>
+
+<!-- Switch Placement Editor Modal -->
+<div id="placementModal" class="placement-modal-overlay hidden">
+    <div class="placement-modal">
+        <div class="placement-modal-header">
+            <h3>Switch Placement Editor</h3>
+            <button class="placement-modal-close" onclick="cancelPlacementModal()">&times;</button>
+        </div>
+        <div class="placement-modal-body">
+            <small id="rptDiscoverStatus" class="discover-status"></small>
+
+            <div class="rpt-section-title">Find Racks &amp; Switches <span class="info-icon" title="Connects to the cluster using your credentials, discovers all racks and their switches, and populates the assignment controls below so you can place each switch in the rack diagram.">&#9432;</span></div>
+            <div style="margin-bottom: 12px;">
+                <button type="button" class="btn btn-primary btn-sm" onclick="rptDiscoverSwitches()">Run Discovery</button>
+            </div>
+
+            <div id="rptAddManualBtn" class="hidden" style="margin-top: 4px; margin-bottom: 12px;">
+                <div class="rpt-section-title">Add non-VMS Switch <span class="info-icon" title="Manually add switches that are not managed by VMS. Enter a name or description and select its model to include it in rack placement.">&#9432;</span></div>
+                <button type="button" class="btn btn-primary btn-sm" onclick="rptShowManualEntry()">+ Switch</button>
+            </div>
+
+            <div id="rptNoSwitchesPanel" class="hidden" style="margin-top:10px; text-align:center; padding:12px; border:1px dashed var(--border-color); border-radius:6px;">
+                <p style="margin:0 0 10px; font-size:13px; color:var(--text-secondary);">No switches were discovered on this cluster.</p>
+                <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="rptShowManualEntry()">+ Switch</button>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="rptOpenVmsSwitch()">Add in VMS</button>
+                </div>
+                <div id="rptVmsRerunRow" class="hidden" style="margin-top:10px;">
+                    <button type="button" class="btn btn-accent btn-sm" onclick="rptDiscoverSwitches()">Re-run Discovery</button>
+                </div>
+            </div>
+
+            <div id="rptAssignmentControls" class="hidden">
+                <div id="rptManualIpRow" class="form-row placement-controls" style="display:none;">
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptManualSwitchIpInput">Switch Name</label>
+                        <input type="text" id="rptManualSwitchIpInput" placeholder="e.g. Spine-A or Rack1-TOR" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddManualSwitchIp();}">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptManualSwitchIpModel">Switch Model</label>
+                        <select id="rptManualSwitchIpModel" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddManualSwitchIp();}">
+                            <option value="">-- Select model --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self:flex-end;">
+                        <button type="button" class="btn-icon-add" onclick="rptAddManualSwitchIp()" title="Add manual switch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+
+                <div id="rptManualSwitchIpTableContainer" class="hidden">
+                    <label class="placed-title">Manual Switches</label>
+                    <table class="placed-switches-table">
+                        <thead><tr><th>Name</th><th>Switch Model</th><th>Height</th><th></th></tr></thead>
+                        <tbody id="rptManualSwitchIpBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="rptRackSwitchHeightRow" class="form-row placement-controls" style="display:none;">
+                    <div class="form-group" style="flex: 2;">
+                        <label for="rptRackSelect">Rack</label>
+                        <select id="rptRackSelect"></select>
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label for="rptSwitchSelect">Switch</label>
+                        <select id="rptSwitchSelect"></select>
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="rptUPositionInput">Height</label>
+                        <input type="number" id="rptUPositionInput" min="1" max="48" placeholder="U" onkeydown="if(event.key==='Enter'){event.preventDefault();rptAddSwitchPlacement();}">
+                    </div>
+                    <div class="form-group" style="flex: 0 0 auto; align-self:flex-end;">
+                        <button type="button" class="btn-icon-add" onclick="rptAddSwitchPlacement()" title="Add switch placement"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg></button>
+                    </div>
+                </div>
+
+                <div id="rptPlacedSwitchesContainer" class="hidden">
+                    <label class="placed-title">Placed Switches</label>
+                    <table class="placed-switches-table">
+                        <thead><tr><th>Rack</th><th>Switch</th><th>Model</th><th>Position</th><th></th></tr></thead>
+                        <tbody id="rptPlacedSwitchesBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="placement-modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="cancelPlacementModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="savePlacementModal()">Save to Profile</button>
+        </div>
+    </div>
+</div>
+
+<!-- Output Results Pane -->
+<div class="output-section">
+    <div class="output-header">
+        <span class="output-title">OUTPUT RESULTS</span>
+        <div class="log-level-selector">
+            <button class="log-level-btn active" data-tier="status" onclick="setLogTier('status')">Status</button>
+            <button class="log-level-btn" data-tier="live" onclick="setLogTier('live')">Live</button>
+            <button class="log-level-btn" data-tier="debug" onclick="setLogTier('debug')">Debug</button>
+        </div>
+        <div class="output-menu">
+            <button type="button" class="btn btn-sm btn-secondary" id="btnOutputMenu">Menu &#x25BE;</button>
+            <div class="output-dropdown" id="outputDropdown" style="display: none;">
+                <a href="#" id="menuCopy">Copy to Clipboard</a>
+                <a href="#" id="menuExpand">Expand / Minimize</a>
+                <a href="#" id="menuAutoScroll">Toggle Auto-scroll</a>
+                <div class="dropdown-divider"></div>
+                <a href="#" id="menuClear" class="text-danger">Clear Output</a>
+            </div>
+        </div>
+    </div>
+    <div class="output-pane" id="outputPane">
+        <div class="output-placeholder">
+            <p>Output will appear here when you run operations.</p>
+            <p class="text-muted">Results persist when navigating to other pages.</p>
+        </div>
+    </div>
+</div>
+
+<style>
+/* --- Reporter-specific sections --- */
+.rpt-section { border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); padding: 14px 16px; }
+.rpt-section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+.rpt-sub-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); display: block; margin-bottom: 4px; }
+.op-action-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 0.65rem 1.25rem;
+    background: var(--bg-surface);
+    border-top: 2px solid var(--accent);
+    border-radius: 0 0 var(--radius, 8px) var(--radius, 8px);
+    margin: 20px -1.5rem -1.5rem -1.5rem;
+}
+.op-action-bar .bar-left { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.op-action-bar .bar-center { display: flex; gap: 8px; align-items: center; }
+.op-action-bar .bar-spacer { flex: 1 1 auto; }
+.op-action-bar .bar-right { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.op-action-bar .result-label { font-weight: 600; color: var(--accent); font-size: 0.85rem; white-space: nowrap; }
+
+/* --- Stepper Action Bar --- */
+.op-stepper-bar {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 0.85rem 1.25rem;
+    background: var(--bg-surface);
+    border-top: 2px solid var(--accent);
+    border-radius: 0 0 var(--radius, 8px) var(--radius, 8px);
+    margin: 20px -1.5rem -1.5rem -1.5rem;
+}
+.stepper-track {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    align-items: center;
+    position: relative;
+    height: 24px;
+}
+.stepper-line {
+    position: absolute; top: 50%;
+    left: 10%; right: 10%;
+    height: 3px; background: var(--border);
+    transform: translateY(-50%); z-index: 0;
+    border-radius: 2px;
+}
+.stepper-line-fill {
+    position: absolute; top: 0; left: 0; height: 100%;
+    background: var(--accent); width: 0%;
+    transition: width 0.4s ease;
+    border-radius: 2px;
+}
+.stepper-dot {
+    z-index: 1; display: flex; justify-content: center; align-items: center;
+    transition: all 0.3s ease;
+}
+.stepper-dot::after {
+    content: ''; display: block;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 3px solid var(--border);
+    background: var(--bg-surface);
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+.stepper-dot.active::after {
+    border-color: var(--accent); background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(26, 111, 181, 0.22);
+}
+.stepper-dot.completed::after {
+    border-color: var(--accent); background: var(--accent);
+    box-shadow: 0 0 0 3px rgba(26, 111, 181, 0.15);
+}
+.stepper-dot.disabled::after {
+    border-color: var(--border); background: var(--bg-surface); opacity: 0.5;
+    box-shadow: none;
+}
+.stepper-buttons {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: center; gap: 0;
+}
+.stepper-buttons .btn {
+    width: 100%; display: flex; justify-content: center; align-items: center;
+    box-sizing: border-box;
+    padding: 9px 4px; font-size: 0.82rem; font-weight: 600;
+    white-space: nowrap; border-radius: 6px;
+    letter-spacing: 0.01em; text-align: center;
+    text-decoration: none;
+}
+.stepper-buttons .btn.btn-ghosted {
+    background: transparent; color: var(--text-muted);
+    border: 1.5px dashed var(--border); opacity: 0.45;
+    cursor: default; pointer-events: none;
+}
+.stepper-buttons .btn.btn-ghosted:hover { background: transparent; }
+.stepper-chevron {
+    font-size: 1.4rem; font-weight: 300;
+    color: var(--accent); opacity: 0.45;
+    line-height: 1; padding: 0 3px;
+    user-select: none; text-align: center;
+}
+.stepper-btn-slot {
+    display: flex; min-width: 0;
+}
+.stepper-btn-slot .btn { width: 100%; }
+
+/* --- Placement pill badges --- */
+.placement-pills {
+    display: flex; align-items: center; gap: 8px;
+}
+.pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 14px; border-radius: 20px;
+    font-size: 12px; font-weight: 600;
+    background: rgba(26, 111, 181, 0.12);
+    color: var(--accent); border: 1px solid rgba(26, 111, 181, 0.25);
+    white-space: nowrap; letter-spacing: 0.01em;
+}
+.pill svg { opacity: 0.7; flex-shrink: 0; }
+.pill span { font-variant-numeric: tabular-nums; }
+.pill.pill-muted {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted); border-color: var(--border-color);
+}
+.btn-open-editor {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; border: 1px solid rgba(26, 111, 181, 0.4);
+    border-radius: var(--radius, 8px);
+    padding: 0.5rem 1.25rem;
+    color: var(--accent); cursor: pointer;
+    font-size: 0.85rem; font-weight: 500;
+    transition: all 0.15s;
+    line-height: 1.4;
+}
+.btn-open-editor:hover {
+    border-color: var(--accent); background: rgba(26, 111, 181, 0.1);
+}
+
+/* --- Mode header bar (mirrors stepper footer) --- */
+.op-mode-bar {
+    display: flex; justify-content: center; align-items: center;
+    padding: 0.65rem 1.25rem;
+    background: var(--bg-surface);
+    border-bottom: 2px solid var(--accent);
+    margin: -1.5rem -1.5rem 0 -1.5rem;
+}
+.op-mode-bar-top {
+    border-radius: var(--radius, 8px) var(--radius, 8px) 0 0;
+}
+.op-title-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-top: 1.25rem;
+    margin-bottom: 6px;
+}
+.op-title-row h3 { margin: 0; }
+
+/* --- Segmented toggle (Reporter / Test Suite) --- */
+.seg-toggle {
+    position: relative; display: inline-flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1.5px solid var(--border);
+    border-radius: 26px; padding: 3px;
+    user-select: none;
+    flex-shrink: 0;
+}
+.seg-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.seg-option {
+    position: relative; z-index: 1;
+    padding: 6px 24px; border-radius: 22px;
+    font-size: 13px; font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer; transition: color 0.25s;
+    text-align: center; white-space: nowrap;
+}
+.seg-option.active { color: #fff; }
+.seg-slider {
+    position: absolute; top: 3px; left: 3px;
+    width: calc(50% - 3px); height: calc(100% - 6px);
+    background: var(--accent);
+    border-radius: 22px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.seg-toggle input:checked ~ .seg-slider {
+    transform: translateX(100%);
+}
+
+/* --- Switch Placement Editor Modal --- */
+.placement-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+.placement-modal-overlay.hidden { display: none; }
+.placement-modal {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    width: min(800px, 92vw);
+    max-height: 82vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+.placement-modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    border-top: 3px solid var(--accent);
+    border-radius: 8px 8px 0 0;
+}
+.placement-modal-header h3 { margin: 0; font-size: 1rem; color: var(--text-primary); }
+.placement-modal-close {
+    background: none; border: none; font-size: 1.4rem;
+    cursor: pointer; color: var(--text-secondary); padding: 0 4px;
+}
+.placement-modal-close:hover { color: var(--text-primary); }
+.placement-modal-body {
+    overflow-y: auto; padding: 1.25rem;
+    flex: 1;
+}
+.placement-modal-footer {
+    display: flex; justify-content: flex-end; gap: 0.75rem;
+    padding: 0.75rem 1.25rem;
+    border-top: 2px solid var(--accent);
+}
+.placement-modal-body .rpt-section-title { margin-top: 0; }
+.placement-modal-body .discover-status { display: block; margin-bottom: 10px; }
+/* (header-separator and header-placement-info replaced by .placement-pills) */
+
+/* Hide number input spinners on Height field */
+#rptUPositionInput::-webkit-inner-spin-button,
+#rptUPositionInput::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+#rptUPositionInput { -moz-appearance: textfield; }
+
+/* --- Connection Settings bottom toolbar --- */
+/* --- Connection action bar (Advanced + Save/Delete) --- */
+.conn-action-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-color);
+}
+.conn-action-bar-left { display: flex; align-items: center; }
+.conn-action-bar-right { display: flex; align-items: center; gap: 8px; }
+.conn-action-bar .btn-sm {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 14px; font-size: 13px; border-radius: 6px;
+}
+.conn-action-bar .btn-secondary {
+    background: var(--bg-tertiary); color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+.conn-action-bar .btn-secondary:hover { background: var(--bg-secondary); color: var(--text-primary); }
+
+/* --- Advanced dropdown menu --- */
+.conn-advanced-wrapper { position: relative; }
+.conn-advanced-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+    min-width: 240px; padding: 8px 0;
+    background: var(--bg-elevated, #161b22); border: 1px solid var(--border-color);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.adv-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; cursor: pointer; font-size: 13px;
+    color: var(--text-primary); transition: background 0.1s;
+    margin: 0;
+}
+.adv-menu-item:hover { background: var(--bg-tertiary); }
+.adv-menu-item input[type="checkbox"] { accent-color: var(--accent); }
+
+.info-icon { cursor: help; color: var(--text-secondary); font-size: 14px; opacity: 0.7; transition: opacity 0.15s; }
+.info-icon:hover { opacity: 1; color: var(--accent); }
+.btn-icon-collapse { background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-secondary); transition: color 0.15s, transform 0.2s; vertical-align: middle; line-height: 0; }
+.btn-icon-collapse:hover { color: var(--text-primary); }
+.btn-icon-collapse svg { width: 20px; height: 20px; }
+.btn-icon-collapse.collapsed { transform: rotate(180deg); }
+#connSettingsDetails.collapsed-section { display: none; }
+
+/* --- Card step description --- */
+.card-steps {
+    font-size: 13px; color: var(--text-secondary);
+    margin: 0 0 14px 0; line-height: 1.6;
+}
+.card-steps strong { color: var(--text-primary); }
+.step-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    font-size: 11px; font-weight: 700; line-height: 1;
+    vertical-align: middle; flex-shrink: 0;
+}
+.step-badge-filled { background: var(--accent); color: #fff; }
+.step-badge-outline { background: #fff; color: var(--accent); border: 2px solid var(--accent); }
+.btn .step-badge { width: 18px; height: 18px; font-size: 10px; margin-right: 5px; }
+
+/* --- Profile row (dropdown + Cluster IP side by side) --- */
+.creds-row-profile { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.creds-row-profile .form-group { flex: 1 1 0; min-width: 180px; }
+.creds-row-profile .profile-controls { display: flex; gap: 6px; }
+.creds-row-profile .profile-controls select { flex: 1; }
+
+/* --- Credential fields (collapsible) --- */
+.credential-fields { padding-top: 12px; border-top: 1px solid var(--border-color); margin-top: 8px; }
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.creds-row-3 .form-group { flex: 1 1 0; min-width: 0; }
+
+/* --- Workflow & steps --- */
+.workflow-steps { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); }
+.workflow-step { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border-color); }
+.workflow-step:last-child { border-bottom: none; }
+.step-number { width: 28px; height: 28px; border-radius: 50%; background: var(--bg-secondary); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-weight: bold; margin-right: 12px; flex-shrink: 0; }
+.step-name { flex: 1; }
+.step-desc { color: var(--text-secondary); font-size: 12px; }
+.step-status { margin-left: 12px; padding: 4px 12px; border-radius: 4px; font-size: 12px; min-width: 80px; text-align: center; }
+.step-status.pending { background: var(--bg-secondary); color: var(--text-secondary); }
+.step-status.running { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.step-status.done { background: #4caf50; color: white; }
+.step-status.error { background: #f44336; color: white; }
+.step-status.skipped { background: #9e9e9e; color: white; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+.step-run-btn { margin-left: 8px; }
+
+/* --- Output pane --- */
+.output-section { margin-top: 20px; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; }
+.output-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.output-title { font-weight: bold; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+.output-menu { position: relative; }
+.output-dropdown { position: absolute; top: 100%; right: 0; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; min-width: 180px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; }
+.output-dropdown a { display: block; padding: 8px 12px; color: var(--text-primary); text-decoration: none; }
+.output-dropdown a:hover { background: var(--bg-secondary); }
+.dropdown-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
+.output-pane { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; padding: 12px; overflow-y: auto; overflow-x: auto; width: 100%; min-height: 450px; max-height: calc(100vh - 260px); box-sizing: border-box; transition: max-height 0.3s ease; }
+.output-pane.creds-expanded { max-height: calc(100vh - 640px); }
+.output-pane.expanded { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; width: 100vw; max-height: calc(100vh - 60px); border-radius: 0; z-index: 999; }
+.output-placeholder { color: var(--text-secondary); text-align: center; padding: 40px; }
+.output-line { margin: 2px 0; white-space: pre-wrap; }
+.output-line .timestamp { color: #888; margin-right: 8px; }
+.output-line[data-tier="debug"] { color: #777; font-style: italic; }
+.output-line[data-tier="live"] { color: #b0bec5; }
+.output-line.info { color: #e0e0e0; }
+.output-line.warn, .output-line.warning { color: #ff9800; }
+.output-line.error, .output-line.fail, .output-line.critical { color: #f44336; }
+.output-line.success { color: #4caf50; }
+.output-line.tier-hidden { display: none !important; }
+.log-level-selector { display: flex; gap: 0; margin: 0 12px; }
+.log-level-btn { background: transparent; color: #888; border: 1px solid #444; padding: 3px 12px; font-size: 11px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+.log-level-btn:first-child { border-radius: 4px 0 0 4px; }
+.log-level-btn:last-child { border-radius: 0 4px 4px 0; }
+.log-level-btn:not(:first-child) { border-left: none; }
+.log-level-btn.active { background: var(--accent, #1a6fb5); color: #fff; border-color: var(--accent, #1a6fb5); }
+.log-level-btn:hover:not(.active) { background: rgba(255,255,255,0.08); color: #ccc; }
+.text-danger { color: #ff5252 !important; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* --- Mode toggle (legacy classes removed — see .seg-toggle) --- */
+
+/* --- One-Shot checklist --- */
+.oneshot-checklist { border: 1px solid var(--border); border-radius: 6px; background: var(--bg-tertiary); overflow: visible; }
+.oneshot-item { display: flex; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; gap: 10px; margin: 0; }
+.oneshot-item:last-child { border-bottom: none; }
+.oneshot-item:hover { background: var(--bg-secondary); }
+.oneshot-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #2196f3; flex-shrink: 0; }
+.oneshot-item-name { font-size: 14px; }
+.oneshot-item-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.badge-required { background: #ff9800; color: #000; }
+.badge-recommended { background: #ff9800; color: #000; }
+.badge-optional { background: #2196f3; color: white; }
+.badge-automated { background: #4caf50; color: white; }
+.oneshot-sub-item { padding-left: 44px; background: var(--bg-secondary); }
+.oneshot-sub-item.hidden { display: none; }
+.oneshot-sub-field {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 44px;
+    background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);
+}
+.oneshot-sub-field label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; margin: 0; }
+.oneshot-sub-field input[type="text"] {
+    max-width: 140px; padding: 0.4rem 0.75rem; font-size: 0.9rem;
+    background: var(--bg-input); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: 4px;
+    transition: border-color 0.15s;
+}
+.oneshot-sub-field input[type="text"]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(56,139,253,0.15);
+}
+
+/* --- Validation results --- */
+.validation-header { font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+.validation-check { display: flex; align-items: center; padding: 6px 0; gap: 8px; font-size: 13px; }
+.validation-icon { width: 20px; text-align: center; font-weight: bold; flex-shrink: 0; }
+.validation-icon.pass { color: #4caf50; }
+.validation-icon.warn { color: #ffc107; }
+.validation-icon.fail { color: #f44336; }
+.validation-icon.info { color: #2196f3; }
+
+/* --- Progress phases --- */
+.progress-phases { display: flex; align-items: center; gap: 8px; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; flex-wrap: wrap; }
+.phase-item { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 500; background: var(--bg-secondary); color: var(--text-secondary); }
+.phase-item.active { background: #2196f3; color: white; animation: pulse 1s infinite; }
+.phase-item.completed { background: #4caf50; color: white; }
+.phase-item.error { background: #f44336; color: white; }
+.phase-item.skipped { background: var(--bg-secondary); color: var(--text-secondary); opacity: 0.5; text-decoration: line-through; }
+.phase-arrow { color: var(--text-secondary); font-size: 14px; }
+.progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+/* --- VAST Logo Progress Indicator --- */
+.panel-flex { display: flex; gap: 16px; }
+.panel-flex-left { flex: 1; min-width: 0; }
+.panel-flex-right {
+    flex: 0 0 200px;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+}
+.vast-progress-container { display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0.25; transition: opacity 0.4s ease; }
+.vast-progress-container.active { opacity: 1; }
+.vast-progress-logo-wrap { position: relative; width: 180px; height: 154px; }
+.vast-progress-logo {
+    width: 100%; height: 100%;
+    -webkit-mask-image: url('/static/img/vast-icon-mask.png');
+    mask-image: url('/static/img/vast-icon-mask.png');
+    -webkit-mask-size: contain; mask-size: contain;
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    background: rgba(100,100,100,0.15);
+    transition: background 0.5s ease;
+}
+.vast-progress-logo.pulse { animation: vastPulse 1.8s ease-in-out infinite; }
+@keyframes vastPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.vast-progress-logo.brand-complete {
+    animation: brandGlow 2s ease-in-out 1;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+    border-radius: 8px;
+}
+@keyframes brandGlow {
+    0% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+    100% { filter: brightness(1); }
+}
+.vast-progress-inner-overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; padding-top: 25%;
+    pointer-events: none;
+}
+.vast-progress-timer { font-size: 12px; font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; line-height: 1; }
+.vast-progress-pct { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1; margin-top: 3px; }
+.vast-progress-check { font-size: 24px; color: var(--accent, #00d4ff); line-height: 1; margin-top: 3px; }
+.vast-progress-label { font-size: 11px; font-weight: 600; color: var(--text-primary); margin-top: 4px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.vast-progress-sub { font-size: 10px; color: var(--text-secondary); text-align: center; max-width: 180px; }
+@media (max-width: 600px) {
+    .panel-flex { flex-direction: column; }
+    .panel-flex-right { flex: 0 0 auto; }
+    .vast-progress-logo-wrap { width: 120px; height: 103px; }
+}
+</style>
+
+<script>
+var OUTPUT_STORAGE_KEY = 'reporter_output';
+var UI_STATE_KEY = 'reporter_ui_state';
+var LOG_TIER_KEY = 'reporter_log_tier';
+var SYNC_CURSOR_KEY = 'reporter_sync_cursor';
+var outputPane, pollInterval = null;
+var currentLogTier = 'status';
+var CFG_DEFAULTS = {};
+var CFG_REPORTER_DEFAULTS = {};
+var CFG_SSH_ADV = {};
+var reporterLogStream = null;
+
+var DEFAULT_CREDENTIALS = {
+    username: 'support',     password: '654321',
+    node_user: 'vastdata',   node_password: 'vastdata',
+    switch_user: 'cumulus',  switch_password: 'Vastdata1!'
+};
+var SWITCH_PASSWORD_MAP = {
+    'cumulus': 'Vastdata1!',
+    'admin': 'admin'
+};
+
+var profileFieldMap = {
+    'cluster_ip': 'clusterIp',
+    'username': 'username',
+    'password': 'password',
+    'node_user': 'nodeUser',
+    'node_password': 'nodePassword',
+    'switch_user': 'switchUser',
+    'switch_password': 'switchPassword',
+    'vip_pool': 'vipPool'
+};
+
+// --- Connection Settings tile collapse / expand ---
+function toggleConnectionSettings() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    var isCollapsed = details.classList.toggle('collapsed-section');
+    btn.classList.toggle('collapsed', isCollapsed);
+    btn.title = isCollapsed ? 'Expand settings' : 'Collapse settings';
+    document.getElementById('outputPane').classList.toggle('creds-expanded', !isCollapsed);
+    saveUIState();
+}
+
+function toggleAdvancedMenu() {
+    var menu = document.getElementById('advancedMenu');
+    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+}
+
+function expandCredentials() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.remove('collapsed-section');
+    btn.classList.remove('collapsed');
+    btn.title = 'Collapse settings';
+    document.getElementById('outputPane').classList.add('creds-expanded');
+}
+
+function collapseCredentials() {
+    var details = document.getElementById('connSettingsDetails');
+    var btn = document.getElementById('btnCollapseConn');
+    details.classList.add('collapsed-section');
+    btn.classList.add('collapsed');
+    btn.title = 'Expand settings';
+    document.getElementById('outputPane').classList.remove('creds-expanded');
+}
+
+function isCredentialsExpanded() {
+    return !document.getElementById('connSettingsDetails').classList.contains('collapsed-section');
+}
+
+function toggleDefaultCredentials() {
+    var on = document.getElementById('useDefaultCreds').checked;
+    if (on) {
+        for (var key in DEFAULT_CREDENTIALS) {
+            var elId = profileFieldMap[key] || key;
+            var el = document.getElementById(elId);
+            if (el) el.value = DEFAULT_CREDENTIALS[key];
+        }
+    } else {
+        ['username', 'password', 'node_user', 'node_password', 'switch_user', 'switch_password'].forEach(function(k) {
+            var el = document.getElementById(profileFieldMap[k] || k);
+            if (el) el.value = '';
+        });
+    }
+}
+
+// --- Log Tier ---
+var TIER_HIERARCHY = { status: ['status'], live: ['status', 'live'], debug: ['status', 'live', 'debug'] };
+
+function setLogTier(tier) {
+    currentLogTier = tier;
+    document.querySelectorAll('.log-level-btn').forEach(function(b) { b.classList.toggle('active', b.dataset.tier === tier); });
+    var visible = TIER_HIERARCHY[tier] || ['status'];
+    document.querySelectorAll('.output-line[data-tier]').forEach(function(el) {
+        el.classList.toggle('tier-hidden', visible.indexOf(el.dataset.tier) === -1);
+    });
+    try { localStorage.setItem(LOG_TIER_KEY, tier); } catch(e) {}
+    saveUIState();
+    if (outputPane && outputPane.autoScroll) outputPane.container.scrollTop = outputPane.container.scrollHeight;
+}
+
+function restoreLogTier() {
+    try { var t = localStorage.getItem(LOG_TIER_KEY); if (t && TIER_HIERARCHY[t]) { setLogTier(t); } } catch(e) {}
+}
+
+// --- UI State Persistence ---
+function saveUIState() {
+    try {
+        var state = {
+            mode: oneShotMode ? 'oneshot' : 'reporter',
+            selectedProfile: document.getElementById('profileSelect').value,
+            useDefaultCreds: document.getElementById('useDefaultCreds').checked,
+            logTier: currentLogTier,
+            connSettingsCollapsed: document.getElementById('connSettingsDetails').classList.contains('collapsed-section'),
+            switchPlacement: document.getElementById('rptSwitchPlacement').value,
+            manualSwitchIps: rptManualSwitchIps,
+            rptPreValidation: document.getElementById('rptPreValidation').checked,
+            rptRunReporter: document.getElementById('rptRunReporter').checked,
+            rptHealthCheck: document.getElementById('rptHealthCheck').checked,
+            rptRunVnetmap: document.getElementById('rptRunVnetmap').checked,
+            oneShotPreValidation: document.getElementById('oneShotPreValidation').checked
+        };
+        var proxyJump = document.getElementById('proxyJumpToggle');
+        if (proxyJump) state.proxy_jump = proxyJump.checked;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort) state.tech_port = techPort.checked;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl) state.includeHealth = healthEl.checked;
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl) state.includeReport = reportEl.checked;
+        var checks = [];
+        document.querySelectorAll('.oneshot-op-checkbox:checked').forEach(function(cb) { checks.push(cb.value); });
+        if (checks.length > 0) state.oneShotChecklist = checks;
+        state.cfgDefaults = CFG_DEFAULTS;
+        state.cfgReporterDefaults = CFG_REPORTER_DEFAULTS;
+        state.cfgSshAdv = CFG_SSH_ADV;
+        try { state.manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { state.manualPlacements = []; }
+        localStorage.setItem(UI_STATE_KEY, JSON.stringify(state));
+    } catch(e) {}
+}
+
+function restoreUIState() {
+    try {
+        var s = localStorage.getItem(UI_STATE_KEY);
+        if (!s) return null;
+        return JSON.parse(s);
+    } catch(e) { return null; }
+}
+
+async function applySavedUIState(saved) {
+    if (!saved) return;
+    if (saved.mode === 'oneshot' && !oneShotMode) {
+        document.getElementById('modeToggle').checked = true;
+        oneShotMode = true;
+        document.getElementById('stepByStepPanel').style.display = 'none';
+        document.getElementById('oneShotPanel').style.display = '';
+        document.getElementById('labelStepByStep').classList.toggle('active', false);
+        document.getElementById('labelOneShot').classList.toggle('active', true);
+        await populateOneShotChecklist();
+    } else if (saved.mode === 'reporter' && oneShotMode) {
+        document.getElementById('modeToggle').checked = false;
+        oneShotMode = false;
+        document.getElementById('stepByStepPanel').style.display = '';
+        document.getElementById('oneShotPanel').style.display = 'none';
+        document.getElementById('labelStepByStep').classList.toggle('active', true);
+        document.getElementById('labelOneShot').classList.toggle('active', false);
+    }
+    var profileLoaded = false;
+    if (saved.selectedProfile) {
+        var sel = document.getElementById('profileSelect');
+        if (sel) {
+            sel.value = saved.selectedProfile;
+            if (sel.value === saved.selectedProfile) {
+                await loadProfile();
+                profileLoaded = true;
+            }
+        }
+    }
+    var sshAdvChanged = JSON.stringify(saved.cfgSshAdv || {}) !== JSON.stringify(CFG_SSH_ADV);
+    if (!sshAdvChanged && saved.useDefaultCreds !== undefined) {
+        document.getElementById('useDefaultCreds').checked = saved.useDefaultCreds;
+    }
+    var defaultsChanged = JSON.stringify(saved.cfgDefaults || {}) !== JSON.stringify(CFG_DEFAULTS);
+    if (!defaultsChanged && saved.includeHealth !== undefined) {
+        var h = document.getElementById('oneShotIncludeHealth');
+        if (h) h.checked = saved.includeHealth;
+    }
+    if (!defaultsChanged && saved.includeReport !== undefined) {
+        var r = document.getElementById('oneShotIncludeReport');
+        if (r) {
+            r.checked = saved.includeReport;
+            var healthRow = document.getElementById('oneShotHealthRow');
+            if (saved.includeReport) healthRow.classList.remove('hidden');
+            else healthRow.classList.add('hidden');
+        }
+    }
+    if (!defaultsChanged && saved.oneShotChecklist && Array.isArray(saved.oneShotChecklist)) {
+        document.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.checked = saved.oneShotChecklist.indexOf(cb.value) !== -1;
+        });
+    }
+    var vpSub = document.getElementById('vipPoolSubField');
+    var vpCb = document.querySelector('.oneshot-op-checkbox[value="vperfsanity"]');
+    if (vpSub && vpCb) vpSub.style.display = vpCb.checked ? '' : 'none';
+    if (saved.connSettingsCollapsed === true) {
+        collapseCredentials();
+    }
+    if (!profileLoaded) {
+        if (saved.switchPlacement) {
+            document.getElementById('rptSwitchPlacement').value = saved.switchPlacement;
+        }
+        if (saved.manualSwitchIps && Array.isArray(saved.manualSwitchIps) && saved.manualSwitchIps.length > 0) {
+            rptManualSwitchIps = saved.manualSwitchIps;
+            document.getElementById('rptManualSwitchIps').value = JSON.stringify(saved.manualSwitchIps);
+        }
+        if (saved.manualPlacements && Array.isArray(saved.manualPlacements) && saved.manualPlacements.length > 0) {
+            rptPlacedSwitches = saved.manualPlacements;
+            document.getElementById('rptManualPlacements').value = JSON.stringify(saved.manualPlacements);
+        }
+        renderPlacementSummary();
+    }
+    var reporterDefaultsChanged = JSON.stringify(saved.cfgReporterDefaults || {}) !== JSON.stringify(CFG_REPORTER_DEFAULTS);
+    if (!reporterDefaultsChanged) {
+        if (saved.rptPreValidation !== undefined) document.getElementById('rptPreValidation').checked = saved.rptPreValidation;
+        if (saved.rptRunReporter !== undefined) document.getElementById('rptRunReporter').checked = saved.rptRunReporter;
+        if (saved.rptHealthCheck !== undefined) document.getElementById('rptHealthCheck').checked = saved.rptHealthCheck;
+        if (saved.rptRunVnetmap !== undefined) document.getElementById('rptRunVnetmap').checked = saved.rptRunVnetmap;
+    }
+    if (!defaultsChanged && saved.oneShotPreValidation !== undefined) {
+        document.getElementById('oneShotPreValidation').checked = saved.oneShotPreValidation;
+    }
+    if (!sshAdvChanged) {
+        var proxyJump = document.getElementById('proxyJumpToggle');
+        if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
+        var techPort = document.getElementById('techPortToggle');
+        if (techPort && saved.tech_port !== undefined) techPort.checked = saved.tech_port;
+    }
+}
+
+// --- State Snapshot Hydration ---
+async function hydrateFromBackend() {
+    try {
+        var resp = await fetch('/advanced-ops/state-snapshot');
+        var snap = await resp.json();
+
+        var syncCursor = 0;
+        try { syncCursor = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); } catch(e) {}
+
+        if (snap.output_count > syncCursor) {
+            var outResp = await fetch('/advanced-ops/output?since=' + syncCursor);
+            var outData = await outResp.json();
+            if (outData.entries && outData.entries.length > 0) {
+                outData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            }
+            try { sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count)); } catch(e) {}
+        }
+
+        if (snap.oneshot && snap.oneshot.running) {
+            if (!oneShotMode) { document.getElementById('modeToggle').checked = true; toggleOneShotMode(); }
+            showOneShotProgress(snap.oneshot.state);
+            startOneShotPolling();
+            return true;
+        }
+
+        return false;
+    } catch(e) {
+        return false;
+    }
+}
+
+function showOneShotProgress(state) {
+    if (!state) return;
+    var phaseOrder = ['operations', 'report', 'bundling'];
+    var phases = document.querySelectorAll('.phase-item');
+    var currentIdx = phaseOrder.indexOf(state.phase);
+    phases.forEach(function(p) {
+        var pName = p.dataset.phase;
+        var pIdx = phaseOrder.indexOf(pName);
+        if (pIdx < currentIdx) { p.classList.add('completed'); p.classList.remove('active'); }
+        else if (pIdx === currentIdx) { p.classList.add('active'); p.classList.remove('completed'); }
+        else { p.classList.remove('active', 'completed'); }
+    });
+    var progressEl = document.getElementById('oneShotProgress');
+    if (progressEl) progressEl.style.display = '';
+    var statusEl = document.getElementById('oneShotStatusText');
+    if (statusEl && state.current_operation) statusEl.textContent = state.current_operation;
+    var counterEl = document.getElementById('oneShotCounter');
+    if (counterEl && state.operation_index && state.total_operations) {
+        counterEl.textContent = state.operation_index + ' / ' + state.total_operations;
+    }
+}
+
+// --- OutputPane ---
+function OutputPaneCtor(containerId) {
+    this.container = document.getElementById(containerId);
+    this.autoScroll = true;
+    this.entries = [];
+    this._restore();
+}
+OutputPaneCtor.prototype.append = function(level, message, details, log_tier) {
+    details = details || null;
+    log_tier = log_tier || 'status';
+    var timestamp = new Date().toISOString().slice(11, 19);
+    var entry = { timestamp: timestamp, level: level, message: message, details: details, log_tier: log_tier };
+    this.entries.push(entry);
+    this._renderEntry(entry);
+    this._persist();
+    try { var c = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); sessionStorage.setItem(SYNC_CURSOR_KEY, String(c + 1)); } catch(e) {}
+    if (this.autoScroll) this.container.scrollTop = this.container.scrollHeight;
+};
+OutputPaneCtor.prototype._renderEntry = function(entry) {
+    var placeholder = this.container.querySelector('.output-placeholder');
+    if (placeholder) placeholder.remove();
+    var tier = entry.log_tier || 'status';
+    var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
+    var line = document.createElement('div');
+    var cls = entry.level;
+    var msgUpper = (entry.message || '').toUpperCase();
+    if (cls === 'info') {
+        if (msgUpper.indexOf('[WARN') !== -1 || msgUpper.indexOf('{WARN') !== -1 || msgUpper.indexOf('WARNING') !== -1) cls = 'warn';
+        else if (msgUpper.indexOf('[ERROR') !== -1 || msgUpper.indexOf('{ERROR') !== -1) cls = 'error';
+        else if (msgUpper.indexOf('SUCCESS') !== -1 || msgUpper.indexOf('COMPLETED') !== -1) cls = 'success';
+    }
+    line.className = 'output-line ' + cls;
+    line.setAttribute('data-tier', tier);
+    if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
+    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
+    if (entry.details) {
+        var d = document.createElement('div');
+        d.style.marginLeft = '20px';
+        d.style.color = '#aaa';
+        d.textContent = '> ' + entry.details;
+        line.appendChild(d);
+    }
+    this.container.appendChild(line);
+};
+OutputPaneCtor.prototype._escapeHtml = function(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
+OutputPaneCtor.prototype._persist = function() { try { sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(this.entries)); } catch(e) {} };
+OutputPaneCtor.prototype._restore = function() { try { var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY); if (s) { this.entries = JSON.parse(s); var self = this; this.entries.forEach(function(e) { self._renderEntry(e); }); } } catch(e) {} };
+OutputPaneCtor.prototype.clear = function() {
+    if (confirm('Clear all output?')) {
+        this.entries = [];
+        this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>';
+        sessionStorage.removeItem(OUTPUT_STORAGE_KEY);
+        fetch('/advanced-ops/state-snapshot').then(function(r) { return r.json(); }).then(function(snap) {
+            sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count || 0));
+        }).catch(function() { sessionStorage.removeItem(SYNC_CURSOR_KEY); });
+    }
+};
+OutputPaneCtor.prototype.copyToClipboard = function() { var t = this.entries.map(function(e) { return e.timestamp + ' [' + e.level.toUpperCase() + '] ' + e.message; }).join('\n'); navigator.clipboard.writeText(t).then(function() { alert('Copied!'); }); };
+OutputPaneCtor.prototype.toggleExpand = function() { this.container.classList.toggle('expanded'); };
+
+// --- Profile management ---
+async function fetchProfiles() {
+    try {
+        var resp = await fetch('/profiles');
+        var profiles = await resp.json();
+        var sel = document.getElementById('profileSelect');
+        var current = sel.value;
+        sel.innerHTML = '<option value="">- Create or Select a profile -</option>';
+        for (var name of Object.keys(profiles).sort()) {
+            var opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+        return profiles;
+    } catch (e) { return {}; }
+}
+
+async function loadProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) return;
+    var profiles = await fetchProfiles();
+    var p = profiles[name];
+    if (!p) return;
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        if (el) el.value = p[profileKey] || '';
+    }
+    var vipVis = document.getElementById('vipPoolVisible');
+    if (vipVis) vipVis.value = document.getElementById('vipPool').value || 'main';
+    var toggle = document.getElementById('useDefaultCreds');
+    toggle.checked = p.use_default_creds !== false;
+    var pj = document.getElementById('proxyJumpToggle');
+    if (pj) pj.checked = p.proxy_jump !== false;
+    var tp = document.getElementById('techPortToggle');
+    if (tp) tp.checked = !!p.tech_port;
+
+    rptDiscoveredRacks = [];
+    rptDiscoveredSwitches = [];
+    rptPlacedSwitches = [];
+    rptManualSwitchIps = [];
+    document.getElementById('rptDiscoverStatus').textContent = '';
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
+    document.getElementById('rptAssignmentControls').classList.add('hidden');
+    document.getElementById('rptRackSwitchHeightRow').style.display = 'none';
+    document.getElementById('rptManualIpRow').style.display = 'none';
+    document.getElementById('rptManualPlacements').value = '[]';
+    document.getElementById('rptManualSwitchIps').value = '[]';
+    document.getElementById('rptPlacedSwitchesContainer').classList.add('hidden');
+    document.getElementById('rptManualSwitchIpTableContainer').classList.add('hidden');
+    document.getElementById('oneShotResultPanel').style.display = 'none';
+    resetReporterStepper();
+
+    document.getElementById('rptSwitchPlacement').value = p.switch_placement || 'manual';
+
+    var preVal = document.getElementById('rptPreValidation');
+    if (preVal) preVal.checked = p.rpt_pre_validation !== false;
+    var runRpt = document.getElementById('rptRunReporter');
+    if (runRpt) runRpt.checked = p.rpt_run_reporter !== false;
+    var healthChk = document.getElementById('rptHealthCheck');
+    if (healthChk) healthChk.checked = p.rpt_health_check !== undefined ? p.rpt_health_check : true;
+    var vnetmapChk = document.getElementById('rptRunVnetmap');
+    if (vnetmapChk) vnetmapChk.checked = !!p.rpt_run_vnetmap;
+
+    checkVnetmapStatus(p.cluster_ip || document.getElementById('clusterIp').value);
+
+    if (p.manual_placements && Array.isArray(p.manual_placements) && p.manual_placements.length > 0) {
+        rptPlacedSwitches = p.manual_placements;
+        document.getElementById('rptManualPlacements').value = JSON.stringify(rptPlacedSwitches);
+    }
+
+    if (p.manual_switch_ips && Array.isArray(p.manual_switch_ips) && p.manual_switch_ips.length > 0) {
+        rptManualSwitchIps = p.manual_switch_ips;
+        document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    }
+    renderPlacementSummary();
+}
+
+async function saveProfile() {
+    var name = document.getElementById('profileSelect').value;
+    if (!name) {
+        name = prompt('Profile name (e.g. "selab-var-202"):');
+        if (!name) return;
+    }
+    var data = { name: name, use_default_creds: document.getElementById('useDefaultCreds').checked };
+    for (var profileKey in profileFieldMap) {
+        var formId = profileFieldMap[profileKey];
+        var el = document.getElementById(formId);
+        data[profileKey] = el ? el.value : '';
+    }
+    data.switch_placement = document.getElementById('rptSwitchPlacement').value;
+    var pj = document.getElementById('proxyJumpToggle');
+    data.proxy_jump = pj ? pj.checked : true;
+    var tpSave = document.getElementById('techPortToggle');
+    data.tech_port = tpSave ? tpSave.checked : false;
+    try { data.manual_placements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { data.manual_placements = []; }
+    data.manual_switch_ips = rptManualSwitchIps;
+    var preValEl = document.getElementById('rptPreValidation');
+    data.rpt_pre_validation = preValEl ? preValEl.checked : true;
+    var runRptEl = document.getElementById('rptRunReporter');
+    data.rpt_run_reporter = runRptEl ? runRptEl.checked : true;
+    var healthEl = document.getElementById('rptHealthCheck');
+    data.rpt_health_check = healthEl ? healthEl.checked : true;
+    var vnetmapEl = document.getElementById('rptRunVnetmap');
+    data.rpt_run_vnetmap = vnetmapEl ? vnetmapEl.checked : true;
+    try {
+        var resp = await fetch('/profiles', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        await resp.json();
+        await fetchProfiles();
+        document.getElementById('profileSelect').value = name;
+        outputPane.append('success', 'Profile "' + name + '" saved');
+    } catch (e) {
+        alert('Failed to save profile: ' + e.message);
+    }
+}
+
+function createProfile() {
+    var sel = document.getElementById('profileSelect');
+    sel.value = '';
+    if (sel.options[0]) sel.options[0].text = '- Create or Select a profile -';
+    document.getElementById('clusterIp').value = '';
+    toggleDefaultCredentials();
+    document.getElementById('vipPool').value = 'main';
+    var vipVis = document.getElementById('vipPoolVisible');
+    if (vipVis) vipVis.value = 'main';
+    expandCredentials();
+    saveUIState();
+}
+
+async function deleteProfile() {
+    var sel = document.getElementById('profileSelect');
+    var name = sel.value;
+    if (!name) { alert('Select a profile to delete.'); return; }
+    if (!confirm('Delete profile "' + name + '"?')) return;
+    try {
+        await fetch('/profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+        await fetchProfiles();
+    } catch (e) {
+        alert('Failed to delete profile: ' + e.message);
+    }
+}
+
+function getCredentials() {
+    var pj = document.getElementById('proxyJumpToggle');
+    var tp = document.getElementById('techPortToggle');
+    return {
+        cluster_ip: document.getElementById('clusterIp').value,
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        node_user: document.getElementById('nodeUser').value,
+        node_password: document.getElementById('nodePassword').value,
+        switch_user: document.getElementById('switchUser').value,
+        switch_password: document.getElementById('switchPassword').value,
+        vip_pool: document.getElementById('vipPool').value || 'main',
+        proxy_jump: pj ? pj.checked : true,
+        tech_port: tp ? tp.checked : false,
+    };
+}
+
+// --- Workflow loading (for One-Shot checklist population) ---
+async function loadWorkflows() {
+    try {
+        var resp = await fetch('/advanced-ops/workflows');
+        var data = await resp.json();
+        return data;
+    } catch (e) {
+        if (outputPane) outputPane.append('error', 'Failed to load workflows: ' + e.message);
+        return { workflows: [] };
+    }
+}
+
+// =====================================================================
+// VAST LOGO PROGRESS COMPONENT
+// =====================================================================
+var VAST_LOGO_HEIGHT = 154;
+var VAST_COLORS = {
+    running: '#00d4ff', complete: '#4caf50', error: '#f44336', cancel: '#ffc107',
+    dim: 'rgba(100,100,100,0.15)',
+    brandGradient: 'linear-gradient(135deg, #0a1628 0%, #0d2b4a 30%, #1a6fb5 60%, #00d4ff 100%)'
+};
+
+function VastProgress(containerId) {
+    this.container = document.getElementById(containerId);
+    this._timerInterval = null;
+    this._animFrame = null;
+    this._startTime = null;
+    this._elapsed = 0;
+    this._percent = 0;
+    this._state = 'idle';
+    this._fillColor = VAST_COLORS.running;
+    this._render();
+}
+
+VastProgress.prototype._render = function() {
+    this.container.innerHTML =
+        '<div class="vast-progress-logo-wrap">' +
+            '<div class="vast-progress-logo" id="' + this.container.id + '_logo"></div>' +
+            '<div class="vast-progress-inner-overlay">' +
+                '<span class="vast-progress-timer" id="' + this.container.id + '_timer"></span>' +
+                '<span class="vast-progress-pct" id="' + this.container.id + '_pct"></span>' +
+                '<span class="vast-progress-check-el" id="' + this.container.id + '_check" style="display:none;"></span>' +
+            '</div>' +
+        '</div>' +
+        '<div class="vast-progress-label" id="' + this.container.id + '_label"></div>' +
+        '<div class="vast-progress-sub" id="' + this.container.id + '_sub"></div>';
+    this._logoEl = document.getElementById(this.container.id + '_logo');
+    this._pctEl = document.getElementById(this.container.id + '_pct');
+    this._timerEl = document.getElementById(this.container.id + '_timer');
+    this._checkEl = document.getElementById(this.container.id + '_check');
+    this._labelEl = document.getElementById(this.container.id + '_label');
+    this._subEl = document.getElementById(this.container.id + '_sub');
+};
+
+VastProgress.prototype.show = function() { this.container.classList.add('active'); };
+VastProgress.prototype.hide = function() { this.container.classList.remove('active'); };
+
+VastProgress.prototype._setFill = function(pct) {
+    var fillPx = Math.round((pct / 100) * VAST_LOGO_HEIGHT);
+    this._logoEl.style.background =
+        'linear-gradient(to top, ' + this._fillColor + ' ' + fillPx + 'px, ' + VAST_COLORS.dim + ' ' + fillPx + 'px)';
+};
+
+VastProgress.prototype.start = function() {
+    this._state = 'running';
+    this._startTime = Date.now();
+    this._elapsed = 0;
+    this._percent = 0;
+    this._fillColor = VAST_COLORS.running;
+    this._logoEl.classList.add('pulse');
+    this._logoEl.classList.remove('brand-complete');
+    this._setFill(0);
+    this._pctEl.textContent = '0%';
+    this._pctEl.className = 'vast-progress-pct';
+    this._pctEl.style.display = '';
+    this._timerEl.textContent = '00:00';
+    this._checkEl.style.display = 'none';
+    this._labelEl.textContent = '';
+    this._subEl.textContent = '';
+    this.show();
+    var self = this;
+    this._timerInterval = setInterval(function() { self._tickTimer(); }, 1000);
+};
+
+VastProgress.prototype._tickTimer = function() {
+    if (this._state !== 'running') return;
+    this._elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+    var m = Math.floor(this._elapsed / 60);
+    var s = this._elapsed % 60;
+    this._timerEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+};
+
+VastProgress.prototype._freezeTimer = function() {
+    if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
+    if (this._startTime) {
+        this._elapsed = Math.floor((Date.now() - this._startTime) / 1000);
+        var m = Math.floor(this._elapsed / 60);
+        var s = this._elapsed % 60;
+        this._timerEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
+};
+
+VastProgress.prototype.update = function(percent, label, sub) {
+    var target = Math.min(100, Math.max(0, percent));
+    if (label !== undefined) this._labelEl.textContent = label;
+    if (sub !== undefined) this._subEl.textContent = sub;
+    this._animateTo(target);
+};
+
+VastProgress.prototype._animateTo = function(target) {
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    var self = this;
+    var from = this._percent;
+    var diff = target - from;
+    if (Math.abs(diff) < 0.5) {
+        this._percent = target;
+        this._setFill(target);
+        this._pctEl.textContent = Math.round(target) + '%';
+        return;
+    }
+    var duration = Math.min(800, Math.max(200, Math.abs(diff) * 20));
+    var startTime = performance.now();
+    function step(now) {
+        var elapsed = now - startTime;
+        var t = Math.min(elapsed / duration, 1);
+        t = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        var current = from + diff * t;
+        self._percent = current;
+        self._setFill(current);
+        self._pctEl.textContent = Math.round(current) + '%';
+        if (t < 1) { self._animFrame = requestAnimationFrame(step); }
+        else { self._animFrame = null; }
+    }
+    this._animFrame = requestAnimationFrame(step);
+};
+
+VastProgress.prototype.complete = function(label) {
+    this._state = 'completed';
+    this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    this._logoEl.classList.remove('pulse');
+    this._logoEl.style.background = VAST_COLORS.brandGradient;
+    this._logoEl.classList.add('brand-complete');
+    this._pctEl.style.display = 'none';
+    this._checkEl.textContent = '\u2713';
+    this._checkEl.className = 'vast-progress-check';
+    this._checkEl.style.display = '';
+    this._labelEl.textContent = label || 'Completed';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.error = function(label) {
+    this._state = 'error';
+    this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    this._logoEl.classList.remove('pulse');
+    this._fillColor = VAST_COLORS.error;
+    this._setFill(this._percent);
+    this._pctEl.style.color = VAST_COLORS.error;
+    this._labelEl.textContent = label || 'Error';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.cancel = function() {
+    this._state = 'cancelled';
+    this._freezeTimer();
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    this._logoEl.classList.remove('pulse');
+    this._fillColor = VAST_COLORS.cancel;
+    this._setFill(this._percent);
+    this._labelEl.textContent = 'Cancelled';
+    this._subEl.textContent = '';
+};
+
+VastProgress.prototype.reset = function() {
+    this._state = 'idle';
+    if (this._timerInterval) { clearInterval(this._timerInterval); this._timerInterval = null; }
+    if (this._animFrame) { cancelAnimationFrame(this._animFrame); this._animFrame = null; }
+    this._percent = 0;
+    this._elapsed = 0;
+    this._fillColor = VAST_COLORS.running;
+    this._logoEl.classList.remove('pulse');
+    this._logoEl.classList.remove('brand-complete');
+    this._logoEl.style.background = VAST_COLORS.dim;
+    this._pctEl.style.color = '';
+    this._pctEl.style.display = '';
+    this._pctEl.className = 'vast-progress-pct';
+    this._pctEl.textContent = '';
+    this._timerEl.textContent = '';
+    this._checkEl.style.display = 'none';
+    this._checkEl.textContent = '';
+    this._labelEl.textContent = '';
+    this._subEl.textContent = '';
+    this.hide();
+};
+
+function positionReporterProgress() {
+    // Progress tracker is permanently in the right column; no repositioning needed.
+}
+
+var rptRing = null;
+var osRing = null;
+
+// =====================================================================
+// REPORTER MODE: Switch Placement
+// =====================================================================
+var rptDiscoveredRacks = [];
+var rptDiscoveredSwitches = [];
+var rptPlacedSwitches = [];
+var rptLibrarySwitches = [];
+
+var _placementSnapshot = null;
+
+function openPlacementModal(autoDiscover) {
+    _placementSnapshot = {
+        placed: JSON.parse(document.getElementById('rptManualPlacements').value || '[]'),
+        manual: JSON.parse(JSON.stringify(rptManualSwitchIps)),
+        racks: JSON.parse(JSON.stringify(rptDiscoveredRacks)),
+        switches: JSON.parse(JSON.stringify(rptDiscoveredSwitches)),
+        placedArr: JSON.parse(JSON.stringify(rptPlacedSwitches))
+    };
+    document.getElementById('placementModal').classList.remove('hidden');
+    if (rptPlacedSwitches.length > 0) {
+        document.getElementById('rptAssignmentControls').classList.remove('hidden');
+        rptRenderPlacedTable();
+        if (rptDiscoveredRacks.length > 0) {
+            document.getElementById('rptRackSwitchHeightRow').style.display = '';
+            rptRenderPlacementUI();
+        }
+    }
+    if (autoDiscover && rptDiscoveredRacks.length === 0) {
+        rptDiscoverSwitches();
+    }
+}
+
+function closePlacementModal() {
+    document.getElementById('placementModal').classList.add('hidden');
+    _placementSnapshot = null;
+}
+
+async function savePlacementModal() {
+    rptSyncManualPlacements();
+    document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    renderPlacementSummary();
+    if (rptPlacedSwitches.length > 0 || rptManualSwitchIps.length > 0) {
+        document.getElementById('rptSwitchPlacement').value = 'manual';
+    } else {
+        document.getElementById('rptSwitchPlacement').value = 'auto';
+    }
+    var profileName = document.getElementById('profileSelect').value;
+    if (profileName) {
+        await saveProfile();
+    }
+    closePlacementModal();
+    saveUIState();
+}
+
+function cancelPlacementModal() {
+    if (_placementSnapshot) {
+        document.getElementById('rptManualPlacements').value = JSON.stringify(_placementSnapshot.placed);
+        rptManualSwitchIps = _placementSnapshot.manual;
+        rptDiscoveredRacks = _placementSnapshot.racks;
+        rptDiscoveredSwitches = _placementSnapshot.switches;
+        rptPlacedSwitches = _placementSnapshot.placedArr;
+        rptRenderManualSwitchIps();
+        rptRenderPlacedTable();
+    }
+    closePlacementModal();
+}
+
+function renderPlacementSummary() {
+    var racks = rptDiscoveredRacks ? rptDiscoveredRacks.length : 0;
+    if (racks === 0 && rptPlacedSwitches.length > 0) {
+        var seen = {};
+        rptPlacedSwitches.forEach(function(p) { if (p.rack_name) seen[p.rack_name] = true; });
+        racks = Object.keys(seen).length;
+    }
+    var placed = rptPlacedSwitches.length;
+    var manual = rptManualSwitchIps.length;
+    var totalSwitches = placed + manual;
+    document.getElementById('rptPlacementCount').textContent = racks;
+    document.getElementById('rptManualCount').textContent = totalSwitches;
+    var rackPill = document.querySelector('.pill-rack');
+    var switchPill = document.querySelector('.pill-switch');
+    if (rackPill) rackPill.classList.toggle('pill-muted', racks === 0);
+    if (switchPill) switchPill.classList.toggle('pill-muted', totalSwitches === 0);
+}
+
+function activateReportSteps(result) {
+    ['stepDot3', 'stepDot4', 'stepDot5'].forEach(function(id) {
+        var dot = document.getElementById(id);
+        dot.classList.remove('disabled');
+        dot.classList.add('completed');
+    });
+    var fill = document.getElementById('stepperLineFill');
+    if (fill) fill.style.width = '100%';
+
+    var viewBtn = document.getElementById('rptViewPdf');
+    var dlPdf = document.getElementById('rptDownloadPdf');
+    var dlJson = document.getElementById('rptDownloadJson');
+
+    if (result.pdf) {
+        viewBtn.href = '/reports/view/' + encodeURIComponent(result.pdf);
+        viewBtn.className = 'btn btn-primary';
+        viewBtn.style.pointerEvents = '';
+        dlPdf.href = '/reports/download/' + encodeURIComponent(result.pdf);
+        dlPdf.className = 'btn btn-primary';
+        dlPdf.style.pointerEvents = '';
+    }
+    if (result.json) {
+        dlJson.href = '/reports/download/' + encodeURIComponent(result.json);
+        dlJson.className = 'btn btn-primary';
+        dlJson.style.pointerEvents = '';
+    }
+}
+
+function resetReporterStepper() {
+    ['stepDot3', 'stepDot4', 'stepDot5'].forEach(function(id) {
+        var dot = document.getElementById(id);
+        dot.classList.remove('completed', 'active');
+        dot.classList.add('disabled');
+    });
+    var fill = document.getElementById('stepperLineFill');
+    if (fill) fill.style.width = '25%';
+    ['rptViewPdf', 'rptDownloadPdf', 'rptDownloadJson'].forEach(function(id) {
+        var btn = document.getElementById(id);
+        btn.className = 'btn btn-ghosted';
+        btn.style.pointerEvents = '';
+        btn.href = '#';
+    });
+}
+
+async function rptFetchLibrarySwitches() {
+    if (rptLibrarySwitches.length > 0) return;
+    try {
+        var resp = await fetch('/api/library');
+        var all = await resp.json();
+        rptLibrarySwitches = all.filter(function(d) { return d.type === 'switch'; });
+        rptPopulateModelDropdown();
+    } catch (e) { /* silent — dropdown stays empty */ }
+}
+
+function rptPopulateModelDropdown() {
+    var sel = document.getElementById('rptManualSwitchIpModel');
+    if (!sel) return;
+    var existing = sel.value;
+    sel.innerHTML = '<option value="">-- Select model --</option>';
+    rptLibrarySwitches.forEach(function(sw) {
+        var opt = document.createElement('option');
+        opt.value = sw.key;
+        opt.textContent = sw.description + ' (' + sw.height_u + 'U)';
+        opt.dataset.heightU = sw.height_u;
+        opt.dataset.description = sw.description;
+        sel.appendChild(opt);
+    });
+    if (existing) sel.value = existing;
+}
+
+async function rptDiscoverSwitches() {
+    var statusEl = document.getElementById('rptDiscoverStatus');
+    statusEl.textContent = 'Discovering...';
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
+    var ip = document.getElementById('clusterIp').value.trim();
+    if (!ip) { statusEl.textContent = 'Enter Cluster IP first'; return; }
+
+    var tp = document.getElementById('techPortToggle');
+    var payload = {
+        cluster_ip: ip,
+        auth_method: 'password',
+        username: document.getElementById('username').value,
+        password: document.getElementById('password').value,
+        token: '',
+        tech_port: tp ? tp.checked : false,
+        node_user: document.getElementById('nodeUser').value || 'vastdata',
+        node_password: document.getElementById('nodePassword').value
+    };
+    try {
+        var resp = await fetch('/api/discover', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (!resp.ok) { statusEl.textContent = 'Error: ' + (data.error || resp.status); return; }
+
+        rptDiscoveredRacks = data.racks || [];
+        rptDiscoveredSwitches = data.switches || [];
+        var savedPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]');
+        if (savedPlacements.length > 0) {
+            var discoveredNames = {};
+            rptDiscoveredSwitches.forEach(function(s) { discoveredNames[s.name] = s; });
+            rptPlacedSwitches = savedPlacements.filter(function(p) {
+                return discoveredNames[p.switch_name] || rptManualSwitchIps.some(function(m) { return m.ip === p.switch_name; });
+            });
+        } else {
+            rptPlacedSwitches = [];
+        }
+        rptRenderPlacementUI();
+
+        if (rptDiscoveredSwitches.length === 0) {
+            statusEl.textContent = rptDiscoveredRacks.length + ' rack(s), 0 switches found';
+            document.getElementById('rptNoSwitchesPanel').classList.remove('hidden');
+            document.getElementById('rptAssignmentControls').classList.add('hidden');
+            outputPane.append('warning', 'Discovery found ' + rptDiscoveredRacks.length + ' racks but no switches');
+        } else {
+            statusEl.textContent = rptDiscoveredRacks.length + ' rack(s), ' + rptDiscoveredSwitches.length + ' switch(es) found';
+            document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+            document.getElementById('rptAssignmentControls').classList.remove('hidden');
+            document.getElementById('rptRackSwitchHeightRow').style.display = '';
+            document.getElementById('rptAddManualBtn').classList.remove('hidden');
+            outputPane.append('success', 'Discovery complete: ' + rptDiscoveredRacks.length + ' racks, ' + rptDiscoveredSwitches.length + ' switches');
+        }
+    } catch (e) {
+        statusEl.textContent = 'Network error: ' + e.message;
+        outputPane.append('error', 'Discovery failed: ' + e.message);
+    }
+}
+
+function rptShowManualEntry() {
+    document.getElementById('rptNoSwitchesPanel').classList.add('hidden');
+    document.getElementById('rptAddManualBtn').classList.add('hidden');
+    document.getElementById('rptAssignmentControls').classList.remove('hidden');
+    document.getElementById('rptRackSwitchHeightRow').style.display = '';
+    document.getElementById('rptManualIpRow').style.display = '';
+    rptFetchLibrarySwitches();
+}
+
+function rptOpenVmsSwitch() {
+    var ip = document.getElementById('clusterIp').value.trim();
+    if (ip) window.open('https://' + ip + '/#/crud/physical/switches', '_blank');
+    document.getElementById('rptVmsRerunRow').classList.remove('hidden');
+}
+
+function rptRenderPlacementUI() {
+    var rackSel = document.getElementById('rptRackSelect');
+    rackSel.innerHTML = '';
+    for (var i = 0; i < rptDiscoveredRacks.length; i++) {
+        var r = rptDiscoveredRacks[i];
+        var opt = document.createElement('option');
+        opt.value = r.name;
+        opt.textContent = r.name + ' (' + r.height_u + 'U)';
+        rackSel.appendChild(opt);
+    }
+    rptRenderSwitchDropdown();
+    rptRenderPlacedTable();
+}
+
+function rptRenderSwitchDropdown() {
+    var swSel = document.getElementById('rptSwitchSelect');
+    swSel.innerHTML = '';
+    var placedNames = {};
+    rptPlacedSwitches.forEach(function(p) { placedNames[p.switch_name] = true; });
+    var allSw = rptDiscoveredSwitches.concat(
+        rptManualSwitchIps.filter(function(m) { return !rptDiscoveredSwitches.some(function(s) { return s.name === m.ip; }); })
+            .map(function(m) {
+                return {
+                    name: m.ip,
+                    model: m.model_description || 'Manual',
+                    model_key: m.model_key || '',
+                    height_u: m.height_u || 1
+                };
+            })
+    );
+    allSw.forEach(function(s) {
+        if (placedNames[s.name]) return;
+        var opt = document.createElement('option');
+        opt.value = s.name;
+        opt.textContent = s.name + ' (' + s.model + ', ' + s.height_u + 'U)';
+        opt.dataset.modelKey = s.model_key || '';
+        opt.dataset.heightU = s.height_u || 1;
+        swSel.appendChild(opt);
+    });
+}
+
+function rptAddSwitchPlacement() {
+    var rackName = document.getElementById('rptRackSelect').value;
+    var swSel = document.getElementById('rptSwitchSelect');
+    var swName = swSel.value;
+    var uPos = parseInt(document.getElementById('rptUPositionInput').value, 10);
+    if (!rackName || !swName) return;
+    if (!uPos || uPos < 1) { alert('Enter a valid U position'); return; }
+
+    var sw = rptDiscoveredSwitches.find(function(s) { return s.name === swName; });
+    var selOpt = swSel.options[swSel.selectedIndex];
+    var modelKey = (sw ? (sw.model_key || sw.model || '') : (selOpt ? selOpt.dataset.modelKey : '')) || '';
+    var heightU = sw ? sw.height_u : parseInt(selOpt ? selOpt.dataset.heightU : '1', 10) || 1;
+    rptPlacedSwitches.push({
+        switch_name: swName,
+        rack_name: rackName,
+        u_position: uPos,
+        model: sw ? sw.model : (modelKey || 'Manual'),
+        model_key: modelKey,
+        height_u: heightU
+    });
+    document.getElementById('rptUPositionInput').value = '';
+    rptRenderSwitchDropdown();
+    rptRenderPlacedTable();
+    rptSyncManualPlacements();
+}
+
+function rptRemoveSwitchPlacement(idx) {
+    rptPlacedSwitches.splice(idx, 1);
+    rptRenderSwitchDropdown();
+    rptRenderPlacedTable();
+    rptSyncManualPlacements();
+    renderPlacementSummary();
+}
+
+function rptRenderPlacedTable() {
+    var tbody = document.getElementById('rptPlacedSwitchesBody');
+    var container = document.getElementById('rptPlacedSwitchesContainer');
+    tbody.innerHTML = '';
+    if (rptPlacedSwitches.length === 0) { container.classList.add('hidden'); return; }
+    container.classList.remove('hidden');
+    for (var i = 0; i < rptPlacedSwitches.length; i++) {
+        var p = rptPlacedSwitches[i];
+        var posLabel = p.height_u > 1
+            ? 'U' + (p.u_position - p.height_u + 1) + '-U' + p.u_position
+            : 'U' + p.u_position;
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + p.rack_name + '</td>'
+            + '<td>' + p.switch_name + '</td>'
+            + '<td>' + (p.model || '') + '</td>'
+            + '<td>' + posLabel + '</td>'
+            + '<td><button type="button" class="btn-icon-delete" onclick="rptRemoveSwitchPlacement(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
+        tbody.appendChild(tr);
+    }
+}
+
+function rptSyncManualPlacements() {
+    var arr = rptPlacedSwitches.map(function(p) {
+        return {
+            switch_name: p.switch_name,
+            rack_name: p.rack_name,
+            u_position: p.u_position,
+            model_key: p.model_key || '',
+            model: p.model || '',
+            height_u: p.height_u || 1
+        };
+    });
+    document.getElementById('rptManualPlacements').value = JSON.stringify(arr);
+    saveUIState();
+}
+
+// =====================================================================
+// REPORTER MODE: Manual Switch IP Entry
+// =====================================================================
+var rptManualSwitchIps = [];
+
+function rptAddManualSwitchIp() {
+    var ipInput = document.getElementById('rptManualSwitchIpInput');
+    var modelSel = document.getElementById('rptManualSwitchIpModel');
+    var ip = ipInput.value.trim();
+    if (!ip) { alert('Enter a switch name or description'); return; }
+    if (rptManualSwitchIps.some(function(m) { return m.ip === ip; })) { alert('Switch name already added'); return; }
+
+    var modelKey = modelSel.value || '';
+    var selOpt = modelSel.options[modelSel.selectedIndex];
+    var modelDesc = (selOpt && modelKey) ? selOpt.dataset.description : '';
+    var heightU = (selOpt && modelKey) ? parseInt(selOpt.dataset.heightU, 10) || 1 : 1;
+
+    rptManualSwitchIps.push({
+        ip: ip,
+        name: modelDesc || '',
+        model_key: modelKey,
+        model_description: modelDesc,
+        height_u: heightU
+    });
+    ipInput.value = '';
+    modelSel.value = '';
+    rptRenderManualSwitchIps();
+    rptRenderSwitchDropdown();
+    document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    saveUIState();
+}
+
+function rptRemoveManualSwitchIp(idx) {
+    rptManualSwitchIps.splice(idx, 1);
+    rptRenderManualSwitchIps();
+    rptRenderSwitchDropdown();
+    document.getElementById('rptManualSwitchIps').value = JSON.stringify(rptManualSwitchIps);
+    renderPlacementSummary();
+    saveUIState();
+}
+
+function rptRenderManualSwitchIps() {
+    var tbody = document.getElementById('rptManualSwitchIpBody');
+    var container = document.getElementById('rptManualSwitchIpTableContainer');
+    tbody.innerHTML = '';
+    if (rptManualSwitchIps.length === 0) { container.classList.add('hidden'); return; }
+    container.classList.remove('hidden');
+    for (var i = 0; i < rptManualSwitchIps.length; i++) {
+        var m = rptManualSwitchIps[i];
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + m.ip + '</td>'
+            + '<td>' + (m.model_description || m.name || '<span style="color:#666;">\u2014</span>') + '</td>'
+            + '<td>' + (m.height_u || 1) + 'U</td>'
+            + '<td><button type="button" class="btn-icon-delete" onclick="rptRemoveManualSwitchIp(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
+        tbody.appendChild(tr);
+    }
+}
+
+// =====================================================================
+// REPORTER MODE: Checklist Orchestration
+// =====================================================================
+var reporterRunning = false;
+var reporterPollInterval = null;
+var rptValidated = false;
+var _validationInFlight = false;
+var _oneShotOutputCursor = 0;
+
+function startReporterLogStream() {
+    stopReporterLogStream();
+    reporterLogStream = new EventSource('/stream/logs');
+    reporterLogStream.onmessage = function(e) {
+        if (e.data.startsWith(':')) return;
+        try {
+            var entry = JSON.parse(e.data);
+            var tier = 'status';
+            var lvl = (entry.level || '').toUpperCase();
+            if (lvl === 'DEBUG') tier = 'debug';
+            else if (lvl === 'INFO') tier = 'status';
+            else if (lvl === 'WARNING') tier = 'live';
+            else if (lvl === 'ERROR' || lvl === 'CRITICAL') tier = 'status';
+            outputPane.append(lvl.toLowerCase() === 'warning' ? 'warn' : lvl.toLowerCase(), entry.message, null, tier);
+        } catch(ex) {}
+    };
+}
+function stopReporterLogStream() {
+    if (reporterLogStream) { reporterLogStream.close(); reporterLogStream = null; }
+}
+
+async function runReporterChecklist() {
+    var creds = getCredentials();
+    if (!creds.cluster_ip) { outputPane.append('warn', 'Enter a Cluster IP first.'); return; }
+
+    var doPreValidation = document.getElementById('rptPreValidation').checked;
+    var doReport = document.getElementById('rptRunReporter').checked;
+    var doHealth = document.getElementById('rptHealthCheck').checked;
+
+    if (!doReport && !doPreValidation && !doHealth) {
+        outputPane.append('warn', 'Select at least one checklist item.');
+        return;
+    }
+
+    var segments = [];
+    if (doPreValidation) segments.push({ name: 'Pre-Validation', weight: 10 });
+    if (doReport) segments.push({ name: 'Report Generation', weight: 80 });
+    if (doHealth && !doReport) segments.push({ name: 'Health Check', weight: 80 });
+
+    var totalWeight = segments.reduce(function(s, seg) { return s + seg.weight; }, 0);
+    var cumulative = 0;
+    segments.forEach(function(seg) {
+        seg.start = (cumulative / totalWeight) * 100;
+        seg.width = (seg.weight / totalWeight) * 100;
+        cumulative += seg.weight;
+    });
+
+    var segIdx = 0;
+    var rptTotal = segments.length;
+
+    reporterRunning = true;
+    document.getElementById('btnReporterRun').style.display = 'none';
+    document.getElementById('btnReporterCancel').style.display = '';
+    resetReporterStepper();
+
+    rptRing.reset();
+    positionReporterProgress();
+    rptRing.start();
+    rptRing.update(0, segments[0].name, 'Step 1 of ' + rptTotal);
+
+    window._rptSegments = segments;
+
+    try {
+        if (doPreValidation) {
+            var seg = segments[segIdx];
+            rptRing.update(seg.start, 'Pre-Validation', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
+            outputPane.append('info', 'Starting pre-validation checks...');
+            var preValOk = await runReporterPreValidation(creds);
+            if (!preValOk && !rptValidated) {
+                rptRing.error('Pre-Validation failed');
+                resetReporterUI();
+                return;
+            }
+            segIdx++;
+            var nextPct = segIdx < rptTotal ? segments[segIdx].start : 100;
+            rptRing.update(nextPct, segIdx < rptTotal ? segments[segIdx].name : 'Pre-Validation complete', segIdx < rptTotal ? 'Step ' + (segIdx + 1) + ' of ' + rptTotal : '');
+        }
+
+        if (doReport) {
+            var seg = segments[segIdx];
+            window._rptCurrentSeg = seg;
+            rptRing.update(seg.start, 'Report Generation', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
+            outputPane.append('info', 'Starting report generation...');
+            var reportOk = await runReporterGenerate(creds, doHealth);
+            if (!reportOk) {
+                outputPane.append('error', 'Report generation failed');
+                rptRing.error('Report generation failed');
+                resetReporterUI();
+                return;
+            }
+            segIdx++;
+            var nextPct = segIdx < rptTotal ? segments[segIdx].start : 100;
+            rptRing.update(nextPct, segIdx < rptTotal ? segments[segIdx].name : 'Report complete', segIdx < rptTotal ? 'Step ' + (segIdx + 1) + ' of ' + rptTotal : '');
+        }
+
+        if (doHealth && !doReport) {
+            var seg = segments[segIdx];
+            window._rptCurrentSeg = seg;
+            rptRing.update(seg.start, 'Health Check', 'Step ' + (segIdx + 1) + ' of ' + rptTotal);
+            outputPane.append('info', 'Running standalone health check...');
+            await runReporterHealthCheck(creds);
+            segIdx++;
+        }
+
+        rptRing.complete('All steps completed');
+        outputPane.append('success', 'Reporter checklist completed');
+    } catch (e) {
+        outputPane.append('error', 'Reporter error: ' + e.message);
+        rptRing.error('Error: ' + e.message);
+    }
+
+    resetReporterUI();
+}
+
+async function runReporterPreValidation(creds) {
+    if (_validationInFlight) {
+        outputPane.append('warn', 'Validation already in progress, please wait...');
+        return false;
+    }
+    _validationInFlight = true;
+    document.getElementById('rptValidationPanel').style.display = '';
+    document.getElementById('rptValidationResults').innerHTML = '<span style="color: #888;">Running checks...</span>';
+    document.getElementById('rptValidationActions').style.display = 'none';
+
+    try {
+        var payload = Object.assign({}, creds, {
+            selected_ops: [],
+            include_health: document.getElementById('rptHealthCheck').checked,
+            use_default_creds: document.getElementById('useDefaultCreds').checked
+        });
+        var resp = await fetch('/advanced-ops/oneshot/validate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) {
+            document.getElementById('rptValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
+            return false;
+        }
+        var result = await pollValidationResult();
+        if (result && result.validation) {
+            renderRptValidationResults(result.validation);
+            var hasIssues = result.validation.some(function(c) { return c.status === 'warn' || c.status === 'fail'; });
+            if (hasIssues && !rptValidated) {
+                return false;
+            }
+        }
+        return true;
+    } catch (e) {
+        document.getElementById('rptValidationResults').innerHTML = '<span style="color: #f44336;">Validation error: ' + e.message + '</span>';
+        return false;
+    } finally {
+        _validationInFlight = false;
+    }
+}
+
+async function pollValidationResult() {
+    var valOutputCursor = 0;
+    var segs = window._rptSegments || [];
+    var valSeg = segs.length > 0 ? segs[0] : { start: 0, width: 10 };
+    for (var i = 0; i < 120; i++) {
+        await new Promise(function(r) { setTimeout(r, 1000); });
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + valOutputCursor)
+            ]);
+            var data = await results[0].json();
+            var outputData = await results[1].json();
+            if (outputData.entries && outputData.entries.length > 0) {
+                outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+                valOutputCursor += outputData.count;
+            }
+            var subPct = Math.min((valOutputCursor / 4) * 100, 90);
+            var overall = valSeg.start + (subPct / 100) * valSeg.width;
+            rptRing.update(overall, 'Pre-Validation', 'Checking...');
+            if (!data.running && data.result) return data.result;
+            if (!data.running) return null;
+        } catch(e) { /* retry */ }
+    }
+    return null;
+}
+
+function renderRptValidationResults(checks) {
+    var container = document.getElementById('rptValidationResults');
+    var hasIssues = false;
+    container.innerHTML = '';
+    checks.forEach(function(c) {
+        var iconMap = { pass: '\u2713', warn: '\u26A0', fail: '\u2717', info: '\u2139' };
+        var div = document.createElement('div');
+        div.className = 'validation-check';
+        div.innerHTML = '<span class="validation-icon ' + c.status + '">' + (iconMap[c.status] || '?') + '</span>' +
+            '<span>' + c.name + ': ' + c.message + '</span>';
+        container.appendChild(div);
+        if (c.status === 'warn' || c.status === 'fail') hasIssues = true;
+    });
+    if (hasIssues) {
+        document.getElementById('rptValidationActions').style.display = '';
+        rptValidated = false;
+    } else {
+        document.getElementById('rptValidationActions').style.display = 'none';
+        rptValidated = true;
+    }
+}
+
+function rptProceedAnyway() {
+    rptValidated = true;
+    document.getElementById('rptValidationActions').style.display = 'none';
+    outputPane.append('info', 'User acknowledged warnings, proceeding.');
+    var doReport = document.getElementById('rptRunReporter').checked;
+    if (doReport) {
+        var creds = getCredentials();
+        var doHealth = document.getElementById('rptHealthCheck').checked;
+        runReporterGenerate(creds, doHealth).then(function() { resetReporterUI(); });
+    }
+}
+
+function rptStopAndFix() {
+    rptValidated = false;
+    outputPane.append('info', 'Fix the identified issues, then re-run.');
+    resetReporterUI();
+}
+
+async function runReporterGenerate(creds, includeHealth) {
+    var switchPlacement = document.getElementById('rptSwitchPlacement').value;
+    var manualPlacements = [];
+    try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
+
+    var doVnetmap = document.getElementById('rptRunVnetmap');
+    var payload = Object.assign({}, creds, {
+        switch_placement: switchPlacement,
+        manual_placements: JSON.stringify(manualPlacements),
+        manual_switch_ips: JSON.stringify(rptManualSwitchIps),
+        include_health_check: includeHealth ? '1' : '',
+        enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
+        proxy_jump: creds.proxy_jump ? 'on' : '',
+        tech_port: creds.tech_port ? 'on' : '',
+        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : ''
+    });
+
+    startReporterLogStream();
+    try {
+        var body = new URLSearchParams();
+        for (var k in payload) { body.append(k, payload[k]); }
+        var resp = await fetch('/generate', { method: 'POST', body: body });
+        var data = await resp.json();
+        if (!resp.ok) {
+            outputPane.append('error', data.error || 'Failed to start report generation');
+            stopReporterLogStream();
+            return false;
+        }
+        outputPane.append('info', 'Report generation started...');
+        var result = await pollReporterGeneration();
+        stopReporterLogStream();
+        return result;
+    } catch (e) {
+        outputPane.append('error', 'Report generation error: ' + e.message);
+        stopReporterLogStream();
+        return false;
+    }
+}
+
+async function pollReporterGeneration() {
+    var seg = window._rptCurrentSeg || { start: 0, width: 100 };
+    for (var i = 0; i < 600; i++) {
+        await new Promise(function(r) { setTimeout(r, 2000); });
+        try {
+            var resp = await fetch('/generate/status?_t=' + Date.now());
+            var data = await resp.json();
+            if (data.progress && data.running) {
+                var subPct = data.progress.percent || 0;
+                var overall = seg.start + (subPct / 100) * seg.width;
+                var label = data.progress.label || 'Generating report...';
+                rptRing.update(Math.min(overall, seg.start + seg.width - 1), label, data.progress.phase || '');
+            }
+            if (!data.running && data.result) {
+                if (data.result.success) {
+                    outputPane.append('success', 'Report generated for ' + (data.result.cluster || 'cluster'));
+                    showReporterResultButtons(data.result);
+                    return true;
+                } else {
+                    outputPane.append('error', data.result.error || 'Report generation failed');
+                    return false;
+                }
+            }
+        } catch(e) { /* retry */ }
+    }
+    outputPane.append('error', 'Report generation timed out');
+    return false;
+}
+
+function showReporterResultButtons(result) {
+    activateReportSteps(result);
+}
+
+async function runReporterHealthCheck(creds) {
+    var payload = {
+        cluster_ip: creds.cluster_ip,
+        username: creds.username,
+        password: creds.password,
+        node_user: creds.node_user,
+        node_password: creds.node_password,
+        switch_user: creds.switch_user,
+        switch_password: creds.switch_password
+    };
+    startReporterLogStream();
+    try {
+        var resp = await fetch('/health/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', 'Health check error: ' + data.error); stopReporterLogStream(); return; }
+        outputPane.append('info', 'Health check started...');
+        var hcSeg = window._rptCurrentSeg || { start: 0, width: 100 };
+        for (var i = 0; i < 300; i++) {
+            await new Promise(function(r) { setTimeout(r, 2000); });
+            var st = await fetch('/health/status');
+            var stData = await st.json();
+            if (stData.progress && stData.running) {
+                var subPct = stData.progress.percent || 0;
+                var overall = hcSeg.start + (subPct / 100) * hcSeg.width;
+                rptRing.update(Math.min(overall, hcSeg.start + hcSeg.width - 1), stData.progress.label || 'Running health checks...', stData.progress.phase || '');
+            }
+            if (!stData.running) {
+                outputPane.append('success', 'Health check completed');
+                stopReporterLogStream();
+                return;
+            }
+        }
+    } catch (e) {
+        outputPane.append('error', 'Health check error: ' + e.message);
+    }
+    stopReporterLogStream();
+}
+
+function cancelReporterRun() {
+    reporterRunning = false;
+    stopReporterLogStream();
+    fetch('/generate/cancel', { method: 'POST' }).catch(function() {});
+    outputPane.append('warn', 'Cancellation requested');
+    rptRing.cancel();
+    resetReporterUI();
+}
+
+function resetReporterUI() {
+    reporterRunning = false;
+    document.getElementById('btnReporterRun').style.display = '';
+    document.getElementById('btnReporterCancel').style.display = 'none';
+}
+
+// =====================================================================
+// ONE-SHOT MODE (preserved from Advanced Ops)
+// =====================================================================
+var oneShotMode = false;
+var oneShotPollInterval = null;
+async function toggleOneShotMode() {
+    oneShotMode = document.getElementById('modeToggle').checked;
+    document.getElementById('stepByStepPanel').style.display = oneShotMode ? 'none' : '';
+    document.getElementById('oneShotPanel').style.display = oneShotMode ? '' : 'none';
+    document.getElementById('labelStepByStep').classList.toggle('active', !oneShotMode);
+    document.getElementById('labelOneShot').classList.toggle('active', oneShotMode);
+    if (oneShotMode) await populateOneShotChecklist();
+    saveUIState();
+}
+
+var WORKFLOW_BADGE_MAP = {
+    'vnetmap': 'Net Test',
+    'support_tool': 'Sys Test',
+    'vperfsanity': 'Perf Test',
+    'log_bundle': 'Pull Logs',
+    'switch_config': 'Pull Config',
+    'network_config': 'Pull Config'
+};
+
+function applyReporterDefaults() {
+    var rd = CFG_REPORTER_DEFAULTS;
+    if (rd.pre_validation !== undefined) {
+        document.getElementById('rptPreValidation').checked = rd.pre_validation;
+        var d = document.getElementById('rptPreValidationDetail');
+        if (d) d.style.display = rd.pre_validation ? '' : 'none';
+    }
+    if (rd.run_reporter !== undefined) {
+        document.getElementById('rptRunReporter').checked = rd.run_reporter;
+        var d = document.getElementById('rptRunReporterDetail');
+        if (d) d.style.display = rd.run_reporter ? '' : 'none';
+    }
+    if (rd.health_check !== undefined) {
+        document.getElementById('rptHealthCheck').checked = rd.health_check;
+        var d = document.getElementById('rptHealthCheckDetail');
+        if (d) d.style.display = rd.health_check ? '' : 'none';
+    }
+    if (rd.run_vnetmap !== undefined) {
+        var el = document.getElementById('rptRunVnetmap');
+        if (el) el.checked = !!rd.run_vnetmap;
+    }
+}
+
+async function populateOneShotChecklist() {
+    try {
+        var wfResp = await fetch('/advanced-ops/workflows');
+        var data = await wfResp.json();
+
+        try {
+            var cfgResp = await fetch('/config/json');
+            var cfg = await cfgResp.json();
+            var adv = cfg.advanced_operations || {};
+            CFG_DEFAULTS = adv.defaults || {};
+            CFG_REPORTER_DEFAULTS = adv.reporter_defaults || {};
+        } catch (e) { /* keep existing defaults */ }
+
+        var container = document.getElementById('oneShotOpsContainer');
+        container.innerHTML = '';
+        data.workflows.forEach(function(wf) {
+            if (!wf.enabled) return;
+            var defaultOn = (CFG_DEFAULTS[wf.id] !== undefined) ? CFG_DEFAULTS[wf.id] : true;
+            var label = document.createElement('label');
+            label.className = 'oneshot-item';
+            label.innerHTML = '<input type="checkbox" class="oneshot-op-checkbox" value="' + wf.id + '"' + (defaultOn ? ' checked' : '') + '>' +
+                '<span class="oneshot-item-name">' + wf.name + ' (' + wf.step_count + ' steps)</span>';
+            container.appendChild(label);
+            if (wf.id === 'vperfsanity') {
+                var sub = document.createElement('div');
+                sub.className = 'oneshot-sub-field';
+                sub.id = 'vipPoolSubField';
+                sub.style.display = defaultOn ? '' : 'none';
+                sub.innerHTML = '<label for="vipPoolVisible">VIP Pool</label>' +
+                    '<input type="text" id="vipPoolVisible" value="' +
+                    (document.getElementById('vipPool').value || 'main') + '" placeholder="main"' +
+                    ' oninput="document.getElementById(\'vipPool\').value=this.value">';
+                container.appendChild(sub);
+                var vpCb = label.querySelector('input');
+                vpCb.addEventListener('change', function() {
+                    var sf = document.getElementById('vipPoolSubField');
+                    if (sf) sf.style.display = this.checked ? '' : 'none';
+                });
+            }
+        });
+        container.querySelectorAll('.oneshot-op-checkbox').forEach(function(cb) {
+            cb.addEventListener('change', function() { saveUIState(); });
+        });
+        var reportEl = document.getElementById('oneShotIncludeReport');
+        if (reportEl && CFG_DEFAULTS.include_report !== undefined) reportEl.checked = CFG_DEFAULTS.include_report;
+        var healthEl = document.getElementById('oneShotIncludeHealth');
+        if (healthEl && CFG_DEFAULTS.include_health !== undefined) healthEl.checked = CFG_DEFAULTS.include_health;
+        var preValEl = document.getElementById('oneShotPreValidation');
+        if (preValEl && CFG_DEFAULTS.pre_validation !== undefined) preValEl.checked = CFG_DEFAULTS.pre_validation;
+
+        applyReporterDefaults();
+    } catch (e) {
+        outputPane.append('error', 'Failed to load workflows: ' + e.message);
+    }
+}
+
+function getSelectedOneShotOps() {
+    var boxes = document.querySelectorAll('.oneshot-op-checkbox:checked');
+    return Array.from(boxes).map(function(cb) { return cb.value; });
+}
+
+var oneShotValidated = false;
+
+function proceedOneShot() {
+    oneShotValidated = true;
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+    outputPane.append('info', 'User acknowledged warnings, proceeding with one-shot execution.');
+    _continueOneShotExecution();
+}
+
+function stopAndFix() {
+    oneShotValidated = false;
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+    osRing.cancel();
+    outputPane.append('info', 'Fix the identified issues, then re-run.');
+}
+
+var _pendingOneShotPayload = null;
+
+async function startOneShot() {
+    var creds = getCredentials();
+    var selectedOps = getSelectedOneShotOps();
+    var includeReport = document.getElementById('oneShotIncludeReport').checked;
+    var includeHealth = document.getElementById('oneShotIncludeHealth').checked;
+    var doPreValidation = document.getElementById('oneShotPreValidation').checked;
+
+    if (selectedOps.length === 0 && !includeReport) {
+        outputPane.append('warn', 'Select at least one operation or include the report.');
+        return;
+    }
+
+    var manualPlacements = [];
+    try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
+    var switchPlacement = document.getElementById('rptSwitchPlacement').value;
+    _pendingOneShotPayload = Object.assign({}, creds, {
+        selected_ops: selectedOps,
+        include_report: includeReport,
+        include_health: includeHealth,
+        use_default_creds: document.getElementById('useDefaultCreds').checked,
+        switch_placement: switchPlacement,
+        manual_placements: manualPlacements,
+        manual_switch_ips: rptManualSwitchIps
+    });
+
+    document.getElementById('btnOneShotStart').disabled = true;
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotResultPanel').style.display = 'none';
+    _oneShotOutputCursor = 0;
+
+    if (doPreValidation) {
+        if (_validationInFlight) {
+            outputPane.append('warn', 'Validation already in progress, please wait...');
+            resetOneShotUI();
+            return;
+        }
+        _validationInFlight = true;
+        document.getElementById('oneShotProgress').style.display = '';
+        osRing.reset();
+        osRing.start();
+        osRing.update(0, 'Pre-Validation', 'Verifying credentials and connectivity...');
+        outputPane.append('info', 'Starting pre-validation checks...');
+        document.getElementById('oneShotValidationPanel').style.display = '';
+        document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #888;">Running checks...</span>';
+        document.getElementById('oneShotValidationActions').style.display = 'none';
+
+        try {
+            var valPayload = Object.assign({}, creds, {
+                selected_ops: selectedOps,
+                include_health: includeHealth,
+                use_default_creds: document.getElementById('useDefaultCreds').checked
+            });
+            var resp = await fetch('/advanced-ops/oneshot/validate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(valPayload)
+            });
+            var data = await resp.json();
+            if (data.error) {
+                document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">' + data.error + '</span>';
+                osRing.error('Pre-Validation error');
+                resetOneShotUI();
+                return;
+            }
+            var result = await pollOneShotValidationResult();
+            if (result && result.validation) {
+                renderOneShotValidationResults(result.validation);
+                var hasIssues = result.validation.some(function(c) { return c.status === 'warn' || c.status === 'fail'; });
+                if (hasIssues) {
+                    oneShotValidated = false;
+                    osRing.update(5, 'Pre-Validation', 'Warnings detected \u2014 review results');
+                    return;
+                }
+            }
+            osRing.update(5, 'Pre-Validation passed', 'Starting execution...');
+        } catch (e) {
+            document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Validation error: ' + e.message + '</span>';
+            osRing.error('Pre-Validation error');
+            resetOneShotUI();
+            return;
+        } finally {
+            _validationInFlight = false;
+        }
+    }
+
+    oneShotValidated = true;
+    await _continueOneShotExecution();
+}
+
+async function pollOneShotValidationResult() {
+    for (var i = 0; i < 120; i++) {
+        await new Promise(function(r) { setTimeout(r, 1000); });
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + _oneShotOutputCursor)
+            ]);
+            var data = await results[0].json();
+            var outputData = await results[1].json();
+            if (outputData.entries && outputData.entries.length > 0) {
+                outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+                _oneShotOutputCursor += outputData.count;
+            }
+            if (!data.running && data.result) return data.result;
+            if (!data.running) return null;
+        } catch(e) { /* retry */ }
+    }
+    return null;
+}
+
+function renderOneShotValidationResults(checks) {
+    var container = document.getElementById('oneShotValidationResults');
+    var hasIssues = false;
+    container.innerHTML = '';
+    checks.forEach(function(c) {
+        var iconMap = { pass: '\u2713', warn: '\u26A0', fail: '\u2717', info: '\u2139' };
+        var div = document.createElement('div');
+        div.className = 'validation-check';
+        div.innerHTML = '<span class="validation-icon ' + c.status + '">' + (iconMap[c.status] || '?') + '</span>' +
+            '<span>' + c.name + ': ' + c.message + '</span>';
+        container.appendChild(div);
+        if (c.status === 'warn' || c.status === 'fail') hasIssues = true;
+    });
+    if (hasIssues) {
+        document.getElementById('oneShotValidationActions').style.display = '';
+    } else {
+        document.getElementById('oneShotValidationActions').style.display = 'none';
+    }
+}
+
+async function _continueOneShotExecution() {
+    if (!_pendingOneShotPayload) return;
+    var payload = _pendingOneShotPayload;
+    var selectedOps = payload.selected_ops || [];
+
+    document.getElementById('oneShotValidationActions').style.display = 'none';
+    document.getElementById('btnOneShotStart').disabled = true;
+    document.getElementById('btnOneShotCancel').style.display = '';
+    document.getElementById('oneShotProgress').style.display = '';
+    resetOneShotPhases();
+
+    if (osRing._state !== 'running') {
+        osRing.reset();
+        osRing.start();
+    }
+    osRing.update(5, 'Starting...', selectedOps.length + ' operations queued');
+
+    try {
+        var resp = await fetch('/advanced-ops/oneshot/start', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        });
+        var data = await resp.json();
+        if (data.error) { outputPane.append('error', data.error); osRing.error(data.error); resetOneShotUI(); return; }
+        outputPane.append('info', 'One-shot execution started with ' + selectedOps.length + ' operations');
+        startOneShotPolling();
+    } catch (e) {
+        outputPane.append('error', 'Failed to start one-shot: ' + e.message);
+        osRing.error('Failed to start');
+        resetOneShotUI();
+    }
+}
+
+async function cancelOneShot() {
+    try {
+        await fetch('/advanced-ops/oneshot/cancel', { method: 'POST' });
+        outputPane.append('warn', 'Cancellation requested');
+        osRing.cancel();
+    } catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
+}
+
+function startOneShotPolling() {
+    if (oneShotPollInterval) return;
+    var lastOutputCount = _oneShotOutputCursor;
+    oneShotPollInterval = setInterval(async function() {
+        try {
+            var results = await Promise.all([
+                fetch('/advanced-ops/oneshot/status'),
+                fetch('/advanced-ops/output?since=' + lastOutputCount)
+            ]);
+            var statusData = await results[0].json();
+            var outputData = await results[1].json();
+
+            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
+            lastOutputCount += outputData.count;
+
+            if (statusData.state) {
+                updateOneShotPhases(statusData.state.phase);
+                var opName = statusData.state.current_operation || '';
+                var opIdx = statusData.state.operation_index || 0;
+                var opTotal = statusData.state.total_operations || 1;
+                var detail = opName;
+                if (opIdx && opTotal) {
+                    detail += ' (' + opIdx + '/' + opTotal + ')';
+                }
+                document.getElementById('oneShotProgressDetail').textContent = detail;
+                var pct = opTotal > 0 ? Math.round((opIdx / opTotal) * 100) : 0;
+                osRing.update(pct, opName || statusData.state.phase, 'Operation ' + opIdx + ' of ' + opTotal);
+            }
+
+            if (!statusData.running) {
+                stopOneShotPolling();
+                var finalPhase = statusData.state ? statusData.state.phase : 'completed';
+                updateOneShotPhases(finalPhase);
+                document.getElementById('btnOneShotCancel').style.display = 'none';
+                if (finalPhase === 'completed') {
+                    document.getElementById('oneShotResultPanel').style.display = '';
+                    osRing.complete('All operations completed');
+                } else if (finalPhase === 'cancelled') {
+                    osRing.cancel();
+                } else if (finalPhase === 'error') {
+                    osRing.error('Execution failed');
+                }
+                document.getElementById('btnOneShotStart').disabled = false;
+            }
+        } catch (e) { console.error('One-shot poll error:', e); }
+    }, 1500);
+}
+
+function stopOneShotPolling() { if (oneShotPollInterval) { clearInterval(oneShotPollInterval); oneShotPollInterval = null; } }
+
+function resetOneShotPhases() {
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        el.classList.remove('active', 'completed', 'error', 'skipped');
+    });
+    var reportIncluded = document.getElementById('oneShotIncludeReport').checked;
+    if (!reportIncluded) {
+        var reportPhase = document.querySelector('.phase-item[data-phase="report"]');
+        if (reportPhase) reportPhase.classList.add('skipped');
+    }
+    document.getElementById('oneShotProgressDetail').textContent = '';
+}
+
+function updateOneShotPhases(currentPhase) {
+    var phases = ['operations', 'report', 'bundling'];
+    var currentIdx = phases.indexOf(currentPhase);
+    document.querySelectorAll('.phase-item').forEach(function(el) {
+        var phase = el.getAttribute('data-phase');
+        var idx = phases.indexOf(phase);
+        el.classList.remove('active', 'completed', 'error');
+        if (currentPhase === 'completed') {
+            el.classList.add('completed');
+        } else if (currentPhase === 'error' || currentPhase === 'cancelled') {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('error');
+        } else {
+            if (idx < currentIdx) el.classList.add('completed');
+            else if (idx === currentIdx) el.classList.add('active');
+        }
+    });
+}
+
+function resetOneShotUI() {
+    document.getElementById('btnOneShotStart').disabled = false;
+    document.getElementById('btnOneShotCancel').style.display = 'none';
+    if (osRing._state === 'idle') {
+        document.getElementById('oneShotProgress').style.display = 'none';
+    }
+    _pendingOneShotPayload = null;
+    stopOneShotPolling();
+}
+
+async function downloadResults() {
+    var creds = getCredentials();
+    outputPane.append('info', 'Collecting results for download...');
+    try {
+        var collectResp = await fetch('/advanced-ops/bundle/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var collectData = await collectResp.json();
+        if (collectData.count === 0) { outputPane.append('warn', 'No results found to bundle'); return; }
+        outputPane.append('success', 'Found ' + collectData.count + ' files to bundle');
+        var createResp = await fetch('/advanced-ops/bundle/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
+        var createData = await createResp.json();
+        if (createData.status === 'error') { outputPane.append('error', createData.message); return; }
+        outputPane.append('success', 'Bundle created: ' + createData.name + ' (' + createData.size + ')');
+        var a = document.createElement('a'); a.href = '/advanced-ops/bundle/download/' + createData.name; a.download = createData.name; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        outputPane.append('success', 'Download started: ' + createData.name);
+    } catch (e) { outputPane.append('error', 'Failed to create bundle: ' + e.message); }
+}
+
+// =====================================================================
+// VNETMAP STATUS CHECK
+// =====================================================================
+async function checkVnetmapStatus(clusterIp) {
+    var badge = document.getElementById('vnetmapStatus');
+    if (!badge) return;
+    if (!clusterIp) { badge.style.display = 'none'; return; }
+    try {
+        var res = await fetch('/api/vnetmap-status?cluster_ip=' + encodeURIComponent(clusterIp));
+        if (!res.ok) { badge.style.display = 'none'; return; }
+        var data = await res.json();
+        var cb = document.getElementById('rptRunVnetmap');
+        if (data.exists && !data.recommended) {
+            badge.className = 'vnetmap-status-badge available';
+            badge.textContent = '\u2713 Output available \u2014 ' + data.created_at;
+            badge.title = data.filename || '';
+        } else if (data.exists && data.recommended) {
+            badge.className = 'vnetmap-status-badge recommended';
+            badge.textContent = '\u26A0 Changes detected \u2014 recommend re-run';
+            badge.title = (data.change_summary || []).join('\n');
+            if (cb) cb.checked = true;
+        } else {
+            badge.className = 'vnetmap-status-badge missing';
+            badge.textContent = 'No output found';
+            badge.title = '';
+        }
+        badge.style.display = 'inline-flex';
+    } catch (e) {
+        badge.style.display = 'none';
+    }
+}
+
+// INITIALIZATION
+// =====================================================================
+document.addEventListener('DOMContentLoaded', async function() {
+    outputPane = new OutputPaneCtor('outputPane');
+    rptRing = new VastProgress('reporterProgress');
+    osRing = new VastProgress('oneShotProgressVast');
+    await loadWorkflows();
+    await fetchProfiles();
+    toggleDefaultCredentials();
+    restoreLogTier();
+
+    // Fetch live config defaults for both Reporter and Test Suite tiles
+    try {
+        var cfgResp = await fetch('/config/json');
+        var cfg = await cfgResp.json();
+        var adv = cfg.advanced_operations || {};
+        CFG_DEFAULTS = adv.defaults || {};
+        CFG_REPORTER_DEFAULTS = adv.reporter_defaults || {};
+        applyReporterDefaults();
+
+        var sshCfg = cfg.ssh || {};
+        CFG_SSH_ADV = {
+            proxy_jump: sshCfg.proxy_jump,
+            tech_port_mode: sshCfg.tech_port_mode,
+            autofill: adv.autofill_default_passwords
+        };
+        if (sshCfg.proxy_jump !== undefined) {
+            document.getElementById('proxyJumpToggle').checked = !!sshCfg.proxy_jump;
+        }
+        if (sshCfg.tech_port_mode !== undefined) {
+            document.getElementById('techPortToggle').checked = !!sshCfg.tech_port_mode;
+        }
+        if (adv.autofill_default_passwords !== undefined) {
+            document.getElementById('useDefaultCreds').checked = !!adv.autofill_default_passwords;
+            toggleDefaultCredentials();
+        }
+    } catch (e) { /* use empty defaults */ }
+
+    // Apply config default mode
+    var cfgMode = '{{ cfg_default_mode }}';
+    if (cfgMode === 'oneshot') {
+        document.getElementById('modeToggle').checked = true;
+        toggleOneShotMode();
+    } else {
+        oneShotMode = false;
+        document.getElementById('labelStepByStep').classList.add('active');
+        document.getElementById('labelOneShot').classList.remove('active');
+    }
+
+    renderPlacementSummary();
+    resetReporterStepper();
+
+    var backendActive = await hydrateFromBackend();
+    if (!backendActive) {
+        var saved = restoreUIState();
+        if (saved) await applySavedUIState(saved);
+    }
+
+    // Checklist sub-item visibility toggles
+    document.getElementById('rptPreValidation').addEventListener('change', function() {
+        document.getElementById('rptPreValidationDetail').style.display = this.checked ? '' : 'none';
+        saveUIState();
+    });
+    document.getElementById('rptRunReporter').addEventListener('change', function() {
+        document.getElementById('rptRunReporterDetail').style.display = this.checked ? '' : 'none';
+        saveUIState();
+    });
+    document.getElementById('rptHealthCheck').addEventListener('change', function() {
+        document.getElementById('rptHealthCheckDetail').style.display = this.checked ? '' : 'none';
+        rptUpdateHealthTierHint();
+        saveUIState();
+    });
+    document.getElementById('oneShotPreValidation').addEventListener('change', function() {
+        saveUIState();
+    });
+    document.getElementById('rptRunVnetmap').addEventListener('change', function() {
+        saveUIState();
+    });
+    document.getElementById('clusterIp').addEventListener('blur', function() {
+        checkVnetmapStatus(this.value.trim());
+    });
+
+    document.getElementById('switchUser').addEventListener('input', function() {
+        if (document.getElementById('useDefaultCreds').checked) {
+            var pw = SWITCH_PASSWORD_MAP[this.value] || '';
+            document.getElementById('switchPassword').value = pw;
+        }
+    });
+
+    // Output pane menu
+    document.getElementById('btnOutputMenu').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var d = document.getElementById('outputDropdown');
+        d.style.display = d.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
+    document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
+    document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
+    document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
+    document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
+
+    // One-Shot checkbox listeners
+    document.getElementById('oneShotIncludeReport').addEventListener('change', function() {
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (this.checked) { healthRow.classList.remove('hidden'); }
+        else { healthRow.classList.add('hidden'); }
+        saveUIState();
+    });
+    (function() {
+        var reportChecked = document.getElementById('oneShotIncludeReport').checked;
+        var healthRow = document.getElementById('oneShotHealthRow');
+        if (!reportChecked) healthRow.classList.add('hidden');
+    })();
+    document.getElementById('oneShotIncludeHealth').addEventListener('change', function() { saveUIState(); });
+    document.getElementById('profileSelect').addEventListener('change', function() { saveUIState(); });
+    document.getElementById('useDefaultCreds').addEventListener('change', function() { saveUIState(); });
+    window.addEventListener('beforeunload', function() { saveUIState(); });
+
+    // Update Deployment Tools helpers
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+    function formatDate(isoDate) {
+        if (!isoDate) return 'Never';
+        var d = new Date(isoDate);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+    function _renderToolsTable(contentEl) {
+        contentEl.innerHTML = '<span style="color: #888;">Loading...</span>';
+        fetch('/advanced-ops/tools')
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                var html = '<table style="width: 100%; border-collapse: collapse; color: #ccc;">';
+                html += '<tr style="border-bottom: 1px solid #444;"><th style="text-align: left; padding: 4px 8px;">Tool</th><th style="text-align: left; padding: 4px 8px;">Status</th><th style="text-align: left; padding: 4px 8px;">Size</th><th style="text-align: left; padding: 4px 8px;">Last Updated</th></tr>';
+                data.tools.forEach(function(tool) {
+                    var st = tool.cached ? '<span style="color: #4ade80;">Cached</span>' : '<span style="color: #f87171;">Not Downloaded</span>';
+                    var sz = tool.cached ? formatFileSize(tool.cached_size) : '-';
+                    var dt = tool.cached ? formatDate(tool.cached_date) : '-';
+                    html += '<tr style="border-bottom: 1px solid #333;"><td style="padding: 6px 8px;"><strong>' + tool.name + '</strong><br><small style="color: #888;">' + tool.description + '</small></td><td style="padding: 6px 8px;">' + st + '</td><td style="padding: 6px 8px;">' + sz + '</td><td style="padding: 6px 8px;">' + dt + '</td></tr>';
+                });
+                html += '</table>';
+                contentEl.innerHTML = html;
+            })
+            .catch(function(err) { contentEl.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
+    }
+    function _showToolsStatus() {
+        var panel = document.getElementById('toolsStatusPanel');
+        panel.style.display = 'block';
+        _renderToolsTable(document.getElementById('toolsStatusContent'));
+    }
+    function _hideToolsStatus() { document.getElementById('toolsStatusPanel').style.display = 'none'; }
+    function _showToolsStatusOneshot() {
+        var panel = document.getElementById('toolsStatusPanelOneshot');
+        panel.style.display = 'block';
+        _renderToolsTable(document.getElementById('toolsStatusContentOneshot'));
+    }
+    function _hideToolsStatusOneshot() { document.getElementById('toolsStatusPanelOneshot').style.display = 'none'; }
+    function _updateDeploymentTools() {
+        var btn = document.getElementById('btnUpdateToolsOneshot') || document.getElementById('btnUpdateToolsHeader');
+        if (!btn) return;
+        var originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
+        outputPane.append('info', 'Updating Deployment Tools');
+        fetch('/advanced-ops/tools/update', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            if (data.success) {
+                outputPane.append('success', 'All ' + data.updated + ' tools updated successfully!');
+                outputPane.append('info', 'Tools cached locally: output/tools/');
+                Object.keys(data.tools).forEach(function(toolName) {
+                    var tool = data.tools[toolName];
+                    if (tool.success) { outputPane.append('success', '  ' + tool.message); }
+                    else { outputPane.append('error', '  ' + toolName + ': ' + tool.message); }
+                });
+            } else {
+                outputPane.append('warn', 'Some tools failed to update (' + data.updated + '/' + (data.updated + data.failed) + ' succeeded)');
+            }
+            var panel = document.getElementById('toolsStatusPanel');
+            if (panel.style.display !== 'none') { _showToolsStatus(); }
+            var panelOs = document.getElementById('toolsStatusPanelOneshot');
+            if (panelOs.style.display !== 'none') { _showToolsStatusOneshot(); }
+        })
+        .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
+    }
+    function _hideAllToolsPanels() {
+        _hideToolsStatus();
+        _hideToolsStatusOneshot();
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            _hideAllToolsPanels();
+            var modal = document.getElementById('placementModal');
+            if (modal && !modal.classList.contains('hidden')) cancelPlacementModal();
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        var panel = document.getElementById('toolsStatusPanel');
+        var panelOs = document.getElementById('toolsStatusPanelOneshot');
+        if (panel.style.display !== 'none' && !panel.contains(e.target) && !e.target.closest('#btnToolsInfo')) {
+            _hideToolsStatus();
+        }
+        if (panelOs.style.display !== 'none' && !panelOs.contains(e.target) && !e.target.closest('#btnToolsInfoOneshot')) {
+            _hideToolsStatusOneshot();
+        }
+        var modal = document.getElementById('placementModal');
+        if (modal && !modal.classList.contains('hidden') && e.target === modal) {
+            cancelPlacementModal();
+        }
+        var advMenu = document.getElementById('advancedMenu');
+        if (advMenu.style.display !== 'none' && !e.target.closest('.conn-advanced-wrapper')) {
+            advMenu.style.display = 'none';
+        }
+    });
+
+    window.showToolsStatus = _showToolsStatus;
+    window.hideToolsStatus = _hideToolsStatus;
+    window.showToolsStatusOneshot = _showToolsStatusOneshot;
+    window.hideToolsStatusOneshot = _hideToolsStatusOneshot;
+    window.updateDeploymentTools = _updateDeploymentTools;
+});
+
+function rptUpdateHealthTierHint() {
+    var hint = document.getElementById('rptHealthTierHint');
+    if (!hint) return;
+    var switchPw = document.getElementById('switchPassword').value;
+    if (switchPw) hint.title = 'Tier 1 (API) + Tier 3 (Switch SSH)';
+    else hint.title = 'Tier 1 (API) only — add switch credentials for Switch SSH checks';
+}
+</script>
+{% endblock %}
