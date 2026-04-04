@@ -71,17 +71,6 @@ body {
     border-radius: 10px;
     color: var(--text-secondary);
 }
-.nav-badge-prerelease {
-    font-size: 0.6rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    background: #FF9800;
-    color: #fff;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-left: 4px;
-}
 .nav-links {
     display: flex;
     gap: 0.25rem;
