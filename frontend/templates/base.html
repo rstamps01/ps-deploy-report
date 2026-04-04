@@ -16,7 +16,6 @@
             <img src="{{ url_for('static', filename='img/vast-logo.png') }}" alt="VAST Data" class="nav-logo">
             <span class="nav-title">asbuilt<span class="nav-title-accent">-reporter</span></span>
             <span class="nav-version">v{{ version }}</span>
-            <span class="nav-badge-prerelease">Pre-Release</span>
         </div>
         <div class="nav-links">
             <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
