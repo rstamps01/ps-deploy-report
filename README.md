@@ -2,6 +2,16 @@
 
 Generate professional as-built reports for VAST Data clusters in minutes—no Python required. Download the app, connect to your cluster, and get a customer-ready PDF plus machine-readable JSON.
 
+<p align="center">
+  <a href="https://rstamps01.github.io/ps-deploy-report/se-one-pager.html"><strong>Product Overview</strong></a> · <a href="https://rstamps01.github.io/ps-deploy-report/quick-start-guide.html"><strong>Quick Start Guide</strong></a> · <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest"><strong>Download Latest Release</strong></a>
+</p>
+
+<p align="center">
+  <a href="https://rstamps01.github.io/ps-deploy-report/se-one-pager.html">
+    <img src="docs/marketing/screenshots/Dash.png" alt="asbuilt-reporter Dashboard" width="720">
+  </a>
+</p>
+
 ---
 
 ## Table of contents
@@ -33,6 +43,8 @@ Generate professional as-built reports for VAST Data clusters in minutes—no Py
 3. **Run** — open the app; the web UI opens in your browser at `http://127.0.0.1:5173`. Enter your cluster IP and credentials, then click **Generate**.
 
 No Python, pip, or virtual environment needed. Updates: download the latest release and replace the existing app.
+
+> **First time installing?** See the [visual Quick Start Guide](https://rstamps01.github.io/ps-deploy-report/quick-start-guide.html) for step-by-step screenshots covering macOS Gatekeeper and Windows SmartScreen.
 
 ---
 
@@ -132,6 +144,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rstamps01/ps-deploy-re
 
 ### Documentation
 
+- [Visual Quick Start Guide](https://rstamps01.github.io/ps-deploy-report/quick-start-guide.html) — screenshot walkthrough for macOS and Windows
 - [Installation Guide](docs/deployment/INSTALLATION-GUIDE.md)
 - [Update Guide](docs/deployment/UPDATE-GUIDE.md)
 - [Uninstall Guide](docs/deployment/UNINSTALL-GUIDE.md)

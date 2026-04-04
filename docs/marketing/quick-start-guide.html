@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quick Start Guide — VAST asbuilt-reporter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+:root {
+    --bg-body: #0e1117;
+    --bg-surface: #161b22;
+    --bg-elevated: #1c2333;
+    --border: #2a3548;
+    --border-light: #21293a;
+    --accent: #1a6fb5;
+    --accent-hover: #155d99;
+    --accent-subtle: rgba(26, 111, 181, 0.15);
+    --cyan: #00b4d8;
+    --cta-orange: #F97316;
+    --cta-orange-hover: #ea580c;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #545d68;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --radius: 6px;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --font-mono: "Fira Code", "SF Mono", Consolas, monospace;
+}
+
+body {
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+}
+
+.container { max-width: 900px; margin: 0 auto; padding: 0 2rem; }
+
+/* ---- Header ---- */
+.page-header {
+    text-align: center;
+    padding: 3rem 2rem 2.5rem;
+    background: linear-gradient(168deg, #0e1117 0%, #131a24 40%, #162033 70%, #0e1117 100%);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+}
+.page-header::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(ellipse 500px 250px at 30% 30%, rgba(26, 111, 181, 0.1) 0%, transparent 70%),
+        radial-gradient(ellipse 350px 200px at 75% 60%, rgba(0, 180, 216, 0.06) 0%, transparent 70%);
+    pointer-events: none;
+}
+.page-header > * { position: relative; z-index: 1; }
+.page-header .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+.page-header .brand img { height: 1.6rem; filter: brightness(0) invert(1); }
+.brand-white { color: var(--text-primary); }
+.brand-blue { color: var(--accent); }
+.brand-version {
+    font-size: 0.65rem;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+}
+.page-header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.5rem; }
+.page-header p { color: var(--text-secondary); font-size: 1rem; max-width: 600px; margin: 0 auto; }
+
+/* ---- Navigation tabs ---- */
+.tab-bar {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.tab-btn {
+    padding: 0.85rem 2rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+.tab-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+.tab-panel { display: none; padding: 3rem 0 4rem; }
+.tab-panel.active { display: block; }
+
+/* ---- Section structure ---- */
+.guide-intro {
+    text-align: center;
+    margin-bottom: 3rem;
+    padding-bottom: 2rem;
+    border-bottom: 1px solid var(--border);
+}
+.guide-intro h2 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+.guide-intro p { color: var(--text-secondary); font-size: 0.95rem; max-width: 600px; margin: 0 auto; }
+
+/* ---- Path selector (New Install vs Upgrade) ---- */
+.path-selector {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+}
+.path-btn {
+    padding: 0.6rem 1.5rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 20px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+.path-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+.path-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Steps that are conditional on path */
+.install-step.step-upgrade-only { display: none; }
+.path-upgrade .install-step.step-upgrade-only { display: grid; }
+.path-upgrade .step-new-only { display: none; }
+
+/* ---- Step cards ---- */
+.install-step {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    align-items: start;
+    margin-bottom: 3rem;
+    padding-bottom: 3rem;
+    border-bottom: 1px solid var(--border-light);
+}
+.install-step:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.install-step.reversed { direction: rtl; }
+.install-step.reversed > * { direction: ltr; }
+
+.step-content {}
+.step-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 3px 10px;
+    border-radius: 10px;
+    margin-bottom: 0.75rem;
+}
+.step-badge.both { background: var(--accent-subtle); color: var(--accent); }
+.step-badge.upgrade { background: rgba(245, 158, 11, 0.12); color: var(--warning); }
+.step-badge.new-install { background: rgba(34, 197, 94, 0.12); color: var(--success); }
+.step-number-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+}
+.step-content h3 { font-size: 1.15rem; margin-bottom: 0.75rem; }
+.step-content p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 0.75rem; }
+.step-content .action-highlight {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 4px;
+    color: var(--cyan);
+    margin-top: 0.25rem;
+}
+.step-content .tip {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    padding-left: 1rem;
+    border-left: 2px solid var(--border);
+    margin-top: 0.75rem;
+}
+
+.step-image {
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--bg-surface);
+}
+.step-image img {
+    width: 100%;
+    display: block;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+.step-image img:hover { opacity: 0.85; }
+
+/* ---- Download banner ---- */
+.download-banner {
+    text-align: center;
+    padding: 3rem 2rem;
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin: 3rem 0;
+}
+.download-banner h3 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+.download-banner p { color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+/* ---- Buttons ---- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.5rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-accent { background: var(--cta-orange); color: #fff; border-color: var(--cta-orange); }
+.btn-accent:hover { background: var(--cta-orange-hover); border-color: var(--cta-orange-hover); }
+.btn-outline { background: transparent; color: var(--text-primary); border-color: var(--border); }
+.btn-outline:hover { background: var(--bg-elevated); border-color: var(--accent); }
+.btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- Windows placeholder ---- */
+.win-steps { counter-reset: winstep; }
+.win-step {
+    display: flex;
+    gap: 1.25rem;
+    align-items: flex-start;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.75rem;
+    border-bottom: 1px solid var(--border-light);
+}
+.win-step:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.win-step-num {
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+.win-step-body h3 { font-size: 1.05rem; margin-bottom: 0.35rem; }
+.win-step-body p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.55; }
+.win-step-body code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--cyan);
+}
+
+/* ---- Footer ---- */
+footer {
+    text-align: center;
+    padding: 1.5rem;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+footer a { color: var(--accent); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+/* ---- Lightbox ---- */
+.lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0, 0, 0, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 2rem;
+    cursor: zoom-out;
+}
+.lightbox.open { display: flex; }
+.lightbox-img {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 8px;
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6);
+    object-fit: contain;
+    cursor: default;
+}
+.lightbox-close {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.5rem;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+    color: var(--text-primary);
+}
+.lightbox-close:hover { background: rgba(255, 255, 255, 0.2); }
+.lightbox-close svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
+.lightbox-caption {
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    text-align: center;
+    max-width: 600px;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .install-step { grid-template-columns: 1fr; }
+    .install-step.reversed { direction: ltr; }
+    .tab-btn { padding: 0.7rem 1.25rem; font-size: 0.82rem; }
+    .path-selector { flex-direction: column; align-items: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn, .step-image img { transition: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ================================================================ -->
+<!-- Header                                                            -->
+<!-- ================================================================ -->
+<header class="page-header">
+    <div class="brand">
+        <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data">
+        <span><span class="brand-white">asbuilt</span><span class="brand-blue">-reporter</span></span>
+        <span class="brand-version">v1.5.0</span>
+    </div>
+    <h1>Quick Start Guide</h1>
+    <p>Download, install, and launch the application on macOS or Windows in minutes.</p>
+</header>
+
+<!-- ================================================================ -->
+<!-- Platform Tabs                                                     -->
+<!-- ================================================================ -->
+<nav class="tab-bar" role="tablist">
+    <button class="tab-btn active" role="tab" aria-selected="true" data-tab="mac">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="none" fill="currentColor" opacity="0"/><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83"/><path d="M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/></svg>
+        macOS
+    </button>
+    <button class="tab-btn" role="tab" aria-selected="false" data-tab="windows">
+        <svg viewBox="0 0 24 24"><path d="M3 12l1.5-9L12 2v10H3zm0 0l1.5 9L12 22V12H3zm9 0h9l1.5-9L12 2v10zm0 0h9l1.5 9L12 22V12z" stroke="none" fill="currentColor" opacity="0"/><rect x="2" y="3" width="8.5" height="8.5" rx="0.5"/><rect x="13.5" y="2" width="8.5" height="9.5" rx="0.5"/><rect x="2" y="14.5" width="8.5" height="8.5" rx="0.5"/><rect x="13.5" y="13.5" width="8.5" height="9.5" rx="0.5"/></svg>
+        Windows
+    </button>
+</nav>
+
+<!-- ================================================================ -->
+<!-- macOS Tab                                                         -->
+<!-- ================================================================ -->
+<section class="tab-panel active" id="tab-mac">
+    <div class="container">
+        <div class="guide-intro">
+            <h2>macOS Installation</h2>
+            <p>Choose your path below. New installs and upgrades share most steps, but upgrades require exiting the running app and replacing the existing copy first.</p>
+        </div>
+
+        <div class="path-selector">
+            <button class="path-btn active" data-path="new">New Installation</button>
+            <button class="path-btn" data-path="upgrade">Upgrade from Earlier Version</button>
+        </div>
+
+        <div id="mac-steps">
+
+            <!-- UPGRADE ONLY: Step — Exit the running app -->
+            <div class="install-step step-upgrade-only">
+                <div class="step-content">
+                    <div class="step-badge upgrade">Upgrade Only</div>
+                    <div class="step-number-label">Step 1</div>
+                    <h3>Exit the Running Application</h3>
+                    <p>Before replacing the app, you must fully quit the current version. In the app's navbar, click the <strong>Exit</strong> button (top-right corner), or click <strong>Exit application</strong> below the navigation bar.</p>
+                    <p>Wait for the browser tab to close and the process to terminate before proceeding.</p>
+                    <div class="tip">If the app doesn't quit cleanly, open Activity Monitor and force-quit any "VAST Reporter" processes.</div>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/1-Upgrade-Only-Exit-App-Mac.png" alt="Step 1 — Exit the running application via the Exit button in the navbar">
+                </div>
+            </div>
+
+            <!-- BOTH: Step — Download and open the DMG -->
+            <div class="install-step reversed">
+                <div class="step-content">
+                    <div class="step-badge both">All Installs</div>
+                    <div class="step-number-label" data-step-new="1" data-step-upgrade="2">Step</div>
+                    <h3>Download &amp; Open the DMG</h3>
+                    <p>Download the latest <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac.dmg</code> from GitHub Releases. Double-click the DMG to mount it.</p>
+                    <p>Drag <strong>VAST Reporter.app</strong> onto the <strong>Applications</strong> folder shortcut to install.</p>
+                    <p style="margin-top: 0.75rem;">
+                        <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent" style="font-size: 0.82rem; padding: 0.45rem 1.25rem;">
+                            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            GitHub Releases
+                        </a>
+                    </p>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/2-Upgrade-Install-Mac.png" alt="Step — DMG installer showing VAST Reporter.app and Applications folder">
+                </div>
+            </div>
+
+            <!-- UPGRADE ONLY: Step — Replace existing app -->
+            <div class="install-step step-upgrade-only">
+                <div class="step-content">
+                    <div class="step-badge upgrade">Upgrade Only</div>
+                    <div class="step-number-label">Step 3</div>
+                    <h3>Replace the Existing Version</h3>
+                    <p>Since an earlier version is already installed, macOS will ask if you want to replace it. Click <strong>Replace</strong> to overwrite the old version with the new one.</p>
+                    <div class="tip">"Keep Both" will create a duplicate with a different name — always choose <strong>Replace</strong> for a clean upgrade.</div>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/3-Upgrade-Only-Replace-Mac.png" alt="Step — macOS dialog asking to Replace the existing VAST Reporter.app">
+                </div>
+            </div>
+
+            <!-- BOTH: Step — Gatekeeper block -->
+            <div class="install-step reversed">
+                <div class="step-content">
+                    <div class="step-badge both">All Installs</div>
+                    <div class="step-number-label" data-step-new="2" data-step-upgrade="4">Step</div>
+                    <h3>Gatekeeper Warning — Click Done</h3>
+                    <p>On first launch, macOS Gatekeeper will block the app because it is not signed with an Apple Developer certificate. You'll see a dialog saying <strong>"VAST Reporter.app" Not Opened</strong>.</p>
+                    <p>This is expected for internal tools distributed outside the App Store. Click <strong>Done</strong> — do <em>not</em> click "Move to Trash".</p>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/4-Upgrade-Install-Done-Mac.png" alt="Step — Gatekeeper 'Not Opened' warning dialog, click Done">
+                </div>
+            </div>
+
+            <!-- BOTH: Step — Privacy & Security > Open Anyway -->
+            <div class="install-step">
+                <div class="step-content">
+                    <div class="step-badge both">All Installs</div>
+                    <div class="step-number-label" data-step-new="3" data-step-upgrade="5">Step</div>
+                    <h3>Open System Settings &rarr; Privacy &amp; Security</h3>
+                    <p>Open <strong>System Settings</strong> (Apple menu &rarr; System Settings) and navigate to <strong>Privacy &amp; Security</strong> in the left sidebar.</p>
+                    <p>Scroll down to the <strong>Security</strong> section. You'll see a message: <em>"VAST Reporter.app" was blocked to protect your Mac.</em></p>
+                    <p>Click the <strong>Open Anyway</strong> button next to the message.</p>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/5-Ungrade-Install-Privacy-Security-OpenAnyway-Mac.png" alt="Step — System Settings Privacy & Security showing Open Anyway button">
+                </div>
+            </div>
+
+            <!-- BOTH: Step — Confirm Open Anyway -->
+            <div class="install-step reversed">
+                <div class="step-content">
+                    <div class="step-badge both">All Installs</div>
+                    <div class="step-number-label" data-step-new="4" data-step-upgrade="6">Step</div>
+                    <h3>Confirm — Open Anyway</h3>
+                    <p>A second confirmation dialog will appear asking if you really want to open the app. macOS includes a warning about unverified software.</p>
+                    <p>Click <strong>Open Anyway</strong> to proceed. Do not click "Move to Trash" or "Done".</p>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/6-Upgrade-Install-Open-Anyway-Mac.png" alt="Step — Confirmation dialog with Open Anyway button">
+                </div>
+            </div>
+
+            <!-- BOTH: Step — Touch ID / Password -->
+            <div class="install-step">
+                <div class="step-content">
+                    <div class="step-badge both">All Installs</div>
+                    <div class="step-number-label" data-step-new="5" data-step-upgrade="7">Step</div>
+                    <h3>Authenticate with Touch ID or Password</h3>
+                    <p>macOS requires administrator authorization to allow the unsigned app to run. Use <strong>Touch ID</strong> or click <strong>Use Password...</strong> and enter your Mac administrator password.</p>
+                    <p>After authenticating, the app will launch and your browser will open automatically to <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">localhost:5173</code>.</p>
+                    <div class="tip">You only need to complete the Gatekeeper steps once per version. Subsequent launches will open normally.</div>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/7-Upgrade-Install-Use-Password-Mac.png" alt="Step — Touch ID or password prompt to authorize the app">
+                </div>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Windows Tab                                                       -->
+<!-- ================================================================ -->
+<section class="tab-panel" id="tab-windows">
+    <div class="container">
+        <div class="guide-intro">
+            <h2>Windows Installation</h2>
+            <p>The Windows build is distributed as a portable ZIP archive — no installer required. Extract, run, and go.</p>
+        </div>
+
+        <div class="win-steps">
+            <div class="win-step">
+                <div class="win-step-num">1</div>
+                <div class="win-step-body">
+                    <h3>Download the ZIP</h3>
+                    <p>Download <code>VAST-Reporter-vX.Y.Z-win.zip</code> from <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" style="color: var(--accent);">GitHub Releases</a>.</p>
+                </div>
+            </div>
+            <div class="win-step">
+                <div class="win-step-num">2</div>
+                <div class="win-step-body">
+                    <h3>Extract the Archive</h3>
+                    <p>Right-click the ZIP file and select <strong>Extract All...</strong> Choose a destination folder (e.g., <code>C:\Program Files\VAST Reporter</code> or your Desktop).</p>
+                </div>
+            </div>
+            <div class="win-step">
+                <div class="win-step-num">3</div>
+                <div class="win-step-body">
+                    <h3>Run the Application</h3>
+                    <p>Open the extracted folder and double-click <code>vast-reporter.exe</code> to launch.</p>
+                </div>
+            </div>
+            <div class="win-step">
+                <div class="win-step-num">4</div>
+                <div class="win-step-body">
+                    <h3>SmartScreen Warning</h3>
+                    <p>On first launch, Windows SmartScreen may display a warning: <em>"Windows protected your PC."</em> This is expected for unsigned internal tools.</p>
+                    <p>Click <strong>More info</strong>, then click <strong>Run anyway</strong> to proceed.</p>
+                </div>
+            </div>
+            <div class="win-step">
+                <div class="win-step-num">5</div>
+                <div class="win-step-body">
+                    <h3>Application Launches</h3>
+                    <p>Your default browser will open automatically to <code>localhost:5173</code>. The app is ready to use.</p>
+                    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">To upgrade, close the running app, replace the extracted folder with the new version, and relaunch. The SmartScreen step will repeat for each new version.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Download Banner                                                   -->
+<!-- ================================================================ -->
+<div class="download-banner">
+    <div class="container">
+        <h3>Ready to get started?</h3>
+        <p>Download the latest release for your platform.</p>
+        <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+            <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download from GitHub
+            </a>
+            <a href="se-one-pager.html" class="btn btn-outline">
+                <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                Back to Overview
+            </a>
+        </div>
+    </div>
+</div>
+
+<footer>
+    <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <span style="font-weight: 600; font-size: 0.85rem;"><span style="color: var(--text-primary);">asbuilt</span><span style="color: var(--accent);">-reporter</span></span>
+        <span class="brand-version">v1.5.0</span>
+    </div>
+    <p>Built by PS Engineering &mdash; <a href="se-one-pager.html">View the One-Pager</a></p>
+</footer>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+    <button class="lightbox-close" aria-label="Close">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <img class="lightbox-img" src="" alt="">
+    <div class="lightbox-caption"></div>
+</div>
+
+<script>
+(function () {
+    /* ---- Platform tabs ---- */
+    var tabBtns = document.querySelectorAll('.tab-btn');
+    var tabPanels = document.querySelectorAll('.tab-panel');
+    tabBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            tabBtns.forEach(function (b) { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+            tabPanels.forEach(function (p) { p.classList.remove('active'); });
+            btn.classList.add('active');
+            btn.setAttribute('aria-selected', 'true');
+            document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+    });
+
+    /* ---- Install path toggle (new vs upgrade) ---- */
+    var pathBtns = document.querySelectorAll('.path-btn');
+    var macSteps = document.getElementById('mac-steps');
+
+    function setPath(path) {
+        pathBtns.forEach(function (b) { b.classList.toggle('active', b.dataset.path === path); });
+        macSteps.classList.toggle('path-upgrade', path === 'upgrade');
+
+        var stepCounter = 1;
+        var allSteps = macSteps.querySelectorAll('.install-step');
+        allSteps.forEach(function (step) {
+            var isUpgradeOnly = step.classList.contains('step-upgrade-only');
+            var isHidden = (path === 'new' && isUpgradeOnly);
+            if (isHidden) return;
+            var label = step.querySelector('.step-number-label');
+            if (label) label.textContent = 'Step ' + stepCounter;
+            stepCounter++;
+        });
+    }
+
+    pathBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () { setPath(btn.dataset.path); });
+    });
+
+    setPath('new');
+
+    /* ---- Lightbox ---- */
+    var lb = document.getElementById('lightbox');
+    var lbImg = lb.querySelector('.lightbox-img');
+    var lbCaption = lb.querySelector('.lightbox-caption');
+    var lbClose = lb.querySelector('.lightbox-close');
+
+    document.querySelectorAll('.step-image img').forEach(function (img) {
+        img.addEventListener('click', function () {
+            lbImg.src = img.src;
+            lbImg.alt = img.alt;
+            lbCaption.textContent = img.alt;
+            lb.classList.add('open');
+            document.body.style.overflow = 'hidden';
+        });
+    });
+
+    lbClose.addEventListener('click', closeLb);
+    lb.addEventListener('click', function (e) { if (e.target === lb) closeLb(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && lb.classList.contains('open')) closeLb(); });
+
+    function closeLb() {
+        lb.classList.remove('open');
+        document.body.style.overflow = '';
+    }
+})();
+</script>
+</body>
+</html>
