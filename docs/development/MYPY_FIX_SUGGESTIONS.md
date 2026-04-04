@@ -1,5 +1,7 @@
 # Concrete mypy and Black Fix Suggestions
 
+> **Note:** `comprehensive_report_template.py` and `enhanced_report_builder.py` have been archived to `archive/src/` as dead code. References below are retained for historical context.
+
 ## Black (done)
 
 Black has been applied to `src/main.py` and `src/app.py`. CI `black --check` should pass.

@@ -70,7 +70,6 @@ class ClusterSummary:
     # Cluster feature flags and configuration
     enabled: Optional[bool] = None
     enable_similarity: Optional[bool] = None
-    dedup_active: Optional[bool] = None
     is_wb_raid_enabled: Optional[bool] = None
     wb_raid_layout: Optional[str] = None
     dbox_ha_support: Optional[bool] = None
@@ -109,6 +108,7 @@ class ClusterSummary:
     b2b_ipmi: Optional[bool] = None
     eth_mtu: Optional[int] = None
     ib_mtu: Optional[int] = None
+    nb_eth_mtu: Optional[int] = None
     ipmi_gateway: Optional[str] = None
     ipmi_netmask: Optional[str] = None
 
@@ -226,7 +226,6 @@ class VastDataExtractor:
                 # Cluster feature flags and configuration
                 enabled=cluster_info.get("enabled"),
                 enable_similarity=cluster_info.get("enable_similarity"),
-                dedup_active=cluster_info.get("dedup_active"),
                 is_wb_raid_enabled=cluster_info.get("is_wb_raid_enabled"),
                 wb_raid_layout=cluster_info.get("wb_raid_layout", "Unknown"),
                 dbox_ha_support=cluster_info.get("dbox_ha_support"),
@@ -265,6 +264,7 @@ class VastDataExtractor:
                 b2b_ipmi=cluster_info.get("b2b_ipmi"),
                 eth_mtu=cluster_info.get("eth_mtu"),
                 ib_mtu=cluster_info.get("ib_mtu"),
+                nb_eth_mtu=cluster_info.get("nb_eth_mtu"),
                 ipmi_gateway=cluster_info.get("ipmi_gateway", "Unknown"),
                 ipmi_netmask=cluster_info.get("ipmi_netmask", "Unknown"),
             )
@@ -726,6 +726,9 @@ class VastDataExtractor:
                 "b2b_ipmi": cluster_network_data.get("b2b_ipmi", cluster_summary.get("b2b_ipmi", False)),
                 "eth_mtu": cluster_network_data.get("eth_mtu", cluster_summary.get("eth_mtu", "Not Configured")),
                 "ib_mtu": cluster_network_data.get("ib_mtu", cluster_summary.get("ib_mtu", "Not Configured")),
+                "nb_eth_mtu": cluster_network_data.get(
+                    "nb_eth_mtu", cluster_summary.get("nb_eth_mtu", "Not Configured")
+                ),
                 "ipmi_gateway": cluster_network_data.get(
                     "ipmi_gateway",
                     cluster_summary.get("ipmi_gateway", "Not Configured"),
@@ -1614,19 +1617,24 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_port_mapping(self, raw_data: Dict[str, Any], use_external: bool = False) -> ReportSection:
+    def extract_port_mapping(
+        self,
+        raw_data: Dict[str, Any],
+        use_external: bool = False,
+        use_vnetmap: bool = False,
+    ) -> ReportSection:
         """
         Extract and process port mapping data with enhanced designations.
 
-        Uses standardized naming conventions:
-        - Node Side: CB1-CN1-R (CBox-1/CNode-1/Port-A)
-        - Switch Side: SWA-P12 (Switch-1/Port-12)
-
-        Also includes IPL/MLAG port identification.
+        Three data sources in priority order:
+        1. ``use_vnetmap`` — vnetmap output parsed by ``VNetMapParser``
+        2. ``use_external`` — SSH-collected data from ``ExternalPortMapper``
+        3. Static ``vnetmap_output.txt`` file (legacy fallback)
 
         Args:
-            raw_data (Dict[str, Any]): Raw data from API handler
-            use_external (bool): Use external SSH collection instead of static file
+            raw_data: Raw data from API handler
+            use_external: Use external SSH collection
+            use_vnetmap: Use vnetmap output parsed in app.py
 
         Returns:
             ReportSection: Processed port mapping section
@@ -1634,26 +1642,52 @@ class VastDataExtractor:
         try:
             self.logger.info("Extracting port mapping data with enhanced designations")
 
-            # Import port mapping modules
             from enhanced_port_mapper import EnhancedPortMapper
-            from vnetmap_parser import VNetMapParser
 
-            # Check if external port mapping data is available
-            if use_external and "port_mapping_external" in raw_data:
+            # Shared hardware data for all paths
+            cboxes = raw_data.get("cboxes", [])
+            dboxes = raw_data.get("dboxes", [])
+            cnodes = raw_data.get("cnodes", [])
+            dnodes = raw_data.get("dnodes", [])
+            eboxes = raw_data.get("eboxes", [])
+            switch_inventory = raw_data.get("switch_inventory", {})
+            switches = switch_inventory.get("switches", [])
+
+            external_data: Optional[Dict[str, Any]] = None
+            parser = None
+            data_source = "Unknown"
+
+            # --- Path 1: Vnetmap output (pre-parsed in app.py) ---
+            if use_vnetmap and "port_mapping_vnetmap" in raw_data:
+                self.logger.info("Using vnetmap output as port mapping source")
+                vnetmap_result = raw_data["port_mapping_vnetmap"]
+                topology = vnetmap_result.get("topology", [])
+
+                enhanced_mapper = EnhancedPortMapper(
+                    cboxes=cboxes,
+                    dboxes=dboxes,
+                    cnodes=cnodes,
+                    dnodes=dnodes,
+                    switches=switches,
+                    eboxes=eboxes,
+                    external_port_map=topology,
+                )
+                enhanced_data = enhanced_mapper.generate_enhanced_port_map(topology)
+                data_source = "vnetmap (VAST Network Map Tool)"
+
+                # Build IPL from vnetmap LLDP neighbors if available
+                lldp_neighbors = vnetmap_result.get("lldp_neighbors", [])
+                ipl_formatted = self._format_lldp_ipl(lldp_neighbors, enhanced_mapper)
+
+                # Infer IPL when LLDP data is absent but two leaf switches exist
+                if not ipl_formatted:
+                    ipl_formatted = self._infer_ipl_from_switch_pair(enhanced_mapper)
+
+            # --- Path 2: External SSH collection ---
+            elif use_external and "port_mapping_external" in raw_data:
                 self.logger.info("Using externally collected port mapping data")
                 external_data = raw_data["port_mapping_external"]
 
-                # Get hardware data for enhanced port mapper
-                cboxes = raw_data.get("cboxes", [])
-                dboxes = raw_data.get("dboxes", [])
-                cnodes = raw_data.get("cnodes", [])
-                dnodes = raw_data.get("dnodes", [])
-                eboxes = raw_data.get("eboxes", [])
-                # Switches are in switch_inventory, not switches
-                switch_inventory = raw_data.get("switch_inventory", {})
-                switches = switch_inventory.get("switches", [])
-
-                # Initialize enhanced port mapper with external port map for IP discovery
                 enhanced_mapper = EnhancedPortMapper(
                     cboxes=cboxes,
                     dboxes=dboxes,
@@ -1663,15 +1697,35 @@ class VastDataExtractor:
                     external_port_map=external_data["port_map"],
                     eboxes=eboxes,
                 )
-
-                # External mapper returns port_map directly, pass it to enhanced mapper
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(external_data["port_map"])
+                data_source = "External SSH collection (clush + switch CLI)"
 
-                # No file-based parser for external data
-                parser = None
+                ipl_formatted = []
+                if "ipl_connections" in external_data:
+                    for ipl in external_data["ipl_connections"]:
+                        sw1_designation = enhanced_mapper.generate_switch_designation(
+                            ipl["switch1_ip"], ipl["switch1_port"]
+                        )
+                        sw2_designation = enhanced_mapper.generate_switch_designation(
+                            ipl["switch2_ip"], ipl["switch2_port"]
+                        )
+                        ipl_formatted.append(
+                            {
+                                "switch_designation": sw1_designation,
+                                "node_designation": sw2_designation,
+                                "notes": "IPL",
+                                "connection_type": "IPL",
+                                "switch1_ip": ipl["switch1_ip"],
+                                "switch2_ip": ipl["switch2_ip"],
+                                "switch1_port": ipl["switch1_port"],
+                                "switch2_port": ipl["switch2_port"],
+                            }
+                        )
 
+            # --- Path 3: Static vnetmap file (legacy fallback) ---
             else:
-                # Check if vnetmap output file is available
+                from vnetmap_parser import VNetMapParser
+
                 vnetmap_file = Path("vnetmap_output.txt")
                 if not vnetmap_file.exists():
                     self.logger.warning("VNetMap output file not found - port mapping unavailable")
@@ -1686,7 +1740,6 @@ class VastDataExtractor:
                         status="missing",
                     )
 
-                # Parse vnetmap output
                 parser = VNetMapParser(str(vnetmap_file))
                 vnetmap_data = parser.parse()
 
@@ -1700,17 +1753,6 @@ class VastDataExtractor:
                         status="error",
                     )
 
-                # Get hardware data for enhanced port mapper
-                cboxes = raw_data.get("cboxes", [])
-                dboxes = raw_data.get("dboxes", [])
-                cnodes = raw_data.get("cnodes", [])
-                dnodes = raw_data.get("dnodes", [])
-                eboxes = raw_data.get("eboxes", [])
-                # Switches are in switch_inventory, not switches
-                switch_inventory = raw_data.get("switch_inventory", {})
-                switches = switch_inventory.get("switches", [])
-
-                # Initialize enhanced port mapper
                 enhanced_mapper = EnhancedPortMapper(
                     cboxes=cboxes,
                     dboxes=dboxes,
@@ -1719,43 +1761,12 @@ class VastDataExtractor:
                     switches=switches,
                     eboxes=eboxes,
                 )
-
-                # Generate enhanced port map with standardized designations
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(vnetmap_data["topology"])
-
-            # Collect IPL/MLAG connections from external port mapper
-            # Format IPL connections for port mapping table
-            # Format: SWA-P29 / SWB-P29 / IPL
-            ipl_formatted = []
-            if "ipl_connections" in external_data:
-                for ipl in external_data["ipl_connections"]:
-                    # Get switch designations
-                    sw1_ip = ipl["switch1_ip"]
-                    sw2_ip = ipl["switch2_ip"]
-                    sw1_port = ipl["switch1_port"]
-                    sw2_port = ipl["switch2_port"]
-
-                    # Generate switch designations
-                    sw1_designation = enhanced_mapper.generate_switch_designation(sw1_ip, sw1_port)
-                    sw2_designation = enhanced_mapper.generate_switch_designation(sw2_ip, sw2_port)
-
-                    # Format as node connection entry for inclusion in port map table
-                    # Switch Port = SWA-P29, Node Connection = SWB-P29, Notes = IPL
-                    ipl_formatted.append(
-                        {
-                            "switch_designation": sw1_designation,
-                            "node_designation": sw2_designation,
-                            "notes": "IPL",
-                            "connection_type": "IPL",
-                            "switch1_ip": sw1_ip,
-                            "switch2_ip": sw2_ip,
-                            "switch1_port": sw1_port,
-                            "switch2_port": sw2_port,
-                        }
-                    )
+                data_source = "vnetmap file (static)"
+                ipl_formatted = []
 
             # Legacy IPL port collection (for backward compatibility)
-            ipl_ports = []
+            ipl_ports: List[Dict[str, Any]] = []
             switch_ports = raw_data.get("switch_ports", [])
             for port in switch_ports:
                 port_name = port.get("name", "")
@@ -1772,12 +1783,11 @@ class VastDataExtractor:
                     )
 
             # Organize port map by switch
+            connections_by_switch: Dict[str, Any] = {}
             if parser:
                 connections_by_switch = parser.get_connections_by_switch()
                 cross_connection_summary = parser.get_cross_connection_summary()
             else:
-                # For external data, organize by switch from enhanced_data
-                connections_by_switch = {}
                 for conn in enhanced_data["port_map"]:
                     switch = conn.get("switch_designation", "Unknown")
                     if switch not in connections_by_switch:
@@ -1789,9 +1799,10 @@ class VastDataExtractor:
                     else f"{enhanced_data['cross_connection_count']} cross-connections detected"
                 )
 
-            # Get IPL counts from external data
-            total_ipl_connections = external_data.get("total_ipl_connections", 0)
-            total_ipl_ports = external_data.get("total_ipl_ports", len(ipl_ports))
+            total_ipl_connections = (
+                external_data.get("total_ipl_connections", 0) if external_data else len(ipl_formatted)
+            )
+            total_ipl_ports = external_data.get("total_ipl_ports", len(ipl_ports)) if external_data else len(ipl_ports)
 
             processed_data = {
                 "available": True,
@@ -1802,13 +1813,13 @@ class VastDataExtractor:
                 "cross_connection_summary": cross_connection_summary,
                 "cross_connection_count": enhanced_data["cross_connection_count"],
                 "total_connections": enhanced_data["total_connections"],
-                "ipl_connections": ipl_formatted,  # Use formatted IPL connections
-                "ipl_ports": ipl_ports,  # Legacy format for backward compatibility
-                "total_ipl_connections": total_ipl_connections,  # Unique connections
-                "total_ipl_ports": total_ipl_ports,  # Total ports (connections * 2)
-                "data_source": "External SSH collection (clush + switch CLI)",
-                "partial": external_data.get("partial", False),
-                "partial_reason": external_data.get("partial_reason", ""),
+                "ipl_connections": ipl_formatted,
+                "ipl_ports": ipl_ports,
+                "total_ipl_connections": total_ipl_connections,
+                "total_ipl_ports": total_ipl_ports,
+                "data_source": data_source,
+                "partial": external_data.get("partial", False) if external_data else False,
+                "partial_reason": external_data.get("partial_reason", "") if external_data else "",
                 "designation_format": {
                     "node_side": "CB1-CN1-R (CBox-1/CNode-1/Port-A)",
                     "switch_side": "SWA-P12 (Switch-1/Port-12)",
@@ -1848,13 +1859,82 @@ class VastDataExtractor:
                 status="error",
             )
 
-    def extract_all_data(self, raw_data: Dict[str, Any], use_external_port_mapping: bool = False) -> Dict[str, Any]:
+    def _format_lldp_ipl(self, lldp_neighbors: List[Dict[str, Any]], mapper: Any) -> List[Dict[str, Any]]:
+        """Format LLDP neighbor data into IPL connection entries."""
+        ipl_formatted: List[Dict[str, Any]] = []
+        for neighbor in lldp_neighbors:
+            sw1_ip = neighbor.get("local_switch_ip", "")
+            sw2_ip = neighbor.get("remote_switch_ip", "")
+            sw1_port = neighbor.get("local_port", "")
+            sw2_port = neighbor.get("remote_port", "")
+            if not (sw1_ip and sw2_ip):
+                continue
+            sw1_des = mapper.generate_switch_designation(sw1_ip, sw1_port)
+            sw2_des = mapper.generate_switch_designation(sw2_ip, sw2_port)
+            ipl_formatted.append(
+                {
+                    "switch_designation": sw1_des,
+                    "node_designation": sw2_des,
+                    "notes": "IPL",
+                    "connection_type": "IPL",
+                    "switch1_ip": sw1_ip,
+                    "switch2_ip": sw2_ip,
+                    "switch1_port": sw1_port,
+                    "switch2_port": sw2_port,
+                }
+            )
+        return ipl_formatted
+
+    def _infer_ipl_from_switch_pair(self, mapper: Any) -> List[Dict[str, Any]]:
+        """Infer IPL connection when exactly two leaf switches form an MLAG pair.
+
+        VAST deployments with two leaf switches always have an IPL (Inter-Peer
+        Link).  When the vnetmap output lacks LLDP data we can still represent
+        the IPL because the pair relationship is implicit.
+        """
+        sw_map = getattr(mapper, "switch_map", {})
+        if len(sw_map) != 2:
+            return []
+
+        sorted_ips = sorted(sw_map.keys())
+        sw1_ip, sw2_ip = sorted_ips
+        sw1_des = sw_map[sw1_ip]["designation"]
+        sw2_des = sw_map[sw2_ip]["designation"]
+
+        self.logger.info(
+            "Inferred IPL between %s (%s) and %s (%s)",
+            sw1_des,
+            sw1_ip,
+            sw2_des,
+            sw2_ip,
+        )
+
+        return [
+            {
+                "switch_designation": sw1_des,
+                "node_designation": sw2_des,
+                "notes": "IPL (inferred)",
+                "connection_type": "IPL",
+                "switch1_ip": sw1_ip,
+                "switch2_ip": sw2_ip,
+                "switch1_port": "",
+                "switch2_port": "",
+            }
+        ]
+
+    def extract_all_data(
+        self,
+        raw_data: Dict[str, Any],
+        use_external_port_mapping: bool = False,
+        use_vnetmap: bool = False,
+    ) -> Dict[str, Any]:
         """
         Extract and process all report data from raw API responses.
 
         Args:
             raw_data (Dict[str, Any]): Raw data from API handler
             use_external_port_mapping (bool): Use external port mapping data if available
+            use_vnetmap (bool): Use vnetmap output as port mapping source
 
         Returns:
             Dict[str, Any]: Complete processed report data
@@ -1911,7 +1991,9 @@ class VastDataExtractor:
             customer_integration = self.extract_customer_integration(raw_data)
             deployment_timeline = self.extract_deployment_timeline(raw_data)
             future_recommendations = self.extract_future_recommendations(raw_data)
-            port_mapping = self.extract_port_mapping(raw_data, use_external=use_external_port_mapping)
+            port_mapping = self.extract_port_mapping(
+                raw_data, use_external=use_external_port_mapping, use_vnetmap=use_vnetmap
+            )
 
             # Calculate overall completeness
             section_completeness = [
@@ -1964,6 +2046,81 @@ class VastDataExtractor:
                 },
             }
 
+            # Health check data (optional -- only present when health check was run)
+            health_check_data = raw_data.get("health_check_results")
+            if health_check_data:
+                report_data["sections"]["health_check"] = asdict(
+                    ReportSection(
+                        name="health_check",
+                        title="Cluster Health Check Results",
+                        data=health_check_data,
+                        completeness=100.0,
+                        status="complete",
+                    )
+                )
+
+            # Post Deployment Activities — always included (next steps checklist)
+            next_steps = [
+                {
+                    "item": "Configure Call Home w/ Cloud Integration",
+                    "description": (
+                        "Configure cloud integration to enable remote monitoring and proactive support. "
+                        "Ensure Cloud VMS fields match Salesforce records exactly. "
+                        "Outbound traffic requires *.cloud.vastdata.com:443."
+                    ),
+                },
+                {
+                    "item": "Create VIP",
+                    "description": (
+                        "Create Virtual IP Pool(s) via VMS GUI or CLI (vcli > vippool create). "
+                        "Verify VIPs are setup and listening using showmount -e <VIP>."
+                    ),
+                },
+                {
+                    "item": "Test Fail-over Behavior",
+                    "description": (
+                        "Identify the VMS host node and intentionally reboot it. "
+                        "Verify VMS migrates and cluster stays healthy. Repeat for the leader node."
+                    ),
+                },
+                {
+                    "item": "Confirm VIP Movement and ARP Updates",
+                    "description": (
+                        "After MLAG is confirmed, validate that gratuitous ARP updates propagate "
+                        "correctly when VIPs move between CNodes. Mount from a client and test "
+                        "during a controlled fail-over."
+                    ),
+                },
+                {
+                    "item": "Activate License",
+                    "description": (
+                        "Locate the PSNT asset record in Salesforce and click 'Activate Cluster'. "
+                        "Configure the license key in VMS via GUI or CLI. "
+                        "License start date is the last day of cluster install."
+                    ),
+                },
+                {
+                    "item": "Change Default Passwords",
+                    "description": (
+                        "Change all default passwords: Linux root, vastdata, and IPMI admin via "
+                        "VCLI (cluster set-password). Change VMS admin, support, and root passwords "
+                        "via VMS UI. Change switch admin and monitor passwords."
+                    ),
+                },
+            ]
+
+            self._resolve_post_deploy_status(next_steps, report_data)
+
+            report_data["sections"]["post_deployment_activities"] = asdict(
+                ReportSection(
+                    name="post_deployment_activities",
+                    title="Post Deployment Activities",
+                    data={"next_steps": next_steps},
+                    completeness=100.0,
+                    status="complete",
+                )
+            )
+
             self.logger.info(f"Data extraction completed (overall completeness: {overall_completeness:.1%})")
             return report_data
 
@@ -1975,6 +2132,47 @@ class VastDataExtractor:
                 "error": str(e),
                 "metadata": {"extraction_timestamp": datetime.now().isoformat()},
             }
+
+    def _resolve_post_deploy_status(self, next_steps: List[Dict[str, Any]], report_data: Dict[str, Any]) -> None:
+        """Resolve status for each post-deployment item from health check results and cluster data.
+
+        Sets ``step["status"]`` to ``Completed``, ``Optional``, or ``Pending``.
+
+        Args:
+            next_steps: Mutable list of step dicts to update in place.
+            report_data: The assembled report_data dict (sections + cluster_summary).
+        """
+        hc_results: Dict[str, str] = {}
+        hc_section = report_data.get("sections", {}).get("health_check", {})
+        for r in hc_section.get("data", {}).get("results", []):
+            hc_results[r.get("check_name", "")] = r.get("status", "")
+
+        cluster = report_data.get("cluster_summary", {})
+        license_val = str(cluster.get("license", "") or "").strip().lower()
+
+        _AUTO_CHECKS: Dict[str, bool] = {
+            "Configure Call Home w/ Cloud Integration": hc_results.get("Call Home Status") == "pass",
+            "Create VIP": hc_results.get("VIP Pools") == "pass",
+            "Activate License": (
+                hc_results.get("License") == "pass"
+                or (bool(license_val) and license_val not in ("", "none", "unknown"))
+            ),
+        }
+
+        _MANUAL_ITEMS = {
+            "Test Fail-over Behavior",
+            "Confirm VIP Movement and ARP Updates",
+            "Change Default Passwords",
+        }
+
+        for step in next_steps:
+            item = step.get("item", "")
+            if item in _MANUAL_ITEMS:
+                step["status"] = "Optional"
+            elif item in _AUTO_CHECKS:
+                step["status"] = "Completed" if _AUTO_CHECKS[item] else "Pending"
+            else:
+                step["status"] = "Pending"
 
     def _calculate_completeness(self, conditions: List[bool]) -> float:
         """Calculate data completeness percentage."""

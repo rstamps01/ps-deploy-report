@@ -1,0 +1,13 @@
+---
+description: Health check API extensions
+globs: src/api_handler.py
+alwaysApply: false
+---
+# API Handler Health Check Extensions
+
+- New endpoints: alarms/, events/, snapshots/, quotas/, prometheusmetrics/{path}
+- All new methods must return empty list/string on failure (never raise).
+- prometheusmetrics endpoints return text/plain (not JSON) -- use requests.get directly.
+- Add new endpoints to get_all_data() return dict.
+- Add new endpoints to scripts/export_swagger.py probe list.
+- Follow existing graceful 404 pattern from get_monitoring_configuration().

@@ -25,6 +25,22 @@
         });
     }
 
+    // -- Hamburger menu toggle (available on every page) -------------------
+
+    const hamBtn = document.getElementById("navHamburgerBtn");
+    const hamDrop = document.getElementById("navHamburgerDropdown");
+    if (hamBtn && hamDrop) {
+        hamBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            hamDrop.classList.toggle("open");
+        });
+        document.addEventListener("click", function (e) {
+            if (!hamDrop.contains(e.target) && e.target !== hamBtn) {
+                hamDrop.classList.remove("open");
+            }
+        });
+    }
+
     // -- Generate form submission + SSE -----------------------------------
 
     const form = document.getElementById("generateForm");

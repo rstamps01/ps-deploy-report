@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAST asbuilt-reporter — PS Engineering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+:root {
+    --bg-body: #0e1117;
+    --bg-surface: #161b22;
+    --bg-elevated: #1c2333;
+    --border: #2a3548;
+    --accent: #1a6fb5;
+    --accent-hover: #155d99;
+    --accent-subtle: rgba(26, 111, 181, 0.15);
+    --cyan: #00b4d8;
+    --cta-orange: #F97316;
+    --cta-orange-hover: #ea580c;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #545d68;
+    --radius: 6px;
+}
+
+body {
+    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.page {
+    max-width: 640px;
+    width: 100%;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+}
+.brand img { height: 1.8rem; filter: brightness(0) invert(1); }
+.brand-white { color: var(--text-primary); }
+.brand-blue { color: var(--accent); }
+.brand-version {
+    font-size: 0.65rem;
+    font-weight: 500;
+    background: rgba(255, 255, 255, 0.08);
+    padding: 2px 8px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+}
+
+.badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    padding: 3px 12px;
+    border-radius: 20px;
+    margin-bottom: 2rem;
+    border: 1px solid rgba(26, 111, 181, 0.25);
+}
+
+h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    margin-bottom: 3rem;
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 3rem;
+}
+
+.card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2rem 1.5rem;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
+    transform: translateY(-2px);
+}
+
+.card-icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+.card-icon svg { width: 24px; height: 24px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.card-icon.overview { background: rgba(26, 111, 181, 0.12); }
+.card-icon.overview svg { stroke: var(--accent); }
+.card-icon.guide { background: rgba(0, 180, 216, 0.12); }
+.card-icon.guide svg { stroke: var(--cyan); }
+
+.card h2 { font-size: 1rem; font-weight: 600; }
+.card p { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5; }
+
+.download-row {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.5rem;
+    border-radius: 20px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-accent { background: var(--cta-orange); color: #fff; border-color: var(--cta-orange); }
+.btn-accent:hover { background: var(--cta-orange-hover); border-color: var(--cta-orange-hover); }
+.btn-outline { background: transparent; color: var(--text-primary); border-color: var(--border); }
+.btn-outline:hover { background: var(--bg-elevated); border-color: var(--accent); }
+.btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+footer {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+footer a { color: var(--accent); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+@media (max-width: 520px) {
+    .cards { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .card, .btn { transition: none; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+    <div class="brand">
+        <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data">
+        <span><span class="brand-white">asbuilt</span><span class="brand-blue">-reporter</span></span>
+        <span class="brand-version">v1.5.0</span>
+    </div>
+    <br>
+    <span class="badge">Internal Tool &mdash; PS Engineering</span>
+
+    <h1>Resources &amp; Getting Started</h1>
+    <p class="subtitle">Everything you need to download, install, and start generating customer-ready as-built reports.</p>
+
+    <div class="cards">
+        <a href="se-one-pager.html" class="card">
+            <div class="card-icon overview">
+                <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+            </div>
+            <h2>Product Overview</h2>
+            <p>Features, UI showcase, report previews, and key benefits for SEs and PSEs.</p>
+        </a>
+        <a href="quick-start-guide.html" class="card">
+            <div class="card-icon guide">
+                <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <h2>Quick Start Guide</h2>
+            <p>Step-by-step installation for macOS and Windows with screenshot walkthroughs.</p>
+        </a>
+    </div>
+
+    <div class="download-row">
+        <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download Latest Release
+        </a>
+        <a href="https://github.com/rstamps01/ps-deploy-report" class="btn btn-outline">
+            <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
+            GitHub Repository
+        </a>
+    </div>
+
+    <footer>
+        Built by PS Engineering &mdash; <a href="https://github.com/rstamps01/ps-deploy-report">github.com/rstamps01/ps-deploy-report</a>
+    </footer>
+</div>
+</body>
+</html>

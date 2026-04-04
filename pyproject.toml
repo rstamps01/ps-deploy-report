@@ -3,13 +3,16 @@ line-length = 120
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# cov-fail-under=46: current suite ~46%; restore to 49%+ per TSE-8 (see docs/TODO-ROADMAP.md QG-3)
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=46"
+# cov-fail-under=60: raised after Test Coverage Extension Plan; target 75%+ per TSE-9
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=60"
 markers = [
     "integration: full pipeline integration tests",
     "ui: browser-based UI tests (require Playwright)",
     "slow: tests that take more than 5 seconds",
 ]
+
+[tool.coverage.run]
+omit = []
 
 [tool.mypy]
 python_version = "3.11"

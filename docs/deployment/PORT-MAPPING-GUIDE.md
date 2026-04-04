@@ -20,9 +20,18 @@ To enable port mapping collection, you need SSH access to:
 
 ### Network Access
 
-- SSH connectivity from your workstation to:
-  - At least one VAST CNode
-  - All cluster switches
+- SSH connectivity from your workstation to at least one VAST CNode
+- Switch SSH is tunneled through the CNode by default (SSH proxy hop), so direct switch access from your workstation is **not required**
+
+### SSH Proxy Hop (default: ON)
+
+By default, switch SSH connections tunnel through the CNode via paramiko nested transport (`direct-tcpip` channel). This enables port mapping when switches are only reachable from inside the cluster network — the typical scenario for Tech Port field deployments.
+
+- **UI toggle:** "Proxy through CNode" on the Generate and Reporter pages (default: ON)
+- **CLI flag:** `--no-proxy-jump` disables proxy hop for environments with direct switch access
+- **Profile persistence:** The proxy hop setting is saved with cluster profiles
+
+When proxy hop is enabled, only CNode SSH access is required from your workstation. The application handles the hop to switches automatically.
 
 ## Usage
 
@@ -227,7 +236,7 @@ If you run without `--enable-port-mapping`:
 
 ### Q: Does this work with non-Cumulus switches?
 
-**A**: Currently, the port mapper is optimized for Cumulus Linux switches. Support for other switch OSes may be added in the future.
+**A**: Yes. The port mapper auto-detects switch types and supports Cumulus Linux (NVUE and NCLU) and Mellanox/Onyx switches. Switch type detection runs automatically during SSH connection.
 
 ## Examples
 
@@ -278,4 +287,4 @@ echo "Report generated in ./reports/"
 - [Installation Guide](INSTALLATION-GUIDE.md)
 - [Deployment Guide](DEPLOYMENT.md)
 - [Permissions Guide](PERMISSIONS-GUIDE.md)
-- [Troubleshooting Guide](../TROUBLESHOOTING.md)
+- [Troubleshooting](../../README.md#troubleshooting)

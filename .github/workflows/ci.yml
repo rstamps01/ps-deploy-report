@@ -123,7 +123,7 @@ jobs:
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=46
+            --cov-fail-under=60
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
@@ -133,7 +133,69 @@ jobs:
           path: coverage.xml
 
   # -------------------------------------------------------------------
-  # Job 3: Integration tests (Linux only)
+  # Job 3: Health check tests (Linux only)
+  # -------------------------------------------------------------------
+  health-check-tests:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-health-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-health-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run health check tests
+        run: |
+          if [ -f tests/test_health_checker.py ]; then
+            python -m pytest tests/test_health_checker.py -v --no-cov
+          else
+            echo "tests/test_health_checker.py not yet created -- skipping"
+          fi
+
+  # -------------------------------------------------------------------
+  # Job 3.5: Advanced Operations tests (Linux only)
+  # -------------------------------------------------------------------
+  advanced-ops-tests:
+    needs: quality-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-advops-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: ${{ runner.os }}-pip-advops-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run Advanced Operations tests
+        run: |
+          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov
+
+    # -------------------------------------------------------------------
+  # Job 4: Integration tests (Linux only)
   # -------------------------------------------------------------------
   integration-tests:
     needs: quality-gate
@@ -231,6 +293,10 @@ jobs:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || '~/Library/Caches/pip' }}
           key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements.txt') }}
           restore-keys: ${{ runner.os }}-pip-build-
+
+      - name: Install Cairo (macOS only, required for cairosvg SVG diagrams)
+        if: runner.os == 'macOS'
+        run: brew install cairo
 
       - name: Install runtime and PyInstaller
         run: |

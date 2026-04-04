@@ -1,0 +1,460 @@
+{% extends "base.html" %}
+{% block title %}Health Check - VAST As-Built Reporter{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28" style="margin-right:8px;vertical-align:middle;"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Health Check</h1>
+    <p class="subtitle">Run cluster health checks via API and optional SSH tiers</p>
+</div>
+
+<div class="generate-layout">
+    <!-- Left: Form -->
+    <div class="card form-card">
+        <form id="healthForm">
+            <fieldset id="formFields">
+                <div class="fieldset-section">Cluster Profile</div>
+                <div class="form-group">
+                    <label for="profileSelect">Saved Profiles</label>
+                    <div class="profile-controls">
+                        <select id="profileSelect" onchange="loadProfile()">
+                            <option value="">-- Select a profile --</option>
+                        </select>
+                        <button type="button" class="btn-icon-save" onclick="saveProfile()" title="Save current form as profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg></button>
+                        <button type="button" class="btn-icon-delete" onclick="deleteProfile()" title="Delete selected profile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button>
+                    </div>
+                </div>
+
+                <div class="fieldset-section">Cluster Connection</div>
+                <div class="form-group">
+                    <label for="cluster_ip">Cluster IP / Hostname *</label>
+                    <input type="text" id="cluster_ip" name="cluster_ip" required
+                           placeholder="e.g. 10.143.11.204">
+                </div>
+
+                <div class="form-group">
+                    <label for="auth_method">Authentication</label>
+                    <select id="auth_method" name="auth_method" onchange="toggleAuth()">
+                        <option value="password">Username / Password</option>
+                        <option value="token">API Token</option>
+                    </select>
+                </div>
+
+                <div id="passwordFields">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" value="support"
+                               placeholder="support">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password"
+                               placeholder="Cluster password">
+                    </div>
+                </div>
+
+                <div id="tokenFields" class="hidden">
+                    <div class="form-group">
+                        <label for="api_token">API Token</label>
+                        <input type="password" id="api_token" name="api_token"
+                               placeholder="Paste API token">
+                    </div>
+                </div>
+
+                <legend>Check Selection</legend>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="tiers" value="1" checked> Tier 1 (API Checks)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="tiers" value="3" id="tier3"> Tier 3 (Switch SSH Checks)
+                    </label>
+                </div>
+
+                <legend>SSH Credentials</legend>
+                <details>
+                    <summary>Switch SSH (Tier 3)</summary>
+                    <div class="form-row details-content">
+                        <div class="form-group half">
+                            <label for="node_user">Node User (proxy jump)</label>
+                            <input type="text" id="node_user" name="node_user" value="vastdata">
+                        </div>
+                        <div class="form-group half">
+                            <label for="node_password">Node Password (proxy jump)</label>
+                            <input type="password" id="node_password" name="node_password">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="switch_user">Switch User</label>
+                            <input type="text" id="switch_user" name="switch_user" value="cumulus">
+                        </div>
+                        <div class="form-group half">
+                            <label for="switch_password">Switch Password</label>
+                            <input type="password" id="switch_password" name="switch_password">
+                        </div>
+                    </div>
+                </details>
+
+                <div class="form-group action-row">
+                    <span class="action-label">Health Check</span>
+                    <button type="submit" class="btn btn-accent btn-action" id="btnRun">Run Health Check</button>
+                    <button type="button" class="btn btn-cancel btn-action hidden" id="btnCancel">Cancel</button>
+                </div>
+            </fieldset>
+        </form>
+    </div>
+
+    <!-- Right: Progress + Results -->
+    <div class="card log-card">
+        <h3>Progress</h3>
+        <div id="statusBanner" class="status-banner hidden"></div>
+        <div id="resultPanel" class="result-panel hidden">
+            <h4>Health Check Results</h4>
+            <div id="summaryBar" class="summary-bar"></div>
+            <div class="results-table-wrapper">
+                <table class="data-table" id="resultsTable">
+                    <thead>
+                        <tr>
+                            <th>Check Name</th>
+                            <th>Category</th>
+                            <th>Status</th>
+                            <th>Message</th>
+                            <th>Duration</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsBody"></tbody>
+                </table>
+            </div>
+            <button type="button" class="btn btn-accent btn-sm" id="btnDownloadJson">Download JSON</button>
+        </div>
+        <div id="logOutput" class="log-output">
+            <p class="log-placeholder">Logs will appear here once health check starts...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    "use strict";
+
+    function toggleAuth() {
+        const method = document.getElementById("auth_method").value;
+        document.getElementById("passwordFields").classList.toggle("hidden", method === "token");
+        document.getElementById("tokenFields").classList.toggle("hidden", method !== "token");
+    }
+
+    function updateTierCheckboxes() {
+        const switchUser = document.getElementById("switch_user").value.trim();
+        const switchPass = document.getElementById("switch_password").value;
+
+        const tier3 = document.getElementById("tier3");
+        tier3.disabled = !(switchUser && switchPass);
+        if (tier3.disabled) tier3.checked = false;
+    }
+
+    document.getElementById("switch_user").addEventListener("input", updateTierCheckboxes);
+    document.getElementById("switch_password").addEventListener("input", updateTierCheckboxes);
+    updateTierCheckboxes();
+    toggleAuth();
+
+    // Profile management
+    const profileFields = [
+        'cluster_ip', 'auth_method', 'username', 'password', 'api_token',
+        'node_user', 'node_password', 'switch_user', 'switch_password'
+    ];
+
+    async function fetchProfiles() {
+        try {
+            const resp = await fetch('/profiles');
+            const profiles = await resp.json();
+            const sel = document.getElementById('profileSelect');
+            const current = sel.value;
+            sel.innerHTML = '<option value="">-- Select a profile --</option>';
+            for (const name of Object.keys(profiles).sort()) {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            }
+            if (current) sel.value = current;
+            return profiles;
+        } catch (e) { return {}; }
+    }
+
+    async function loadProfile() {
+        const sel = document.getElementById('profileSelect');
+        const name = sel.value;
+        if (!name) return;
+        const profiles = await fetchProfiles();
+        const p = profiles[name];
+        if (!p) return;
+        for (const field of profileFields) {
+            const el = document.getElementById(field);
+            if (el) {
+                if (field === 'api_token') {
+                    el.value = p['api_token'] || p['token'] || '';
+                } else {
+                    el.value = p[field] || '';
+                }
+            }
+        }
+        toggleAuth();
+        updateTierCheckboxes();
+    }
+
+    async function saveProfile() {
+        let name = document.getElementById('profileSelect').value;
+        if (!name) {
+            name = prompt('Profile name (e.g. "selab-var-202"):');
+            if (!name) return;
+        }
+        const data = {name: name};
+        for (const field of profileFields) {
+            const el = document.getElementById(field);
+            data[field] = el ? el.value : '';
+        }
+        if (data.api_token) data.token = data.api_token;
+        try {
+            const resp = await fetch('/profiles', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            await resp.json();
+            await fetchProfiles();
+            document.getElementById('profileSelect').value = name;
+        } catch (e) {
+            alert('Failed to save profile: ' + e.message);
+        }
+    }
+
+    async function deleteProfile() {
+        const sel = document.getElementById('profileSelect');
+        const name = sel.value;
+        if (!name) { alert('Select a profile to delete.'); return; }
+        if (!confirm('Delete profile "' + name + '"?')) return;
+        try {
+            await fetch('/profiles/' + encodeURIComponent(name), { method: 'DELETE' });
+            await fetchProfiles();
+        } catch (e) {
+            alert('Failed to delete profile: ' + e.message);
+        }
+    }
+
+    // Expose functions globally for onclick handlers
+    window.loadProfile = loadProfile;
+    window.saveProfile = saveProfile;
+    window.deleteProfile = deleteProfile;
+
+    // Load profiles on page load
+    fetchProfiles();
+
+    const form = document.getElementById("healthForm");
+    const logOutput = document.getElementById("logOutput");
+    const statusBanner = document.getElementById("statusBanner");
+    const resultPanel = document.getElementById("resultPanel");
+    const summaryBar = document.getElementById("summaryBar");
+    const resultsBody = document.getElementById("resultsBody");
+    const btnRun = document.getElementById("btnRun");
+    const btnCancel = document.getElementById("btnCancel");
+    const btnDownloadJson = document.getElementById("btnDownloadJson");
+
+    let evtSource = null;
+    let pollTimer = null;
+    let lastReport = null;
+
+    form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+
+        const tier3 = document.getElementById("tier3");
+        if (tier3.checked && tier3.disabled) {
+            alert("Tier 3 requires Switch User and Switch Password.");
+            return;
+        }
+
+        const checkedTiers = Array.from(form.querySelectorAll('input[name="tiers"]:checked'));
+        if (checkedTiers.length === 0) {
+            alert("Select at least one tier.");
+            return;
+        }
+
+        if (document.getElementById("auth_method").value === "token") {
+            document.getElementById("password").value = "";
+        } else {
+            document.getElementById("api_token").value = "";
+        }
+
+        if (logOutput) logOutput.innerHTML = "";
+        resultPanel.classList.add("hidden");
+        statusBanner.classList.remove("hidden");
+        statusBanner.className = "status-banner running";
+        statusBanner.textContent = "Running health check...";
+        btnRun.disabled = true;
+        btnRun.textContent = "Running...";
+        btnCancel.classList.remove("hidden");
+        lastReport = null;
+
+        const body = new URLSearchParams(new FormData(form));
+
+        try {
+            const resp = await fetch("/health/run", {
+                method: "POST",
+                body: body,
+            });
+            const data = await resp.json();
+            if (!resp.ok) {
+                showError(data.message || data.error || "Failed to start health check");
+                resetButton();
+                return;
+            }
+        } catch (err) {
+            showError("Network error: " + err.message);
+            resetButton();
+            return;
+        }
+
+        startLogStream();
+        pollTimer = setInterval(checkStatus, 2000);
+    });
+
+    function startLogStream() {
+        if (evtSource) evtSource.close();
+        evtSource = new EventSource("/stream/logs");
+        evtSource.onmessage = function (e) {
+            if (e.data.startsWith(":")) return;
+            try {
+                const entry = JSON.parse(e.data);
+                appendLog(entry);
+            } catch (_) {}
+        };
+        evtSource.onerror = function () {};
+    }
+
+    function appendLog(entry) {
+        if (!logOutput) return;
+        const placeholder = logOutput.querySelector(".log-placeholder");
+        if (placeholder) placeholder.remove();
+        const line = document.createElement("p");
+        line.className = "log-line " + (entry.level || "");
+        const ts = entry.timestamp ? entry.timestamp + " " : "";
+        const lvl = entry.level ? "[" + entry.level + "] " : "";
+        line.textContent = ts + lvl + (entry.message || "");
+        logOutput.appendChild(line);
+        logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    async function checkStatus() {
+        try {
+            const resp = await fetch("/health/status?_t=" + Date.now());
+            const data = await resp.json();
+            if (!data.running && data.result) {
+                clearInterval(pollTimer);
+                if (evtSource) evtSource.close();
+
+                if (data.result.success) {
+                    lastReport = data.result.report;
+                    showSuccess(data.result);
+                } else {
+                    showError(data.result.error || "Unknown error");
+                }
+                resetButton();
+            }
+        } catch (_) {}
+    }
+
+    function showSuccess(result) {
+        statusBanner.className = "status-banner success";
+        statusBanner.textContent = "Health check completed for " + (result.cluster || "cluster");
+
+        resultPanel.classList.remove("hidden");
+
+        const report = result.report || {};
+        const summary = report.summary || {};
+        const passCount = summary.pass || 0;
+        const failCount = summary.fail || 0;
+        const warnCount = summary.warning || 0;
+        const skipCount = summary.skipped || 0;
+        const errCount = summary.error || 0;
+
+        summaryBar.innerHTML =
+            '<span class="badge badge-pass">' + passCount + ' pass</span> ' +
+            '<span class="badge badge-fail">' + failCount + ' fail</span> ' +
+            '<span class="badge badge-warning">' + warnCount + ' warning</span> ' +
+            '<span class="badge badge-skipped">' + skipCount + ' skipped</span> ' +
+            '<span class="badge badge-error">' + errCount + ' error</span>';
+
+        const results = report.results || [];
+        resultsBody.innerHTML = "";
+        for (let i = 0; i < results.length; i++) {
+            const r = results[i];
+            const tr = document.createElement("tr");
+            const statusClass = "status-" + (r.status || "skipped");
+            const duration = (r.duration_seconds != null) ? r.duration_seconds.toFixed(2) + "s" : "-";
+            tr.innerHTML =
+                "<td>" + escapeHtml(r.check_name || "") + "</td>" +
+                "<td>" + escapeHtml(r.category || "") + "</td>" +
+                "<td class=\"" + statusClass + "\">" + escapeHtml(r.status || "") + "</td>" +
+                "<td>" + escapeHtml(r.message || "") + "</td>" +
+                "<td>" + duration + "</td>";
+            resultsBody.appendChild(tr);
+        }
+    }
+
+    function escapeHtml(s) {
+        const div = document.createElement("div");
+        div.textContent = s;
+        return div.innerHTML;
+    }
+
+    btnCancel.addEventListener("click", async function () {
+        btnCancel.disabled = true;
+        btnCancel.textContent = "Cancelling...";
+        try {
+            await fetch("/health/cancel", { method: "POST" });
+        } catch (_) {}
+        clearInterval(pollTimer);
+        if (evtSource) evtSource.close();
+        statusBanner.className = "status-banner error";
+        statusBanner.textContent = "Health check cancelled";
+        resetButton();
+    });
+
+    btnDownloadJson.addEventListener("click", function () {
+        if (!lastReport) {
+            const resp = fetch("/health/results").then(function (r) { return r.json(); });
+            resp.then(function (data) {
+                if (data.error) return;
+                downloadJson(data);
+            }).catch(function () {});
+            return;
+        }
+        downloadJson(lastReport);
+    });
+
+    function downloadJson(report) {
+        const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "health_check_" + (report.cluster_name || "cluster") + "_" + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "") + ".json";
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function showError(msg) {
+        statusBanner.className = "status-banner error";
+        statusBanner.textContent = "Error: " + msg;
+    }
+
+    function resetButton() {
+        btnRun.disabled = false;
+        btnRun.textContent = "Run Health Check";
+        btnCancel.classList.add("hidden");
+        btnCancel.disabled = false;
+        btnCancel.textContent = "Cancel";
+    }
+})();
+</script>
+{% endblock %}

@@ -516,5 +516,85 @@ class TestVastHardwareInfo(unittest.TestCase):
         self.assertEqual(hardware.status, "unknown")
 
 
+class TestHealthEndpoints(unittest.TestCase):
+    """Tests for health-check API handler extensions (WP-2)."""
+
+    def setUp(self):
+        self.handler = VastApiHandler(
+            cluster_ip="192.168.1.100",
+            username="admin",
+            password="password",
+            config={"api": {"timeout": 30, "max_retries": 3, "retry_delay": 2, "verify_ssl": False, "version": "v7"}},
+        )
+        self.handler.authenticated = True
+        self.handler.session = MagicMock()
+
+    def tearDown(self):
+        if self.handler.session:
+            self.handler.session.close()
+
+    @patch.object(VastApiHandler, "_make_api_request")
+    def test_get_alarms_success(self, mock_request):
+        mock_request.return_value = [
+            {"id": 1, "severity": "CRITICAL", "message": "Disk failure"},
+            {"id": 2, "severity": "WARNING", "message": "High temp"},
+        ]
+        result = self.handler.get_alarms()
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["severity"], "CRITICAL")
+        mock_request.assert_called_once_with("alarms/")
+
+    @patch.object(VastApiHandler, "_make_api_request")
+    def test_get_alarms_404(self, mock_request):
+        mock_request.return_value = None
+        result = self.handler.get_alarms()
+        self.assertEqual(result, [])
+
+    @patch.object(VastApiHandler, "_make_api_request")
+    def test_get_events_success(self, mock_request):
+        mock_request.return_value = [
+            {"id": 1, "severity": "INFO", "message": "Cluster started"},
+            {"id": 2, "severity": "WARNING", "message": "Node restarted"},
+        ]
+        result = self.handler.get_events()
+        self.assertEqual(len(result), 2)
+        mock_request.assert_called_once_with("events/?page_size=100")
+
+    @patch.object(VastApiHandler, "_make_api_request")
+    def test_get_snapshots_success(self, mock_request):
+        mock_request.return_value = [
+            {"id": 1, "name": "snap-daily", "status": "ACTIVE"},
+        ]
+        result = self.handler.get_snapshots()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "snap-daily")
+        mock_request.assert_called_once_with("snapshots/")
+
+    @patch.object(VastApiHandler, "_make_api_request")
+    def test_get_quotas_success(self, mock_request):
+        mock_request.return_value = [
+            {"id": 1, "name": "user-quota", "hard_limit": 1024},
+        ]
+        result = self.handler.get_quotas()
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["hard_limit"], 1024)
+        mock_request.assert_called_once_with("quotas/")
+
+    def test_get_prometheus_metrics_success(self):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = 'vast_device_state{device="ssd_0"} 1.0\n'
+        self.handler.session.get.return_value = mock_resp
+
+        result = self.handler.get_prometheus_metrics("devices")
+        self.assertIn("vast_device_state", result)
+        self.handler.session.get.assert_called_once()
+
+    def test_get_prometheus_metrics_failure(self):
+        self.handler.session.get.side_effect = Exception("Connection refused")
+        result = self.handler.get_prometheus_metrics("devices")
+        self.assertEqual(result, "")
+
+
 if __name__ == "__main__":
     unittest.main()

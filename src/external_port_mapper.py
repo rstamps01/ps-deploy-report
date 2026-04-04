@@ -23,7 +23,7 @@ import platform
 import re
 import shutil
 import subprocess
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 
@@ -256,6 +256,8 @@ class ExternalPortMapper:
         switch_ips: List[str],
         switch_user: str,
         switch_password: str,
+        proxy_jump: bool = True,
+        tunnel_address: Optional[str] = None,
     ):
         """
         Initialize external port mapper.
@@ -270,8 +272,11 @@ class ExternalPortMapper:
             switch_ips: List of switch management IPs
             switch_user: SSH username for switches (typically 'cumulus' or 'admin')
             switch_password: SSH password for switches (typically 'Vastdata1!' or 'admin')
+            proxy_jump: Route switch SSH through the CNode as a jump host (default True)
+            tunnel_address: Local tunnel endpoint (e.g. '127.0.0.1:54321') for Tech Port mode
         """
         self.cluster_ip = cluster_ip
+        self._api_host = tunnel_address or cluster_ip
         self.api_user = api_user
         self.api_password = api_password
         self.cnode_ip = cnode_ip
@@ -280,6 +285,7 @@ class ExternalPortMapper:
         self.switch_ips = switch_ips
         self.switch_user = switch_user
         self.switch_password = switch_password
+        self.proxy_jump = proxy_jump
         self.logger = logging.getLogger(__name__)
 
         # Initialize verbose logger
@@ -306,6 +312,22 @@ class ExternalPortMapper:
         self.switch_os_map: dict[str, str] = {}  # {switch_ip: 'cumulus' or 'onyx'}
         self.switch_credentials: dict[str, dict[str, str]] = {}  # {switch_ip: {'user': '', 'password': ''}}
 
+    def _jump_kwargs(self) -> dict:
+        """Return jump host keyword args for SSH adapter calls when proxy_jump is enabled.
+
+        Uses ``cluster_ip`` (Tech Port or VMS VIP) as the jump host because
+        individual CNode management IPs may only be reachable from inside
+        the cluster network.  The cluster_ip is always SSH-accessible from
+        the operator's machine.
+        """
+        if self.proxy_jump:
+            return {
+                "jump_host": self.cluster_ip,
+                "jump_user": self.node_user,
+                "jump_password": self.node_password,
+            }
+        return {}
+
     def _detect_switch_os(self, switch_ip: str) -> Tuple[str, str, str]:
         """
         Detect switch operating system (Cumulus vs Onyx) and determine credentials.
@@ -325,15 +347,23 @@ class ExternalPortMapper:
         """
         self.vlog.log_operation(f"Detecting OS type for switch {switch_ip}")
 
-        # Try Cumulus credentials first (cumulus/Vastdata1!)
-        credentials_to_try = [
-            ("cumulus", self.switch_password, "cumulus"),  # (user, pass, os_name)
-            ("admin", "admin", "onyx"),  # Onyx default credentials
-        ]
+        credentials_to_try = []
+        seen: set = set()
 
-        # If user provided admin as switch_user, try onyx first
         if self.switch_user == "admin":
-            credentials_to_try.reverse()
+            credentials_to_try.append(("admin", self.switch_password, "onyx"))
+            seen.add(("admin", self.switch_password))
+            if self.switch_password != "admin":
+                credentials_to_try.append(("admin", "admin", "onyx"))
+                seen.add(("admin", "admin"))
+            credentials_to_try.append(("cumulus", self.switch_password, "cumulus"))
+        else:
+            credentials_to_try.append((self.switch_user, self.switch_password, "cumulus"))
+            seen.add((self.switch_user, self.switch_password))
+            if ("admin", "admin") not in seen:
+                credentials_to_try.append(("admin", "admin", "onyx"))
+            if ("cumulus", self.switch_password) not in seen:
+                credentials_to_try.append(("cumulus", self.switch_password, "cumulus"))
 
         for user, password, expected_os in credentials_to_try:
             try:
@@ -349,11 +379,51 @@ class ExternalPortMapper:
 
                 # For Onyx switches, use interactive SSH (they require PTY)
                 if expected_os == "onyx":
-                    returncode, stdout, stderr = run_interactive_ssh(switch_ip, user, password, test_cmd, timeout=15)
+                    returncode, stdout, stderr = run_interactive_ssh(
+                        switch_ip,
+                        user,
+                        password,
+                        test_cmd,
+                        timeout=15,
+                        **self._jump_kwargs(),
+                    )
                 else:
-                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, test_cmd, timeout=15)
+                    returncode, stdout, stderr = run_ssh_command(
+                        switch_ip,
+                        user,
+                        password,
+                        test_cmd,
+                        timeout=15,
+                        **self._jump_kwargs(),
+                    )
 
                 self.vlog.log(f"SSH result: rc={returncode}, stdout_len={len(stdout)}, stderr_len={len(stderr)}")
+
+                stderr_lower = (stderr or "").lower()
+                _CONNECTIVITY_INDICATORS = (
+                    "timed out",
+                    "connection refused",
+                    "no route to host",
+                    "network is unreachable",
+                )
+                if "jump host" in stderr_lower and "connection failed" in stderr_lower:
+                    connectivity_error = (
+                        f"Cannot reach jump host ({self.cluster_ip}) — SSH connection "
+                        f"timed out. Verify the cluster IP is correct and SSH is accessible."
+                    )
+                    self.vlog.log_error(connectivity_error)
+                    raise Exception(connectivity_error)
+
+                if "connection failed" in stderr_lower or any(
+                    indicator in stderr_lower for indicator in _CONNECTIVITY_INDICATORS
+                ):
+                    connectivity_error = f"Cannot reach switch {switch_ip} — network connectivity issue. " + (
+                        "Enable 'Proxy through CNode' to tunnel SSH via the CNode."
+                        if not self.proxy_jump
+                        else "Check that the CNode can reach this switch IP."
+                    )
+                    self.vlog.log_error(connectivity_error)
+                    raise Exception(connectivity_error)
 
                 # Check both stdout and stderr for OS identification
                 output_lower = (stdout + stderr).lower()
@@ -387,11 +457,24 @@ class ExternalPortMapper:
                         return ("onyx", user, password)
 
             except Exception as e:
+                if str(e).startswith("Cannot reach switch"):
+                    raise
                 self.vlog.log_warning(f"Error testing {expected_os} on {switch_ip}: {e}")
                 continue
 
         # If we get here, neither credential set worked
-        error_msg = f"Could not detect OS type for switch {switch_ip} - authentication failed with both credential sets"
+        if not self.proxy_jump:
+            error_msg = (
+                f"Could not detect OS type for switch {switch_ip} — "
+                "authentication failed with both credential sets. "
+                "If the switch is not directly reachable, enable 'Proxy through CNode'."
+            )
+        else:
+            error_msg = (
+                f"Could not detect OS type for switch {switch_ip} — "
+                "authentication failed with both credential sets via CNode proxy. "
+                "Verify switch credentials are correct."
+            )
         self.vlog.log_error(error_msg)
         raise Exception(error_msg)
 
@@ -429,6 +512,17 @@ class ExternalPortMapper:
             - stdout: Command output
             - stderr: Error output (if any)
         """
+        if self.proxy_jump:
+            result = run_interactive_ssh(
+                switch_ip,
+                username,
+                password,
+                command,
+                timeout=timeout,
+                **self._jump_kwargs(),
+            )
+            return (int(result[0]), str(result[1]), str(result[2]))
+
         try:
             import pexpect
 
@@ -742,7 +836,7 @@ class ExternalPortMapper:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             # Get CNodes
-            url = f"https://{self.cluster_ip}/api/v7/vms/1/network_settings/"
+            url = f"https://{self._api_host}/api/v7/vms/1/network_settings/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code != 200:
@@ -796,7 +890,7 @@ class ExternalPortMapper:
 
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-            url = f"https://{self.cluster_ip}/api/v7/eboxes/"
+            url = f"https://{self._api_host}/api/v7/eboxes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code != 200:
@@ -855,7 +949,7 @@ class ExternalPortMapper:
             node_mapping = {}
 
             # Collect CNodes
-            url = f"https://{self.cluster_ip}/api/v7/cnodes/"
+            url = f"https://{self._api_host}/api/v7/cnodes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code == 200:
@@ -877,7 +971,7 @@ class ExternalPortMapper:
                         self.logger.debug(f"Mapped CNode: {cnode.get('name')} -> EBox {cnode.get('ebox_id')}")
 
             # Collect DNodes
-            url = f"https://{self.cluster_ip}/api/v7/dnodes/"
+            url = f"https://{self._api_host}/api/v7/dnodes/"
             response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             if response.status_code == 200:
@@ -936,13 +1030,14 @@ class ExternalPortMapper:
             self.vlog.log_operation("Collecting hostname to IP mapping via clush")
             self.vlog.log(f"SSH to {self.node_user}@{self.cnode_ip}: {clush_cmd}", self.vlog.BLUE)
 
-            # Use cross-platform SSH adapter
+            # Use cross-platform SSH adapter (tunnel via cluster_ip in Tech Port mode)
             returncode, stdout, stderr = run_ssh_command(
                 self.cnode_ip,
                 self.node_user,
                 self.node_password,
                 clush_cmd,
                 timeout=30,
+                **self._jump_kwargs(),
             )
 
             # Log result
@@ -1014,13 +1109,14 @@ class ExternalPortMapper:
 
             self.vlog.log(f"SSH to {self.node_user}@{self.cnode_ip}: {clush_cmd}", self.vlog.BLUE)
 
-            # Use cross-platform SSH adapter
+            # Use cross-platform SSH adapter (tunnel via cluster_ip in Tech Port mode)
             returncode, stdout, stderr = run_ssh_command(
                 self.cnode_ip,
                 self.node_user,
                 self.node_password,
                 clush_cmd,
                 timeout=60,
+                **self._jump_kwargs(),
             )
 
             self.vlog.log(
@@ -1176,7 +1272,12 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {mac_cmd}", self.vlog.BLUE)
                     result_returncode, result_stdout, result_stderr = run_ssh_command(
-                        switch_ip, user, password, mac_cmd, timeout=30
+                        switch_ip,
+                        user,
+                        password,
+                        mac_cmd,
+                        timeout=30,
+                        **self._jump_kwargs(),
                     )
                     self.vlog.log(
                         f"SSH result: rc={result_returncode}, stdout_len={len(result_stdout)}",
@@ -1211,7 +1312,12 @@ class ExternalPortMapper:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {vlan69_cmd_str}", self.vlog.BLUE)
                     vlan69_returncode, vlan69_stdout, vlan69_stderr = run_ssh_command(
-                        switch_ip, user, password, vlan69_cmd_str, timeout=30
+                        switch_ip,
+                        user,
+                        password,
+                        vlan69_cmd_str,
+                        timeout=30,
+                        **self._jump_kwargs(),
                     )
                     self.vlog.log(
                         f"VLAN 69 SSH result: rc={vlan69_returncode}, stdout_len={len(vlan69_stdout)}",
@@ -1335,22 +1441,20 @@ class ExternalPortMapper:
                     # Format: 00:00:5E:00:01:01 or lowercase
                     mac_lower = mac.lower()
                     if re.match(r"^[0-9a-f:]{17}$", mac_lower):
-                        # Include Eth* and Po* (Port Channel) interfaces
-                        # Exclude CPU, management, etc.
-                        if port.startswith("Eth") or port.startswith("Po"):
-                            # Convert Onyx port naming to swp naming for consistency
-                            if port.startswith("Eth") and "/" in port:
-                                # Eth1/5 -> swp5
-                                port_num = port.split("/")[1]
-                                swp_port = f"swp{port_num}"
-                            else:
-                                # Keep Po1, Po2, etc. as-is for now
-                                swp_port = port
+                        # Include only Eth* physical interfaces
+                        # Skip Po* (port channel) — those are aggregated inter-switch
+                        # links whose MAC tables contain every MAC reachable via the
+                        # peer switch, not direct physical connections.
+                        # IPL/MLAG links are discovered separately via LLDP.
+                        if port.startswith("Eth") and "/" in port:
+                            # Eth1/5 -> swp5
+                            port_num = port.split("/")[1]
+                            swp_port = f"swp{port_num}"
 
                             mac_table[mac_lower] = {
                                 "port": swp_port,
                                 "vlan": vlan,
-                                "original_port": port,  # Keep original for debugging
+                                "original_port": port,
                             }
                 except (IndexError, ValueError) as e:
                     self.logger.debug(f"Could not parse Onyx MAC table line: {line} - {e}")
@@ -1406,7 +1510,14 @@ class ExternalPortMapper:
                 else:
                     # Use cross-platform SSH adapter for Cumulus
                     self.vlog.log(f"SSH to {user}@{switch_ip}: {lldp_cmd}", self.vlog.BLUE)
-                    returncode, stdout, stderr = run_ssh_command(switch_ip, user, password, lldp_cmd, timeout=30)
+                    returncode, stdout, stderr = run_ssh_command(
+                        switch_ip,
+                        user,
+                        password,
+                        lldp_cmd,
+                        timeout=30,
+                        **self._jump_kwargs(),
+                    )
                     self.vlog.log(
                         f"IPL/LLDP SSH result: rc={returncode}, stdout_len={len(stdout)}",
                         self.vlog.GREEN if returncode == 0 else self.vlog.RED,

@@ -7,6 +7,7 @@ Implements the port mapping designation system:
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
@@ -73,55 +74,67 @@ class EnhancedPortMapper:
         self.cnode_map = {}
         self.dnode_map = {}
 
-        # First, try to build from external port map data (most reliable for data IPs)
         if self.external_port_map:
-            # Group by node IP to get unique nodes
-            nodes_by_ip = {}
+            cnode_hosts: dict[str, list[str]] = {}
+            dnode_hosts: dict[str, list[str]] = {}
+            host_meta: dict[str, dict[str, str]] = {}
+
             for entry in self.external_port_map:
                 node_ip = entry.get("node_ip")
-                if node_ip and node_ip not in nodes_by_ip:
-                    nodes_by_ip[node_ip] = entry
-
-            # Determine node type by interface pattern
-            # CNodes typically use enp129s0f* interfaces
-            # DNodes typically use enp3s0f* interfaces
-            cnode_ips = []
-            dnode_ips = []
-
-            for node_ip, entry in nodes_by_ip.items():
-                interface = entry.get("interface", "")
                 hostname = entry.get("node_hostname", "")
+                if not node_ip or not hostname:
+                    continue
 
-                # Heuristic: enp129 = CNode, enp3 = DNode
-                if "enp129" in interface or "cnode" in hostname.lower():
-                    cnode_ips.append((node_ip, hostname))
-                elif "enp3" in interface or "dnode" in hostname.lower():
-                    dnode_ips.append((node_ip, hostname))
+                box_name = entry.get("box_name", "")
+                node_type_raw = entry.get("node_type", "").lower()
+                interface = entry.get("interface", "")
+                hn_lower = hostname.lower()
+
+                if hostname not in host_meta:
+                    host_meta[hostname] = {"box_name": box_name}
+
+                is_dnode = node_type_raw == "dnode" or "enp3" in interface or "dnode" in hn_lower or "-dn-" in hn_lower
+
+                if is_dnode:
+                    dnode_hosts.setdefault(hostname, []).append(node_ip)
                 else:
-                    # Default: assume CNode
-                    cnode_ips.append((node_ip, hostname))
+                    cnode_hosts.setdefault(hostname, []).append(node_ip)
 
-            # Sort by IP to ensure consistent numbering
-            cnode_ips.sort()
-            dnode_ips.sort()
+            sorted_cnode_hosts = sorted(cnode_hosts.keys())
+            sorted_dnode_hosts = sorted(dnode_hosts.keys())
 
-            # Build CNode map
-            for idx, (node_ip, hostname) in enumerate(cnode_ips, start=1):
-                self.cnode_map[node_ip] = {
-                    "cnode_num": idx,
-                    "cbox_num": idx,  # Assume 1:1 mapping
-                    "hostname": hostname if hostname != "Unknown" else f"cnode-{idx}",
-                }
-                logger.debug(f"Mapped CNode {idx} from external data: {node_ip}")
+            for idx, hostname in enumerate(sorted_cnode_hosts, start=1):
+                for ip in cnode_hosts[hostname]:
+                    self.cnode_map[ip] = {
+                        "cnode_num": idx,
+                        "cbox_num": idx,
+                        "hostname": hostname,
+                    }
+                logger.debug("Mapped CNode %d (%s) from external data: %s", idx, hostname, cnode_hosts[hostname])
 
-            # Build DNode map
-            for idx, (node_ip, hostname) in enumerate(dnode_ips, start=1):
-                self.dnode_map[node_ip] = {
-                    "dnode_num": idx,
-                    "dbox_num": 1,  # Assume single DBox
-                    "hostname": hostname if hostname != "Unknown" else f"dnode-{idx}",
-                }
-                logger.debug(f"Mapped DNode {idx} from external data: {node_ip}")
+            unique_dboxes: list[str] = []
+            for hostname in sorted_dnode_hosts:
+                bname = host_meta.get(hostname, {}).get("box_name", "")
+                if bname and bname.startswith("dbox-") and bname not in unique_dboxes:
+                    unique_dboxes.append(bname)
+            dbox_name_to_num = {name: i for i, name in enumerate(unique_dboxes, start=1)}
+
+            for idx, hostname in enumerate(sorted_dnode_hosts, start=1):
+                bname = host_meta.get(hostname, {}).get("box_name", "")
+                dbox_num = dbox_name_to_num.get(bname, idx)
+                for ip in dnode_hosts[hostname]:
+                    self.dnode_map[ip] = {
+                        "dnode_num": idx,
+                        "dbox_num": dbox_num,
+                        "hostname": hostname,
+                    }
+                logger.debug(
+                    "Mapped DNode %d (DBox %d, %s) from external data: %s",
+                    idx,
+                    dbox_num,
+                    hostname,
+                    dnode_hosts[hostname],
+                )
 
         # Supplement with API data if we didn't get enough nodes from external map
         if len(self.cnode_map) < len(self.cnodes):
@@ -212,32 +225,66 @@ class EnhancedPortMapper:
             logger.debug(f"DNode IPs: {list(self.dnode_map.keys())}")
 
     def _build_switch_map(self):
-        """Build switch IP to designation map from actual cluster data."""
+        """Build switch IP to designation map from actual cluster data.
+
+        Leaf switches (those in the port_map) get SWA/SWB/... designations.
+        Spine switches (in inventory but NOT in port_map) get SP1/SP2/...
+        designations with ``role: "spine"``.
+        """
         self.switch_map = {}
 
-        # Sort switches by management IP to ensure consistent numbering
-        sorted_switches = sorted(self.switches, key=lambda s: s.get("mgmt_ip", ""))
+        port_map_switch_ips = {e.get("switch_ip") for e in self.external_port_map if e.get("switch_ip")}
 
-        for idx, switch in enumerate(sorted_switches, start=1):
+        leaf_switches = [sw for sw in self.switches if sw.get("mgmt_ip") in port_map_switch_ips]
+        spine_switches = [
+            sw for sw in self.switches if sw.get("mgmt_ip") and sw.get("mgmt_ip") not in port_map_switch_ips
+        ]
+        if not leaf_switches:
+            leaf_switches = list(self.switches)
+            spine_switches = []
+
+        sorted_leaves = sorted(leaf_switches, key=lambda s: s.get("mgmt_ip", ""))
+
+        sw_letters = "ABCDEFGH"
+        for idx, switch in enumerate(sorted_leaves):
             mgmt_ip = switch.get("mgmt_ip")
             if not mgmt_ip:
-                logger.warning(f"Switch {idx} has no management IP, skipping")
                 continue
 
-            # Designation: Switch 1 = SWA, Switch 2 = SWB
-            designation = "SWA" if idx == 1 else "SWB"
-
-            # Get hostname
-            hostname = switch.get("name") or switch.get("hostname") or f"switch-{idx}"
+            letter = sw_letters[idx] if idx < len(sw_letters) else str(idx + 1)
+            designation = f"SW{letter}"
+            hostname = switch.get("name") or switch.get("hostname") or f"switch-{idx + 1}"
 
             self.switch_map[mgmt_ip] = {
-                "switch_num": idx,
+                "switch_num": idx + 1,
                 "designation": designation,
                 "hostname": hostname,
+                "role": "leaf",
             }
-            logger.debug(f"Mapped Switch {idx}: {mgmt_ip} -> {hostname} ({designation})")
+            logger.debug("Mapped Leaf %d: %s -> %s (%s)", idx + 1, mgmt_ip, hostname, designation)
 
-        logger.info(f"Built switch map: {len(self.switch_map)} switches")
+        sorted_spines = sorted(spine_switches, key=lambda s: s.get("mgmt_ip", ""))
+        for idx, switch in enumerate(sorted_spines):
+            mgmt_ip = switch.get("mgmt_ip")
+            if not mgmt_ip:
+                continue
+
+            designation = f"SP{idx + 1}"
+            hostname = switch.get("name") or switch.get("hostname") or f"spine-{idx + 1}"
+
+            self.switch_map[mgmt_ip] = {
+                "switch_num": idx + 1,
+                "designation": designation,
+                "hostname": hostname,
+                "role": "spine",
+            }
+            logger.debug("Mapped Spine %d: %s -> %s (%s)", idx + 1, mgmt_ip, hostname, designation)
+
+        logger.info(
+            "Built switch map: %d leaf, %d spine",
+            len(sorted_leaves),
+            len(sorted_spines),
+        )
 
     def generate_node_designation(self, node_ip: str, network: str, hostname: str = None) -> Tuple[str, str]:
         """
@@ -292,28 +339,40 @@ class EnhancedPortMapper:
         """
         Generate standardized switch port designation.
 
-        Args:
-            switch_ip: Switch management IP
-            port_name: Port name (e.g., "swp20")
-
-        Returns:
-            Designation string
-            Examples:
-            - "SWA-P12" for Switch-1 Port 12
-            - "SWB-P5" for Switch-2 Port 5
+        Handles multiple port naming formats and switch roles:
+        - Leaf:  ``swp20`` -> ``SWA-P20``, ``Eth1/15/1`` -> ``SWA-P15/1``
+        - Spine: ``swp20`` -> ``SP1-P20``
         """
         if switch_ip in self.switch_map:
             switch_info = self.switch_map[switch_ip]
             switch_des = switch_info["designation"]
 
-            # Extract port number from port name (swp20 -> 20)
-            port_num = port_name.replace("swp", "").replace("eth", "")
-
-            designation = f"{switch_des}-P{port_num}"
-            return designation
+            port_id = self._normalize_port_id(port_name)
+            return f"{switch_des}-P{port_id}"
         else:
             logger.warning(f"Unknown switch IP: {switch_ip}")
             return f"SW?-{port_name}"
+
+    @staticmethod
+    def _normalize_port_id(port_name: str) -> str:
+        """Extract a human-readable port identifier from a raw port name.
+
+        ``swp20``       -> ``20``
+        ``Eth1/15``     -> ``15``
+        ``Eth1/15/1``   -> ``15/1``  (preserves breakout lane)
+        """
+        lower = port_name.lower()
+        if lower.startswith("swp"):
+            return lower[3:]
+
+        # Eth<module>/<port>[/<lane>]
+        eth_match = re.match(r"[Ee]th\d+/(\d+(?:/\d+)?)", port_name)
+        if eth_match:
+            return eth_match.group(1)
+
+        # Fallback: last numeric group
+        digits = re.findall(r"\d+", port_name)
+        return digits[-1] if digits else port_name
 
     def get_node_hostname(self, node_ip: str) -> str:
         """Get full hostname for a node IP."""

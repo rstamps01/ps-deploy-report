@@ -31,6 +31,14 @@ from typing import Any, Dict, Optional, cast
 # Add src directory to Python path (must run before local imports when run as script)
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Ensure Homebrew's shared libraries are discoverable on macOS (needed for cairosvg → libcairo)
+if sys.platform == "darwin":
+    _brew_lib = Path("/opt/homebrew/lib")
+    if _brew_lib.is_dir():
+        _dyld = os.environ.get("DYLD_FALLBACK_LIBRARY_PATH", "")
+        if str(_brew_lib) not in _dyld:
+            os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{_brew_lib}:{_dyld}" if _dyld else str(_brew_lib)
+
 from api_handler import create_vast_api_handler  # noqa: E402
 from data_extractor import create_data_extractor  # noqa: E402
 from report_builder import create_report_builder  # noqa: E402
@@ -161,6 +169,24 @@ class VastReportGenerator:
                 self.logger.error("Failed to obtain credentials")
                 return False
 
+            # Tech Port tunnel setup
+            tunnel_address = None
+            if getattr(args, "tech_port", False):
+                from utils.vms_tunnel import VMSTunnel
+
+                node_user = getattr(args, "node_user", "vastdata") or "vastdata"
+                node_password = getattr(args, "node_password", "vastdata") or "vastdata"
+                self.logger.info("Tech Port mode: discovering VMS via %s ...", args.cluster_ip)
+                self._tunnel = VMSTunnel(args.cluster_ip, node_user, node_password)
+                self._tunnel.connect()
+                tunnel_address = self._tunnel.local_bind_address
+                self.logger.info(
+                    "VMS discovered: internal=%s, management=%s, tunnel=%s",
+                    self._tunnel.vms_internal_ip,
+                    self._tunnel.vms_management_ip,
+                    tunnel_address,
+                )
+
             # Initialize API handler
             self.api_handler = create_vast_api_handler(
                 cluster_ip=args.cluster_ip,
@@ -168,6 +194,7 @@ class VastReportGenerator:
                 password=password,
                 token=token,
                 config=self.config,
+                tunnel_address=tunnel_address,
             )
             if self.api_handler is None:
                 self.logger.error("Failed to create API handler")
@@ -390,6 +417,9 @@ class VastReportGenerator:
             for cnode_ip in cnode_ips:
                 self.logger.info("Trying CNode %s for port mapping (clush)", cnode_ip)
                 try:
+                    tunnel_addr = getattr(self.api_handler, "_api_host", None)
+                    if tunnel_addr == args.cluster_ip:
+                        tunnel_addr = None
                     port_mapper = ExternalPortMapper(
                         cluster_ip=args.cluster_ip,
                         api_user=self.api_handler.username or "support",
@@ -400,6 +430,8 @@ class VastReportGenerator:
                         switch_ips=switch_ips,
                         switch_user=args.switch_user,
                         switch_password=switch_password,
+                        proxy_jump=not args.no_proxy_jump,
+                        tunnel_address=tunnel_addr,
                     )
                     port_mapping_data = port_mapper.collect_port_mapping()
                     if port_mapping_data.get("available"):
@@ -586,6 +618,13 @@ class VastReportGenerator:
         except Exception as e:
             self.logger.error(f"Error during cleanup: {e}")
 
+        try:
+            if hasattr(self, "_tunnel") and self._tunnel:
+                self._tunnel.close()
+                self.logger.info("VMS tunnel closed")
+        except Exception as e:
+            self.logger.error(f"Error closing VMS tunnel: {e}")
+
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """
@@ -683,7 +722,22 @@ Examples:
         help="SSH password for VAST nodes (will prompt if not provided and port mapping enabled)",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.4.7")
+    parser.add_argument(
+        "--no-proxy-jump",
+        action="store_true",
+        default=False,
+        help="Disable SSH proxy hop through CNode (use direct switch connections)",
+    )
+
+    parser.add_argument(
+        "--tech-port",
+        action="store_true",
+        default=False,
+        help="Connect via CBox Tech Port: auto-discover VMS and tunnel API calls. "
+        "Requires --node-user / --node-password for SSH access.",
+    )
+
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.0")
 
     return parser
 
@@ -767,8 +821,14 @@ def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
-def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
-    """Launch the Flask web UI and open the default browser."""
+def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -> int:
+    """Launch the Flask web UI and open the default browser.
+
+    Args:
+        host: Host address to bind to
+        port: Port number to listen on
+        dev_mode: Enable Developer Mode for advanced operations
+    """
     from werkzeug.serving import make_server
 
     from app import create_flask_app
@@ -777,6 +837,9 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     config = load_configuration()
     setup_logging(config)
     enable_sse_logging()
+
+    # Pass developer mode to Flask app
+    config["DEVELOPER_MODE"] = dev_mode
 
     flask_app = create_flask_app(config)
 
@@ -792,6 +855,8 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173) -> int:
     url = f"http://{host}:{port}"
     print("\n  VAST As-Built Reporter — Web UI")
     print(f"  Running at {url}")
+    if dev_mode:
+        print("  Developer Mode: ENABLED")
     print("  Press Ctrl+C to stop\n")
 
     webbrowser.open(url)
@@ -812,10 +877,16 @@ def main() -> int:
 
     Default (no args or --gui): launches the web UI.
     --cli: runs the original command-line workflow.
+    --dev-mode: enables Developer Mode for advanced operations.
     """
+    # Check for developer mode flag
+    dev_mode = "--dev-mode" in sys.argv
+    if dev_mode:
+        sys.argv.remove("--dev-mode")
+
     if len(sys.argv) > 1 and sys.argv[1] == "--gui":
         sys.argv.pop(1)
-        return run_gui()
+        return run_gui(dev_mode=dev_mode)
 
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         sys.argv.pop(1)
@@ -823,7 +894,7 @@ def main() -> int:
 
     # If no recognised subcommand and no --cluster flag, default to GUI
     if len(sys.argv) == 1 or not any(a.startswith("--cluster") for a in sys.argv[1:]):
-        return run_gui()
+        return run_gui(dev_mode=dev_mode)
 
     # Legacy usage: direct CLI args like --cluster ... --output ...
     return run_cli()
