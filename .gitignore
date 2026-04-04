@@ -215,8 +215,16 @@ logs/*.log.[0-9]*
 # External code reviews (not part of this project)
 docs/JeffsPortMapperReview/
 
-# asbuilt-analyzer web frontend (local only — not published to GitHub)
-tools/analyzer_web.py
-tools/static/analyzer/
-tools/templates/analyzer/
-tools/tracer/alert_engine.py
+# Local tools directory (analyzer, tracer — not published to GitHub)
+tools/
+
+# Local development artifacts
+docs/superpowers/
+frontend/static/odometer_preview.html
+
+# Diagnostic and ad-hoc test scripts (not part of test suite)
+tests/diag_*.py
+reports/diag_*
+
+# Output bundle artifacts
+output/bundles/

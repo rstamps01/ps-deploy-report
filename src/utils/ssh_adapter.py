@@ -432,12 +432,12 @@ def _paramiko_shell(
 
         _read_until_prompt(deadline)
 
-        chan.sendall(command + "\n")
+        chan.sendall((command + "\n").encode())
         _time.sleep(0.3)
 
         raw_output = _read_until_prompt(deadline)
 
-        chan.sendall("exit\n")
+        chan.sendall(b"exit\n")
         _time.sleep(0.2)
         chan.close()
 
