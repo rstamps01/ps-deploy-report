@@ -1,6 +1,6 @@
 # Release Notes — v1.5.0
 
-**Date:** 2026-03-30  
+**Date:** 2026-04-04  
 **Branch:** feature/health-check-v2 → develop → main  
 **Previous release:** v1.4.7 (2026-03-17)
 
@@ -83,6 +83,13 @@ Standard navigation now shows Dashboard, Reporter, Results, Library, and Docs. L
 - Autofill Passwords credential handling: custom values persist, re-enable resets to defaults
 - Pre-Validation and Generate As-Built Report info icon tooltip overflow fixed
 
+## GitHub Pages and Marketing
+
+- **Product Overview** — interactive HTML one-pager at `https://rstamps01.github.io/ps-deploy-report/` with UI screenshots, report previews, key benefits, and quick start steps
+- **Visual Quick Start Guide** — step-by-step macOS and Windows installation walkthroughs with real screenshots, Gatekeeper/SmartScreen guidance, and New Install vs. Upgrade path selector
+- **GitHub Pages auto-deploy** — `.github/workflows/pages.yml` deploys `docs/marketing/` on pushes to `main`
+- **README visual banner** — dashboard preview image and navigation links to Product Overview, Quick Start Guide, and latest release at the top of README.md
+
 ## Infrastructure
 
 - Coverage threshold raised to 60% (from 47-55% depending on workflow)
@@ -106,5 +113,4 @@ Standard navigation now shows Dashboard, Reporter, Results, Library, and Docs. L
 
 ## Known Limitations
 
-- AO-15 (Advanced Ops hardening) and AO-19 (dynamic log levels, state persistence) — to be completed before final tag
 - Coverage target is 60%; roadmap target is 75%+ (TSE-9)

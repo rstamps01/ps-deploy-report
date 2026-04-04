@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical list for next steps, planned work, and release-related items. Kept in sync with development and validated in CI.
 
-**Last updated:** 2026-04-03 (v1.5.0-rc1: deployment packaging fixes — SVG multi-backend fallback, PyInstaller spec overhaul, macOS Cairo bundling, CI Cairo install, N-switch rack placement, vnetmap default enabled)  
+**Last updated:** 2026-04-04 (v1.5.0 release: GitHub Pages marketing site, README visual banner, deployment packaging, SVG multi-backend fallback, vnetmap integration)  
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
 ---

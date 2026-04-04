@@ -5,7 +5,13 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-04-04
+
+### Added (GitHub Pages and Marketing)
+- **Product Overview page:** Interactive HTML one-pager at `rstamps01.github.io/ps-deploy-report/` showcasing UI screenshots, report previews, key benefits, and quick start steps
+- **Visual Quick Start Guide:** Step-by-step macOS and Windows installation walkthroughs with screenshots, path selector for New Install vs. Upgrade, and Gatekeeper/SmartScreen guidance
+- **GitHub Pages workflow:** `.github/workflows/pages.yml` auto-deploys `docs/marketing/` on pushes to `main`
+- **README visual banner:** Dashboard preview image and links to Product Overview and Quick Start Guide at the top of README.md
 
 ### Added (Vnetmap Integration)
 - **Run Vnetmap checkbox** on Reporter page: pre-select to run `vnetmap.py` before report generation for fresh port mapping and network diagram data; requires node SSH credentials
