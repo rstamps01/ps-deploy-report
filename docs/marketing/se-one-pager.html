@@ -1,7 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<!--
+    <!--
   VAST As-Built Reporter — Internal SE/PSE Marketing One-Pager
 
   SCREENSHOT INSTRUCTIONS:
@@ -22,1025 +23,1482 @@
     - screenshot-advanced-ops.png   (Advanced Ops page, Developer Mode)
     - screenshot-report-pdf.png     (Sample PDF report, first page)
 -->
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>VAST As-Built Reporter — For SEs &amp; PSEs</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-/* Reset */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VAST As-Built Reporter — For SEs &amp; PSEs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        /* Reset */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-html { scroll-behavior: smooth; }
+        html {
+            scroll-behavior: smooth;
+        }
 
-/* Design tokens — mirrored from app.css + UX Pro Max design system */
-:root {
-    --bg-body: #0e1117;
-    --bg-surface: #161b22;
-    --bg-elevated: #1c2333;
-    --bg-input: #0d1117;
-    --border: #2a3548;
-    --border-light: #21293a;
-    --accent: #1a6fb5;
-    --accent-hover: #155d99;
-    --accent-subtle: rgba(26, 111, 181, 0.15);
-    --cyan: #00b4d8;
-    --cta-orange: #F97316;
-    --cta-orange-hover: #ea580c;
-    --text-primary: #e6edf3;
-    --text-secondary: #8b949e;
-    --text-muted: #545d68;
-    --success: #22c55e;
-    --danger: #ef4444;
-    --warning: #f59e0b;
-    --radius: 6px;
-    --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    --font-heading: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-mono: "Fira Code", "SF Mono", Consolas, monospace;
-}
+        /* Design tokens — mirrored from app.css + UX Pro Max design system */
+        :root {
+            --bg-body: #0e1117;
+            --bg-surface: #161b22;
+            --bg-elevated: #1c2333;
+            --bg-input: #0d1117;
+            --border: #2a3548;
+            --border-light: #21293a;
+            --accent: #1a6fb5;
+            --accent-hover: #155d99;
+            --accent-subtle: rgba(26, 111, 181, 0.15);
+            --cyan: #00b4d8;
+            --cta-orange: #F97316;
+            --cta-orange-hover: #ea580c;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+            --text-muted: #545d68;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --radius: 6px;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            --font-heading: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-mono: "Fira Code", "SF Mono", Consolas, monospace;
+        }
 
-body {
-    font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: var(--text-primary);
-    background: var(--bg-body);
-    line-height: 1.6;
-    -webkit-font-smoothing: antialiased;
-}
+        body {
+            font-family: "Fira Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-primary);
+            background: var(--bg-body);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
 
-/* Scroll-triggered fade-in animation */
-.fade-in {
-    opacity: 0;
-    transform: translateY(24px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
-}
-.fade-in.visible {
-    opacity: 1;
-    transform: translateY(0);
-}
+        /* Scroll-triggered fade-in animation */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(24px);
+            transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+        }
 
-/* Focus states for keyboard navigation */
-.btn:focus-visible,
-.step-card:focus-visible,
-.benefit-card:focus-visible,
-.showcase-item:focus-visible,
-.cta-links a:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-}
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
 
-@media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    .fade-in { opacity: 1; transform: none; transition: none; }
-    .btn, .benefit-card, .step-card, .showcase-item, .screenshot-img { transition: none; }
-    .hero::before { animation: none; }
-    .stat-counter { animation: none; }
-}
+        /* Focus states for keyboard navigation */
+        .btn:focus-visible,
+        .step-card:focus-visible,
+        .benefit-card:focus-visible,
+        .showcase-item:focus-visible,
+        .cta-links a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
 
-.container {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 0 2rem;
-}
+        @media (prefers-reduced-motion: reduce) {
+            html {
+                scroll-behavior: auto;
+            }
 
-/* ------------------------------------------------------------------ */
-/* Section 1: Hero                                                     */
-/* ------------------------------------------------------------------ */
-.hero {
-    position: relative;
-    padding: 5rem 2rem 4rem;
-    text-align: center;
-    background: linear-gradient(168deg, #0e1117 0%, #131a24 40%, #162033 70%, #0e1117 100%);
-    overflow: hidden;
-}
-.hero::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-        radial-gradient(ellipse 600px 300px at 30% 20%, rgba(26, 111, 181, 0.12) 0%, transparent 70%),
-        radial-gradient(ellipse 400px 250px at 75% 60%, rgba(0, 180, 216, 0.08) 0%, transparent 70%);
-    pointer-events: none;
-}
-.hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; }
-.hero-badge {
-    display: inline-block;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    background: var(--accent-subtle);
-    color: var(--accent);
-    padding: 4px 14px;
-    border-radius: 20px;
-    margin-bottom: 1.5rem;
-    border: 1px solid rgba(26, 111, 181, 0.25);
-}
-.hero-badge-row {
-    display: block;
-    text-align: center;
-    margin-bottom: 1.5rem;
-}
-.hero h1 {
-    font-size: 2.8rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.15;
-    margin-bottom: 1rem;
-}
-.hero h1 .accent { color: var(--accent); }
+            .fade-in {
+                opacity: 1;
+                transform: none;
+                transition: none;
+            }
 
-/* App brand name — matches navbar styling */
-.brand-name {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-size: 1.6rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    margin-bottom: 1.5rem;
-}
-.brand-name .brand-white { color: var(--text-primary); }
-.brand-name .brand-blue { color: var(--accent); }
-.brand-version {
-    font-size: 0.7rem;
-    font-weight: 500;
-    background: rgba(255, 255, 255, 0.08);
-    padding: 3px 10px;
-    border-radius: 10px;
-    color: var(--text-secondary);
-    letter-spacing: 0;
-}
-.hero .tagline {
-    font-size: 1.25rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.5rem;
-    font-weight: 400;
-}
-.hero .subtext {
-    font-size: 1rem;
-    color: var(--text-muted);
-    margin-bottom: 2rem;
-}
-.hero .cta-row { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
-.btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.65rem 1.75rem;
-    border-radius: 20px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-decoration: none;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s, transform 0.15s;
-}
-.btn:hover { transform: translateY(-1px); }
-.btn-accent { background: var(--cta-orange); color: #fff; border-color: var(--cta-orange); }
-.btn-accent:hover { background: var(--cta-orange-hover); border-color: var(--cta-orange-hover); }
-.btn-secondary-cta { background: var(--accent); color: #fff; border-color: var(--accent); }
-.btn-secondary-cta:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-.btn-outline { background: transparent; color: var(--text-primary); border-color: var(--border); }
-.btn-outline:hover { background: var(--bg-elevated); border-color: var(--accent); }
+            .btn,
+            .benefit-card,
+            .step-card,
+            .showcase-item,
+            .screenshot-img {
+                transition: none;
+            }
 
-/* ------------------------------------------------------------------ */
-/* Section 2: Problem                                                  */
-/* ------------------------------------------------------------------ */
-.section { padding: 4rem 0; }
-.section-header { text-align: center; margin-bottom: 2.5rem; }
-.section-header h2 { font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; }
-.section-header p { color: var(--text-secondary); font-size: 1.05rem; max-width: 650px; margin: 0 auto; }
+            .hero::before {
+                animation: none;
+            }
 
-.problem { background: var(--bg-surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.problem-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 2rem;
-    max-width: 900px;
-    margin: 0 auto;
-}
-.problem-item { text-align: center; padding: 1.5rem 1rem; }
-.problem-icon {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: rgba(239, 68, 68, 0.1);
-}
-.problem-icon svg { width: 24px; height: 24px; stroke: var(--danger); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.problem-item h3 { font-size: 1rem; margin-bottom: 0.5rem; color: var(--text-primary); }
-.problem-item p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; }
+            .stat-counter {
+                animation: none;
+            }
+        }
 
-/* ------------------------------------------------------------------ */
-/* Section 3: Benefits                                                 */
-/* ------------------------------------------------------------------ */
-.benefits-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1.5rem;
-}
-.benefit-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 2rem 1.75rem;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-    cursor: default;
-}
-.benefit-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
-    transform: translateY(-2px);
-}
-.benefit-icon {
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 10px;
-    margin-bottom: 1rem;
-}
-.benefit-icon svg { width: 22px; height: 22px; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.benefit-icon.time { background: rgba(34, 197, 94, 0.12); }
-.benefit-icon.time svg { stroke: var(--success); }
-.benefit-icon.output { background: rgba(26, 111, 181, 0.12); }
-.benefit-icon.output svg { stroke: var(--accent); }
-.benefit-icon.field { background: rgba(0, 180, 216, 0.12); }
-.benefit-icon.field svg { stroke: var(--cyan); }
-.benefit-icon.health { background: rgba(245, 158, 11, 0.12); }
-.benefit-icon.health svg { stroke: var(--warning); }
-.benefit-card h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
-.benefit-card p { font-size: 0.92rem; color: var(--text-secondary); line-height: 1.55; }
-.benefit-stat {
-    display: inline-block;
-    font-size: 2rem;
-    font-weight: 700;
-    color: var(--success);
-    line-height: 1;
-    margin-bottom: 0.25rem;
-}
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
 
-/* ------------------------------------------------------------------ */
-/* Section 4: UI Showcase                                              */
-/* ------------------------------------------------------------------ */
-.showcase { background: var(--bg-surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-.showcase-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-}
-.showcase-item {
-    background: var(--bg-body);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    cursor: default;
-}
-.showcase-item:hover {
-    border-color: var(--accent);
-    box-shadow: 0 4px 16px rgba(26, 111, 181, 0.15);
-}
+        /* ------------------------------------------------------------------ */
+        /* Section 1: Hero                                                     */
+        /* ------------------------------------------------------------------ */
+        .hero {
+            position: relative;
+            padding: 5rem 2rem 4rem;
+            text-align: center;
+            background: linear-gradient(168deg, #0e1117 0%, #131a24 40%, #162033 70%, #0e1117 100%);
+            overflow: hidden;
+        }
 
-.screenshot-placeholder {
-    width: 100%;
-    aspect-ratio: 16 / 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-body) 100%);
-    border-bottom: 1px solid var(--border);
-    gap: 0.75rem;
-    color: var(--text-muted);
-    font-size: 0.8rem;
-}
-.screenshot-placeholder svg { width: 36px; height: 36px; stroke: var(--text-muted); fill: none; stroke-width: 1.5; opacity: 0.5; }
-.screenshot-img {
-    width: 100%;
-    display: block;
-    border-bottom: 1px solid var(--border);
-    cursor: pointer;
-    transition: opacity 0.2s;
-}
-.screenshot-img:hover { opacity: 0.85; }
+        .hero::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 600px 300px at 30% 20%, rgba(26, 111, 181, 0.12) 0%, transparent 70%),
+                radial-gradient(ellipse 400px 250px at 75% 60%, rgba(0, 180, 216, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
 
-/* ---- Lightbox overlay ---- */
-.lightbox {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: rgba(0, 0, 0, 0.88);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    padding: 2rem;
-    cursor: zoom-out;
-}
-.lightbox.open { display: flex; }
-.lightbox-img {
-    max-width: 90vw;
-    max-height: 80vh;
-    border-radius: 8px;
-    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6);
-    object-fit: contain;
-    cursor: default;
-}
-.lightbox-caption {
-    margin-top: 1rem;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    text-align: center;
-    max-width: 600px;
-}
-.lightbox-close {
-    position: absolute;
-    top: 1.25rem;
-    right: 1.5rem;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
-    color: var(--text-primary);
-}
-.lightbox-close:hover { background: rgba(255, 255, 255, 0.2); }
-.lightbox-close svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; }
-.lightbox-nav {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 50%;
-    cursor: pointer;
-    transition: background 0.2s;
-    color: var(--text-primary);
-}
-.lightbox-nav:hover { background: rgba(255, 255, 255, 0.2); }
-.lightbox-nav svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.lightbox-prev { left: 1.5rem; }
-.lightbox-next { right: 1.5rem; }
-.lightbox-counter {
-    position: absolute;
-    bottom: 1.25rem;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.75rem;
-    color: var(--text-muted);
-}
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+            margin: 0 auto;
+        }
 
-.showcase-caption {
-    padding: 1rem 1.25rem;
-}
-.showcase-caption h4 { font-size: 0.95rem; margin-bottom: 0.25rem; }
-.showcase-caption p { font-size: 0.82rem; color: var(--text-secondary); line-height: 1.45; }
+        .hero-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            background: var(--accent-subtle);
+            color: var(--accent);
+            padding: 4px 14px;
+            border-radius: 20px;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(26, 111, 181, 0.25);
+        }
 
-/* ------------------------------------------------------------------ */
-/* Section 5: Report Preview                                           */
-/* ------------------------------------------------------------------ */
-.report-preview {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2.5rem;
-    align-items: start;
-}
-.report-mock {
-    background: #fff;
-    border-radius: var(--radius);
-    padding: 2.5rem 2rem;
-    color: #111;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-    position: relative;
-}
-.report-mock-bar {
-    height: 4px;
-    background: linear-gradient(90deg, var(--accent), var(--cyan));
-    border-radius: 2px;
-    margin-bottom: 1.5rem;
-}
-.report-mock h4 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    color: #111;
-    margin-bottom: 0.25rem;
-}
-.report-mock .cluster-name {
-    font-size: 0.9rem;
-    color: #555;
-    margin-bottom: 1rem;
-}
-.report-mock .date-line {
-    font-size: 0.75rem;
-    color: #888;
-    padding-top: 0.75rem;
-    border-top: 1px solid #ddd;
-}
-.report-mock .format-badges {
-    display: flex;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-.format-badge {
-    font-size: 0.65rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 3px 10px;
-    border-radius: 10px;
-}
-.format-badge.pdf { background: #e8f0fe; color: var(--accent); }
-.format-badge.json { background: #e8fbe8; color: #166534; }
+        .hero-badge-row {
+            display: block;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
 
-.report-sections h3 { font-size: 1.2rem; margin-bottom: 1rem; }
-.report-sections ul { list-style: none; }
-.report-sections li {
-    padding: 0.6rem 0;
-    border-bottom: 1px solid var(--border-light);
-    font-size: 0.92rem;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-.report-sections li:last-child { border-bottom: none; }
-.report-sections li svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; stroke-width: 2; flex-shrink: 0; }
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.15;
+            margin-bottom: 1rem;
+        }
 
-.report-callout {
-    margin-top: 1.5rem;
-    padding: 1rem 1.25rem;
-    background: var(--accent-subtle);
-    border: 1px solid rgba(26, 111, 181, 0.25);
-    border-radius: var(--radius);
-    font-size: 0.88rem;
-    color: var(--text-primary);
-    line-height: 1.5;
-}
-.report-callout strong { color: var(--accent); }
+        .hero h1 .accent {
+            color: var(--accent);
+        }
 
-/* ------------------------------------------------------------------ */
-/* Section 6: Quick Start                                              */
-/* ------------------------------------------------------------------ */
-.steps-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-}
-.step-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 2rem 1.5rem 1.5rem;
-    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-    position: relative;
-}
-.step-card:hover {
-    border-color: var(--accent);
-    box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
-    transform: translateY(-2px);
-}
-.step-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: var(--accent);
-    color: #fff;
-    font-size: 1rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
-}
-.step-card h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
-.step-card p { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.5; }
-.step-card code {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
-    background: var(--bg-body);
-    padding: 2px 6px;
-    border-radius: 3px;
-    color: var(--cyan);
-}
-.step-note {
-    text-align: center;
-    font-size: 0.85rem;
-    color: var(--text-muted);
-    max-width: 700px;
-    margin: 0 auto;
-    line-height: 1.5;
-}
-.step-note a { color: var(--accent); text-decoration: none; }
-.step-note a:hover { text-decoration: underline; }
+        /* App brand name — matches navbar styling */
+        .brand-name {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            font-size: 1.6rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            margin-bottom: 1.5rem;
+        }
 
-/* ------------------------------------------------------------------ */
-/* Section 7: CTA / Footer                                             */
-/* ------------------------------------------------------------------ */
-.cta-section {
-    text-align: center;
-    padding: 4rem 0 3rem;
-    background: linear-gradient(180deg, var(--bg-body) 0%, #131a24 100%);
-}
-.cta-section h2 {
-    font-size: 1.8rem;
-    margin-bottom: 1rem;
-}
-.cta-section p {
-    color: var(--text-secondary);
-    font-size: 1rem;
-    margin-bottom: 2rem;
-    max-width: 550px;
-    margin-left: auto;
-    margin-right: auto;
-}
-.cta-links {
-    display: flex;
-    gap: 2rem;
-    justify-content: center;
-    flex-wrap: wrap;
-    margin-top: 2.5rem;
-    padding-top: 2rem;
-    border-top: 1px solid var(--border);
-}
-.cta-links a {
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: 0.85rem;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    transition: color 0.2s;
-}
-.cta-links a:hover { color: var(--accent); }
-.cta-links svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; }
+        .brand-name .brand-white {
+            color: var(--text-primary);
+        }
 
-footer {
-    text-align: center;
-    padding: 1.5rem;
-    border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.75rem;
-}
-footer .version-badge {
-    display: inline-block;
-    font-size: 0.65rem;
-    background: rgba(255, 255, 255, 0.06);
-    padding: 2px 10px;
-    border-radius: 10px;
-    margin-bottom: 0.5rem;
-    color: var(--text-secondary);
-}
+        .brand-name .brand-blue {
+            color: var(--accent);
+        }
 
-/* ------------------------------------------------------------------ */
-/* Responsive                                                          */
-/* ------------------------------------------------------------------ */
-@media (max-width: 960px) {
-    .showcase-grid { grid-template-columns: repeat(2, 1fr); }
-}
-@media (max-width: 768px) {
-    .hero h1 { font-size: 2rem; }
-    .problem-grid { grid-template-columns: 1fr; }
-    .benefits-grid { grid-template-columns: 1fr; }
-    .report-preview { grid-template-columns: 1fr; }
-    .steps-grid { grid-template-columns: 1fr; }
-    .showcase-grid { grid-template-columns: 1fr; }
-}
-</style>
+        .brand-version {
+            font-size: 0.7rem;
+            font-weight: 500;
+            background: rgba(255, 255, 255, 0.08);
+            padding: 3px 10px;
+            border-radius: 10px;
+            color: var(--text-secondary);
+            letter-spacing: 0;
+        }
+
+        .hero .tagline {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            font-weight: 400;
+        }
+
+        .hero .subtext {
+            font-size: 1rem;
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+        }
+
+        .hero .cta-row {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.65rem 1.75rem;
+            border-radius: 20px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, transform 0.15s;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-accent {
+            background: var(--cta-orange);
+            color: #fff;
+            border-color: var(--cta-orange);
+        }
+
+        .btn-accent:hover {
+            background: var(--cta-orange-hover);
+            border-color: var(--cta-orange-hover);
+        }
+
+        .btn-secondary-cta {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .btn-secondary-cta:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--text-primary);
+            border-color: var(--border);
+        }
+
+        .btn-outline:hover {
+            background: var(--bg-elevated);
+            border-color: var(--accent);
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 2: Problem                                                  */
+        /* ------------------------------------------------------------------ */
+        .section {
+            padding: 4rem 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .section-header h2 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-header p {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        .problem {
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .problem-item {
+            text-align: center;
+            padding: 1.5rem 1rem;
+        }
+
+        .problem-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .problem-icon svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--danger);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .problem-item h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .problem-item p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 3: Benefits                                                 */
+        /* ------------------------------------------------------------------ */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+        }
+
+        .benefit-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem 1.75rem;
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+            cursor: default;
+        }
+
+        .benefit-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
+            transform: translateY(-2px);
+        }
+
+        .benefit-icon {
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+        }
+
+        .benefit-icon svg {
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .benefit-icon.time {
+            background: rgba(34, 197, 94, 0.12);
+        }
+
+        .benefit-icon.time svg {
+            stroke: var(--success);
+        }
+
+        .benefit-icon.output {
+            background: rgba(26, 111, 181, 0.12);
+        }
+
+        .benefit-icon.output svg {
+            stroke: var(--accent);
+        }
+
+        .benefit-icon.field {
+            background: rgba(0, 180, 216, 0.12);
+        }
+
+        .benefit-icon.field svg {
+            stroke: var(--cyan);
+        }
+
+        .benefit-icon.health {
+            background: rgba(245, 158, 11, 0.12);
+        }
+
+        .benefit-icon.health svg {
+            stroke: var(--warning);
+        }
+
+        .benefit-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .benefit-card p {
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            line-height: 1.55;
+        }
+
+        .benefit-stat {
+            display: inline-block;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--success);
+            line-height: 1;
+            margin-bottom: 0.25rem;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 4: UI Showcase                                              */
+        /* ------------------------------------------------------------------ */
+        .showcase {
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .showcase-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .showcase-item {
+            background: var(--bg-body);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            cursor: default;
+        }
+
+        .showcase-item:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(26, 111, 181, 0.15);
+        }
+
+        .screenshot-placeholder {
+            width: 100%;
+            aspect-ratio: 16 / 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--bg-elevated) 0%, var(--bg-body) 100%);
+            border-bottom: 1px solid var(--border);
+            gap: 0.75rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .screenshot-placeholder svg {
+            width: 36px;
+            height: 36px;
+            stroke: var(--text-muted);
+            fill: none;
+            stroke-width: 1.5;
+            opacity: 0.5;
+        }
+
+        .screenshot-img {
+            width: 100%;
+            display: block;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .screenshot-img:hover {
+            opacity: 0.85;
+        }
+
+        /* ---- Lightbox overlay ---- */
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: rgba(0, 0, 0, 0.88);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 2rem;
+            cursor: zoom-out;
+        }
+
+        .lightbox.open {
+            display: flex;
+        }
+
+        .lightbox-img {
+            max-width: 90vw;
+            max-height: 80vh;
+            border-radius: 8px;
+            box-shadow: 0 16px 64px rgba(0, 0, 0, 0.6);
+            object-fit: contain;
+            cursor: default;
+        }
+
+        .lightbox-caption {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            text-align: center;
+            max-width: 600px;
+        }
+
+        .lightbox-close {
+            position: absolute;
+            top: 1.25rem;
+            right: 1.5rem;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: var(--text-primary);
+        }
+
+        .lightbox-close:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .lightbox-close svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        .lightbox-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.2s;
+            color: var(--text-primary);
+        }
+
+        .lightbox-nav:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .lightbox-nav svg {
+            width: 22px;
+            height: 22px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .lightbox-prev {
+            left: 1.5rem;
+        }
+
+        .lightbox-next {
+            right: 1.5rem;
+        }
+
+        .lightbox-counter {
+            position: absolute;
+            bottom: 1.25rem;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .showcase-caption {
+            padding: 1rem 1.25rem;
+        }
+
+        .showcase-caption h4 {
+            font-size: 0.95rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .showcase-caption p {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.45;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 5: Report Preview                                           */
+        /* ------------------------------------------------------------------ */
+        .report-preview {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.5rem;
+            align-items: start;
+        }
+
+        .report-mock {
+            background: #fff;
+            border-radius: var(--radius);
+            padding: 2.5rem 2rem;
+            color: #111;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            position: relative;
+        }
+
+        .report-mock-bar {
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent), var(--cyan));
+            border-radius: 2px;
+            margin-bottom: 1.5rem;
+        }
+
+        .report-mock h4 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #111;
+            margin-bottom: 0.25rem;
+        }
+
+        .report-mock .cluster-name {
+            font-size: 0.9rem;
+            color: #555;
+            margin-bottom: 1rem;
+        }
+
+        .report-mock .date-line {
+            font-size: 0.75rem;
+            color: #888;
+            padding-top: 0.75rem;
+            border-top: 1px solid #ddd;
+        }
+
+        .report-mock .format-badges {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .format-badge {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 3px 10px;
+            border-radius: 10px;
+        }
+
+        .format-badge.pdf {
+            background: #e8f0fe;
+            color: var(--accent);
+        }
+
+        .format-badge.json {
+            background: #e8fbe8;
+            color: #166534;
+        }
+
+        .report-sections h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .report-sections ul {
+            list-style: none;
+        }
+
+        .report-sections li {
+            padding: 0.6rem 0;
+            border-bottom: 1px solid var(--border-light);
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+        }
+
+        .report-sections li:last-child {
+            border-bottom: none;
+        }
+
+        .report-sections li svg {
+            width: 16px;
+            height: 16px;
+            stroke: var(--accent);
+            fill: none;
+            stroke-width: 2;
+            flex-shrink: 0;
+        }
+
+        .report-callout {
+            margin-top: 1.5rem;
+            padding: 1rem 1.25rem;
+            background: var(--accent-subtle);
+            border: 1px solid rgba(26, 111, 181, 0.25);
+            border-radius: var(--radius);
+            font-size: 0.88rem;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .report-callout strong {
+            color: var(--accent);
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 6: Quick Start                                              */
+        /* ------------------------------------------------------------------ */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .step-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem 1.5rem 1.5rem;
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+            position: relative;
+        }
+
+        .step-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 16px rgba(26, 111, 181, 0.18);
+            transform: translateY(-2px);
+        }
+
+        .step-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--accent);
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .step-card h3 {
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-card p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        .step-card code {
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            background: var(--bg-body);
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: var(--cyan);
+        }
+
+        .step-note {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            max-width: 700px;
+            margin: 0 auto;
+            line-height: 1.5;
+        }
+
+        .step-note a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .step-note a:hover {
+            text-decoration: underline;
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Section 7: CTA / Footer                                             */
+        /* ------------------------------------------------------------------ */
+        .cta-section {
+            text-align: center;
+            padding: 4rem 0 3rem;
+            background: linear-gradient(180deg, var(--bg-body) 0%, #131a24 100%);
+        }
+
+        .cta-section h2 {
+            font-size: 1.8rem;
+            margin-bottom: 1rem;
+        }
+
+        .cta-section p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            max-width: 550px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-links {
+            display: flex;
+            gap: 2rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 2.5rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .cta-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: color 0.2s;
+        }
+
+        .cta-links a:hover {
+            color: var(--accent);
+        }
+
+        .cta-links svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+        }
+
+        footer {
+            text-align: center;
+            padding: 1.5rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        footer .version-badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            background: rgba(255, 255, 255, 0.06);
+            padding: 2px 10px;
+            border-radius: 10px;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Responsive                                                          */
+        /* ------------------------------------------------------------------ */
+        @media (max-width: 960px) {
+            .showcase-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2rem;
+            }
+
+            .problem-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .report-preview {
+                grid-template-columns: 1fr;
+            }
+
+            .steps-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .showcase-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
+
 <body>
 
-<!-- ================================================================ -->
-<!-- SECTION 1: Hero Banner                                            -->
-<!-- ================================================================ -->
-<section class="hero">
-    <div class="hero-content">
-        <div class="hero-badge-row">
-            <span class="hero-badge">Internal Tool &mdash; PS Engineering</span>
+    <!-- ================================================================ -->
+    <!-- SECTION 1: Hero Banner                                            -->
+    <!-- ================================================================ -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="hero-badge-row">
+                <span class="hero-badge">Internal Tool &mdash; PS Engineering</span>
+            </div>
+            <h1
+                style="display: inline-flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
+                <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data"
+                    style="height: 2.4rem; filter: brightness(0) invert(1);">
+                <span><span class="brand-white">asbuilt</span><span class="accent">-reporter</span></span>
+                <span class="brand-version">v1.5.0</span>
+            </h1>
+            <p class="tagline">Generate customer-ready as-built reports in minutes &mdash; not hours.</p>
+            <p class="subtext">No Python. No terminal. Just download, connect, and go.</p>
+            <div class="cta-row">
+                <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download Now
+                </a>
+                <a href="quick-start-guide.html" class="btn btn-outline">Quick Start Guide</a>
+            </div>
         </div>
-        <h1 style="display: inline-flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
-            <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data" style="height: 2.4rem; filter: brightness(0) invert(1);">
-            <span><span class="brand-white">asbuilt</span><span class="accent">-reporter</span></span>
-            <span class="brand-version">v1.5.0</span>
-        </h1>
-        <p class="tagline">Generate customer-ready as-built reports in minutes &mdash; not hours.</p>
-        <p class="subtext">No Python. No terminal. Just download, connect, and go.</p>
-        <div class="cta-row">
-            <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download Now
-            </a>
-            <a href="quick-start-guide.html" class="btn btn-outline">Quick Start Guide</a>
-        </div>
-    </div>
-</section>
+    </section>
 
-<!-- ================================================================ -->
-<!-- SECTION 2: The Problem                                            -->
-<!-- ================================================================ -->
-<section class="section problem">
-    <div class="container">
-        <div class="section-header">
-            <h2>The Manual As-Built Problem</h2>
-            <p>Every deployment ends the same way &mdash; hours spent copy-pasting configuration into documents that still miss critical details.</p>
-        </div>
-        <div class="problem-grid fade-in">
-            <div class="problem-item">
-                <div class="problem-icon">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                </div>
-                <h3>Hours Per Cluster</h3>
-                <p>Manual documentation eats into deployment time and delays customer handoff.</p>
+    <!-- ================================================================ -->
+    <!-- SECTION 2: The Problem                                            -->
+    <!-- ================================================================ -->
+    <section class="section problem">
+        <div class="container">
+            <div class="section-header">
+                <h2>The Manual As-Built Problem</h2>
+                <p>Every deployment ends the same way &mdash; hours spent copy-pasting configuration into documents that
+                    still miss critical details.</p>
             </div>
-            <div class="problem-item">
-                <div class="problem-icon">
-                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-                </div>
-                <h3>Inconsistent Deliverables</h3>
-                <p>Every SE formats reports differently &mdash; no standard, no repeatability.</p>
-            </div>
-            <div class="problem-item">
-                <div class="problem-icon">
-                    <svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                </div>
-                <h3>Missing Details</h3>
-                <p>Critical configuration items get overlooked when collected by hand.</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ================================================================ -->
-<!-- SECTION 3: Key Benefits                                           -->
-<!-- ================================================================ -->
-<section class="section">
-    <div class="container">
-        <div class="section-header">
-            <h2>Why SEs Love It</h2>
-            <p>Purpose-built for the field &mdash; from first rack-up to customer handoff.</p>
-        </div>
-        <div class="benefits-grid fade-in">
-            <div class="benefit-card">
-                <div class="benefit-icon time">
-                    <svg viewBox="0 0 24 24"><polyline points="13 2 13 9 20 9"/><path d="M13 2L7 2a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V9l-6-7z"/><path d="M9 17l2 2 4-4"/></svg>
-                </div>
-                <div class="benefit-stat" data-target="80" data-suffix="%">0%</div>
-                <h3>Time Savings</h3>
-                <p>Automated data collection from the VAST REST API. A full cluster report generates in under 5 minutes &mdash; compared to hours of manual work.</p>
-            </div>
-            <div class="benefit-card">
-                <div class="benefit-icon output">
-                    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                </div>
-                <h3>Customer-Ready Output</h3>
-                <p>VAST-branded PDF with executive summary, 42U rack diagrams, network topology, and health results. Plus machine-readable JSON for CMDB or scripted workflows.</p>
-            </div>
-            <div class="benefit-card">
-                <div class="benefit-icon field">
-                    <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                </div>
-                <h3>Field-Ready Design</h3>
-                <p>SSH proxy hop for unreachable switches, Tech Port mode, graceful degradation when data is partial. Works on macOS and Windows &mdash; no Python install needed.</p>
-            </div>
-            <div class="benefit-card">
-                <div class="benefit-icon health">
-                    <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                </div>
-                <h3>One-Click Health Checks</h3>
-                <p>32 automated checks (26 API + 6 switch SSH) with remediation guidance. Include results directly in the PDF or export standalone for follow-up.</p>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ================================================================ -->
-<!-- SECTION 4: UI Showcase Gallery                                    -->
-<!-- ================================================================ -->
-<section class="section showcase">
-    <div class="container">
-        <div class="section-header">
-            <h2>A Modern Interface, Built for the Field</h2>
-            <p>Browser-based UI launches locally &mdash; no server required. Live progress, cancel anytime, save connection profiles.</p>
-        </div>
-        <div class="showcase-grid">
-            <!-- Dashboard -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Dash.png" alt="Dashboard — Quick Start tiles, Results Odometer, and workflow cards" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Dashboard</h4>
-                    <p>Quick Start tiles, Results Odometer with animated counters, and guided workflow cards.</p>
-                </div>
-            </div>
-            <!-- Reporter -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Reporter.png" alt="Reporter — Connection settings, discovery, switch placement, and report generation" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Reporter</h4>
-                    <p>Unified 5-step workflow: Discover, Place Switches, Generate Report, Health Check, Download.</p>
-                </div>
-            </div>
-            <!-- Test Suite -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Test-Suite.png" alt="Test Suite — Automated post-deployment validation and testing" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Post-Deployment Test Suite</h4>
-                    <p>Automate all post-deployment validation in a single pass &mdash; VNetMap, VPerf Sanity, support tools, log bundles, switch and network config backups. Run individually or execute the full suite with one click.</p>
-                </div>
-            </div>
-            <!-- Results -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Results.png" alt="Validation Results — Tabbed view of reports, health checks, and bundles" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Validation Results</h4>
-                    <p>Browse all outputs by operation type &mdash; reports, health checks, network maps, and bundles.</p>
-                </div>
-            </div>
-            <!-- Library -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Library.png" alt="Hardware Library — Device catalog with images for rack diagrams" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Hardware Library</h4>
-                    <p>Device catalog with custom images for accurate rack diagrams. Add new hardware as it ships.</p>
-                </div>
-            </div>
-            <!-- Advanced Configuration -->
-            <div class="showcase-item fade-in">
-                <img src="screenshots/Adv-Config.png" alt="Advanced Configuration — Fine-tune report settings and output formatting" class="screenshot-img">
-                <div class="showcase-caption">
-                    <h4>Advanced Configuration</h4>
-                    <p>Fine-tune report formatting, data collection scope, and output settings without editing YAML.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ================================================================ -->
-<!-- SECTION 5: Report Preview                                         -->
-<!-- ================================================================ -->
-<section class="section">
-    <div class="container">
-        <div class="section-header">
-            <h2>Professional Reports, Automatically</h2>
-            <p>Every report follows the same VAST-branded template &mdash; consistent, thorough, and customer-ready.</p>
-        </div>
-        <div class="report-preview fade-in">
-            <div>
-                <div class="report-mock">
-                    <div class="report-mock-bar"></div>
-                    <h4>VAST As-Built Report</h4>
-                    <p class="cluster-name">cluster-prod-east-01 &mdash; Acme Corp</p>
-                    <div style="margin: 1.25rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                        <img src="screenshots/Report-Rack-Diagram.png" alt="42U Rack Diagram" class="screenshot-img" style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
-                        <img src="screenshots/Logical-Network-Diagram.png" alt="Logical Network Topology" class="screenshot-img" style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
+            <div class="problem-grid fade-in">
+                <div class="problem-item">
+                    <div class="problem-icon">
+                        <svg viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                        </svg>
                     </div>
-                    <p class="date-line">Generated March 31, 2026</p>
-                    <div class="format-badges">
-                        <span class="format-badge pdf">PDF</span>
-                        <span class="format-badge json">JSON</span>
+                    <h3>Hours Per Cluster</h3>
+                    <p>Manual documentation eats into deployment time and delays customer handoff.</p>
+                </div>
+                <div class="problem-item">
+                    <div class="problem-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="9" y1="15" x2="15" y2="15" />
+                        </svg>
+                    </div>
+                    <h3>Inconsistent Deliverables</h3>
+                    <p>Every SE formats reports differently &mdash; no standard, no repeatability.</p>
+                </div>
+                <div class="problem-item">
+                    <div class="problem-icon">
+                        <svg viewBox="0 0 24 24">
+                            <path
+                                d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                            <line x1="12" y1="9" x2="12" y2="13" />
+                            <line x1="12" y1="17" x2="12.01" y2="17" />
+                        </svg>
+                    </div>
+                    <h3>Missing Details</h3>
+                    <p>Critical configuration items get overlooked when collected by hand.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SECTION 3: Key Benefits                                           -->
+    <!-- ================================================================ -->
+    <section class="section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Why Installers Love It</h2>
+                <p>Purpose-built for the field &mdash; from first rack-up to customer handoff.</p>
+            </div>
+            <div class="benefits-grid fade-in">
+                <div class="benefit-card">
+                    <div class="benefit-icon time">
+                        <svg viewBox="0 0 24 24">
+                            <polyline points="13 2 13 9 20 9" />
+                            <path d="M13 2L7 2a2 2 0 00-2 2v16a2 2 0 002 2h10a2 2 0 002-2V9l-6-7z" />
+                            <path d="M9 17l2 2 4-4" />
+                        </svg>
+                    </div>
+                    <div class="benefit-stat" data-target="80" data-suffix="%">0%</div>
+                    <h3>Time Savings</h3>
+                    <p>Automated data collection from the VAST REST API. A full cluster report generates in under 5
+                        minutes &mdash; compared to hours of manual work.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon output">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                            <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                    </div>
+                    <h3>Customer-Ready Output</h3>
+                    <p>VAST-branded PDF with executive summary, 42U rack diagrams, network topology, and health results.
+                        Plus machine-readable JSON for CMDB or scripted workflows.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon field">
+                        <svg viewBox="0 0 24 24">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                            <line x1="8" y1="21" x2="16" y2="21" />
+                            <line x1="12" y1="17" x2="12" y2="21" />
+                        </svg>
+                    </div>
+                    <h3>Field-Ready Design</h3>
+                    <p>SSH proxy hop for unreachable switches, Tech Port mode, graceful degradation when data is
+                        partial. Works on macOS and Windows &mdash; no Python install needed.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon health">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                        </svg>
+                    </div>
+                    <h3>One-Click Health Checks</h3>
+                    <p>32 automated checks (26 API + 6 switch SSH) with remediation guidance. Include results directly
+                        in the PDF or export standalone for follow-up.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SECTION 4: UI Showcase Gallery                                    -->
+    <!-- ================================================================ -->
+    <section class="section showcase">
+        <div class="container">
+            <div class="section-header">
+                <h2>A Modern Interface, Built for the Field</h2>
+                <p>Browser-based UI launches locally &mdash; no server required. Live progress, cancel anytime, save
+                    connection profiles.</p>
+            </div>
+            <div class="showcase-grid">
+                <!-- Dashboard -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Dash.png"
+                        alt="Dashboard — Quick Start tiles, Results Odometer, and workflow cards"
+                        class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Dashboard</h4>
+                        <p>Quick Start tiles, Results Odometer with animated counters, and guided workflow cards.</p>
                     </div>
                 </div>
-            </div>
-            <div class="report-sections">
-                <h3>What's Inside</h3>
-                <ul>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Executive Summary</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Hardware Inventory &amp; Capacity</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Physical Rack Layout (42U diagrams)</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Network Configuration</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Switch Configuration &amp; Port Summary</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Port Mapping &amp; Logical Topology</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Logical Configuration (Tenants / Views)</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Security &amp; Authentication</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Cluster Health Check Results</li>
-                    <li><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Post-Deployment Activities</li>
-                </ul>
-                <div class="report-callout">
-                    <strong>PDF + JSON</strong> &mdash; Regenerate reports from saved JSON without reconnecting to the cluster. Tune formatting, override fields, and re-render anytime.
+                <!-- Reporter -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Reporter.png"
+                        alt="Reporter — Connection settings, discovery, switch placement, and report generation"
+                        class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Reporter</h4>
+                        <p>Unified 5-step workflow: Discover, Place Switches, Generate Report, Health Check, Download.
+                        </p>
+                    </div>
+                </div>
+                <!-- Test Suite -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Test-Suite.png"
+                        alt="Test Suite — Automated post-deployment validation and testing" class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Post-Deployment Test Suite</h4>
+                        <p>Automate all post-deployment validation in a single pass &mdash; VNetMap, VPerf Sanity,
+                            support tools, log bundles, switch and network config backups. Run individually or execute
+                            the full suite with one click.</p>
+                    </div>
+                </div>
+                <!-- Results -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Results.png"
+                        alt="Validation Results — Tabbed view of reports, health checks, and bundles"
+                        class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Validation Results</h4>
+                        <p>Browse all outputs by operation type &mdash; reports, health checks, network maps, and
+                            bundles.</p>
+                    </div>
+                </div>
+                <!-- Library -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Library.png"
+                        alt="Hardware Library — Device catalog with images for rack diagrams" class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Hardware Library</h4>
+                        <p>Device catalog with custom images for accurate rack diagrams. Add new hardware as it ships.
+                        </p>
+                    </div>
+                </div>
+                <!-- Advanced Configuration -->
+                <div class="showcase-item fade-in">
+                    <img src="screenshots/Adv-Config.png"
+                        alt="Advanced Configuration — Fine-tune report settings and output formatting"
+                        class="screenshot-img">
+                    <div class="showcase-caption">
+                        <h4>Advanced Configuration</h4>
+                        <p>Fine-tune report formatting, data collection scope, and output settings without editing YAML.
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</section>
+    </section>
 
-<!-- ================================================================ -->
-<!-- SECTION 6: Quick Start                                            -->
-<!-- ================================================================ -->
-<section class="section" id="quick-start" style="background: var(--bg-surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
-    <div class="container">
-        <div class="section-header">
-            <h2>Get Started in 3 Steps</h2>
-            <p>From zero to a finished as-built report in under 10 minutes.</p>
-        </div>
-        <div class="steps-grid fade-in">
-            <div class="step-card">
-                <div class="step-number">1</div>
-                <h3>Download</h3>
-                <p>Grab the latest release from GitHub:<br><strong>macOS</strong> &rarr; <code>.dmg</code><br><strong>Windows</strong> &rarr; <code>.zip</code></p>
-                <p style="margin-top: 0.75rem;"><a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent" style="font-size: 0.85rem; padding: 0.45rem 1.25rem;">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    GitHub Releases
-                </a></p>
+    <!-- ================================================================ -->
+    <!-- SECTION 5: Report Preview                                         -->
+    <!-- ================================================================ -->
+    <section class="section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Professional Reports, Automatically</h2>
+                <p>Every report follows the same VAST-branded template &mdash; consistent, thorough, and customer-ready.
+                </p>
             </div>
-            <div class="step-card">
-                <div class="step-number">2</div>
-                <h3>Launch</h3>
-                <p><strong>macOS:</strong> Drag to Applications, right-click &rarr; Open on first launch (Gatekeeper).</p>
-                <p style="margin-top: 0.5rem;"><strong>Windows:</strong> Extract ZIP, run <code>vast-reporter.exe</code> (SmartScreen: More info &rarr; Run anyway).</p>
-                <p style="margin-top: 0.5rem;">Your browser opens automatically at <code>localhost:5173</code>.</p>
+            <div class="report-preview fade-in">
+                <div>
+                    <div class="report-mock">
+                        <div class="report-mock-bar"></div>
+                        <h4>VAST As-Built Report</h4>
+                        <p class="cluster-name">cluster-prod-east-01 &mdash; Acme Corp</p>
+                        <div style="margin: 1.25rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                            <img src="screenshots/Report-Rack-Diagram.png" alt="42U Rack Diagram" class="screenshot-img"
+                                style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
+                            <img src="screenshots/Logical-Network-Diagram.png" alt="Logical Network Topology"
+                                class="screenshot-img"
+                                style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
+                        </div>
+                        <p class="date-line">Generated March 31, 2026</p>
+                        <div class="format-badges">
+                            <span class="format-badge pdf">PDF</span>
+                            <span class="format-badge json">JSON</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="report-sections">
+                    <h3>What's Inside</h3>
+                    <ul>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Executive Summary</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Hardware Inventory &amp; Capacity</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Physical Rack Layout (42U diagrams)</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Network Configuration</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Switch Configuration &amp; Port Summary</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Port Mapping &amp; Logical Topology</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Logical Configuration (Tenants / Views)</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Security &amp; Authentication</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Cluster Health Check Results</li>
+                        <li><svg viewBox="0 0 24 24">
+                                <polyline points="20 6 9 17 4 12" />
+                            </svg> Post-Deployment Activities</li>
+                    </ul>
+                    <div class="report-callout">
+                        <strong>PDF + JSON</strong> &mdash; Regenerate reports from saved JSON without reconnecting to
+                        the cluster. Tune formatting, override fields, and re-render anytime.
+                    </div>
+                </div>
             </div>
-            <div class="step-card">
-                <div class="step-number">3</div>
-                <h3>Connect &amp; Generate</h3>
-                <p>Enter the cluster IP and credentials, run discovery, place switches, and hit <strong>Generate</strong>. Your report downloads as PDF + JSON.</p>
-                <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">Optional: enable SSH port mapping and health checks for deeper coverage.</p>
+        </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SECTION 6: Quick Start                                            -->
+    <!-- ================================================================ -->
+    <section class="section" id="quick-start"
+        style="background: var(--bg-surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div class="container">
+            <div class="section-header">
+                <h2>Get Started in 3 Steps</h2>
+                <p>From zero to a finished as-built report in under 10 minutes.</p>
+            </div>
+            <div class="steps-grid fade-in">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3>Download</h3>
+                    <p>Grab the latest release from GitHub:<br><strong>macOS</strong> &rarr;
+                        <code>.dmg</code><br><strong>Windows</strong> &rarr; <code>.zip</code></p>
+                    <p style="margin-top: 0.75rem;"><a
+                            href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent"
+                            style="font-size: 0.85rem; padding: 0.45rem 1.25rem;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                            GitHub Releases
+                        </a></p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3>Launch</h3>
+                    <p><strong>macOS:</strong> Drag to Applications, right-click &rarr; Open on first launch
+                        (Gatekeeper).</p>
+                    <p style="margin-top: 0.5rem;"><strong>Windows:</strong> Extract ZIP, run
+                        <code>vast-reporter.exe</code> (SmartScreen: More info &rarr; Run anyway).</p>
+                    <p style="margin-top: 0.5rem;">Your browser opens automatically at <code>localhost:5173</code>.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3>Connect &amp; Generate</h3>
+                    <p>Enter the cluster IP and credentials, run discovery, place switches, and hit
+                        <strong>Generate</strong>. Your report downloads as PDF + JSON.</p>
+                    <p style="margin-top: 0.5rem; font-size: 0.82rem; color: var(--text-muted);">Optional: enable SSH
+                        port mapping and health checks for deeper coverage.</p>
+                </div>
+            </div>
+            <p class="step-note">
+                Need help? See the full <a href="quick-start-guide.html">Quick Start Guide</a>
+                or reach out on <a href="#">#ps-tools</a> in Slack.
+            </p>
+        </div>
+    </section>
+
+    <!-- ================================================================ -->
+    <!-- SECTION 7: Call to Action / Footer                                -->
+    <!-- ================================================================ -->
+    <section class="cta-section">
+        <div class="container">
+            <h2>Start generating professional as-built reports today.</h2>
+            <p>Every deployment deserves consistent, thorough documentation. Let the tool do the heavy lifting so you
+                can focus on the customer.</p>
+            <div class="cta-row" style="justify-content: center;">
+                <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download the App
+                </a>
+                <a href="quick-start-guide.html" class="btn btn-outline">Quick Start Guide</a>
+            </div>
+            <div class="cta-links">
+                <a href="https://github.com/rstamps01/ps-deploy-report">
+                    <svg viewBox="0 0 24 24">
+                        <path
+                            d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22" />
+                    </svg>
+                    GitHub Repository
+                </a>
+                <a href="#">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+                    </svg>
+                    #ps-tools Slack
+                </a>
+                <a href="#">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z" />
+                        <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" />
+                    </svg>
+                    Confluence Docs
+                </a>
             </div>
         </div>
-        <p class="step-note">
-            Need help? See the full <a href="quick-start-guide.html">Quick Start Guide</a>
-            or reach out on <a href="#">#ps-tools</a> in Slack.
-        </p>
-    </div>
-</section>
+    </section>
 
-<!-- ================================================================ -->
-<!-- SECTION 7: Call to Action / Footer                                -->
-<!-- ================================================================ -->
-<section class="cta-section">
-    <div class="container">
-        <h2>Start generating professional as-built reports today.</h2>
-        <p>Every deployment deserves consistent, thorough documentation. Let the tool do the heavy lifting so you can focus on the customer.</p>
-        <div class="cta-row" style="justify-content: center;">
-            <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download the App
-            </a>
-            <a href="quick-start-guide.html" class="btn btn-outline">Quick Start Guide</a>
+    <footer>
+        <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <span style="font-weight: 600; font-size: 0.85rem;"><span
+                    style="color: var(--text-primary);">asbuilt</span><span
+                    style="color: var(--accent);">-reporter</span></span>
+            <span class="version-badge">v1.5.0</span>
         </div>
-        <div class="cta-links">
-            <a href="https://github.com/rstamps01/ps-deploy-report">
-                <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0020 4.77 5.07 5.07 0 0019.91 1S18.73.65 16 2.48a13.38 13.38 0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 005 4.77a5.44 5.44 0 00-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 009 18.13V22"/></svg>
-                GitHub Repository
-            </a>
-            <a href="#">
-                <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                #ps-tools Slack
-            </a>
-            <a href="#">
-                <svg viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-                Confluence Docs
-            </a>
-        </div>
+        <p>Built by PS Engineering</p>
+    </footer>
+
+    <!-- Lightbox overlay -->
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
+        <button class="lightbox-close" aria-label="Close">
+            <svg viewBox="0 0 24 24">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+        </button>
+        <button class="lightbox-nav lightbox-prev" aria-label="Previous image">
+            <svg viewBox="0 0 24 24">
+                <polyline points="15 18 9 12 15 6" />
+            </svg>
+        </button>
+        <button class="lightbox-nav lightbox-next" aria-label="Next image">
+            <svg viewBox="0 0 24 24">
+                <polyline points="9 6 15 12 9 18" />
+            </svg>
+        </button>
+        <img class="lightbox-img" src="" alt="">
+        <div class="lightbox-caption"></div>
+        <div class="lightbox-counter"></div>
     </div>
-</section>
 
-<footer>
-    <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-        <span style="font-weight: 600; font-size: 0.85rem;"><span style="color: var(--text-primary);">asbuilt</span><span style="color: var(--accent);">-reporter</span></span>
-        <span class="version-badge">v1.5.0</span>
-    </div>
-    <p>Built by PS Engineering</p>
-</footer>
+    <script>
+        (function () {
+            /* ---- Fade-in observer ---- */
+            var fadeEls = document.querySelectorAll('.fade-in');
+            var statEl = document.querySelector('.benefit-stat[data-target]');
+            var statAnimated = false;
 
-<!-- Lightbox overlay -->
-<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer">
-    <button class="lightbox-close" aria-label="Close">
-        <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-    </button>
-    <button class="lightbox-nav lightbox-prev" aria-label="Previous image">
-        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
-    <button class="lightbox-nav lightbox-next" aria-label="Next image">
-        <svg viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"/></svg>
-    </button>
-    <img class="lightbox-img" src="" alt="">
-    <div class="lightbox-caption"></div>
-    <div class="lightbox-counter"></div>
-</div>
+            if (!('IntersectionObserver' in window)) {
+                fadeEls.forEach(function (el) { el.classList.add('visible'); });
+                if (statEl) statEl.textContent = statEl.dataset.target + (statEl.dataset.suffix || '');
+            } else {
+                var fadeObserver = new IntersectionObserver(function (entries) {
+                    entries.forEach(function (entry) {
+                        if (entry.isIntersecting) {
+                            entry.target.classList.add('visible');
+                            fadeObserver.unobserve(entry.target);
+                        }
+                    });
+                }, { threshold: 0.15 });
+                fadeEls.forEach(function (el) { fadeObserver.observe(el); });
 
-<script>
-(function () {
-    /* ---- Fade-in observer ---- */
-    var fadeEls = document.querySelectorAll('.fade-in');
-    var statEl = document.querySelector('.benefit-stat[data-target]');
-    var statAnimated = false;
-
-    if (!('IntersectionObserver' in window)) {
-        fadeEls.forEach(function (el) { el.classList.add('visible'); });
-        if (statEl) statEl.textContent = statEl.dataset.target + (statEl.dataset.suffix || '');
-    } else {
-        var fadeObserver = new IntersectionObserver(function (entries) {
-            entries.forEach(function (entry) {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                    fadeObserver.unobserve(entry.target);
+                if (statEl) {
+                    var statObserver = new IntersectionObserver(function (entries) {
+                        if (entries[0].isIntersecting && !statAnimated) {
+                            statAnimated = true;
+                            var target = parseInt(statEl.dataset.target, 10);
+                            var suffix = statEl.dataset.suffix || '';
+                            var duration = 1200;
+                            var start = null;
+                            function step(ts) {
+                                if (!start) start = ts;
+                                var progress = Math.min((ts - start) / duration, 1);
+                                var eased = 1 - Math.pow(1 - progress, 3);
+                                statEl.textContent = Math.round(eased * target) + suffix;
+                                if (progress < 1) requestAnimationFrame(step);
+                            }
+                            requestAnimationFrame(step);
+                            statObserver.unobserve(statEl);
+                        }
+                    }, { threshold: 0.5 });
+                    statObserver.observe(statEl);
                 }
+            }
+
+            /* ---- Lightbox ---- */
+            var lb = document.getElementById('lightbox');
+            var lbImg = lb.querySelector('.lightbox-img');
+            var lbCaption = lb.querySelector('.lightbox-caption');
+            var lbCounter = lb.querySelector('.lightbox-counter');
+            var lbClose = lb.querySelector('.lightbox-close');
+            var lbPrev = lb.querySelector('.lightbox-prev');
+            var lbNext = lb.querySelector('.lightbox-next');
+
+            var images = Array.from(document.querySelectorAll('.screenshot-img'));
+            var currentIdx = 0;
+
+            function openLightbox(idx) {
+                currentIdx = idx;
+                showImage();
+                lb.classList.add('open');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeLightbox() {
+                lb.classList.remove('open');
+                document.body.style.overflow = '';
+            }
+
+            function showImage() {
+                var img = images[currentIdx];
+                lbImg.src = img.src;
+                lbImg.alt = img.alt;
+                lbCaption.textContent = img.alt;
+                lbCounter.textContent = (currentIdx + 1) + ' / ' + images.length;
+                lbPrev.style.display = images.length > 1 ? '' : 'none';
+                lbNext.style.display = images.length > 1 ? '' : 'none';
+            }
+
+            function navigate(dir) {
+                currentIdx = (currentIdx + dir + images.length) % images.length;
+                showImage();
+            }
+
+            images.forEach(function (img, i) {
+                img.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    openLightbox(i);
+                });
             });
-        }, { threshold: 0.15 });
-        fadeEls.forEach(function (el) { fadeObserver.observe(el); });
 
-        if (statEl) {
-            var statObserver = new IntersectionObserver(function (entries) {
-                if (entries[0].isIntersecting && !statAnimated) {
-                    statAnimated = true;
-                    var target = parseInt(statEl.dataset.target, 10);
-                    var suffix = statEl.dataset.suffix || '';
-                    var duration = 1200;
-                    var start = null;
-                    function step(ts) {
-                        if (!start) start = ts;
-                        var progress = Math.min((ts - start) / duration, 1);
-                        var eased = 1 - Math.pow(1 - progress, 3);
-                        statEl.textContent = Math.round(eased * target) + suffix;
-                        if (progress < 1) requestAnimationFrame(step);
-                    }
-                    requestAnimationFrame(step);
-                    statObserver.unobserve(statEl);
-                }
-            }, { threshold: 0.5 });
-            statObserver.observe(statEl);
-        }
-    }
+            lbClose.addEventListener('click', closeLightbox);
+            lbPrev.addEventListener('click', function (e) { e.stopPropagation(); navigate(-1); });
+            lbNext.addEventListener('click', function (e) { e.stopPropagation(); navigate(1); });
 
-    /* ---- Lightbox ---- */
-    var lb = document.getElementById('lightbox');
-    var lbImg = lb.querySelector('.lightbox-img');
-    var lbCaption = lb.querySelector('.lightbox-caption');
-    var lbCounter = lb.querySelector('.lightbox-counter');
-    var lbClose = lb.querySelector('.lightbox-close');
-    var lbPrev = lb.querySelector('.lightbox-prev');
-    var lbNext = lb.querySelector('.lightbox-next');
+            lb.addEventListener('click', function (e) {
+                if (e.target === lb) closeLightbox();
+            });
 
-    var images = Array.from(document.querySelectorAll('.screenshot-img'));
-    var currentIdx = 0;
-
-    function openLightbox(idx) {
-        currentIdx = idx;
-        showImage();
-        lb.classList.add('open');
-        document.body.style.overflow = 'hidden';
-    }
-
-    function closeLightbox() {
-        lb.classList.remove('open');
-        document.body.style.overflow = '';
-    }
-
-    function showImage() {
-        var img = images[currentIdx];
-        lbImg.src = img.src;
-        lbImg.alt = img.alt;
-        lbCaption.textContent = img.alt;
-        lbCounter.textContent = (currentIdx + 1) + ' / ' + images.length;
-        lbPrev.style.display = images.length > 1 ? '' : 'none';
-        lbNext.style.display = images.length > 1 ? '' : 'none';
-    }
-
-    function navigate(dir) {
-        currentIdx = (currentIdx + dir + images.length) % images.length;
-        showImage();
-    }
-
-    images.forEach(function (img, i) {
-        img.addEventListener('click', function (e) {
-            e.stopPropagation();
-            openLightbox(i);
-        });
-    });
-
-    lbClose.addEventListener('click', closeLightbox);
-    lbPrev.addEventListener('click', function (e) { e.stopPropagation(); navigate(-1); });
-    lbNext.addEventListener('click', function (e) { e.stopPropagation(); navigate(1); });
-
-    lb.addEventListener('click', function (e) {
-        if (e.target === lb) closeLightbox();
-    });
-
-    document.addEventListener('keydown', function (e) {
-        if (!lb.classList.contains('open')) return;
-        if (e.key === 'Escape') closeLightbox();
-        if (e.key === 'ArrowLeft') navigate(-1);
-        if (e.key === 'ArrowRight') navigate(1);
-    });
-})();
-</script>
+            document.addEventListener('keydown', function (e) {
+                if (!lb.classList.contains('open')) return;
+                if (e.key === 'Escape') closeLightbox();
+                if (e.key === 'ArrowLeft') navigate(-1);
+                if (e.key === 'ArrowRight') navigate(1);
+            });
+        })();
+    </script>
 </body>
+
 </html>
