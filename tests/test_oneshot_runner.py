@@ -565,12 +565,15 @@ class TestSwitchPasswordCandidates(unittest.TestCase):
         self.assertEqual(runner._switch_password_candidates[0], "VastData1!")
         self.assertIn("Vastdata1!", runner._switch_password_candidates)
 
-    def test_autofill_without_config_yields_empty_candidates(self):
-        # RM-1 supplementary: hardcoded ``_FALLBACK_SWITCH_PASSWORDS``
-        # were removed from the source.  With no ``config/config.yaml``
-        # list and no ``VAST_DEFAULT_SWITCH_PASSWORDS`` env var the
-        # autofill path must produce an empty candidate set and log a
-        # WARNING — it must NOT silently fall back to baked-in secrets.
+    def test_autofill_without_config_yields_builtin_defaults(self):
+        # RM-12: autofill is the operator-friendly "try the common VAST /
+        # Cumulus / MLNX-OS published defaults" mode.  With no
+        # ``config/config.yaml`` list and no ``VAST_DEFAULT_SWITCH_PASSWORDS``
+        # env var and no UI-entered password, the candidate set must expose
+        # the three built-in cumulus-user defaults in documented order
+        # (``Vastdata1!`` → ``VastData1!`` → ``Cumu1usLinux!``); the
+        # ``(admin, admin)`` factory default is contributed separately by
+        # ``build_switch_credential_combos``.
         import os
 
         prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
@@ -579,7 +582,135 @@ class TestSwitchPasswordCandidates(unittest.TestCase):
                 {"cluster_ip": "10.0.0.1", "switch_password": ""},
                 use_default_creds=True,
             )
-            self.assertEqual(runner._switch_password_candidates, [])
+            self.assertEqual(
+                runner._switch_password_candidates,
+                ["Vastdata1!", "VastData1!", "Cumu1usLinux!"],
+            )
+        finally:
+            if prev_env is not None:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_autofill_disabled_does_not_inject_builtin_defaults(self):
+        # RM-12: the built-in defaults are gated on
+        # ``autofill_default_passwords: true``.  With autofill OFF and
+        # a UI-entered password the pool must stay a single-entry list.
+        runner = self._runner(
+            {"cluster_ip": "10.0.0.1", "switch_password": "OnlyOne!"},
+            use_default_creds=False,
+        )
+        self.assertEqual(runner._switch_password_candidates, ["OnlyOne!"])
+
+    def test_autofill_appends_builtins_after_ui_password(self):
+        # RM-12: UI-entered password stays at the head (operator intent),
+        # built-in defaults follow, and overlap is deduplicated.
+        import os
+
+        prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": "SiteSpecific!"},
+                use_default_creds=True,
+            )
+            self.assertEqual(
+                runner._switch_password_candidates,
+                ["SiteSpecific!", "Vastdata1!", "VastData1!", "Cumu1usLinux!"],
+            )
+        finally:
+            if prev_env is not None:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_autofill_dedupes_ui_password_against_builtins(self):
+        # RM-12: if the UI-entered password is already one of the built-in
+        # defaults, it must not appear twice in the candidate list.
+        import os
+
+        prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": "Vastdata1!"},
+                use_default_creds=True,
+            )
+            self.assertEqual(
+                runner._switch_password_candidates,
+                ["Vastdata1!", "VastData1!", "Cumu1usLinux!"],
+            )
+        finally:
+            if prev_env is not None:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_autofill_appends_builtins_after_config_list(self):
+        # RM-12: a site-specific entry in ``default_switch_passwords``
+        # comes before the built-ins (config is stronger-signal than a
+        # generic default); no UI password set.
+        import os
+        import tempfile
+
+        prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        cfg_body = "advanced_operations:\n  default_switch_passwords:\n    - SiteSpecific!\n"
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(cfg_body)
+            path = f.name
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": ""},
+                use_default_creds=True,
+                config_path=path,
+            )
+            self.assertEqual(
+                runner._switch_password_candidates,
+                ["SiteSpecific!", "Vastdata1!", "VastData1!", "Cumu1usLinux!"],
+            )
+        finally:
+            if prev_env is not None:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_autofill_appends_builtins_after_env_var(self):
+        # RM-12: env-var entries also precede the built-ins.
+        import os
+
+        prev_env = os.environ.get("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = "EnvPrimary!:EnvSecondary!"
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": ""},
+                use_default_creds=True,
+            )
+            self.assertEqual(
+                runner._switch_password_candidates,
+                [
+                    "EnvPrimary!",
+                    "EnvSecondary!",
+                    "Vastdata1!",
+                    "VastData1!",
+                    "Cumu1usLinux!",
+                ],
+            )
+        finally:
+            if prev_env is None:
+                os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+            else:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_autofill_dedupes_builtin_already_in_config(self):
+        # RM-12: config listing a built-in must not create a duplicate.
+        import os
+        import tempfile
+
+        prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        cfg_body = "advanced_operations:\n  default_switch_passwords:\n    - Cumu1usLinux!\n"
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(cfg_body)
+            path = f.name
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": ""},
+                use_default_creds=True,
+                config_path=path,
+            )
+            self.assertEqual(
+                runner._switch_password_candidates,
+                ["Cumu1usLinux!", "Vastdata1!", "VastData1!"],
+            )
         finally:
             if prev_env is not None:
                 os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env

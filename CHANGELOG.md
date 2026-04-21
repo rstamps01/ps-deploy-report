@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.5.4] - 2026-03-21
 
-Test-Suite log-triage follow-up — addresses three defects (RM-6..RM-8)
-surfaced by triage of the 7:59:55 operator-log excerpt from bundle
-`validation_bundle_selab-var-202_20260421_075955.zip`. All fixes are
-additive on top of v1.5.3; no behaviour changes are gated on a prior
-schema upgrade.
+Test-Suite log-triage follow-up — addresses five defects (RM-6..RM-8
+plus RM-12 and RM-13) surfaced by operator triage of the 7:59:55 and
+16:08 runs against bundle
+`validation_bundle_selab-var-202_20260421_075955.zip`, and an operator-
+reported gap between the Reporter tile and the Test Suite tile. All
+fixes are additive on top of v1.5.3; no behaviour changes are gated on
+a prior schema upgrade.
 
 ### Fixed
 
@@ -62,6 +64,63 @@ schema upgrade.
   classify as `error` and turn the state back off so unrelated stderr
   downstream isn't miscoloured. State is reset at the start of every
   remote-command invocation to prevent cross-command contamination.
+- **RM-12: "Autofill Password" UI checkbox actually autofills again.**
+  Regression from RM-1 Supplementary (v1.5.3): sanitising the in-repo
+  `config/config.yaml` and removing the `_FALLBACK_SWITCH_PASSWORDS`
+  tuple from source left operators with an empty
+  `default_switch_passwords: []` in their local config and no built-in
+  defaults in source. On a heterogeneous cluster this manifested as
+  pre-validation failing to authenticate any switch whose password was
+  not identical to the single UI-entered one (e.g. a Cumulus
+  pair on the VAST-documented primary plus a third switch on the
+  documented alternate). `OneShotRunner` now carries a module-level
+  `_BUILTIN_AUTOFILL_SWITCH_PASSWORDS` tuple containing the three
+  **published** VAST / Cumulus Linux cumulus-user defaults —
+  `Vastdata1!`, `VastData1!`, `Cumu1usLinux!` — which are appended
+  to the candidate list (after the UI-entered password, after any
+  site-specific `advanced_operations.default_switch_passwords` entries
+  from `config/config.yaml`, and after `VAST_DEFAULT_SWITCH_PASSWORDS`
+  env-var entries) whenever `autofill_default_passwords: true`. The
+  MLNX-OS / Onyx factory default `(admin, admin)` remains contributed
+  separately by `build_switch_credential_combos`. These three entries
+  are the vendor-documented published defaults from the VAST install
+  guide and the Cumulus Linux docs — not site-specific secrets, and
+  explicitly distinct from the per-fleet passwords RM-1 Supplementary
+  correctly scrubbed from source. Site-specific per-switch passwords
+  still belong in the gitignored `config/config.yaml` or in the env
+  var.
+- **RM-13: Reporter tile now matches the Test Suite tile's autofill
+  behaviour.** Before this release, ticking **Advanced -> Autofill
+  Password** only expanded the candidate list when the operator clicked
+  the Test Suite tile; the Reporter tile's `/generate` handler silently
+  fell back to the single UI-entered `switch_password` for
+  `VnetmapWorkflow`, `HealthChecker` and `ExternalPortMapper`. On a
+  fleet where one switch uses a different published default (e.g.
+  Cumulus `Cumu1usLinux!` while the pair is on `Vastdata1!`), vnetmap
+  would auth-fail on that switch and bundle `vnetmap_STALE.txt`. Three
+  changes fix this:
+    1. `_BUILTIN_AUTOFILL_SWITCH_PASSWORDS` + the resolver are extracted
+       from `OneShotRunner` into `utils.switch_password_candidates` so
+       both tiles share one implementation. `OneShotRunner._resolve_
+       switch_password_candidates` is now a thin delegator.
+    2. `reporter.html` posts `use_default_creds` to `/generate`;
+       `/generate` threads it into `params`; `_run_report_job` calls
+       `resolve_switch_password_candidates` once and fans the result
+       into `VnetmapWorkflow.set_credentials(switch_password_candidates=...)`,
+       `HealthChecker(switch_ssh_config={..., "password_candidates": ...})`,
+       and `ExternalPortMapper(switch_password_candidates=...)`.
+    3. `HealthChecker.run_switch_ssh_checks` learns to probe
+       `password_candidates` when the caller hasn't pre-populated
+       `password_by_ip`. For each switch without a pre-resolved
+       password it runs a cheap `hostname` / `show version` per combo,
+       caches the winner into `password_by_ip`, and the rest of the
+       check pipeline uses it transparently. Mirrors
+       `OneShotRunner._probe_switch_candidates` but in-process so the
+       Reporter tile does not need a separate pre-validation phase.
+  Result: the Reporter tile's **Autofill Password** checkbox is now
+  truthful on heterogeneous fleets, and the Reporter-tile vnetmap will
+  stop auth-failing when any one switch uses a different published
+  default than the one typed in Connection Settings.
 
 ### Changed
 
@@ -85,10 +144,24 @@ schema upgrade.
   flips correctly; previously the raw-TXT half of the vnetmap
   collection was never promoted to STALE and therefore never surfaced
   in placeholder or rescue paths.
+- **RM-7 `[ERROR]` message wording refreshed for RM-12.** Now explicitly
+  tells the operator that the published VAST / Cumulus / MLNX-OS
+  defaults were already tried automatically, and that the remediation
+  is to add a *site-specific* password to
+  `advanced_operations.default_switch_passwords`. Also corrects a
+  minor copy error (the env-var is colon-separated, not
+  comma-separated).
+- **`config/config.yaml.template` refreshed for RM-12.** The
+  `default_switch_passwords` block now documents exactly which
+  passwords are contributed automatically by autofill (the three
+  built-in cumulus passwords plus `admin/admin` via
+  `build_switch_credential_combos`) and reframes the list as the place
+  to add *site-specific* per-switch passwords, not a replacement for
+  the built-ins.
 
 ### Tests
 
-- 20 new unit tests across three modules, bringing the suite to 1032
+- 45 new unit tests across five modules, bringing the suite to 1057
   passing (up from 1012).
   - `tests/test_result_bundler.py::TestPriorVnetmap` — 7 tests covering
     the RM-6 PRIOR-file rescue (JSON + raw TXT attach, banner content,
@@ -106,6 +179,35 @@ schema upgrade.
     end-to-end contiguity, blank-line state reset, SSH host-key
     warning regression, ping-diagnostic regression, common-exception
     summary regex, and post-reset default.
+  - `tests/test_oneshot_runner.py::TestSwitchPasswordCandidates` —
+    6 new tests covering RM-12 built-in autofill defaults: empty
+    config yields the three built-ins in documented order;
+    autofill=false does NOT inject built-ins; UI-entered password
+    stays at head with built-ins appended; UI-entered password that
+    overlaps a built-in is deduplicated; site-specific
+    `default_switch_passwords` entry precedes the built-ins; env-var
+    entries precede the built-ins; config entry equal to a built-in
+    is deduplicated. One existing RM-1-Supplementary test
+    (`test_autofill_without_config_yields_empty_candidates`) was
+    renamed to `test_autofill_without_config_yields_builtin_defaults`
+    and inverted in intent to reflect the RM-12 behaviour.
+  - `tests/test_utils_switch_password_candidates.py` — 13 new tests
+    pinning the shared resolver's precedence rules (autofill off vs on,
+    UI / config / env / built-in ordering, deduplication across all
+    four sources, colon-separated env parsing, missing-config-file
+    tolerance, `existing=` override short-circuit) plus a regression
+    guard that `OneShotRunner.__init__` actually calls the shared
+    resolver so the two tiles can never drift apart.
+  - `tests/test_health_checker.py::TestSwitchSSHPasswordCandidates` —
+    4 new tests covering RM-13 in-process candidate probing: winning
+    password picked per-switch when candidates differ, primary-password
+    fallback when every candidate is rejected, probe skipped for
+    switches already in `password_by_ip` (Test Suite tile path), and
+    empty-candidates no-op.
+  - `tests/test_app.py::TestGenerateAutofillCandidates` — 2 new tests
+    asserting `/generate` extracts `use_default_creds=on` into the
+    params dict handed to `_run_report_job`, and that the off path
+    stays false.
 
 ### Follow-ups (not in this release)
 

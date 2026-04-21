@@ -170,22 +170,35 @@ advanced_operations:
   # Auto-fill default credentials (support/654321)
   autofill_default_passwords: true
 
-  # Ordered list of default switch SSH passwords to try when autofill is
-  # enabled.  Some clusters have switches provisioned with mixed defaults
-  # (e.g. a VMS-set primary on the Cumulus pair plus the original factory
-  # password on a spare leaf, or a case-variant left behind by an older
-  # installer).  Workflows iterate this list in order, using the first
-  # password that authenticates.  The first entry is considered primary.
+  # Ordered list of SITE-SPECIFIC switch SSH passwords to try when autofill
+  # is enabled.  Some clusters have switches provisioned with site-specific
+  # credentials that are neither the VAST-documented defaults nor the
+  # Cumulus / MLNX-OS factory defaults.  Workflows iterate this list in
+  # order, using the first password that authenticates.  The first entry
+  # is considered primary.
   #
-  # SECURITY: never commit real passwords to this file.  Copy this template
-  # to ``config/config.yaml`` (already gitignored) and populate the real
-  # values there, or supply them via the ``VAST_DEFAULT_SWITCH_PASSWORDS``
-  # environment variable as a colon-separated list (primary first).  An
-  # empty list disables autofill for switch SSH.
+  # NOTE — built-in defaults (RM-12, v1.5.4+):  When
+  # ``autofill_default_passwords: true`` the tool ALSO tries, after the
+  # entries in this list and after ``VAST_DEFAULT_SWITCH_PASSWORDS``:
+  #
+  #   - ``cumulus`` / ``Vastdata1!``       (VAST documented primary default)
+  #   - ``cumulus`` / ``VastData1!``       (VAST documented alternate)
+  #   - ``cumulus`` / ``Cumu1usLinux!``    (Cumulus Linux factory default)
+  #   - ``admin``   / ``admin``            (MLNX-OS / Onyx factory default)
+  #
+  # These are the PUBLISHED vendor defaults documented in the VAST
+  # installation guide and the Cumulus / MLNX-OS docs — not site-specific
+  # secrets.  You only need to list passwords here when a switch in your
+  # fleet has a non-default, site-specific credential.
+  #
+  # SECURITY: never commit real site-specific passwords to this template
+  # file.  Copy this template to ``config/config.yaml`` (already
+  # gitignored) and populate them there, or supply them via the
+  # ``VAST_DEFAULT_SWITCH_PASSWORDS`` environment variable as a
+  # colon-separated list (primary first).
   default_switch_passwords: []
-  #  - "<your-primary-switch-password>"
-  #  - "<your-secondary-switch-password>"
-  #  - "<your-factory-default-switch-password>"
+  #  - "<your-site-specific-switch-password>"
+  #  - "<another-site-specific-password>"
 
   # Default selections for Reporter tile operations
   reporter_defaults:

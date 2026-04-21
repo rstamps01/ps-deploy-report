@@ -559,4 +559,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.5.4 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1032 passing, 60%+ coverage threshold
+**Version:** 1.5.4 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1057 passing, 60%+ coverage threshold

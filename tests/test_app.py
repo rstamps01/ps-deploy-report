@@ -138,6 +138,60 @@ class TestGenerateRoutes(unittest.TestCase):
         self.assertTrue(body["result"]["success"])
 
 
+class TestGenerateAutofillCandidates(unittest.TestCase):
+    """RM-13: the Reporter tile must thread ``use_default_creds`` through
+    ``/generate`` so ``_run_report_job`` can expand the single UI
+    ``switch_password`` into the full candidate list (UI -> config ->
+    env -> built-in VAST/Cumulus defaults).  Without this, ``vnetmap``
+    silently auth-fails on any switch using a different published
+    default than the one typed in Connection Settings.
+    """
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def _post_with(self, use_default_creds: bool):
+        """POST to /generate with a captured-params thread patch; return
+        the ``params`` dict handed to ``_run_report_job``."""
+        captured = {}
+
+        class _FakeThread:
+            def __init__(self, target=None, args=(), **_kwargs):
+                captured["target"] = target
+                captured["args"] = args
+
+            def start(self):
+                captured["started"] = True
+
+        form = {
+            "cluster_ip": "10.0.0.1",
+            "auth_method": "password",
+            "username": "support",
+            "password": "test",
+            "switch_user": "cumulus",
+            "switch_password": "UIpw!",
+        }
+        if use_default_creds:
+            form["use_default_creds"] = "on"
+
+        with patch("app.threading.Thread", _FakeThread):
+            resp = self.client.post("/generate", data=form)
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(captured.get("started"))
+        _, params = captured["args"]
+        return params
+
+    def test_use_default_creds_on_flag_reaches_params(self):
+        params = self._post_with(use_default_creds=True)
+        self.assertTrue(params["use_default_creds"])
+        self.assertEqual(params["switch_password"], "UIpw!")
+
+    def test_use_default_creds_off_flag_reaches_params(self):
+        params = self._post_with(use_default_creds=False)
+        self.assertFalse(params["use_default_creds"])
+
+
 class TestConfigRoutes(unittest.TestCase):
 
     def setUp(self):

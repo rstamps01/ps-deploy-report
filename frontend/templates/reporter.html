@@ -2263,6 +2263,8 @@ async function runReporterGenerate(creds, includeHealth) {
     try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
 
     var doVnetmap = document.getElementById('rptRunVnetmap');
+    var useDefaultsEl = document.getElementById('useDefaultCreds');
+    var useDefaults = useDefaultsEl ? useDefaultsEl.checked : false;
     var payload = Object.assign({}, creds, {
         switch_placement: switchPlacement,
         manual_placements: JSON.stringify(manualPlacements),
@@ -2271,7 +2273,11 @@ async function runReporterGenerate(creds, includeHealth) {
         enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
         proxy_jump: creds.proxy_jump ? 'on' : '',
         tech_port: creds.tech_port ? 'on' : '',
-        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : ''
+        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : '',
+        // RM-13: relay the Autofill Password checkbox so /generate can
+        // expand the single switch_password into the full candidate
+        // list (UI -> config -> env -> built-in VAST/Cumulus defaults).
+        use_default_creds: useDefaults ? 'on' : ''
     });
 
     startReporterLogStream();

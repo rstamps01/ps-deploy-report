@@ -361,6 +361,13 @@ def _register_routes(app: Flask) -> None:
             "proxy_jump": form.get("proxy_jump") == "on",
             "tech_port": form.get("tech_port") == "on",
             "run_vnetmap": form.get("run_vnetmap") == "1",
+            # RM-13: mirror the Test Suite tile so the Reporter tile also
+            # honours "Advanced -> Autofill Password".  When ticked, the
+            # backend expands the single UI-entered ``switch_password``
+            # into a candidate list that includes the operator's config/
+            # env entries plus the published VAST + Cumulus defaults, so
+            # switches using a different default auth successfully.
+            "use_default_creds": form.get("use_default_creds") == "on",
         }
 
         if params["switch_placement"] == "manual":
@@ -1923,6 +1930,29 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         has_health = bool(params.get("include_health_check"))
         has_ports = bool(params.get("enable_port_mapping"))
         has_vnetmap = bool(params.get("run_vnetmap"))
+
+        # RM-13: resolve switch SSH password candidates once and fan out
+        # to VnetmapWorkflow, ExternalPortMapper and HealthChecker so the
+        # Reporter tile matches the Test Suite tile's autofill behaviour.
+        # Empty list when ``use_default_creds`` is off and no UI password
+        # was supplied — downstream code falls back to the old single-
+        # password path in that case.
+        from utils.switch_password_candidates import resolve_switch_password_candidates
+
+        switch_password_candidates: List[str] = resolve_switch_password_candidates(
+            user_password=params.get("switch_password", ""),
+            config_path=config_path,
+            use_default_creds=bool(params.get("use_default_creds")),
+        )
+        if switch_password_candidates and len(switch_password_candidates) > 1:
+            job_logger.info(
+                "Switch SSH autofill active: %d candidate password(s) will be tried per switch",
+                len(switch_password_candidates),
+            )
+        # Stash the resolved list on ``params`` so the port-mapping
+        # helper (``_collect_port_mapping_web`` -> ``ExternalPortMapper``)
+        # can consume it without a cross-cutting signature change.
+        params["switch_password_candidates"] = list(switch_password_candidates)
         phase_weights = {
             "auth": 5,
             "vnetmap": 15,
@@ -2031,18 +2061,22 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         getattr(_logging, level.upper(), _logging.INFO), msg
                     )
                 )
-                vnetmap_wf.set_credentials(
-                    {
-                        "cluster_ip": params["cluster_ip"],
-                        "node_user": params.get("node_user", "vastdata"),
-                        "node_password": params.get("node_password", ""),
-                        "switch_user": params.get("switch_user", ""),
-                        "switch_password": params.get("switch_password", ""),
-                        "username": params.get("username", ""),
-                        "password": params.get("password", ""),
-                        "api_token": params.get("token", ""),
-                    }
-                )
+                vnetmap_creds: Dict[str, Any] = {
+                    "cluster_ip": params["cluster_ip"],
+                    "node_user": params.get("node_user", "vastdata"),
+                    "node_password": params.get("node_password", ""),
+                    "switch_user": params.get("switch_user", ""),
+                    "switch_password": params.get("switch_password", ""),
+                    "username": params.get("username", ""),
+                    "password": params.get("password", ""),
+                    "api_token": params.get("token", ""),
+                }
+                # RM-13: feed the resolved candidate list so
+                # ``vnetmap.py --multiple-passwords`` gets every published
+                # default when Autofill Password is active.
+                if switch_password_candidates:
+                    vnetmap_creds["switch_password_candidates"] = list(switch_password_candidates)
+                vnetmap_wf.set_credentials(vnetmap_creds)
                 ok, prereq_msg = vnetmap_wf.validate_prerequisites()
                 if not ok:
                     job_logger.warning("Vnetmap prerequisites not met (%s) — skipping", prereq_msg)
@@ -2103,6 +2137,13 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         "username": params.get("switch_user", "cumulus"),
                         "password": switch_pw,
                     }
+                    # RM-13: hand the resolved candidate list through so
+                    # ``HealthChecker.run_switch_ssh_checks`` probes each
+                    # switch once and picks the password that actually
+                    # works, instead of silently 401'ing on any switch
+                    # that uses a different default.
+                    if switch_password_candidates:
+                        switch_ssh_config["password_candidates"] = list(switch_password_candidates)
                     if params.get("proxy_jump", True):
                         switch_ssh_config["proxy_jump"] = {
                             "host": params["cluster_ip"],
@@ -2443,6 +2484,16 @@ def _collect_port_mapping_web(
                 tunnel_addr = getattr(api_handler, "_api_host", None)
                 if tunnel_addr == params["cluster_ip"]:
                     tunnel_addr = None
+                # RM-13: the ``switch_password_candidates`` list is
+                # populated by ``_run_report_job`` when Autofill Password
+                # is active, so ``ExternalPortMapper._detect_switch_os``
+                # can probe each switch with every published default
+                # instead of auth-failing on the first rejection.
+                raw_candidates = params.get("switch_password_candidates") or []
+                if isinstance(raw_candidates, (list, tuple)):
+                    pw_candidates = [str(p) for p in raw_candidates if str(p)] or None
+                else:
+                    pw_candidates = None
                 mapper = ExternalPortMapper(
                     cluster_ip=params["cluster_ip"],
                     api_user=api_handler.username or "support",
@@ -2453,6 +2504,7 @@ def _collect_port_mapping_web(
                     switch_ips=switch_ips,
                     switch_user=params.get("switch_user", "cumulus"),
                     switch_password=params.get("switch_password", ""),
+                    switch_password_candidates=pw_candidates,
                     proxy_jump=bool(params.get("proxy_jump", True)),
                     tunnel_address=tunnel_addr,
                     switch_hostname_map=switch_hostname_map or None,

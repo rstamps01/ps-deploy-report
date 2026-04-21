@@ -16,11 +16,15 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests as _requests_lib
 
 from utils.logger import get_logger
+from utils.switch_password_candidates import (
+    BUILTIN_AUTOFILL_SWITCH_PASSWORDS as _SHARED_BUILTIN_AUTOFILL_SWITCH_PASSWORDS,
+    resolve_switch_password_candidates as _shared_resolve_switch_password_candidates,
+)
 
 logger = get_logger(__name__)
 
@@ -115,12 +119,13 @@ def _build_switch_auth_exhausted_message(
     users_part = ", ".join(users_tried) if users_tried else "unknown"
     return (
         f"Switch {switch_ip} auth exhausted: tried {candidate_count} credential "
-        f"candidate(s) with username(s) {users_part}; all rejected. Add the "
-        f"correct password to 'advanced_operations.default_switch_passwords' "
-        f"in config/config.yaml (or set the VAST_DEFAULT_SWITCH_PASSWORDS env "
-        f"var to a comma-separated list) and re-run. Switch operations that "
-        f"depend on {switch_ip} (vnetmap, switch_config) will be skipped or "
-        f"fail this run."
+        f"candidate(s) with username(s) {users_part}; all rejected (the VAST / "
+        f"Cumulus / MLNX-OS published defaults were included automatically). "
+        f"Add the site-specific password to "
+        f"'advanced_operations.default_switch_passwords' in config/config.yaml "
+        f"(or set the VAST_DEFAULT_SWITCH_PASSWORDS env var to a colon-separated "
+        f"list) and re-run. Switch operations that depend on {switch_ip} "
+        f"(vnetmap, switch_config) will be skipped or fail this run."
     )
 
 
@@ -188,73 +193,49 @@ class OneShotRunner:
     _SUPPORT_CREDS = {"username": "support", "password": "654321"}
     _ADMIN_CREDS = {"username": "admin", "password": "123456"}
 
-    # NOTE:  We deliberately do NOT ship a hardcoded fallback list of switch
-    # passwords in source here.  That would re-introduce the credential-leak
-    # class of issue addressed by the RM-1 remediation — operators would end
-    # up with plaintext defaults committed in the repo alongside source code
-    # intended to *redact* them.  Autofill candidates come from config or
-    # from the ``VAST_DEFAULT_SWITCH_PASSWORDS`` env var (colon-separated)
-    # only.
+    # RM-12: Autofill built-in defaults for the ``cumulus`` primary user.
+    #
+    # These are the three *published* default passwords documented in the
+    # VAST installation guide (``Vastdata1!`` and its mixed-case twin) and
+    # the Cumulus Linux factory default (``Cumu1usLinux!``).  They are NOT
+    # site-specific secrets; any operator with a VAST install doc or a
+    # Cumulus Linux doc already has them.
+    #
+    # The ``(admin, admin)`` MLNX-OS / Onyx factory default is contributed
+    # separately by :func:`utils.ssh_adapter.build_switch_credential_combos`
+    # so we do not list it here.  Site-specific per-switch passwords — the
+    # ones RM-1 Supplementary scrubbed from the repo — still belong in
+    # ``advanced_operations.default_switch_passwords`` in the operator's
+    # local (gitignored) ``config/config.yaml`` or in the
+    # ``VAST_DEFAULT_SWITCH_PASSWORDS`` environment variable.
+    #
+    # Shipping these three is the direct remediation for the regression
+    # surfaced by ``10.143.11.156`` after RM-1 Supplementary: autofill was
+    # advertised as "Autofill Password" in the UI but silently fell through
+    # to the single UI-entered password when the operator's config had an
+    # empty ``default_switch_passwords`` list.  Now "Autofill Password"
+    # actually autofills.
+    # Backward-compat alias for call sites and tests that reference the
+    # class-level constant.  Canonical source of truth now lives in
+    # :mod:`utils.switch_password_candidates` so the Reporter tile can
+    # reuse the same defaults without importing ``OneShotRunner``.
+    _BUILTIN_AUTOFILL_SWITCH_PASSWORDS: Tuple[str, ...] = _SHARED_BUILTIN_AUTOFILL_SWITCH_PASSWORDS
 
     def _resolve_switch_password_candidates(self) -> List[str]:
         """Build the ordered list of switch SSH passwords to try.
 
-        Precedence:
-          1. Explicit ``switch_password_candidates`` already on the credentials dict (UI override).
-          2. When autofill is enabled:
-               a. ``advanced_operations.default_switch_passwords`` list from
-                  ``config/config.yaml`` (deduplicated, primary first), and/or
-               b. ``VAST_DEFAULT_SWITCH_PASSWORDS`` environment variable (colon-separated,
-                  primary first); entries are appended to the config-derived list without
-                  duplicates.
-          3. Otherwise a single-entry list containing the user-entered ``switch_password``.
-
-        The operator-entered ``switch_password`` (primary) is always promoted to the head of the
-        list if present, so manual entry overrides autofill ordering.  If autofill is enabled but
-        neither config nor env var supplies candidates, ``_resolve_switch_password_candidates``
-        emits a one-line warning and returns whatever single password the UI did supply (or an
-        empty list) — it does **not** fall back to hardcoded defaults.
+        Delegates to :func:`utils.switch_password_candidates.resolve_switch_password_candidates`;
+        see that function's docstring for the full precedence rules.
+        The Reporter tile (``src.app._run_report_job``) calls the same
+        helper so both tiles share one implementation.
         """
         existing = self._credentials.get("switch_password_candidates")
-        if isinstance(existing, (list, tuple)) and existing:
-            return [str(p) for p in existing if str(p)]
-
-        candidates: List[str] = []
-        if self._use_default_creds:
-            try:
-                import yaml
-
-                if self._config_path:
-                    with open(self._config_path, "r", encoding="utf-8") as f:
-                        cfg = yaml.safe_load(f) or {}
-                    cfg_list = cfg.get("advanced_operations", {}).get("default_switch_passwords") or []
-                    for pw in cfg_list:
-                        if pw and str(pw) not in candidates:
-                            candidates.append(str(pw))
-            except Exception as exc:
-                logger.debug("Could not load default_switch_passwords from config: %s", exc)
-
-            import os as _os
-
-            env_raw = _os.environ.get("VAST_DEFAULT_SWITCH_PASSWORDS", "")
-            if env_raw:
-                for pw in env_raw.split(":"):
-                    if pw and pw not in candidates:
-                        candidates.append(pw)
-
-            if not candidates and not self._credentials.get("switch_password"):
-                logger.warning(
-                    "Autofill requested but no default switch passwords are configured. "
-                    "Populate advanced_operations.default_switch_passwords in config/config.yaml "
-                    "or set the VAST_DEFAULT_SWITCH_PASSWORDS environment variable "
-                    "(colon-separated, primary first)."
-                )
-
-        user_pw = self._credentials.get("switch_password", "")
-        if user_pw:
-            candidates = [user_pw] + [p for p in candidates if p != user_pw]
-
-        return candidates
+        return _shared_resolve_switch_password_candidates(
+            user_password=self._credentials.get("switch_password", ""),
+            config_path=self._config_path,
+            use_default_creds=self._use_default_creds,
+            existing=existing if isinstance(existing, (list, tuple)) else None,
+        )
 
     def _get_api_creds(self, phase: str) -> Dict[str, str]:
         """Return API credentials appropriate for the given phase.
