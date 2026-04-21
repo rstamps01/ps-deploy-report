@@ -77,6 +77,53 @@ class ValidationCheck:
     category: str = ""  # "credentials" | "connectivity" | "internet" | "tools" | "notice"
 
 
+def _build_switch_auth_exhausted_message(
+    *,
+    switch_ip: str,
+    candidate_count: int,
+    attempts: List[str],
+) -> str:
+    """RM-7: build an actionable ``[ERROR]`` message for an exhausted switch.
+
+    When pre-validation burns through every ``(user, password)`` combo
+    for a switch and none authenticate, the operator usually just sees a
+    wall of ``[WARN]`` lines about individual combos failing.  This
+    helper builds the single high-signal line that tells them exactly
+    which switch failed, how many combos were tried, which usernames
+    were attempted, and — crucially — where to add the real password so
+    the next run succeeds.
+
+    Kept as a module-level function so it's cheap to unit-test without
+    spinning up an ``OneShotRunner`` instance.
+    """
+    users_tried: List[str] = []
+    seen: set = set()
+    for line in attempts or []:
+        # Lines look like ``1. std-ssh cumulus@10.143.11.156: auth failed …``
+        # or ``... interactive-ssh admin@10.143.11.156: …``.  Extract
+        # everything between the last ``ssh `` and ``@`` for the user.
+        try:
+            head = line.split("@", 1)[0]
+            if " " in head:
+                candidate = head.rsplit(" ", 1)[-1].strip()
+                if candidate and candidate not in seen:
+                    seen.add(candidate)
+                    users_tried.append(candidate)
+        except Exception:
+            continue
+
+    users_part = ", ".join(users_tried) if users_tried else "unknown"
+    return (
+        f"Switch {switch_ip} auth exhausted: tried {candidate_count} credential "
+        f"candidate(s) with username(s) {users_part}; all rejected. Add the "
+        f"correct password to 'advanced_operations.default_switch_passwords' "
+        f"in config/config.yaml (or set the VAST_DEFAULT_SWITCH_PASSWORDS env "
+        f"var to a comma-separated list) and re-run. Switch operations that "
+        f"depend on {switch_ip} (vnetmap, switch_config) will be skipped or "
+        f"fail this run."
+    )
+
+
 @dataclass
 class OneShotState:
     """Tracks overall one-shot execution progress."""
@@ -849,6 +896,22 @@ class OneShotRunner:
                     failure_bits.append(f"auth failed on {len(auth_failures)}/{total} ({', '.join(auth_failures)})")
                 if unreachables:
                     failure_bits.append(f"unreachable {len(unreachables)}/{total} ({', '.join(unreachables)})")
+
+                # RM-7: surface one actionable ``[ERROR]`` line per auth-failed
+                # switch before the per-combo ``[WARN]`` attempt log so the
+                # operator sees the fix (which config knob to populate)
+                # instead of having to scroll through combo noise.  The
+                # detail log below is kept for triage parity.
+                for ip in auth_failures:
+                    attempts = results_by_ip[ip].get("attempt_log") or []
+                    self._emit(
+                        "error",
+                        _build_switch_auth_exhausted_message(
+                            switch_ip=ip,
+                            candidate_count=len(candidates),
+                            attempts=attempts,
+                        ),
+                    )
 
                 # Echo the per-combo attempt log for each failing switch so
                 # the operator (and future me) can see exactly which
@@ -1681,15 +1744,17 @@ class OneShotRunner:
 
             cluster_ip = self._credentials.get("cluster_ip", "").strip()
             resolved_name = getattr(self, "_resolved_cluster_name", None) or cluster_ip or "Unknown"
-            # RM-5: honour the ``bundle.include_prior_vperfsanity`` flag
-            # from config.yaml (default on).  Operators who prefer to hard
-            # exclude prior vperfsanity output can turn it off without a
-            # code change.
+            # RM-5 / RM-6: honour the ``bundle.include_prior_*`` flags
+            # from config.yaml (default on).  Operators who prefer to
+            # hard exclude prior vperfsanity or vnetmap output can turn
+            # these off without a code change.
             bundle_cfg = (self._load_config() or {}).get("bundle") or {}
             include_prior_vperf = bool(bundle_cfg.get("include_prior_vperfsanity", True))
+            include_prior_vnet = bool(bundle_cfg.get("include_prior_vnetmap", True))
             bundler = ResultBundler(
                 output_callback=self._output_callback,
                 include_prior_vperfsanity=include_prior_vperf,
+                include_prior_vnetmap=include_prior_vnet,
             )
             bundler.set_metadata(
                 cluster_name=resolved_name,

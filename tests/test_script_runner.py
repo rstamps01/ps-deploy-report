@@ -269,6 +269,105 @@ class TestOutputClassification:
         assert result is None
 
 
+class TestStderrTracebackClassification:
+    """RM-8: a full Python traceback on stderr must render as one
+    contiguous [ERROR] block, not a checkerboard of [ERROR]/[WARN].
+    The classifier is stateful (per-stream) so indented source lines
+    beneath a ``File "...", line N, in foo`` frame inherit ``error``.
+    """
+
+    def test_frame_header_classifies_as_error(self, runner):
+        line = '  File "/opt/vast/vnetmap.py", line 1234, in main'
+        assert runner._classify_stderr_line(line) == "error"
+
+    def test_traceback_header_classifies_as_error(self, runner):
+        assert runner._classify_stderr_line("Traceback (most recent call last):") == "error"
+
+    def test_indented_code_snippet_inside_traceback_is_error(self, runner):
+        """RM-8 core case: the indented source line between two
+        ``File "..."`` frames used to be classified as ``warn``, which
+        made tracebacks look like [ERROR][WARN][WARN][ERROR].  After
+        RM-8 it must classify as ``error``.
+        """
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("Traceback (most recent call last):") == "error"
+        assert runner._classify_stderr_line('  File "vnetmap.py", line 42, in main') == "error"
+        assert runner._classify_stderr_line("    return subprocess.check_output(cmd, shell=True)") == "error"
+        assert runner._classify_stderr_line('  File "api.py", line 17, in connect') == "error"
+        assert runner._classify_stderr_line("    raise ConnectionError('fabric API unreachable')") == "error"
+        assert runner._classify_stderr_line("ConnectionError: fabric API unreachable") == "error"
+
+    def test_full_traceback_renders_as_contiguous_error_block(self, runner):
+        """End-to-end: feeding the classifier a realistic vnetmap
+        traceback (matching what the Test Suite showed) yields every
+        line classified as ``error`` — no inline ``warn`` breaks.
+        """
+        runner._reset_stderr_classifier_state()
+        traceback_lines = [
+            "Traceback (most recent call last):",
+            '  File "/opt/vast/vnetmap.py", line 1234, in main',
+            "    topology = build_topology(switches)",
+            '  File "/opt/vast/vnetmap.py", line 567, in build_topology',
+            "    client.connect(switch_ip)",
+            '  File "/opt/vast/api.py", line 99, in connect',
+            "    raise Exception(f'Failed to connect to switch {switch_ip}')",
+            "Exception: Failed to connect to switch 10.143.11.156",
+        ]
+        levels = [runner._classify_stderr_line(line) for line in traceback_lines]
+        assert all(
+            level == "error" for level in levels
+        ), f"RM-8: expected every traceback line to classify as 'error', got {levels}"
+
+    def test_blank_line_after_traceback_resets_state(self, runner):
+        """A blank line ends the traceback block.  Subsequent indented
+        output (unrelated) must not be mis-classified as ``error``.
+        """
+        runner._reset_stderr_classifier_state()
+        runner._classify_stderr_line("Traceback (most recent call last):")
+        runner._classify_stderr_line('  File "x.py", line 1, in y')
+        runner._classify_stderr_line("    do_thing()")
+        # Blank line ends the block.
+        assert runner._classify_stderr_line("") == "info"
+        # Now an indented line is not part of any traceback; default warn.
+        assert runner._classify_stderr_line("    some debug line") == "warn"
+
+    def test_ssh_host_key_warning_stays_info(self, runner):
+        """RM-8 must not regress the pre-existing SSH host-key warning
+        classification — these are informational, not errors.
+        """
+        runner._reset_stderr_classifier_state()
+        line = "Warning: Permanently added '10.143.11.156' (ED25519) to the list of known hosts."
+        assert runner._classify_stderr_line(line) == "info"
+
+    def test_ping_diagnostic_stays_warn(self, runner):
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("ping: cannot resolve host") == "warn"
+
+    def test_exception_summary_regex_matches_common_exceptions(self, runner):
+        """Exception-summary detection must handle the tail of a
+        traceback for common exception classes (ValueError, KeyError,
+        RuntimeError, TimeoutError, …) so they classify as ``error``
+        and reset the traceback-continuation state.
+        """
+        for exc_line in [
+            "ValueError: bad literal",
+            "KeyError: 'missing'",
+            "RuntimeError: boom",
+            "TimeoutError: connection timed out",
+            "paramiko.ssh_exception.AuthenticationException: authentication failed",
+        ]:
+            runner._reset_stderr_classifier_state()
+            assert runner._classify_stderr_line(exc_line) == "error", f"expected {exc_line!r} to classify as error"
+
+    def test_unrelated_stderr_after_reset_classifies_as_warn(self, runner):
+        """After ``_reset_stderr_classifier_state`` an indented line
+        that isn't preceded by a traceback header must default to warn,
+        the same as before RM-8.
+        """
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("   some odd stderr line") == "warn"
+
+
 class TestCopyToRemote:
     @patch("script_runner.run_ssh_command")
     def test_copy_to_remote_success(self, mock_ssh, runner, tmp_path):

@@ -216,6 +216,17 @@ bundle:
   # to false if your workflow forbids shipping any non-current data.
   include_prior_vperfsanity: true
 
+  # RM-6: same policy for vnetmap.  When a switch SSH/API auth failure
+  # prevents vnetmap from completing in this run, a prior
+  # vnetmap_results_*.json (and paired vnetmap_output_*.txt) on disk is
+  # considered "stale".  With this flag enabled (default), the bundler
+  # ships those prior files under topology/vnetmap_PRIOR_<name>.json and
+  # topology/vnetmap_output_PRIOR_<name>.txt with a banner so the
+  # topology folder never regresses to a bare STALE placeholder when a
+  # single switch blocks the run.  Set to false to forbid shipping any
+  # non-current topology data.
+  include_prior_vnetmap: true
+
 # Security Configuration
 security:
   # Credential handling

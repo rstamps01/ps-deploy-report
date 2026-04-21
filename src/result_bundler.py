@@ -32,7 +32,44 @@ STATUS_SKIPPED = "skipped"
 class ResultBundler:
     """Bundles validation results into downloadable ZIP archives."""
 
-    BUNDLE_MANIFEST_VERSION = "1.2"
+    BUNDLE_MANIFEST_VERSION = "1.3"
+
+    # RM-6: generalization of the RM-5 "attach prior output with a
+    # banner instead of a one-line STALE placeholder" rescue.
+    #
+    # Keys are category names (must line up with ``_stale_files`` keys).
+    # Values carry the human-readable label used in the banner + the
+    # rationale block that explains *why* the file is prior data.  Adding
+    # a new eligible category is a two-line change: one entry here plus
+    # a matching ``include_prior_<category>`` kwarg on the public factory.
+    _PRIOR_RESCUE: Dict[str, Dict[str, Any]] = {
+        "vperfsanity": {
+            "human_name": "vperfsanity",
+            "rationale": [
+                "vperfsanity was not rerun during this run (it can take up to",
+                "30 minutes), so this file is included for continuity only.",
+                "Do NOT treat these numbers as current-run performance data.",
+            ],
+        },
+        "vnetmap": {
+            "human_name": "vnetmap",
+            "rationale": [
+                "vnetmap could not complete during this run (typically because",
+                "one or more switches failed SSH/API auth), so this file is",
+                "included for topology continuity only.",
+                "Do NOT treat this LLDP map as reflecting current-run cabling.",
+            ],
+        },
+        "vnetmap_output": {
+            "human_name": "vnetmap raw output",
+            "rationale": [
+                "vnetmap could not complete during this run (typically because",
+                "one or more switches failed SSH/API auth), so this raw output",
+                "is included for topology continuity only.",
+                "Do NOT treat this LLDP dump as reflecting current-run cabling.",
+            ],
+        },
+    }
 
     def __init__(
         self,
@@ -40,6 +77,7 @@ class ResultBundler:
         output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
         *,
         include_prior_vperfsanity: bool = True,
+        include_prior_vnetmap: bool = True,
     ):
         if output_dir is None:
             from utils import get_data_dir
@@ -53,16 +91,22 @@ class ResultBundler:
         self._operation_status: Dict[str, str] = {}
         self._since: Optional[datetime] = None
         self._metadata: Dict[str, Any] = {}
-        # RM-5: when vperfsanity is ``stale`` (a pre-run file exists but
-        # wasn't regenerated this run) we ship the prior output under a
-        # ``vperfsanity_PRIOR_<name>.txt`` arcname with a banner so the
-        # bundle never regresses from "here is last run's performance data"
-        # to "STALE placeholder, no data attached".  Operators can opt out
-        # by setting ``bundle.include_prior_vperfsanity: false`` in config
-        # / passing ``include_prior_vperfsanity=False`` when constructing
-        # the bundler.  Recorded in manifest as ``vperfsanity_prior_source``.
+        # RM-5: rescue prior ``vperfsanity`` output when the current run
+        # didn't regenerate it (it can take 30 min) — recorded in the
+        # manifest as ``vperfsanity_prior_source``.  Opt out by passing
+        # ``include_prior_vperfsanity=False`` / setting
+        # ``bundle.include_prior_vperfsanity: false`` in config.
         self._include_prior_vperfsanity = bool(include_prior_vperfsanity)
         self._prior_vperfsanity_source: Optional[Path] = None
+        # RM-6: same story for ``vnetmap`` — when a switch auth failure
+        # or API blip kills the run we'd otherwise regress from a real
+        # LLDP topology file to a one-line ``vnetmap_STALE.txt`` note.
+        # ``include_prior_vnetmap`` applies to both the parsed JSON
+        # (category ``vnetmap``) and the raw text dump (category
+        # ``vnetmap_output``) since they're two halves of the same file.
+        self._include_prior_vnetmap = bool(include_prior_vnetmap)
+        self._prior_vnetmap_source: Optional[Path] = None
+        self._prior_vnetmap_output_source: Optional[Path] = None
 
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         """Emit output message via callback, or fall back to the Python logger."""
@@ -429,6 +473,12 @@ class ResultBundler:
             "network_config",
             "switch_config",
             "vnetmap",
+            # RM-6: raw vnetmap output is tracked separately so the
+            # bundler can rescue the TXT half of a stale run independently
+            # of the JSON half (both live in ``stale``/``collected`` but
+            # without an entry here the status never flips to ``stale``
+            # and the placeholder/rescue loop treats it as missing).
+            "vnetmap_output",
             "vperfsanity",
             "support_tools",
             "log_bundle",
@@ -533,17 +583,22 @@ class ResultBundler:
             elif status == STATUS_STALE:
                 stale = self._stale_files.get(category)
                 fname = stale.name if stale else ""
-                # RM-5: when vperfsanity STALE was rescued as a PRIOR file,
-                # say so explicitly in SUMMARY.md rather than claim it was
-                # excluded.  Readers of the bundle can then trust the
-                # ``performance/`` folder holds continuity data.
-                if (
-                    category == "vperfsanity"
-                    and self._prior_vperfsanity_source is not None
-                    and self._prior_vperfsanity_source == stale
-                ):
+                # RM-5/RM-6: when a STALE category was rescued as a PRIOR
+                # file, say so explicitly in SUMMARY.md rather than claim
+                # it was excluded.  Readers of the bundle can then trust
+                # the relevant folder holds continuity data instead of a
+                # one-line placeholder.
+                rescued_source: Optional[Path] = None
+                if category == "vperfsanity":
+                    rescued_source = self._prior_vperfsanity_source
+                elif category == "vnetmap":
+                    rescued_source = self._prior_vnetmap_source
+                elif category == "vnetmap_output":
+                    rescued_source = self._prior_vnetmap_output_source
+
+                if rescued_source is not None and rescued_source == stale:
                     lines.append(
-                        f"- **{name}**: STALE (included as PRIOR with banner) — " f"`vperfsanity_PRIOR_{fname}`"
+                        f"- **{name}**: STALE (included as PRIOR with banner) — " f"`{category}_PRIOR_{fname}`"
                     )
                 else:
                     lines.append(f"- **{name}**: {label} — `{fname}` (not included)")
@@ -634,6 +689,8 @@ class ResultBundler:
             # Reset per-run side effects so repeat calls on the same
             # bundler instance don't leak state from a previous bundle.
             self._prior_vperfsanity_source = None
+            self._prior_vnetmap_source = None
+            self._prior_vnetmap_output_source = None
 
             for category, filepath in self._collected_files.items():
                 if filepath.exists():
@@ -647,6 +704,7 @@ class ResultBundler:
                 "network_config": "network",
                 "switch_config": "switches",
                 "vnetmap": "topology",
+                "vnetmap_output": "topology",
                 "vperfsanity": "performance",
                 "support_tools": "diagnostics",
                 "log_bundle": "diagnostics",
@@ -671,6 +729,15 @@ class ResultBundler:
                     self._prior_vperfsanity_source.name if self._prior_vperfsanity_source else None
                 ),
                 "include_prior_vperfsanity": self._include_prior_vperfsanity,
+                # RM-6: vnetmap prior-rescue sibling fields.  Both entries
+                # can be populated in a single run because the structured
+                # JSON (``vnetmap``) and raw dump (``vnetmap_output``) are
+                # two halves of the same collection.
+                "vnetmap_prior_source": (self._prior_vnetmap_source.name if self._prior_vnetmap_source else None),
+                "vnetmap_output_prior_source": (
+                    self._prior_vnetmap_output_source.name if self._prior_vnetmap_output_source else None
+                ),
+                "include_prior_vnetmap": self._include_prior_vnetmap,
             }
             zf.writestr("manifest.json", json.dumps(manifest, indent=2))
 
@@ -734,10 +801,12 @@ class ResultBundler:
         """Write per-category placeholder files for anything not collected.
 
         Split out from :meth:`create_bundle` so the RM-5 "attach prior
-        vperfsanity output instead of a one-line STALE note" branch has a
-        single, testable home.  Any side effects (e.g. setting
-        ``self._prior_vperfsanity_source``) happen inside this method and
-        are then reflected in the manifest by the caller.
+        vperfsanity output instead of a one-line STALE note" rescue — and
+        its RM-6 generalization to ``vnetmap`` / ``vnetmap_output`` — has
+        a single, testable home.  Any side effects (e.g. setting
+        ``self._prior_vperfsanity_source`` or ``self._prior_vnetmap_source``)
+        happen inside this method and are then reflected in the manifest
+        by the caller.
         """
         for cat, folder in placeholder_categories.items():
             if cat in self._collected_files:
@@ -747,46 +816,25 @@ class ResultBundler:
                 stale_path = self._stale_files.get(cat)
                 stale_name = stale_path.name if stale_path else ""
 
-                # RM-5: vperfsanity gets special treatment — ship the
-                # prior output (with a loud banner) under a ``_PRIOR_``
-                # arcname instead of the bare _STALE placeholder, so
-                # bundles never regress from real data to a one-line
-                # note when a run simply didn't rerun the 30-minute
-                # performance check.  Fully opt-out via the bundler's
-                # ``include_prior_vperfsanity`` flag.
+                # RM-5/RM-6: rescue prior output for any category in
+                # ``_PRIOR_RESCUE`` so bundles never regress from real
+                # data to a one-line STALE note.  Eligibility requires
+                # (a) an entry in ``_PRIOR_RESCUE``, (b) the per-category
+                # include flag is on, and (c) the stale file still
+                # exists on disk.
                 if (
-                    cat == "vperfsanity"
-                    and self._include_prior_vperfsanity
+                    cat in self._PRIOR_RESCUE
+                    and self._is_prior_rescue_enabled(cat)
                     and stale_path is not None
                     and stale_path.exists()
                 ):
-                    try:
-                        prior_body = stale_path.read_text(encoding="utf-8", errors="replace")
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("Failed to read prior vperfsanity file %s: %s", stale_path, exc)
-                        prior_body = ""
-                    try:
-                        prior_mtime = datetime.fromtimestamp(stale_path.stat().st_mtime).isoformat(timespec="seconds")
-                    except OSError:
-                        prior_mtime = "unknown"
-                    banner = (
-                        "=" * 72 + "\n"
-                        "NOTE: This is the prior vperfsanity output from an earlier run.\n"
-                        f"Source file:    {stale_name}\n"
-                        f"Original mtime: {prior_mtime}\n"
-                        f"Run started:    {self._since.isoformat(timespec='seconds') if self._since else 'unknown'}\n"
-                        "vperfsanity was not rerun during this run (it can take up to\n"
-                        "30 minutes), so this file is included for continuity only.\n"
-                        "Do NOT treat these numbers as current-run performance data.\n" + "=" * 72 + "\n\n"
-                    )
-                    arcname = f"{folder}/vperfsanity_PRIOR_{stale_name}"
-                    zf.writestr(arcname, banner + prior_body)
-                    self.emit(
-                        "info",
-                        f"Attached prior vperfsanity output as {arcname} (with banner)",
-                    )
-                    self._prior_vperfsanity_source = stale_path
-                    continue
+                    rescued = self._rescue_prior_file(zf, cat, folder, stale_path)
+                    if rescued:
+                        continue
+                    # Fall through to the STALE placeholder below if the
+                    # rescue couldn't read the file for some reason — the
+                    # operator still sees a STALE note rather than a
+                    # silent empty topology/performance folder.
 
                 note = (
                     f"No fresh {cat.replace('_', ' ')} results for cluster {cip} "
@@ -809,6 +857,85 @@ class ResultBundler:
                 arcname = f"{folder}/{cat}_NOT_FOUND.txt"
             zf.writestr(arcname, note)
             self.emit("info", f"Placeholder: {arcname}")
+
+    def _is_prior_rescue_enabled(self, category: str) -> bool:
+        """Return whether prior-file rescue is enabled for *category*.
+
+        Keeps the per-category flag mapping in one place so a new
+        rescue-eligible category only needs an entry in
+        ``_PRIOR_RESCUE`` plus a line here.
+        """
+        if category == "vperfsanity":
+            return self._include_prior_vperfsanity
+        if category in ("vnetmap", "vnetmap_output"):
+            return self._include_prior_vnetmap
+        return False
+
+    def _record_prior_source(self, category: str, stale_path: Path) -> None:
+        """Record the rescued prior file so the manifest picks it up."""
+        if category == "vperfsanity":
+            self._prior_vperfsanity_source = stale_path
+        elif category == "vnetmap":
+            self._prior_vnetmap_source = stale_path
+        elif category == "vnetmap_output":
+            self._prior_vnetmap_output_source = stale_path
+
+    def _rescue_prior_file(
+        self,
+        zf: zipfile.ZipFile,
+        category: str,
+        folder: str,
+        stale_path: Path,
+    ) -> bool:
+        """Attach *stale_path* as a PRIOR file (with banner) to *zf*.
+
+        Returns ``True`` when the rescue succeeded and the caller should
+        skip writing a STALE placeholder; ``False`` otherwise (fall
+        through to STALE note so the operator isn't left with a silent
+        empty folder).
+        """
+        rescue_cfg = self._PRIOR_RESCUE.get(category)
+        if not rescue_cfg:
+            return False
+
+        try:
+            prior_body = stale_path.read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to read prior %s file %s: %s", category, stale_path, exc)
+            return False
+
+        try:
+            prior_mtime = datetime.fromtimestamp(stale_path.stat().st_mtime).isoformat(timespec="seconds")
+        except OSError:
+            prior_mtime = "unknown"
+
+        stale_name = stale_path.name
+        human_name = rescue_cfg.get("human_name", category)
+        rationale: List[str] = list(rescue_cfg.get("rationale", []))
+
+        run_started = self._since.isoformat(timespec="seconds") if self._since else "unknown"
+        banner_lines: List[str] = [
+            "=" * 72,
+            f"NOTE: This is the prior {human_name} output from an earlier run.",
+            f"Source file:    {stale_name}",
+            f"Original mtime: {prior_mtime}",
+            f"Run started:    {run_started}",
+        ]
+        banner_lines.extend(rationale)
+        banner_lines.append("=" * 72)
+        banner = "\n".join(banner_lines) + "\n\n"
+
+        # Keep the original extension so consumers (.json parsers, etc)
+        # can still open the file by type — the PRIOR marker goes in the
+        # stem not the suffix.
+        arcname = f"{folder}/{category}_PRIOR_{stale_name}"
+        zf.writestr(arcname, banner + prior_body)
+        self.emit(
+            "info",
+            f"Attached prior {human_name} output as {arcname} (with banner)",
+        )
+        self._record_prior_source(category, stale_path)
+        return True
 
     @staticmethod
     def _archive_path(category: str, filename: str) -> str:
@@ -844,10 +971,12 @@ def get_result_bundler(
     output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
     *,
     include_prior_vperfsanity: bool = True,
+    include_prior_vnetmap: bool = True,
 ) -> ResultBundler:
     """Factory function for creating ResultBundler instances."""
     return ResultBundler(
         output_dir=output_dir,
         output_callback=output_callback,
         include_prior_vperfsanity=include_prior_vperfsanity,
+        include_prior_vnetmap=include_prior_vnetmap,
     )

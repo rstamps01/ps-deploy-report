@@ -507,23 +507,33 @@ class TestCategoryStatus:
 
 
 class TestManifestAndPlaceholders:
-    def test_manifest_includes_categories_and_stale(self, bundler, mock_results):
+    def test_manifest_includes_categories_and_stale(self, tmp_path, mock_results):
         """manifest.json must advertise per-category status and stale files
         so downstream consumers can detect silent regressions.
+
+        RM-6: the STALE-placeholder assertion is verified against a
+        bundler with ``include_prior_vnetmap=False`` because the default
+        is now to rescue prior vnetmap output under a ``_PRIOR_`` arcname
+        rather than ship a bare ``_STALE.txt`` note.  The manifest-level
+        STATUS_STALE tracking is unchanged either way.
         """
         scripts = mock_results / "scripts"
         stale_file = scripts / f"vnetmap_results_{CLUSTER_A_IP}_20260101_120000.json"
         _age_file(stale_file, seconds_in_past=3600)
 
-        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler_off = ResultBundler(
+            output_dir=tmp_path / "bundles_off",
+            include_prior_vnetmap=False,
+        )
+        bundler_off.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
         since = datetime.now() - timedelta(minutes=5)
-        bundler.collect_results(
+        bundler_off.collect_results(
             mock_results,
             cluster_ip=CLUSTER_A_IP,
             since=since,
             operation_status={"support_tools": "failed"},
         )
-        bundle_path = bundler.create_bundle()
+        bundle_path = bundler_off.create_bundle()
 
         with zipfile.ZipFile(bundle_path, "r") as zf:
             manifest = json.loads(zf.read("manifest.json"))
@@ -535,12 +545,13 @@ class TestManifestAndPlaceholders:
         assert manifest["stale"]["vnetmap"] == stale_file.name
         assert manifest["run_started_at"] is not None
 
-        # Stale category gets a _STALE placeholder, not the old _NOT_FOUND
+        # With the RM-6 opt-out flag off, stale vnetmap still produces a
+        # _STALE placeholder rather than the old _NOT_FOUND.
         assert any(n.endswith("vnetmap_STALE.txt") for n in names)
         assert not any(n.endswith("vnetmap_NOT_FOUND.txt") for n in names)
         # Failed category gets a _FAILED placeholder
         assert any(n.endswith("support_tools_FAILED.txt") for n in names)
-        # Stale file itself must NOT be bundled
+        # Stale file itself must NOT be bundled (under the opt-out path)
         assert not any(stale_file.name in n for n in names)
 
     def test_summary_mentions_category_status(self, bundler, mock_results):
@@ -700,3 +711,179 @@ class TestPriorVperfsanity:
 
         assert b_on._include_prior_vperfsanity is True
         assert b_off._include_prior_vperfsanity is False
+
+
+# ===================================================================
+# TestPriorVnetmap (RM-6)
+# ===================================================================
+
+
+class TestPriorVnetmap:
+    """RM-6: when ``vnetmap`` is STATUS_STALE (the run couldn't complete —
+    typically because a switch failed SSH/API auth — but a prior
+    ``vnetmap_results_*.json`` and/or ``vnetmap_output_*.txt`` exists on
+    disk), the bundler must attach the prior file(s) under
+    ``topology/vnetmap_PRIOR_<name>.json`` / ``topology/vnetmap_output_PRIOR_<name>.txt``
+    with a banner, unless the caller opts out via
+    ``include_prior_vnetmap=False``.
+    """
+
+    def _prepare_stale_vnetmap(self, mock_results):
+        """Age the vnetmap JSON + raw TXT so the bundler treats them as STALE.
+
+        Also creates the paired ``vnetmap_output_*.txt`` that the bundler's
+        ``_record`` path expects, since the ``mock_results`` fixture only
+        creates the JSON.
+        """
+        scripts = mock_results / "scripts"
+        stale_json = scripts / f"vnetmap_results_{CLUSTER_A_IP}_20260101_120000.json"
+        stale_txt = scripts / f"vnetmap_output_{CLUSTER_A_IP}_20260101_120000.txt"
+
+        assert stale_json.exists()
+        stale_json.write_text(json.dumps({"cluster_ip": CLUSTER_A_IP, "nodes": ["cn1", "cn2"], "links": []}))
+        stale_txt.write_text("PRIOR_RUN_VNETMAP_RAW\nlldp neighbor sw1 eth0 <-> cn1 eth0\n")
+
+        _age_file(stale_json, seconds_in_past=3600)
+        _age_file(stale_txt, seconds_in_past=3600)
+        return stale_json, stale_txt
+
+    def test_prior_vnetmap_json_attached_with_banner(self, bundler, mock_results):
+        stale_json, _ = self._prepare_stale_vnetmap(mock_results)
+
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        since = datetime.now() - timedelta(minutes=5)
+        bundler.collect_results(mock_results, cluster_ip=CLUSTER_A_IP, since=since)
+        bundle_path = bundler.create_bundle()
+
+        with zipfile.ZipFile(bundle_path, "r") as zf:
+            names = zf.namelist()
+            arcname = f"topology/vnetmap_PRIOR_{stale_json.name}"
+            assert arcname in names, f"Expected {arcname} in {names}"
+            body = zf.read(arcname).decode("utf-8")
+
+            assert not any(n.endswith("vnetmap_STALE.txt") for n in names), (
+                "RM-6: prior-file rescue should replace the bare vnetmap " "STALE placeholder, not ship alongside it"
+            )
+
+        assert "prior vnetmap output" in body.lower()
+        assert f"Source file:    {stale_json.name}" in body
+        assert "Do NOT treat this LLDP map" in body
+        assert "cluster_ip" in body
+
+    def test_prior_vnetmap_raw_output_attached_with_banner(self, bundler, mock_results):
+        """Raw ``vnetmap_output_*.txt`` gets its own PRIOR arcname separate
+        from the JSON half so consumers that only look at the text dump
+        aren't silently left with a STALE note.
+        """
+        _, stale_txt = self._prepare_stale_vnetmap(mock_results)
+
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(minutes=5),
+        )
+        bundle_path = bundler.create_bundle()
+
+        with zipfile.ZipFile(bundle_path, "r") as zf:
+            names = zf.namelist()
+            arcname = f"topology/vnetmap_output_PRIOR_{stale_txt.name}"
+            assert arcname in names, f"Expected {arcname} in {names}"
+            body = zf.read(arcname).decode("utf-8")
+
+        assert "prior vnetmap raw output" in body.lower()
+        assert "PRIOR_RUN_VNETMAP_RAW" in body
+
+    def test_manifest_records_vnetmap_prior_sources_and_flag(self, bundler, mock_results):
+        stale_json, stale_txt = self._prepare_stale_vnetmap(mock_results)
+
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(minutes=5),
+        )
+        bundle_path = bundler.create_bundle()
+
+        with zipfile.ZipFile(bundle_path, "r") as zf:
+            manifest = json.loads(zf.read("manifest.json"))
+
+        assert manifest["version"] >= "1.3"
+        assert manifest["vnetmap_prior_source"] == stale_json.name
+        assert manifest["vnetmap_output_prior_source"] == stale_txt.name
+        assert manifest["include_prior_vnetmap"] is True
+        assert manifest["categories"]["vnetmap"] == STATUS_STALE
+        assert manifest["stale"]["vnetmap"] == stale_json.name
+
+    def test_summary_marks_vnetmap_as_prior(self, bundler, mock_results):
+        stale_json, _ = self._prepare_stale_vnetmap(mock_results)
+
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(minutes=5),
+        )
+        bundler.create_bundle()
+        summary = bundler.generate_summary()
+
+        assert f"vnetmap_PRIOR_{stale_json.name}" in summary
+        assert "included as PRIOR with banner" in summary
+
+    def test_include_prior_vnetmap_false_falls_back_to_placeholder(self, tmp_path, mock_results):
+        """With the opt-out flag off, the bundler ships a bare
+        ``vnetmap_STALE.txt`` placeholder and records
+        ``vnetmap_prior_source`` as ``None`` in the manifest.
+        """
+        bundler_off = ResultBundler(
+            output_dir=tmp_path / "bundles_off",
+            include_prior_vnetmap=False,
+        )
+
+        stale_json, _ = self._prepare_stale_vnetmap(mock_results)
+
+        bundler_off.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler_off.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(minutes=5),
+        )
+        bundle_path = bundler_off.create_bundle()
+
+        with zipfile.ZipFile(bundle_path, "r") as zf:
+            names = zf.namelist()
+            manifest = json.loads(zf.read("manifest.json"))
+
+        assert any(n.endswith("vnetmap_STALE.txt") for n in names)
+        assert not any(f"vnetmap_PRIOR_{stale_json.name}" in n for n in names)
+        assert manifest["vnetmap_prior_source"] is None
+        assert manifest["vnetmap_output_prior_source"] is None
+        assert manifest["include_prior_vnetmap"] is False
+
+    def test_fresh_vnetmap_does_not_trigger_prior_rescue(self, bundler, mock_results):
+        """If vnetmap ran this run (STATUS_OK), no PRIOR copy should land
+        in the archive and the manifest fields must stay ``None``.
+        """
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(hours=1),
+        )
+        bundle_path = bundler.create_bundle()
+
+        with zipfile.ZipFile(bundle_path, "r") as zf:
+            names = zf.namelist()
+            manifest = json.loads(zf.read("manifest.json"))
+
+        assert not any("vnetmap_PRIOR_" in n for n in names)
+        assert manifest["vnetmap_prior_source"] is None
+        assert manifest["vnetmap_output_prior_source"] is None
+
+    def test_factory_propagates_include_prior_vnetmap_flag(self, tmp_path):
+        """The factory must forward ``include_prior_vnetmap`` to the bundler."""
+        b_on = get_result_bundler(output_dir=tmp_path)
+        b_off = get_result_bundler(output_dir=tmp_path, include_prior_vnetmap=False)
+
+        assert b_on._include_prior_vnetmap is True
+        assert b_off._include_prior_vnetmap is False

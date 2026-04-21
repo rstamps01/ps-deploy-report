@@ -7,6 +7,114 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.4] - 2026-03-21
+
+Test-Suite log-triage follow-up — addresses three defects (RM-6..RM-8)
+surfaced by triage of the 7:59:55 operator-log excerpt from bundle
+`validation_bundle_selab-var-202_20260421_075955.zip`. All fixes are
+additive on top of v1.5.3; no behaviour changes are gated on a prior
+schema upgrade.
+
+### Fixed
+
+- **RM-6: Bundle rescues prior `vnetmap` output when a switch auth
+  failure kills the run.** The RM-5 "attach prior vperfsanity output
+  instead of a one-line STALE placeholder" rescue is generalised so
+  `vnetmap` gets the same treatment. When the current run's
+  `VnetmapWorkflow` can't complete (typically because one switch
+  rejects every candidate password and the `vnetmap.py` binary needs a
+  single password that works across all switches) but a previous run
+  left a `vnetmap_results_<ip>_<ts>.json` (and paired
+  `vnetmap_output_<ip>_<ts>.txt`) on disk, the bundler now ships both
+  files under `topology/vnetmap_PRIOR_<name>.json` and
+  `topology/vnetmap_output_PRIOR_<name>.txt` with a banner explaining
+  their prior-run status. Operators who forbid shipping any non-current
+  topology data can turn this off via `bundle.include_prior_vnetmap:
+  false` in `config/config.yaml` (the flag defaults to `true`, matching
+  the RM-5 flag policy).
+- **RM-7: Actionable `[ERROR]` line when pre-validation exhausts all
+  credential candidates for a switch.** Before this release an
+  auth-failure for a single switch rendered as a stack of `[WARN]`
+  lines (`combo 1/N …: auth failed`, `combo 2/N …: auth failed`, …)
+  with no single high-signal message pointing the operator at the
+  config knob to populate. `OneShotRunner._validate_switch_ssh` now
+  emits one `[ERROR]` per auth-exhausted switch naming the IP, the
+  count of candidates tried, the usernames attempted, and explicit
+  remediation — populate `advanced_operations.default_switch_passwords`
+  in `config/config.yaml` or set `VAST_DEFAULT_SWITCH_PASSWORDS`.
+  The per-combo `[WARN]` detail log is kept intact for triage parity.
+  Unreachable switches (TCP timeouts) do not trigger this message — the
+  fix for those is firewall/VPN, not password config.
+- **RM-8: Python tracebacks on stderr render as one contiguous
+  `[ERROR]` block.** Before this release,
+  `ScriptRunner._classify_stderr_line` was a stateless classifier that
+  matched the traceback header and the `File "...", line N, in foo`
+  frame headers as `error`, but fell through to the default `warn` for
+  the indented source-excerpt lines Python prints beneath each frame.
+  A single vnetmap traceback therefore rendered as
+  `[ERROR][WARN][WARN][ERROR][WARN][WARN][ERROR]` in the operator log,
+  which was visually incoherent and made quick triage harder.
+  `_classify_stderr_line` is now an instance method with a
+  per-stream `_stderr_in_traceback` state flag; indented lines inside a
+  traceback block classify as `error`, and common exception-summary
+  tails (`ValueError:`, `KeyError:`, `RuntimeError:`,
+  `paramiko.ssh_exception.AuthenticationException:`, etc.) both
+  classify as `error` and turn the state back off so unrelated stderr
+  downstream isn't miscoloured. State is reset at the start of every
+  remote-command invocation to prevent cross-command contamination.
+
+### Changed
+
+- **Bundle manifest version bumped to 1.3** (was 1.2). New fields:
+  `vnetmap_prior_source`, `vnetmap_output_prior_source`,
+  `include_prior_vnetmap`. Existing consumers that tolerate unknown
+  fields continue to work unchanged; readers that pin to 1.2 should
+  refresh. The `BUNDLE_MANIFEST_VERSION` string remains the
+  authoritative source.
+- **`config/config.yaml.template`** documents the new
+  `bundle.include_prior_vnetmap` knob alongside the existing
+  `bundle.include_prior_vperfsanity` knob, under the same policy
+  rationale.
+- **`ResultBundler._PRIOR_RESCUE`** is a new class-level table mapping
+  eligible categories to the human-readable name and per-category
+  banner-rationale text used when attaching PRIOR files. Adding a new
+  rescue-eligible category is now a two-line change (one table entry
+  plus a matching `include_prior_<category>` kwarg on the factory).
+- **`vnetmap_output`** is now tracked in
+  `ResultBundler._compute_category_status` so its `STATUS_STALE` flag
+  flips correctly; previously the raw-TXT half of the vnetmap
+  collection was never promoted to STALE and therefore never surfaced
+  in placeholder or rescue paths.
+
+### Tests
+
+- 20 new unit tests across three modules, bringing the suite to 1032
+  passing (up from 1012).
+  - `tests/test_result_bundler.py::TestPriorVnetmap` — 7 tests covering
+    the RM-6 PRIOR-file rescue (JSON + raw TXT attach, banner content,
+    opt-out fallback, manifest field presence, SUMMARY.md marker,
+    fresh-run no-op, factory flag plumbing).
+  - `tests/test_oneshot_runner.py::TestPrevalidationSwitchSshFallback`
+    — 5 new tests covering the RM-7 actionable `[ERROR]` line:
+    end-to-end emission on auth-exhausted switches, non-emission on
+    unreachable switches, and two message-builder unit tests
+    (`_build_switch_auth_exhausted_message`) covering deduplicated
+    username extraction and the empty-attempt-log edge case.
+  - `tests/test_script_runner.py::TestStderrTracebackClassification` —
+    9 tests covering the RM-8 stateful classifier: frame-header,
+    traceback-header, indented code-snippet, full-traceback
+    end-to-end contiguity, blank-line state reset, SSH host-key
+    warning regression, ping-diagnostic regression, common-exception
+    summary regex, and post-reset default.
+
+### Follow-ups (not in this release)
+
+- Per-switch credentials for `vnetmap.py` itself (remote script change)
+  remains the long-term fix for mixed-password fleets; the RM-6 PRIOR
+  rescue only ensures the bundle stays useful when the current run
+  can't complete. Tracked in `docs/TODO-ROADMAP.md` as a separate
+  roadmap item.
+
 ## [1.5.3] - 2026-03-21
 
 Test-Suite log-triage release — addresses five defects (RM-1..RM-5)

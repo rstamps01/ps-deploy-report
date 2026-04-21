@@ -11,6 +11,7 @@ validation scripts on VAST clusters.
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -83,6 +84,13 @@ class ScriptRunner:
         """
         self._output_callback = output_callback
         self._local_dir: Optional[Path] = None
+        # RM-8: per-stream state flag so ``_classify_stderr_line`` can
+        # treat code-snippet lines inside a Python traceback (the ones
+        # indented below a ``File "...", line N, in func`` frame) as
+        # ``error`` instead of the default ``warn``.  Without this a
+        # single traceback renders as [ERROR][WARN][WARN][ERROR] in the
+        # operator log, which makes triage miserable.
+        self._stderr_in_traceback: bool = False
 
     def _emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         """Emit output to the callback if set."""
@@ -518,38 +526,98 @@ class ScriptRunner:
 
         return "info"
 
-    @staticmethod
-    def _classify_stderr_line(line: str) -> str:
+    # RM-8: lines like ``ValueError: bad token`` / ``RuntimeError: boom``
+    # that appear at the tail of a Python traceback.  Used by
+    # :meth:`_classify_stderr_line` to flip the traceback-continuation
+    # state off and still classify the summary as ``error``.
+    _EXCEPTION_SUMMARY_RE = re.compile(
+        r"^(?:[A-Za-z_][A-Za-z0-9_\.]*(?:Error|Exception|Warning|Interrupt|Timeout|Failure)):\s",
+        re.IGNORECASE,
+    )
+
+    def _classify_stderr_line(self, line: str) -> str:
         """Classify a stderr line, returning an appropriate log level.
 
         Many programs write non-error diagnostics to stderr (SSH warnings,
         ping probes, etc.).  This method distinguishes true errors from
         informational noise.
+
+        RM-8: this is intentionally stateful via ``self._stderr_in_traceback``
+        so that indented code-snippet lines between ``File "...", line N,
+        in foo`` frames (the source excerpts Python prints) classify as
+        ``error`` instead of the default ``warn``.  The net effect is
+        that a full Python traceback renders as one contiguous [ERROR]
+        block in the operator log, not a checkerboard of [ERROR]/[WARN].
+
+        Callers that process streams from unrelated sources can reset
+        the state by calling :meth:`_reset_stderr_classifier_state`
+        (e.g. between remote-command invocations).
         """
+        raw = line
         ll = line.lower().strip()
         if not ll:
+            # A blank line typically ends a traceback block.  Reset state
+            # so the *next* indented line isn't mis-classified as error.
+            self._stderr_in_traceback = False
             return "info"
 
         # SSH host-key / known-hosts warnings are informational
         if "permanently added" in ll and "known hosts" in ll:
+            self._stderr_in_traceback = False
             return "info"
         if ll.startswith("warning:") and "known hosts" in ll:
+            self._stderr_in_traceback = False
             return "info"
 
         # Ping diagnostic output — warn, not error
         if ll.startswith("ping:"):
+            self._stderr_in_traceback = False
             return "warn"
 
-        # Python traceback lines — real errors
+        # Traceback header opens the continuation state.
         if ll.startswith("traceback (most recent call last"):
-            return "error"
-        if ll.startswith("file ") and ", line " in ll and ", in " in ll:
-            return "error"
-        if ll.startswith("exception:") or ll.startswith("raise "):
+            self._stderr_in_traceback = True
             return "error"
 
-        # Generic — default to warn for stderr
+        # ``File "...", line N, in foo`` frame header.  Keep state on so
+        # the next indented source line classifies as error.
+        if ll.startswith("file ") and ", line " in ll and ", in " in ll:
+            self._stderr_in_traceback = True
+            return "error"
+
+        # RM-8: inside a traceback, any indented non-empty line is part
+        # of the source excerpt Python prints beneath the frame header
+        # (e.g. ``    return subprocess.check_output(cmd, ...)``).  That
+        # belongs to the traceback block, not a separate warning.
+        if self._stderr_in_traceback and (raw.startswith((" ", "\t"))):
+            return "error"
+
+        # Explicit ``raise X`` / ``Exception:`` lines — real errors.
+        # These typically appear either inside the traceback source
+        # excerpts or at the tail (the exception summary).  Keep state
+        # on for ``raise``-in-source but let the summary line turn it
+        # off so subsequent unrelated stderr doesn't inherit ``error``.
+        if ll.startswith("raise "):
+            return "error"
+        if ll.startswith("exception:"):
+            self._stderr_in_traceback = False
+            return "error"
+        if self._EXCEPTION_SUMMARY_RE.match(line.strip()):
+            self._stderr_in_traceback = False
+            return "error"
+
+        # Anything else — we've left the traceback block.
+        self._stderr_in_traceback = False
         return "warn"
+
+    def _reset_stderr_classifier_state(self) -> None:
+        """Reset the RM-8 traceback-continuation state.
+
+        Public (for tests and for callers that process multiple remote
+        commands from a single ``ScriptRunner`` instance) so state from
+        a prior command can't contaminate classification of the next.
+        """
+        self._stderr_in_traceback = False
 
     def execute_remote(
         self,
@@ -618,6 +686,11 @@ class ScriptRunner:
                     if line_level is not None:
                         self._emit(line_level, line)
             if stderr:
+                # RM-8: reset the traceback-continuation flag at the
+                # start of each stderr stream so state from a previous
+                # remote command can't contaminate this one's first
+                # indented line.
+                self._reset_stderr_classifier_state()
                 for line in stderr.strip().split("\n"):
                     self._emit(self._classify_stderr_line(line), line)
 

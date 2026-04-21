@@ -727,6 +727,107 @@ class TestPrevalidationSwitchSshFallback(unittest.TestCase):
         self.assertEqual(check.status, "warn")
         self.assertIn("auth failed", check.message.lower())
 
+    def test_rm7_auth_exhausted_emits_actionable_error(self):
+        """RM-7: when all candidate passwords are rejected for a switch,
+        pre-validation must emit exactly one ``[ERROR]`` line per switch
+        naming the IP, candidate count, usernames tried, and the config
+        location to populate — not just a wall of ``[WARN]`` combo lines.
+        """
+        emitted: list = []
+
+        def capture(level, message, details=None, tier="status"):
+            emitted.append((level, message))
+
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        runner._output_callback = capture
+        api = self._mock_api_with_switches(["10.143.11.156"])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(1, "", "Authentication failed")),
+            patch("utils.ssh_adapter.run_interactive_ssh", return_value=(1, "", "Authentication failed")),
+        ):
+            runner._validate_switch_ssh()
+
+        error_lines = [m for lvl, m in emitted if lvl == "error"]
+        matching = [m for m in error_lines if "10.143.11.156 auth exhausted" in m]
+        self.assertEqual(len(matching), 1, f"expected exactly one actionable RM-7 [ERROR], got: {error_lines}")
+        msg = matching[0]
+        self.assertIn("credential candidate(s)", msg)
+        self.assertIn("config/config.yaml", msg)
+        self.assertIn("VAST_DEFAULT_SWITCH_PASSWORDS", msg)
+        self.assertIn("advanced_operations.default_switch_passwords", msg)
+
+    def test_rm7_unreachable_does_not_emit_auth_exhausted(self):
+        """RM-7 applies to auth exhaustion, not connectivity failure.  A
+        switch that times out at the TCP layer is a different class of
+        problem — the operator needs firewall/VPN guidance, not
+        password-config guidance — so no actionable auth-exhausted
+        [ERROR] is emitted for ``unreachable`` results.
+        """
+        emitted: list = []
+
+        def capture(level, message, details=None, tier="status"):
+            emitted.append((level, message))
+
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        runner._output_callback = capture
+        api = self._mock_api_with_switches(["10.1.1.99"])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(1, "", "connection timed out")),
+            patch("utils.ssh_adapter.run_interactive_ssh"),
+        ):
+            runner._validate_switch_ssh()
+
+        error_lines = [m for lvl, m in emitted if lvl == "error"]
+        self.assertFalse(
+            any("auth exhausted" in m for m in error_lines),
+            f"RM-7 actionable auth-exhausted line must not fire for unreachable switches: {error_lines}",
+        )
+
+    def test_rm7_build_switch_auth_exhausted_message_extracts_users(self):
+        """Unit-level coverage of the RM-7 message builder: given the
+        per-combo attempt log, the extracted username list must be
+        deduplicated and ordered by first appearance (cumulus first,
+        then admin), and the message must name the config knob.
+        """
+        from oneshot_runner import _build_switch_auth_exhausted_message
+
+        attempts = [
+            "1. std-ssh cumulus@10.143.11.156: auth failed — Permission denied",
+            "2. std-ssh admin@10.143.11.156: auth failed — Permission denied",
+            "2. interactive-ssh admin@10.143.11.156: auth failed — ...",
+        ]
+        msg = _build_switch_auth_exhausted_message(
+            switch_ip="10.143.11.156",
+            candidate_count=2,
+            attempts=attempts,
+        )
+
+        self.assertIn("Switch 10.143.11.156 auth exhausted", msg)
+        self.assertIn("tried 2 credential candidate(s)", msg)
+        self.assertIn("username(s) cumulus, admin", msg)
+        self.assertIn("advanced_operations.default_switch_passwords", msg)
+        self.assertIn("VAST_DEFAULT_SWITCH_PASSWORDS", msg)
+
+    def test_rm7_build_switch_auth_exhausted_message_handles_empty_log(self):
+        """When the attempt log is empty (rare but possible), the builder
+        must still produce a useful message with ``username(s) unknown``
+        rather than raising.
+        """
+        from oneshot_runner import _build_switch_auth_exhausted_message
+
+        msg = _build_switch_auth_exhausted_message(
+            switch_ip="10.0.0.1",
+            candidate_count=0,
+            attempts=[],
+        )
+
+        self.assertIn("Switch 10.0.0.1 auth exhausted", msg)
+        self.assertIn("username(s) unknown", msg)
+
     def test_tech_port_mode_proxies_switch_ssh_through_cluster_node(self):
         """Regression: Pre-Validation must ProxyJump through a cluster node in
         Tech Port mode, because the Reporter machine typically has no direct L3
