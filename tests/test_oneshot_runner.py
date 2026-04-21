@@ -402,7 +402,14 @@ class TestOneShotExecution(unittest.TestCase):
         with patch("utils.get_data_dir", return_value=Path("/tmp")):
             runner.run_all()
 
-        mock_bundler.collect_results.assert_called_once_with(cluster_ip="10.0.0.1")
+        # collect_results now receives additional kwargs so the bundler can
+        # reject pre-run stale files and annotate missing categories.  We
+        # only care that cluster_ip is forwarded correctly.
+        mock_bundler.collect_results.assert_called_once()
+        kwargs = mock_bundler.collect_results.call_args.kwargs
+        assert kwargs["cluster_ip"] == "10.0.0.1"
+        assert "since" in kwargs
+        assert kwargs["operation_status"].get("switch_config") == "success"
 
     @patch("result_bundler.ResultBundler")
     @patch("report_builder.create_report_builder")
@@ -522,6 +529,428 @@ class TestOneShotStateTracking(unittest.TestCase):
         result = runner.cancel()
         self.assertTrue(result)
         self.assertTrue(cancel_event.is_set())
+
+
+class TestSwitchPasswordCandidates(unittest.TestCase):
+    """Resolve switch password candidate list for mixed-default clusters."""
+
+    def _runner(self, credentials, use_default_creds=False, config_path=None):
+        from oneshot_runner import OneShotRunner
+
+        return OneShotRunner(
+            selected_ops=["switch_config"],
+            credentials=credentials,
+            use_default_creds=use_default_creds,
+            config_path=config_path,
+        )
+
+    def test_manual_mode_returns_single_entry_list(self):
+        runner = self._runner({"cluster_ip": "10.0.0.1", "switch_password": "OnlyOne!"}, use_default_creds=False)
+        self.assertEqual(runner._switch_password_candidates, ["OnlyOne!"])
+
+    def test_autofill_promotes_entered_password_to_front(self, tmp_path=None):
+        import tempfile
+
+        # Config lists Vastdata1! first, but the operator-entered primary should come first.
+        cfg_body = "advanced_operations:\n" "  default_switch_passwords:\n" "    - Vastdata1!\n" "    - VastData1!\n"
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(cfg_body)
+            path = f.name
+
+        runner = self._runner(
+            {"cluster_ip": "10.0.0.1", "switch_password": "VastData1!"},
+            use_default_creds=True,
+            config_path=path,
+        )
+        self.assertEqual(runner._switch_password_candidates[0], "VastData1!")
+        self.assertIn("Vastdata1!", runner._switch_password_candidates)
+
+    def test_autofill_without_config_yields_empty_candidates(self):
+        # RM-1 supplementary: hardcoded ``_FALLBACK_SWITCH_PASSWORDS``
+        # were removed from the source.  With no ``config/config.yaml``
+        # list and no ``VAST_DEFAULT_SWITCH_PASSWORDS`` env var the
+        # autofill path must produce an empty candidate set and log a
+        # WARNING — it must NOT silently fall back to baked-in secrets.
+        import os
+
+        prev_env = os.environ.pop("VAST_DEFAULT_SWITCH_PASSWORDS", None)
+        try:
+            runner = self._runner(
+                {"cluster_ip": "10.0.0.1", "switch_password": ""},
+                use_default_creds=True,
+            )
+            self.assertEqual(runner._switch_password_candidates, [])
+        finally:
+            if prev_env is not None:
+                os.environ["VAST_DEFAULT_SWITCH_PASSWORDS"] = prev_env
+
+    def test_explicit_candidates_override_autofill(self):
+        runner = self._runner(
+            {
+                "cluster_ip": "10.0.0.1",
+                "switch_password": "anything",
+                "switch_password_candidates": ["X1!", "X2!"],
+            },
+            use_default_creds=True,
+        )
+        self.assertEqual(runner._switch_password_candidates, ["X1!", "X2!"])
+
+    def test_candidates_propagate_to_workflow_credentials(self):
+        runner = self._runner({"cluster_ip": "10.0.0.1", "switch_password": "A!"}, use_default_creds=True)
+        creds = runner._get_workflow_credentials("switch_config")
+        self.assertIn("switch_password_candidates", creds)
+        self.assertEqual(creds["switch_password_candidates"][0], "A!")
+
+
+class TestPrevalidationSwitchSshFallback(unittest.TestCase):
+    """Pre-validation must try every candidate password on every discovered
+    switch so a mixed-default cluster (3 switches across 2 factory passwords)
+    does not trigger a spurious warning."""
+
+    def _make_runner(self, candidates=None):
+        from oneshot_runner import OneShotRunner
+
+        creds = {
+            "cluster_ip": "10.0.0.1",
+            "username": "support",
+            "password": "654321",
+            "node_user": "vastdata",
+            "node_password": "vastdata",
+            "switch_user": "cumulus",
+            "switch_password": "Vastdata1!",
+        }
+        if candidates is not None:
+            creds["switch_password_candidates"] = list(candidates)
+        return OneShotRunner(
+            selected_ops=["switch_config"],
+            credentials=creds,
+            use_default_creds=True,
+        )
+
+    def _mock_api_with_switches(self, ips):
+        api = MagicMock()
+        api.authenticate.return_value = None
+        api._make_api_request.return_value = [{"mgmt_ip": ip} for ip in ips]
+        api.close.return_value = None
+        return api
+
+    def test_single_password_works_for_all_switches_passes(self):
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        api = self._mock_api_with_switches(["10.1.1.10", "10.1.1.11", "10.1.1.12"])
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(0, "leaf-1", "")),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "pass")
+        self.assertIn("3/3", check.message)
+        self.assertNotIn("fallback", check.message)
+
+    def test_mixed_defaults_passes_with_fallback_note(self):
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        api = self._mock_api_with_switches(["10.1.1.10", "10.1.1.11", "10.1.1.12"])
+
+        # .10 + .11 authenticate on primary password; .12 fails primary auth
+        # then succeeds on the fallback candidate.
+        ssh_returns = iter(
+            [
+                (0, "leaf-1", ""),
+                (0, "leaf-2", ""),
+                (1, "", "Authentication failed"),
+                (0, "leaf-3", ""),
+            ]
+        )
+        interactive_returns = iter([(1, "", "Authentication failed")])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", side_effect=lambda *a, **k: next(ssh_returns)),
+            patch("utils.ssh_adapter.run_interactive_ssh", side_effect=lambda *a, **k: next(interactive_returns)),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "pass")
+        self.assertIn("3/3", check.message)
+        self.assertIn("fallback", check.message)
+
+    def test_onyx_reachable_but_command_fails_still_passes(self):
+        """Onyx rejects raw ``hostname`` with non-zero rc but no auth error.
+        The switch is reachable + authenticated; workflows use interactive SSH
+        for Onyx at runtime, so pre-validation must not warn."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        api = self._mock_api_with_switches(["10.1.1.20"])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(5, "", "Bash commands not supported")),
+            patch("utils.ssh_adapter.run_interactive_ssh"),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "pass")
+        self.assertIn("reachable", check.message.lower())
+
+    def test_one_switch_unreachable_warns(self):
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        api = self._mock_api_with_switches(["10.1.1.10", "10.1.1.11"])
+
+        ssh_returns = iter(
+            [
+                (0, "leaf-1", ""),
+                (1, "", "connection timed out"),
+                (1, "", "connection timed out"),
+            ]
+        )
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", side_effect=lambda *a, **k: next(ssh_returns)),
+            patch("utils.ssh_adapter.run_interactive_ssh"),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "warn")
+        self.assertIn("1/2", check.message)
+        self.assertIn("10.1.1.11", check.message)
+
+    def test_all_passwords_fail_auth_warns(self):
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        api = self._mock_api_with_switches(["10.1.1.10"])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(1, "", "Authentication failed")),
+            patch("utils.ssh_adapter.run_interactive_ssh", return_value=(1, "", "Authentication failed")),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "warn")
+        self.assertIn("auth failed", check.message.lower())
+
+    def test_tech_port_mode_proxies_switch_ssh_through_cluster_node(self):
+        """Regression: Pre-Validation must ProxyJump through a cluster node in
+        Tech Port mode, because the Reporter machine typically has no direct L3
+        path to the switch management network.  Switches that happen to be
+        reachable directly pass either way, but switches only reachable via
+        the node fail without the jump host."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        runner._tunnel_address = "127.0.0.1:49458"
+        api = self._mock_api_with_switches(["10.1.1.10"])
+
+        captured = []
+
+        def fake_ssh(*args, **kwargs):
+            captured.append(dict(kwargs))
+            return (0, "leaf-1", "")
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", side_effect=fake_ssh),
+            patch("utils.ssh_adapter.run_interactive_ssh"),
+        ):
+            check = runner._validate_switch_ssh()
+
+        self.assertEqual(check.status, "pass")
+        self.assertTrue(captured, "expected run_ssh_command to be called")
+        self.assertEqual(captured[0].get("jump_host"), "10.0.0.1")
+        self.assertEqual(captured[0].get("jump_user"), "vastdata")
+        self.assertEqual(captured[0].get("jump_password"), "vastdata")
+
+    def test_non_tech_port_mode_does_not_use_jump_host(self):
+        """When Tech Port mode is not active, the probe must not add jump-host
+        kwargs — the Reporter has a direct path to the switch."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        runner._tunnel_address = None
+        api = self._mock_api_with_switches(["10.1.1.10"])
+
+        captured = []
+
+        def fake_ssh(*args, **kwargs):
+            captured.append(dict(kwargs))
+            return (0, "leaf-1", "")
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", side_effect=fake_ssh),
+            patch("utils.ssh_adapter.run_interactive_ssh"),
+        ):
+            runner._validate_switch_ssh()
+
+        self.assertTrue(captured)
+        self.assertNotIn("jump_host", captured[0])
+
+    def test_records_per_switch_winning_password_for_workflows(self):
+        """Pre-validation must persist the winning password for each switch on
+        the runner so workflows (notably vnetmap with ``--multiple-passwords``)
+        can drive each switch with the exact credential that authenticated."""
+        runner = self._make_runner(candidates=["Vastdata1!", "VastData1!"])
+        api = self._mock_api_with_switches(["10.1.1.10", "10.1.1.11", "10.1.1.12"])
+
+        # .10/.11 win on candidate 1; .12 wins on candidate 2 (fallback).
+        ssh_returns = iter(
+            [
+                (0, "leaf-1", ""),
+                (0, "leaf-2", ""),
+                (1, "", "Authentication failed"),
+                (0, "leaf-3", ""),
+            ]
+        )
+        interactive_returns = iter([(1, "", "Authentication failed")])
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch("utils.ssh_adapter.run_ssh_command", side_effect=lambda *a, **k: next(ssh_returns)),
+            patch("utils.ssh_adapter.run_interactive_ssh", side_effect=lambda *a, **k: next(interactive_returns)),
+        ):
+            runner._validate_switch_ssh()
+
+        self.assertEqual(runner._switch_password_by_ip["10.1.1.10"], "Vastdata1!")
+        self.assertEqual(runner._switch_password_by_ip["10.1.1.11"], "Vastdata1!")
+        self.assertEqual(runner._switch_password_by_ip["10.1.1.12"], "VastData1!")
+        self.assertEqual(runner._switch_user_by_ip["10.1.1.12"], "cumulus")
+
+        workflow_creds = runner._get_workflow_credentials("vnetmap")
+        self.assertEqual(
+            workflow_creds["switch_password_by_ip"],
+            {"10.1.1.10": "Vastdata1!", "10.1.1.11": "Vastdata1!", "10.1.1.12": "VastData1!"},
+        )
+
+    def test_does_not_record_passwords_for_unreachable_switches(self):
+        """Switches that never authenticate must not leak into the per-switch
+        map — otherwise the vnetmap workflow would hand the wrong password to
+        ``--multiple-passwords`` and the run would fail silently."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        api = self._mock_api_with_switches(["10.1.1.10", "10.1.1.11"])
+
+        # Returns for every possible ssh_adapter call.  .10 succeeds on its
+        # first cumulus/Vastdata1! try.  .11 fails every combo (cumulus/x then
+        # admin/admin — the helper always appends admin/admin as a last-ditch
+        # try).  Extra auth-fail values are harmless tail values.
+        auth_fail = (1, "", "Authentication failed")
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=api),
+            patch(
+                "utils.ssh_adapter.run_ssh_command",
+                side_effect=[(0, "leaf-1", ""), auth_fail, auth_fail, auth_fail, auth_fail],
+            ),
+            patch(
+                "utils.ssh_adapter.run_interactive_ssh",
+                side_effect=[auth_fail, auth_fail, auth_fail, auth_fail],
+            ),
+        ):
+            runner._validate_switch_ssh()
+
+        self.assertIn("10.1.1.10", runner._switch_password_by_ip)
+        self.assertNotIn("10.1.1.11", runner._switch_password_by_ip)
+
+    def test_seed_switch_credentials_populates_map_and_workflow_creds(self):
+        """``seed_switch_credentials`` must populate the per-switch map so a
+        fresh runner (the one created by ``/advanced-ops/oneshot/start``) can
+        inherit Pre-Validation's discoveries from the prior runner.  This
+        closes the gap reported in
+        ``import/Assets-2026-0420c/output-results-Output-Results-2026-0420d.txt``
+        where vnetmap fell back to the legacy single-password sweep even
+        though Pre-Validation had authenticated every switch."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        runner.seed_switch_credentials(
+            switch_user_by_ip={"10.1.1.10": "cumulus", "10.1.1.11": "cumulus"},
+            switch_password_by_ip={"10.1.1.10": "Vastdata1!", "10.1.1.11": "VastData1!"},
+        )
+
+        self.assertEqual(runner._switch_password_by_ip["10.1.1.10"], "Vastdata1!")
+        self.assertEqual(runner._switch_password_by_ip["10.1.1.11"], "VastData1!")
+        self.assertEqual(runner._switch_user_by_ip["10.1.1.11"], "cumulus")
+
+        # And the map must flow through to the workflow so VnetmapWorkflow's
+        # fast-path guard ``all(ip in switch_password_by_ip for ip in ...)``
+        # can fire.
+        workflow_creds = runner._get_workflow_credentials("vnetmap")
+        self.assertEqual(
+            workflow_creds["switch_password_by_ip"],
+            {"10.1.1.10": "Vastdata1!", "10.1.1.11": "VastData1!"},
+        )
+        self.assertEqual(workflow_creds["switch_user_by_ip"]["10.1.1.10"], "cumulus")
+
+    def test_seed_switch_credentials_ignores_empty_entries(self):
+        """Blank IPs or passwords must never leak into the per-switch map —
+        otherwise ``VnetmapWorkflow`` could shell-quote an empty string
+        into the ``--multiple-passwords`` stdin stream."""
+        runner = self._make_runner(candidates=["Vastdata1!"])
+        runner.seed_switch_credentials(
+            switch_user_by_ip={"10.1.1.10": "cumulus", "": "cumulus"},
+            switch_password_by_ip={"10.1.1.10": "Vastdata1!", "10.1.1.11": "", "": "secret"},
+        )
+
+        self.assertEqual(list(runner._switch_password_by_ip.keys()), ["10.1.1.10"])
+        self.assertEqual(list(runner._switch_user_by_ip.keys()), ["10.1.1.10"])
+
+    def test_run_all_reprobes_switches_when_map_empty(self):
+        """If the execution runner has no seed (e.g. operator clicked Run
+        without Pre-Validation, or the app failed to hand off the map),
+        ``run_all`` must silently call ``_validate_switch_ssh`` before
+        operations so ``VnetmapWorkflow`` still gets a populated map.
+
+        Regression for
+        ``import/Assets-2026-0420c/output-results-Output-Results-2026-0420d.txt``.
+        """
+        from oneshot_runner import OneShotRunner
+
+        runner = OneShotRunner(
+            selected_ops=["vnetmap"],
+            credentials={
+                "cluster_ip": "10.0.0.1",
+                "username": "admin",
+                "password": "pass",
+                "node_user": "vastdata",
+                "node_password": "pass",
+                "switch_user": "cumulus",
+                "switch_password": "Vastdata1!",
+            },
+        )
+        self.assertEqual(runner._switch_password_by_ip, {})
+
+        with (
+            patch.object(runner, "_validate_switch_ssh") as mock_probe,
+            patch.object(runner, "_run_operations"),
+            patch.object(runner, "_run_bundling"),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+        ):
+            runner.run_all()
+
+        mock_probe.assert_called_once()
+
+    def test_run_all_skips_reprobe_when_map_already_seeded(self):
+        """The runtime fallback must be a pure safety net: seeding from the
+        prior runner (the common path) avoids the extra SSH round-trips.
+        Without this guard every execution would re-probe the switches."""
+        from oneshot_runner import OneShotRunner
+
+        runner = OneShotRunner(
+            selected_ops=["vnetmap"],
+            credentials={
+                "cluster_ip": "10.0.0.1",
+                "username": "admin",
+                "password": "pass",
+                "node_user": "vastdata",
+                "node_password": "pass",
+                "switch_user": "cumulus",
+                "switch_password": "Vastdata1!",
+            },
+        )
+        runner.seed_switch_credentials(
+            switch_user_by_ip={"10.1.1.10": "cumulus"},
+            switch_password_by_ip={"10.1.1.10": "Vastdata1!"},
+        )
+
+        with (
+            patch.object(runner, "_validate_switch_ssh") as mock_probe,
+            patch.object(runner, "_run_operations"),
+            patch.object(runner, "_run_bundling"),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+        ):
+            runner.run_all()
+
+        mock_probe.assert_not_called()
 
 
 class TestOneShotErrorHandling(unittest.TestCase):
@@ -715,6 +1144,32 @@ class TestOneShotIncludeHealth(unittest.TestCase):
         mock_node.assert_called()
         mock_sw.assert_called()
 
+    def test_prevalidation_runs_switch_ssh_when_only_vnetmap_selected(self):
+        """Selecting vnetmap (no switch_config) must still probe switches.
+
+        vnetmap authenticates against every switch in Step 4.  Without the
+        Switch SSH pre-validation probe, ``_switch_password_by_ip`` stays
+        empty and the workflow falls back to the legacy candidate-sweep,
+        which fails on mixed-default clusters.  Regression for the log in
+        ``import/Assets-2026-0420c/output-results-d.txt``.
+        """
+        runner = self._make_runner(ops=["vnetmap"], include_health=False, include_report=False)
+        with (
+            patch("oneshot_runner._requests_lib.get", return_value=MagicMock(status_code=200)),
+            patch("utils.ssh_adapter.run_ssh_command", return_value=(0, "cnode1", "")),
+            patch.object(runner, "_validate_switch_ssh", wraps=runner._validate_switch_ssh) as mock_sw,
+            patch("tool_manager.ToolManager") as MockTM,
+            patch("api_handler.create_vast_api_handler") as mock_api_factory,
+        ):
+            MockTM.return_value.get_all_tools_info.return_value = []
+            mock_api = MagicMock()
+            mock_api._make_api_request.return_value = [{"mgmt_ip": "10.0.0.50"}]
+            mock_api_factory.return_value = mock_api
+
+            runner.run_prevalidation()
+
+        mock_sw.assert_called()
+
 
 class TestLogTierEmission(unittest.TestCase):
     """Tests for log tier tagging on output entries."""
@@ -872,6 +1327,180 @@ class TestCredentialRouting(unittest.TestCase):
         wf_creds = runner._get_workflow_credentials("vnetmap")
         self.assertEqual(wf_creds["username"], "support")
         self.assertEqual(wf_creds["password"], "654321")
+
+
+class TestVnetmapPortMappingInReport(unittest.TestCase):
+    """Verify OneShot's As-Built Report prefers vnetmap output over SSH.
+
+    The vnetmap workflow writes ``vnetmap_output_<cluster_ip>_*.txt``
+    into ``output/scripts/``.  When ``_run_report`` runs afterwards it
+    must find the newest same-cluster file and hand the parsed topology
+    to ``data_extractor.extract_all_data(..., use_vnetmap=True)``.  This
+    keeps the Port Mapping section consistent with the /generate web
+    path, which has used this source since v1.5.0.
+    """
+
+    def _make_runner(self, cluster_ip="10.0.0.1"):
+        from oneshot_runner import OneShotRunner
+
+        return OneShotRunner(
+            selected_ops=["vnetmap"],
+            credentials={
+                "cluster_ip": cluster_ip,
+                "username": "admin",
+                "password": "pass",
+                "node_user": "vastdata",
+                "node_password": "pass",
+                "switch_user": "cumulus",
+                "switch_password": "pass",
+            },
+            include_report=True,
+            include_health=False,
+        )
+
+    def test_find_latest_vnetmap_output_returns_newest_same_cluster(self):
+        import tempfile
+
+        runner = self._make_runner(cluster_ip="10.0.0.1")
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            scripts = data_dir / "output" / "scripts"
+            scripts.mkdir(parents=True)
+            (scripts / "vnetmap_output_10.0.0.1_20260101_000000.txt").write_text("old")
+            (scripts / "vnetmap_output_10.0.0.1_20260420_120000.txt").write_text("new")
+            (scripts / "vnetmap_output_10.0.0.2_20260425_120000.txt").write_text("other cluster")
+
+            with patch("utils.get_data_dir", return_value=data_dir):
+                result = runner._find_latest_vnetmap_output("10.0.0.1")
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result.name, "vnetmap_output_10.0.0.1_20260420_120000.txt")
+
+    def test_find_latest_vnetmap_output_missing_scripts_dir(self):
+        import tempfile
+
+        runner = self._make_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("utils.get_data_dir", return_value=Path(tmp)):
+                self.assertIsNone(runner._find_latest_vnetmap_output("10.0.0.1"))
+
+    def test_find_latest_vnetmap_output_no_match_for_cluster(self):
+        import tempfile
+
+        runner = self._make_runner()
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            scripts = data_dir / "output" / "scripts"
+            scripts.mkdir(parents=True)
+            (scripts / "vnetmap_output_10.9.9.9_20260425_120000.txt").write_text("different cluster")
+            with patch("utils.get_data_dir", return_value=data_dir):
+                self.assertIsNone(runner._find_latest_vnetmap_output("10.0.0.1"))
+
+    def test_find_latest_vnetmap_output_empty_cluster_ip(self):
+        runner = self._make_runner()
+        self.assertIsNone(runner._find_latest_vnetmap_output(""))
+
+    def test_run_report_uses_vnetmap_when_available(self):
+        """_run_report parses vnetmap output and passes use_vnetmap=True."""
+        import tempfile
+
+        runner = self._make_runner(cluster_ip="10.0.0.1")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            scripts = data_dir / "output" / "scripts"
+            scripts.mkdir(parents=True)
+            vnetmap_file = scripts / "vnetmap_output_10.0.0.1_20260420_120000.txt"
+            vnetmap_file.write_text("fake vnetmap output")
+
+            mock_api = MagicMock()
+            mock_api.get_all_data.return_value = {"cluster_summary": {"name": "testcluster"}}
+
+            mock_extractor = MagicMock()
+            mock_extractor.extract_all_data.return_value = {"cluster_summary": {"name": "testcluster"}}
+
+            mock_report_builder = MagicMock()
+            mock_report_builder.generate_pdf_report.return_value = True
+
+            mock_parser = MagicMock()
+            mock_parser.parse.return_value = {
+                "available": True,
+                "topology": [{"switch": "sw1", "port": "swp1"}],
+            }
+
+            with (
+                patch("api_handler.create_vast_api_handler", return_value=mock_api),
+                patch("data_extractor.create_data_extractor", return_value=mock_extractor),
+                patch("report_builder.create_report_builder", return_value=mock_report_builder),
+                patch("report_builder.ReportConfig.from_yaml", return_value=MagicMock()),
+                patch("utils.get_data_dir", return_value=data_dir),
+                patch("vnetmap_parser.VNetMapParser", return_value=mock_parser),
+                patch("external_port_mapper.ExternalPortMapper") as MockEPM,
+            ):
+                runner._run_report()
+
+            mock_extractor.extract_all_data.assert_called_once()
+            _, kwargs = mock_extractor.extract_all_data.call_args
+            self.assertTrue(
+                kwargs.get("use_vnetmap"),
+                "use_vnetmap must be True when a vnetmap output file is present",
+            )
+            self.assertFalse(
+                kwargs.get("use_external_port_mapping", False),
+                "External SSH path must be skipped when vnetmap data is available",
+            )
+            MockEPM.assert_not_called()
+
+            raw_arg = mock_extractor.extract_all_data.call_args.args[0]
+            self.assertIn("port_mapping_vnetmap", raw_arg)
+            self.assertEqual(raw_arg["port_mapping_vnetmap"]["topology"][0]["switch"], "sw1")
+
+    def test_run_report_falls_back_to_ssh_when_no_vnetmap_file(self):
+        """No vnetmap file → ExternalPortMapper path runs as before."""
+        import tempfile
+
+        runner = self._make_runner(cluster_ip="10.0.0.1")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            (data_dir / "output" / "scripts").mkdir(parents=True)
+
+            mock_api = MagicMock()
+            mock_api.get_all_data.return_value = {
+                "cluster_summary": {"name": "testcluster"},
+                "switch_inventory": {"switches": [{"mgmt_ip": "10.0.0.100"}]},
+                "cnodes_network": [{"mgmt_ip": "10.0.0.50"}],
+            }
+
+            mock_extractor = MagicMock()
+            mock_extractor.extract_all_data.return_value = {"cluster_summary": {"name": "testcluster"}}
+
+            mock_report_builder = MagicMock()
+            mock_report_builder.generate_pdf_report.return_value = True
+
+            mock_epm_instance = MagicMock()
+            mock_epm_instance.collect_port_mapping.return_value = {"available": True, "mappings": []}
+
+            with (
+                patch("api_handler.create_vast_api_handler", return_value=mock_api),
+                patch("data_extractor.create_data_extractor", return_value=mock_extractor),
+                patch("report_builder.create_report_builder", return_value=mock_report_builder),
+                patch("report_builder.ReportConfig.from_yaml", return_value=MagicMock()),
+                patch("utils.get_data_dir", return_value=data_dir),
+                patch("external_port_mapper.ExternalPortMapper", return_value=mock_epm_instance) as MockEPM,
+            ):
+                runner._run_report()
+
+            MockEPM.assert_called()
+            _, kwargs = mock_extractor.extract_all_data.call_args
+            self.assertFalse(
+                kwargs.get("use_vnetmap", False),
+                "use_vnetmap must be False when no vnetmap output file exists",
+            )
+            self.assertTrue(
+                kwargs.get("use_external_port_mapping", False),
+                "External SSH path must populate use_external_port_mapping=True",
+            )
 
 
 if __name__ == "__main__":

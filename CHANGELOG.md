@@ -5,7 +5,727 @@ All notable changes to the VAST As-Built Report Generator will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.5.0] - 2026-04-04
+## [Unreleased]
+
+## [1.5.3] - 2026-03-21
+
+Test-Suite log-triage release — addresses five defects (RM-1..RM-5)
+surfaced by triage of the 5:44:20 operator-log excerpt from bundle
+`validation_bundle_selab-var-202_20260421_054733.zip`. RM-1 is a
+credential-exposure bug and was landed first; the remaining four ride
+on the same release to keep a single coherent change set.
+
+### Security
+
+- **RM-1: Redact per-switch passwords from operator logs.** Before this
+  release, `ScriptRunner.execute_remote()` echoed the full shell command
+  to the UI output pane, which for `VnetmapWorkflow` meant the vnetmap
+  `-p` argument and the embedded JSON map of per-switch passwords
+  rendered in plaintext in every workflow log and in the `vnetmap_command`
+  field of the step summary (and therefore the result bundle).
+  - `ScriptRunner.execute_remote()` and `execute_remote_persistent()`
+    now accept an optional `display_command=` kwarg; when provided it
+    is used for logging and the real `command` is still what's sent to
+    the remote host.
+  - `SessionManager.start_session()` (tmux path) received the same
+    `display_command` parameter — without it the credential would still
+    leak when `execute_remote_persistent` fell back through the session
+    manager.
+  - `VnetmapWorkflow._step_generate_command` now builds and emits a
+    `<switch-password>`-placeholder command for UI logs; the real
+    command is stored internally only for execution.
+  - `VnetmapWorkflow._step_run_vnetmap` (both the per-switch-password
+    fast path and the candidate-sweep legacy path) passes
+    `display_command=` to `ScriptRunner` and persists the redacted form
+    to `_step_data["vnetmap_command"]` so bundles/manifests never
+    capture the secret.
+  - **Operational follow-up** (still required, not automated by this
+    release): rotate any switch passwords that were captured in prior
+    logs or result bundles, and scrub archived copies that predate the
+    fix.
+- **RM-1 supplementary: stop committing switch passwords to the repo.**
+  - `config/config.yaml.template` no longer ships plaintext factory
+    default switch passwords; the `advanced_operations.default_switch_passwords`
+    list is now `[]` with commentary on the two supported secret
+    channels (local `config/config.yaml`, or
+    `VAST_DEFAULT_SWITCH_PASSWORDS` env var, colon-separated).
+  - `config/config.yaml` is now listed in `.gitignore` and was removed
+    from the repo (`git rm --cached`) so user-local secrets never get
+    staged accidentally.
+  - The `_FALLBACK_SWITCH_PASSWORDS` tuple was removed from
+    `src/oneshot_runner.py`; autofill now loads candidates exclusively
+    from the config file or the env var, and logs a `WARNING` when
+    neither is populated (instead of silently using baked-in defaults).
+  - `src/app.py` bootstrap now copies `config.yaml.template` when the
+    user has no `config/config.yaml`, with a fallback to any legacy
+    `config.yaml` for older bundles.
+
+### Fixed
+
+- **RM-2: Health check respects per-switch SSH passwords.**
+  `HealthChecker.run_switch_ssh_checks()` now reads an optional
+  `switch_ssh_config["password_by_ip"]` map and looks up the correct
+  password per switch IP, falling back to `switch_ssh_config["password"]`
+  only when the map has no entry. `OneShotRunner._run_health_checks`
+  populates the map from the credentials that pre-validation already
+  resolved, so MLAG / Switch NTP / Switch Config Readability checks no
+  longer fail on the switch that needs the fallback credential (observed
+  regression on `10.143.11.156`). A malformed (non-dict) map is ignored
+  safely and falls back to the primary password.
+- **RM-3: `MINOR` VAST alarms no longer log at `[ERROR]`.**
+  `SupportToolWorkflow._step_run_support_tools` used naïve substring
+  matching (`"error" in line.lower()`), so any `MINOR`-severity alarm
+  whose message text happened to contain the word "error" (e.g. a DNS
+  query "failed due to internal error") was promoted to `[ERROR]` in
+  the live log. Classification now parses the structured alarm format
+  (`<timestamp> | <SEVERITY> | <message>`) first via
+  `_classify_alarm_line`: `CRITICAL → error`, `MAJOR → warn`,
+  `MINOR/INFO/UNKNOWN → info`. The legacy keyword-based path remains as
+  a fallback for non-alarm lines.
+- **RM-4: Log-line copy/paste from the output pane.** Text selection in
+  the Advanced Operations output pane used to yield strings like
+  `12:44:29[INFO]` because the HTML emitted `</span>[` with no
+  separator. Both `frontend/templates/advanced_ops.html` and
+  `frontend/templates/reporter.html` now emit `</span> [`, so copies
+  paste as `HH:MM:SS [LEVEL] message` for triage tickets.
+- **RM-5: Prior vperfsanity output is preserved in the bundle.** When
+  the vperfsanity workflow is skipped this run (it can take ~30 min)
+  the bundler previously shipped a one-line `performance/vperfsanity_STALE.txt`
+  placeholder, discarding any prior-run `vperfsanity_results_*.txt`
+  file. With this release the bundler instead attaches the prior file
+  as `performance/vperfsanity_PRIOR_<original-name>.txt` prefixed with
+  a banner that names the source, its original mtime, and the current
+  run's start time (so reviewers cannot mistake it for current-run data).
+  Behaviour is controlled by the new `bundle.include_prior_vperfsanity`
+  config key (default `true`); setting it to `false` restores the
+  pre-RM-5 behaviour.
+
+### Changed
+
+- **Result bundle manifest** bumped to version **1.2**. New fields:
+  - `vperfsanity_prior_source` — original filename of the prior
+    vperfsanity file that was rescued, or `null` if none.
+  - `include_prior_vperfsanity` — the flag that was in effect when the
+    bundle was produced.
+- **`SUMMARY.md`** now reports vperfsanity as "STALE (included as
+  PRIOR with banner) — `vperfsanity_PRIOR_<name>`" when the rescue
+  branch fired, rather than "STALE — `<name>` (not included)".
+- **`config/config.yaml.template`** gained a new top-level `bundle:`
+  section with `include_prior_vperfsanity: true` for discoverability.
+
+### Tests
+
+- `tests/test_script_runner.py::TestScriptRunnerRedaction` (3 tests)
+  proves the `display_command` kwarg suppresses the real command in
+  emitted log entries while still running it.
+- `tests/test_health_checker.py::TestSwitchSSHPerIPPassword` (3 tests)
+  covers per-IP password resolution, fallback to primary, and safe
+  handling of malformed maps.
+- `tests/test_workflows.py::TestAlarmLineClassifier` (7 tests) is a
+  table-driven check of the alarm-severity → log-level mapping, the
+  "MINOR + `error` in message ≠ ERROR" regression, and the fallback
+  behaviour for non-alarm lines.
+- `tests/test_result_bundler.py::TestPriorVperfsanity` (6 tests)
+  covers the prior-file attach path, the flag-off fallback, the
+  manifest fields, the SUMMARY.md marker, the fresh-run no-op, and the
+  `get_result_bundler(include_prior_vperfsanity=...)` factory plumbing.
+- `tests/test_oneshot_runner.py::TestSwitchPasswordCandidates::test_autofill_without_config_yields_empty_candidates`
+  updated to match the RM-1 supplementary behaviour (empty candidate
+  list + WARNING log when neither config nor env var is populated).
+
+### Fixed (Download Bundle served stale zip after successful one-shot run)
+
+- **Symptom** (reported from `import/logs/output-results-0518.txt`):
+  a successful Test Suite run at 12:18:14 UTC produced
+  `validation_bundle_selab-var-202_20260421_051813.zip`, but clicking
+  **Download Bundle** 12 seconds later returned
+  `validation_bundle_selab-var-202_20260421_050004.zip` — the *previous*
+  run's zip from earlier in the day.  Every subsequent click returned
+  the same stale zip (log lines 3103–3107).
+- **Root cause:** `_record_last_oneshot_bundle` in `src/app.py` updates
+  the `ONESHOT_LAST_BUNDLE` registry via `current_app.config[...]`, but
+  it's invoked from a bare `threading.Thread` (the `_run` closure in
+  `advanced_ops_oneshot_start`) that has **no Flask application
+  context** pushed.  That raised `RuntimeError: Working outside of
+  application context`, which the outer `except Exception: pass`
+  silently swallowed.  The registry was therefore never refreshed
+  after the first cold-start rehydration, and
+  `/advanced-ops/bundle/last` kept serving whatever zip the startup
+  scan had captured.
+- **Fix:** `src/app.py::advanced_ops_oneshot_start._run` now pushes an
+  explicit `app.app_context()` around the registry-update call, and
+  the silent `except: pass` is replaced with a `logger.warning(...)`
+  that surfaces any residual failure (so future regressions show up as
+  a warning log instead of a mysterious "stale download" user report).
+- **Tests:** new `TestOneShotLastBundleBackgroundThreadUpdate` class
+  in `tests/test_app.py` (4 tests) — proves the helper requires an app
+  context (regression guard), proves `app.app_context()` at the call
+  site updates the registry from a background thread that never saw a
+  request, and proves the subsequent `/advanced-ops/bundle/last`
+  response names the new bundle.  Also covers the no-op paths
+  (run didn't complete / bundle file missing).
+
+### Fixed (Logical Network Diagram + Port Mapping — spine visibility and crossing paths)
+
+Addresses two visual defects seen in `/health` report screenshots:
+
+1. **Leaf-switch paths crossed at the top of the Logical Network Diagram.**
+   The renderer placed rack-local switches in the order the API returned
+   them, so the physical switch serving Network B could land in the
+   left-hand SWA position while its Network A connections were still
+   drawn green-to-left. That produced the diagonal crossing pattern
+   reported in the screenshots.
+2. **No spine ↔ leaf mapping in either the diagram or the Port Mapping
+   tables.** Only leaf switches received Port-to-Device Mapping tables,
+   and the only uplink lines ever drawn were pulled from
+   `ipl_connections` — a list the collector populated only when every
+   switch in the pair advertised LLDP on port `swp29..swp32` **and**
+   both sides used symmetric port numbers.
+
+### Changed
+
+- `src/network_diagram_v2.py`: new static helper
+  `RackCentricDiagramGenerator._sort_switches_by_network()` re-orders
+  per-rack switches before rendering so that the switch with
+  majority-Network-A connections always lands at position 0 (SWA / left)
+  and the majority-B switch at position 1 (SWB / right). Falls back to
+  `mgmt_ip` ascending, matching the canonical ordering used by
+  `EnhancedPortMapper._build_switch_map`. Eliminates the crossing lines
+  entirely.
+- `src/data_extractor.py`: `_infer_ipl_from_switch_pair` is no longer
+  restricted to exactly two leaves. Given a populated `switch_map` it
+  now emits one inferred `IPL` per leaf pair **and** one inferred
+  `spine_uplink` per (leaf, spine) pair, so the diagram can still draw
+  something meaningful when `vnetmap` returns no LLDP neighbor blocks.
+  Inferred rows carry `notes` ending in `(inferred)` so rendering can
+  style them distinctly if desired.
+- `src/external_port_mapper.py`: `_collect_ipl_connections` and
+  `_parse_cumulus_lldp_for_ipl` now perform a generalized LLDP walk
+  across **every** port on **every** switch when callers supply a
+  `switch_hostname_map` (hostname → mgmt_ip) and `spine_ips`. Each
+  discovered edge is deduplicated (unordered endpoint pair) and
+  classified with a `connection_type` of `ipl`, `spine_uplink`, or
+  `spine_fabric`. The legacy narrow `swp29..swp32` symmetric-port scan
+  is preserved when no map / spine list is provided, so existing
+  callers see identical output.
+- `src/app.py`, `src/oneshot_runner.py`, `src/main.py`: build and pass
+  the `switch_hostname_map` + `spine_ips` arguments to
+  `ExternalPortMapper` from the switch inventory (spines identified via
+  the `role` / `switch_type` fields).
+- `src/report_builder.py`: new `_create_spine_port_tables()` helper
+  renders a dedicated `SP1 (<hostname>) Port-to-Device Mapping` table
+  for every spine switch that has spine-uplink or spine-fabric edges.
+  The leaf tables in the same section now include `Uplink` rows for any
+  `spine_uplink` edge that terminates on that leaf, sourced from the
+  same `ipl_connections` list.
+- **PMI-4 — Onyx generalized LLDP walk.**
+  `src/external_port_mapper.py::_parse_onyx_lldp_for_ipl` now mirrors
+  the Cumulus rewrite: whenever `switch_hostname_map` or `spine_ips` is
+  populated, every `Eth*` / `swp*` port on every Onyx switch is
+  inspected, the symmetric-port check is dropped, and neighbors are
+  resolved via `_resolve_neighbor_to_switch_ip` so leaf-to-spine
+  uplinks on arbitrary ports are discovered. The historical
+  `Eth1/29..Eth1/32` symmetric-port heuristic is preserved as a
+  fallback for callers that don't supply a hostname map, so legacy
+  two-leaf Onyx deployments see identical output.
+- **PMI-5 — vnetmap fabric-report capture.**
+  `src/workflows/vnetmap_workflow.py::_step_save_output` now pulls
+  `/vast/log/vnetmap-*.txt` (the detailed LLDP dump `vnetmap.py` writes
+  on cnode-1 for every switch in the fabric) and splices it into the
+  saved `vnetmap_output_<cluster>_<ts>.txt`. The merged file feeds
+  straight into `VNetMapParser._parse_lldp_neighbors`, so
+  support-bundle / offline runs that disable per-switch SSH can now
+  recover full spine visibility without any additional credentials.
+  New helpers `_fetch_fabric_report()` and `_merge_fabric_report()`
+  encapsulate the SSH fetch (sentinel-delimited, failure-safe) and the
+  append-with-delimiter merge. The structured results JSON now records
+  `fabric_report_path` and `fabric_report_bytes` so operators can see
+  at a glance whether the report was recovered.
+
+### Tests
+
+- `tests/test_network_diagram_v2.py`: new `TestSortSwitchesByNetwork`
+  class — direct coverage for the helper (A-majority at position 0,
+  fallback to mgmt_ip, empty input) plus an integration test through
+  `_build_rack_groups` that confirms the rack's `switches` list is
+  ordered correctly end-to-end.
+- `tests/test_data_extractor.py`: new `TestInferIplFromSwitchPair`
+  class covering two-leaf clusters (single IPL), three-switch clusters
+  (one IPL + one spine_uplink per leaf), four-leaf clusters (all six
+  pairings), and empty-input edge cases.
+- `tests/test_external_port_mapper.py`: new `TestEdgeClassification`,
+  `TestNeighborResolution`, and `TestCumulusLldpGeneralizedWalk`
+  classes covering the new `_classify_edge`,
+  `_resolve_neighbor_to_switch_ip`, and generalized walk paths, plus an
+  explicit regression guarding the legacy narrow scan for callers that
+  don't supply a hostname map.
+- `tests/test_report_builder.py`: new `TestSpinePortTables` class
+  covering spine-table emission, leaf-IP exclusion from spine
+  candidates, and the no-spine-uplinks early return.
+- `tests/test_external_port_mapper.py`: new `TestOnyxLldpGeneralizedWalk`
+  class covering PMI-4 — generalized mode emits both IPL and
+  spine-uplink edges, drops unresolved neighbors, skips self-
+  advertisements, and the legacy narrow scan is preserved exactly when
+  no hostname map is provided.
+- `tests/test_workflows.py`: new `TestVnetmapFabricReportCapture` class
+  covering PMI-5 end-to-end — the expected shell command is issued
+  with the missing-file and path sentinels, SSH / permission / OS
+  failures all return `(None, None)` without aborting the save step,
+  the merged file is parseable by `VNetMapParser._parse_lldp_neighbors`
+  (regression guard: spine uplink 10.1.1.156 → 10.1.1.153 is now
+  recovered), and `fabric_report_path` / `fabric_report_bytes` are
+  recorded in the structured results JSON.
+
+### Notes
+
+- Both follow-ups originally deferred at the end of Phase 3 are now
+  complete: Onyx parity with the Cumulus generalized walk (PMI-4), and
+  `vnetmap` fabric-report capture for offline / support-bundle runs
+  (PMI-5).
+
+## [1.5.2] - 2026-03-21
+
+### Fixed (validation bundle no longer ships stale, cross-run files)
+- **Downloaded `validation_bundle_…_<ts>.zip` contained 7 files that
+  predated the current run.** Reported scenario
+  (`import/Assets-2026-04-21a/2026-04-21a-output-results.txt`,
+  `validation_bundle_selab-var-202_20260421_002141`): the one-shot runner
+  generated a clean bundle at `00:21:09` (with `since=run_started_at`
+  correctly filtering pre-run files), but 30 seconds later the user
+  clicked **Download Results** and received a second, contaminated bundle
+  (`…_002141.zip`) that swept in files from 2026-03-24 / 2026-04-03
+  referencing the wrong CNode. Manifest read `status=ok` for every
+  category and an empty `stale` dict, so nothing about the bundle
+  surfaced the drift.
+- **Root cause:** the UI's Download button hit
+  `/advanced-ops/bundle/collect` + `/advanced-ops/bundle/create`, both of
+  which called `ResultBundler.collect_results(cluster_ip=…)` **without**
+  `since=` or `operation_status=`. With the freshness filter absent, any
+  file whose filename/header matched the current cluster was considered
+  current, no matter how old the file was. The bundle that the one-shot
+  path already produced (correctly filtered) was ignored by the Download
+  button and rebuilt from scratch.
+- **Fix — serve the one-shot bundle directly (Option A).** The Download
+  button now returns the exact zip the runner produced; it no longer
+  rebuilds from scratch, and therefore cannot pull in anything the
+  runner's `since=run_started_at` filter already excluded.
+  - `src/app.py` maintains a per-cluster `ONESHOT_LAST_BUNDLE` registry
+    (`{cluster_ip → {bundle_path, run_started_at, operation_status}}`)
+    populated on successful one-shot completion. A new read-only route
+    `GET /advanced-ops/bundle/last?cluster_ip=…` returns the exact zip
+    the runner produced.
+  - The registry is **rehydrated on first request after restart** by
+    scanning `output/bundles/*.zip` newest-first and picking each
+    cluster's first zip whose `manifest.json` has a non-null
+    `run_started_at` — the flag that identifies bundles produced by the
+    one-shot path (which applies the freshness filter), explicitly
+    skipping rebuild-path zips that lack the flag and may contain stale
+    files.
+  - `downloadResults()` in `frontend/templates/reporter.html` and
+    `frontend/templates/advanced_ops.html` now asks
+    `/advanced-ops/bundle/last` first and falls back to the legacy
+    collect + create path only when no one-shot bundle is on record.
+  - The fallback rebuild path now threads `since=` and
+    `operation_status=` through to `ResultBundler.collect_results` via
+    `_last_bundle_freshness_for(cluster_ip)`, so even the rebuild path
+    honours the freshness filter when a prior one-shot ran.
+- **Rollback — no pre-run archiving of historical files.** An earlier
+  defence-in-depth cleaner (`src/output_cleaner.py` +
+  `src/bundle_scan_spec.py`) moved every same-cluster, pre-`started_at`
+  file out of the scan dirs into
+  `<data_dir>/archive/<ISO>/…`. In the field this was destructive to
+  operator workflow — historical `vnetmap_results_*.json`,
+  `health_check_*.json`, `network_summary_*.json`, and
+  `switch_configs_*.json` from prior runs were being swept out of
+  `output/scripts/`, `output/health/`, etc. (observed in
+  `import/Assets-2026-04-21b/Output-Results-2026-04-21b.txt`, ~200
+  archive lines on a single run). Direct-serve of the runner's bundle
+  (Option A) already prevents the contamination the cleaner was
+  defending against, so the cleaner, its scan-spec module, and their
+  test modules were removed. `output/scripts/` and peer dirs now keep
+  every file in place; the runner simply produces a correctly filtered
+  bundle and serves it unchanged.
+- **Regression coverage.** New cases in `tests/test_app.py` lock in the
+  `/advanced-ops/bundle/last` lookup, the cold-start rehydration that
+  rejects rebuild-path zips, and the `since + operation_status`
+  threading through `/advanced-ops/bundle/collect`. Full suite: 951
+  unit tests passing.
+
+### Fixed (As-Built Report now populates Port Mapping from vnetmap on one-shot)
+- **The one-shot As-Built Report ignored vnetmap output and always
+  re-collected port mapping over SSH.** Reported scenario
+  (`import/Assets-2026-04-21b/Output-Results-2026-04-21b.txt`): the
+  `VAST vnetmap` workflow completed successfully at `08:44:24`,
+  writing `output/scripts/vnetmap_output_10.143.11.202_…_014423.txt`
+  and the companion `vnetmap_results_…_014423.json`. Ten minutes later
+  the report generation phase logged
+  `Collecting port mapping data via SSH...` and went straight into
+  `ExternalPortMapper` — never looking at the freshly-produced vnetmap
+  file — so the PDF's Port Mapping section used the SSH MAC-correlation
+  path instead of vnetmap's LLDP-derived topology.
+- **Root cause:** `OneShotRunner._run_report` implemented only the
+  `ExternalPortMapper` branch of the three-source priority
+  (`vnetmap → SSH → static vnetmap_output.txt`) that
+  `extract_port_mapping` expects. The `/generate` web path in
+  `app.py._run()` had been wired to look for
+  `vnetmap_output_{cluster_ip}_*.txt` since v1.5.0, but the one-shot
+  reporter never got the same wiring, so any deployment that used the
+  Advanced Ops flow quietly skipped the vnetmap source even when it
+  had just been generated seconds earlier.
+- **Fix.** `OneShotRunner` now owns `_find_latest_vnetmap_output`,
+  which scans `output/scripts/` for `vnetmap_output_{cluster_ip}_*.txt`
+  (strictly cluster-scoped to avoid cross-cluster contamination).
+  `_run_report` calls it before any SSH work; when a match exists it
+  parses the file with `VNetMapParser`, attaches the result as
+  `raw_data["port_mapping_vnetmap"]`, and passes `use_vnetmap=True` to
+  `data_extractor.extract_all_data`. `ExternalPortMapper` only runs
+  when no vnetmap file is available or the parse yields no topology.
+  The log now shows
+  `Found vnetmap output: vnetmap_output_<cluster>_<ts>.txt — using as
+  port mapping source` followed by
+  `Vnetmap data parsed: <N> connections`, matching the `/generate`
+  path line-for-line.
+- **Regression coverage.** New `TestVnetmapPortMappingInReport` in
+  `tests/test_oneshot_runner.py` covers: `_find_latest_vnetmap_output`
+  newest-wins selection, missing scripts dir, cross-cluster isolation,
+  empty cluster IP, the success path (use_vnetmap=True,
+  use_external_port_mapping=False, ExternalPortMapper not called), and
+  the SSH fallback when no vnetmap file exists.
+
+### Fixed (vnetmap `--multiple-passwords` no longer crashes with `EOFError` on non-interactive SSH)
+- **vnetmap Step 4 crashed inside `getpass.getpass()` the moment the
+  per-switch password fast path engaged.** Reported scenario
+  (`output-results-d.txt`, 06:32:52): pre-validation probed all three
+  switches successfully (`Switch SSH connected on 3/3 switch(es)`) and
+  the workflow correctly logged `"Using per-switch passwords from
+  pre-validation (3 switch(es))"`, but vnetmap then printed
+  `GetPassWarning: Can not control echo on the terminal`, followed by
+  `Enter password for switch 10.143.11.156:` and an immediate
+  `EOFError` from `fallback_getpass → _raw_input → readline()`.
+- **Root cause:** the fast path piped the password list on stdin
+  (`printf '%s\n' pw1 pw2 pw3 | python3 vnetmap.py --multiple-passwords`)
+  and relied on `getpass.getpass()` falling back to `sys.stdin.readline()`
+  when `/dev/tty` isn't available. That works only if nothing else
+  consumes stdin first. `vnetmap.py 1.0.6` calls
+  `check_ssh_keys()` → `ssh_exe()` → `subprocess.check_output("ssh …",
+  shell=True)` **before** any `getpass` prompt (see lines 404-408,
+  1142-1151 of vnetmap.py). `subprocess.check_output` with default
+  `stdin=None` inherits the parent's stdin, and OpenSSH's default
+  behavior is to forward stdin to the remote. The ssh probe therefore
+  drained every byte we'd queued up with `printf`, and vnetmap's first
+  `getpass` call hit EOF on the very first switch.
+- **Fix — stop using stdin; read the password map from a file on the
+  remote instead.** `VnetmapWorkflow._build_multiple_passwords_cmd`
+  now builds a multi-line bash command that:
+  1. `mktemp`s two files under `/tmp/vast_scripts/` with `umask 077`
+     (`.vnetmap_pw.XXXXXX.json` and `.vnetmap_wrap.XXXXXX.py`).
+  2. Writes, via single-quoted heredocs (`<<'__VNM_PW_EOF__'` and
+     `<<'__VNM_WRAP_EOF__'`), the per-switch password map as compact
+     JSON and a small Python wrapper that monkey-patches
+     `getpass.getpass` to consult that map based on the IPv4 found in
+     the prompt string, then `runpy.run_path`s the real `vnetmap.py`
+     as `__main__`.
+  3. Installs `trap 'rm -f "$_VNM_PWF" "$_VNM_WRAP"' EXIT HUP INT
+     QUIT TERM` before any content is written, so the JSON and wrapper
+     temp files are deleted on success, failure, or signal.
+  4. Invokes `VAST_SWITCH_PW_FILE="$_VNM_PWF"
+     VAST_VNETMAP_PATH="/tmp/vast_scripts/vnetmap.py"
+     python3 "$_VNM_WRAP" -s $MLX_IPS -i $cnodes_ips,$dnodes_ips
+     -u cumulus --multiple-passwords`. The wrapper reads the JSON,
+     immediately `os.remove`s the file, and returns the mapped
+     password from its patched `getpass` — stdin is never touched,
+     so nothing vnetmap's ssh probe does can break it.
+- **Operator-log hygiene:** `_build_multiple_passwords_cmd` now
+  returns a tuple `(full_cmd, display_cmd)`. `display_cmd` is a
+  one-line summary (`… && VAST_SWITCH_PW_FILE=<redacted: N switch
+  credential(s)> … python3 <multi-password wrapper> …
+  --multiple-passwords`) that replaces the heredoc bodies and the
+  password payload for the UI echo, while the shell still runs the
+  real command. The old `_redact_multi_cmd_passwords` helper is
+  removed — the display form is produced alongside the real form, so
+  there is no longer a redactor that could desynchronize from the
+  builder.
+- **Regression coverage** (in
+  `tests/test_workflows.py::TestVnetmapPerSwitchPasswords`):
+  - `test_build_multiple_passwords_cmd_drops_single_password_flag`
+    — `-p '…'` is stripped, `--multiple-passwords` is appended, the
+    old `printf '%s'` stdin prefix is gone, and
+    `python3 "$_VNM_WRAP"` is the invocation.
+  - `test_build_multiple_passwords_cmd_encodes_full_map_as_json`
+    pins the compact JSON form, the two heredoc delimiters, and both
+    env vars (`VAST_SWITCH_PW_FILE`, `VAST_VNETMAP_PATH`).
+  - `test_build_multiple_passwords_cmd_installs_trap_and_chmod`
+    pins `umask 077`, both `mktemp` templates, and the exact `trap`
+    registered for `EXIT HUP INT QUIT TERM`, and confirms literal
+    single quotes inside passwords survive the JSON round-trip.
+  - `test_build_multiple_passwords_cmd_returns_redacted_display`
+    asserts the display form contains
+    `<redacted: 2 switch credential(s)>` and `<multi-password
+    wrapper>` and no cleartext passwords.
+  - `test_run_vnetmap_uses_per_switch_map_on_happy_path` confirms
+    the executed command carries the JSON map in `switch_ips` order,
+    uses the wrapper, and never emits `printf '%s`.
+  - `test_run_vnetmap_skips_fast_path_when_map_incomplete` confirms
+    a partial map falls through to the legacy single-`-p` path
+    (wrapper scaffolding absent).
+  - `test_run_vnetmap_falls_back_to_candidate_sweep_on_fast_path_auth_failure`
+    confirms an auth-failure result on the wrapper run still rolls
+    into the legacy candidate sweep and the third candidate wins.
+
+### Fixed (per-switch password map now survives Pre-Validation → Execute handoff)
+- **Execution runner discarded the per-switch password map that
+  Pre-Validation had just discovered.** Reported scenario
+  (`import/Assets-2026-0420c/output-results-Output-Results-2026-0420d.txt`):
+  Pre-Validation ran the full Switch SSH probe and authenticated all three
+  switches (`10.143.11.156 → Vastdata1!`, `.154 → VastData1!`,
+  `.153 → VastData1!`). The operator then clicked Run, and vnetmap Step 4
+  immediately logged `"Using primary switch password (candidate 1/3)"` —
+  the legacy candidate-sweep — and exhausted all three passwords, none of
+  which could satisfy every switch on its own.
+- **Root cause:** `/advanced-ops/oneshot/validate` and
+  `/advanced-ops/oneshot/start` each construct a **new** `OneShotRunner`.
+  Pre-Validation populated `runner_A._switch_password_by_ip`; Execution
+  threw `runner_A` away and started `runner_B` with the map at `{}`. The
+  vnetmap fast path's guard
+  (`all(ip in switch_password_by_ip for ip in switch_ips)`) therefore
+  never held on the execution runner, and the workflow fell back to the
+  single-`-p` candidate loop.
+- **Fix — handoff + runtime safety net:**
+  - `OneShotRunner.seed_switch_credentials(switch_user_by_ip,
+    switch_password_by_ip)` accepts a pre-computed map and merges it into
+    `_switch_user_by_ip` / `_switch_password_by_ip`. Empty IPs/passwords
+    are dropped so `VnetmapWorkflow` never shell-quotes a blank token
+    into the `--multiple-passwords` stdin stream.
+  - `OneShotRunner.switch_password_by_ip` / `switch_user_by_ip` are now
+    read-only properties exposing copies of the maps, so callers
+    (notably `app.py`) can hand them off without reaching into
+    underscored internals.
+  - `/advanced-ops/oneshot/start` in `src/app.py` reads those properties
+    off `app.config["ONESHOT_RUNNER"]` (the prior Pre-Validation runner)
+    and calls `new_runner.seed_switch_credentials(...)` before assigning
+    the new runner. Seeding is wrapped in try/except so a malformed
+    prior runner never blocks a Run.
+  - `OneShotRunner.run_all()` gained a runtime fallback: if a switch-op
+    is selected (`SSH_SWITCH_OPS & selected_ops`), the map is empty, and
+    the credentials needed to probe are present, it silently invokes
+    `_validate_switch_ssh` before `_run_operations`. This covers the
+    "operator clicked Run without Pre-Validating" edge case and any
+    future endpoint that calls `run_all()` directly.
+- **Regression coverage:**
+  - `tests/test_oneshot_runner.py::TestPrevalidationSwitchSshFallback::
+    test_seed_switch_credentials_populates_map_and_workflow_creds`
+    verifies seeding flows through `_get_workflow_credentials` so the
+    workflow sees `switch_password_by_ip` + `switch_user_by_ip`.
+  - `...::test_seed_switch_credentials_ignores_empty_entries` pins the
+    "no blank tokens in --multiple-passwords" invariant.
+  - `...::test_run_all_reprobes_switches_when_map_empty` confirms the
+    runtime fallback probes when the map is empty.
+  - `...::test_run_all_skips_reprobe_when_map_already_seeded` confirms
+    the seed short-circuits the re-probe (no duplicate SSH round-trips
+    on the happy path).
+  - `tests/test_app.py::TestOneShotStartHandoff::
+    test_start_seeds_new_runner_from_prior_runner` verifies the Flask
+    endpoint reads the prior runner's properties and calls
+    `seed_switch_credentials` with the exact discovered maps.
+  - `...::test_start_skips_seed_when_no_prior_runner` confirms the
+    first-launch flow does not call the setter, so the runtime fallback
+    in `run_all` remains authoritative in that path.
+
+### Fixed (Switch SSH pre-validation now runs when only vnetmap is selected)
+- **Selecting vnetmap without `switch_config` skipped the Switch SSH probe,
+  which silently disabled the per-switch password fast path.** Reported
+  scenario (`import/Assets-2026-0420c/output-results-d.txt`): operator
+  selected only `vnetmap` + `support_tool`, pre-validation ran five checks
+  (Credentials, Cluster API, Node SSH, Internet, Tool Freshness) with **no
+  Switch SSH line**, then vnetmap Step 4 logged
+  `"Using primary switch password (candidate 1/3)"` — the legacy
+  candidate-sweep path — and failed on the first mixed-default switch it
+  reached.
+- **Root cause:** `SSH_SWITCH_OPS` in `src/oneshot_runner.py` contained only
+  `{"switch_config"}`, so `needs_switch_ssh` was `False` whenever vnetmap
+  was the only switch-touching op selected. `_validate_switch_ssh` never
+  ran, `_switch_password_by_ip` stayed empty, and the vnetmap fast path
+  guard (`all(ip in switch_password_by_ip for ip in switch_ips)`) never
+  held.
+- **Fix:** `SSH_SWITCH_OPS` now includes `vnetmap`. With this change,
+  selecting vnetmap alone (or vnetmap + any non-switch op) runs the full
+  Switch SSH probe during Pre-Validation, records the winning
+  `(user, password)` per switch, and feeds the map to `VnetmapWorkflow`,
+  so Step 4 takes the `printf ... | python3 vnetmap.py
+  --multiple-passwords` fast path that was introduced earlier in 1.5.2.
+- **Regression coverage:**
+  `tests/test_oneshot_runner.py::TestPrevalidationInclusion::
+  test_prevalidation_runs_switch_ssh_when_only_vnetmap_selected` asserts
+  that `_validate_switch_ssh` is called when `selected_ops=["vnetmap"]`,
+  `include_health=False`, `include_report=False` — locking in the
+  previously-missing Pre-Validation check.
+
+### Fixed (vnetmap runs per-switch-password on mixed-default clusters)
+- **vnetmap Step 4 no longer exhausts all candidate passwords on clusters
+  whose switches carry different defaults.** Reported scenario: three
+  switches — `10.143.11.156` on `VastData1!`, `.154` and `.153` on
+  `Vastdata1!` — passed Pre-Validation (each switch authenticated on its
+  correct candidate) but `vnetmap.py` still failed because it was being
+  invoked with a **single** `-p '<one password>'` flag that had to work
+  for every switch simultaneously. Every candidate run failed the first
+  switch it reached with the wrong casing, leaving the run at
+  "Authentication failed on all N candidate switch password(s)" even
+  though the per-switch credentials were known.
+- **Root cause:** pre-validation discovered the winning password for each
+  switch but discarded the information. The workflow then brute-forced
+  one password at a time against all switches — structurally incompatible
+  with mixed-default clusters.
+- **Fix — per-switch credential propagation:**
+  - `OneShotRunner._validate_switch_ssh` now records the winning
+    `(user, password)` pair for every switch that authenticates and
+    exposes them via `_get_workflow_credentials` as
+    `switch_password_by_ip` / `switch_user_by_ip`.
+  - `VnetmapWorkflow._step_generate_export_commands` captures that map.
+  - `VnetmapWorkflow._step_run_vnetmap` takes a fast path when the map
+    has an entry for every listed switch: it rewrites the vnetmap
+    command to drop `-p` and add `--multiple-passwords` (vnetmap.py
+    1.0.6's native flag, which calls `getpass.getpass()` per switch),
+    and prefixes the command with
+    `printf '%s\n' 'pw1' 'pw2' 'pw3' |` so the correct password for
+    each switch is delivered on stdin in the same order as `-s`
+    (getpass falls back to stdin when no TTY is available, which is
+    the case for SSH `exec_command`). Single quotes inside passwords
+    are shell-escaped. The log echo redacts the printf tokens as
+    `'***'` so credentials don't leak into the UI stream.
+  - If the fast-path run still reports an auth-style failure the
+    workflow falls back to the legacy single-password candidate sweep
+    so operators don't lose the previous recovery behaviour.
+- **Regression coverage:**
+  - `tests/test_workflows.py::TestVnetmapPerSwitchPasswords` locks in
+    single-password flag removal, argument ordering matches switch-IP
+    order, single-quote escaping, password redaction in the echo, the
+    happy-path one-call execution, the fallback to the legacy sweep on
+    an incomplete map, and the fallback on fast-path auth failure.
+  - `tests/test_oneshot_runner.py::TestPrevalidationSwitchSshFallback`
+    gains `test_records_per_switch_winning_password_for_workflows` and
+    `test_does_not_record_passwords_for_unreachable_switches` to assert
+    the map is populated correctly and never leaks credentials for
+    switches that did not authenticate.
+
+### Fixed (Pre-validation now honours the Autofill toggle)
+- **Pre-validation Switch SSH probe was collapsing to a 2-combo list** (just
+  `cumulus/<entered password>` + `admin/admin`) because
+  `/advanced-ops/oneshot/validate` constructed its `OneShotRunner` without
+  forwarding `config_path` or `use_default_creds`. That meant the Autofill
+  toggle was ignored during pre-validation — clusters that needed the
+  `VastData1!` case variant or the `Cumu1usLinux!` factory default were
+  flagged as "auth failed on N/N" even though runtime workflows (which go
+  through `/advanced-ops/oneshot/start` and did forward the kwargs) would
+  have authenticated successfully with the full candidate list.
+- **Fix:** `/advanced-ops/oneshot/validate` now reads `use_default_creds`
+  from the request payload and passes both it and
+  `app.config["CONFIG_PATH"]` into `OneShotRunner`, matching the `/start`
+  path. The pre-validation probe now iterates the complete configured
+  `default_switch_passwords` list plus `admin/admin`, so the Switch SSH
+  check matches what the actual workflows will try at run time.
+- **Regression coverage:** `tests/test_app.py::TestOneShotValidateAutofillForwarding`
+  asserts both kwargs are forwarded when the toggle is on, and that
+  `use_default_creds` defaults to `False` when absent.
+
+### Changed (Switch credential fallback ordering simplified)
+- **Autofill switch-SSH credential list now matches operator intent exactly:**
+  for a Cumulus primary user the probe tries `cumulus/<entered password>` →
+  `cumulus/Vastdata1!` → `cumulus/VastData1!` → `cumulus/Cumu1usLinux!` →
+  `admin/admin` and stops there. The previous build also tried
+  `admin/Vastdata1!` and `admin/VastData1!` (an
+  Onyx-with-VMS-synced-password defensive combo) which could trip
+  account-lockout policies on Onyx switches that reject bad admin attempts;
+  those permutations have been removed. Operators who need the
+  Onyx-with-custom-admin-password path should enter the admin credentials
+  explicitly in Connection Settings.
+- **`advanced_operations.default_switch_passwords`** default extended to
+  `["Vastdata1!", "VastData1!", "Cumu1usLinux!"]` so Autofill exercises both
+  the VMS-synced casings and the stock Cumulus Linux factory default
+  (`Cumu1usLinux!`).
+- **`utils.ssh_adapter.build_switch_credential_combos`** simplified: drops
+  the `admin × <each candidate>` loop; keeps the `cumulus × <each candidate>`
+  fallback only when the operator set a non-default primary user.
+- **UI tooltips refreshed:** the Switch Password hint in Connection Settings
+  and the Autofill tooltip on Test Suite now list the final fallback chain
+  (Vastdata1! / VastData1! / Cumu1usLinux! / admin-admin).
+
+### Fixed (Autofill — two-password switch SSH retry)
+- **Mixed-default switch passwords no longer break the run:** clusters where VMS has synced one Cumulus pair to `Vastdata1!` while a spare Onyx leaf still carries the original `VastData1!` (or vice versa) previously caused `vnetmap` Step 4, `Switch Extraction` Step 1, and `External Port Mapper` OS detection to fail with "authentication failed with both credential sets" after a single pass. The Autofill path now iterates an ordered candidate list (primary entered/`default_switch_passwords[0]` first, then fallbacks) per switch and records the winning password on the switch entry so Step 2 reuses it.
+- **`ExternalPortMapper._detect_switch_os`** accepts a `switch_password_candidates` list and tries each candidate against every `(user, os_type)` pairing before giving up; connectivity errors still short-circuit immediately so timeouts are not multiplied.
+- **`SwitchConfigWorkflow._step_discover_switches`** retries the std-SSH + interactive-SSH probe pair for each password candidate on auth failure only, and `_step_extract_config` reuses the per-switch winning password instead of the first credential.
+- **`VnetmapWorkflow._step_run_vnetmap`** re-executes `vnetmap.py` with the next password candidate when the previous attempt output matches known auth/connect failure patterns (`authentication failed`, `permission denied`, `failed to connect to switch`, `unable to determine suitable switch api`, `login incorrect`). Password substitution in the generated command is shell-safe (single quotes inside the password are escaped).
+
+### Fixed (Pre-validation switch SSH check honours the Autofill fallback)
+- **"Switch SSH: connected but command failed (rc=5)" warning on mixed-default clusters no longer fires:** `OneShotRunner._validate_switch_ssh` now probes *every* switch returned by `switches/` (not just the first one) and tries *every* entry in `switch_password_candidates` per switch before reporting a result. On auth-failure it also retries over the MLNX-OS interactive SSH path so Onyx leaves authenticate without looking like a failure. The check passes when all switches are reachable + authenticated (even if an Onyx switch returns a non-zero rc for `hostname` outside the MLNX-OS shell) and warns with a per-IP breakdown only when a switch is genuinely unreachable or rejects every candidate password.
+- **Fallback usage is surfaced in the check message:** when at least one switch authenticated via a non-primary candidate, the Pre-Validation message appends "one or more switches authenticated via fallback credentials" so the operator knows why the run took an extra attempt.
+- **Stderr is now classified into auth vs. connectivity failures:** connectivity errors (`timed out`, `connection refused`, `no route to host`, `host unreachable`, `network is unreachable`, `name or service not known`) short-circuit the candidate loop for that switch so timeouts are not multiplied by the number of password candidates.
+
+### Fixed (Shared switch-credential ordering across pre-validation, Switch Extraction, and Port Mapping)
+- **New `utils.ssh_adapter.build_switch_credential_combos` helper** consolidates the credential-ordering policy that previously lived ad-hoc in `ExternalPortMapper._detect_switch_os`.  Order: primary `switch_user` × each password candidate first (Cumulus path), then `admin/admin` (Onyx/MLNX-OS factory default), then `admin` × each password candidate (Onyx with a VMS-synced password), and finally `cumulus` × each password candidate when the operator-entered primary user was neither.  De-duplicated; never issues network I/O.
+- **`SwitchConfigWorkflow._step_discover_switches`** now iterates this combo list instead of just `(switch_user, password_candidate)` pairs.  Previously a Cumulus-only credential pass meant Onyx switches that required `admin` as the SSH user would fail Step 1 even when Port Mapping handled them correctly; the two paths now agree.  The winning `user` + `password` pair is stored on each `connected_switches` entry so `_step_extract_config` reuses the exact credential that authenticated.
+- **`OneShotRunner._validate_switch_ssh`** now calls the shared helper, so pre-validation tries the same combo order as the workflow.  Messaging was updated from "fallback password" to "fallback credentials" to reflect that both user and password can differ between the primary combo and the winning combo.
+
+### Fixed (Pre-validation honours ProxyJump in Tech Port mode)
+- **Reported scenario:** a Cumulus Linux 5.11.1 switch reachable from a cluster node via ProxyJump but *not* directly from the Reporter's LAN was flagged as `auth failed on 1/3` in Pre-Validation even though the operator had just run `ssh cumulus@<ip>` successfully from a jump host with the same password.  The other two switches happened to be directly reachable and therefore passed.
+- **Root cause:** `OneShotRunner._validate_switch_ssh` was calling `run_ssh_command` without the `jump_host` / `jump_user` / `jump_password` kwargs that `SwitchConfigWorkflow._jump_kwargs()` already produces at runtime.  In Tech Port mode the Reporter has no direct L3 path to the cluster management network, so switches are ordinarily reached via a CNode; direct-SSH attempts either time out or hit an unrelated login banner and are misreported as auth failures.
+- **Fix:** added `OneShotRunner._switch_jump_kwargs()` that mirrors the workflow's jump-host wiring and threads the kwargs through `_probe_switch_candidates` into both `run_ssh_command` and `run_interactive_ssh`.  Pre-validation now reaches switches over the same ProxyJump path the actual Switch Extraction, vnetmap, and External Port Mapping workflows use, eliminating false auth-failure warnings caused by routing differences.
+
+### Fixed (Download Results reuses the one-shot bundle)
+- **"Download Bundle" no longer re-collects and silently re-includes stale files:** the UI now reads `state.bundle_path` from `/advanced-ops/oneshot/status` and downloads that exact archive (the one built with `since=run_started_at` freshness filters applied). The previous code path called `/advanced-ops/bundle/collect` and `/advanced-ops/bundle/create` without `since` / `operation_status`, which re-pulled pre-run artefacts marked as `ok`. The legacy collect/create path is kept as a fallback for sessions where no one-shot bundle exists.
+- **`lastOneShotBundlePath` is cleared at the start of each new one-shot run** so a previous bundle cannot be served after a fresh (possibly incomplete) run.
+
+### Added (Configurable switch password list)
+- **`advanced_operations.default_switch_passwords`** (ordered list) added to `config/config.yaml.template` and `config/config.yaml`. Defaults to `["Vastdata1!", "VastData1!"]` to cover the two common factory password casings. `OneShotRunner` loads this list when Autofill is enabled, deduplicates, promotes the operator-entered password (if any) to the head, and propagates the resulting `switch_password_candidates` list to every workflow via `_get_workflow_credentials`.
+- **Autofill tooltip on the Advanced Operations page** now documents the primary/fallback behaviour so operators understand why two password variants are accepted.
+
+### Tests
+- `tests/test_external_port_mapper.py::TestSwitchPasswordCandidates` — candidate list default/explicit ordering, dedup, and fallback-to-second-password on auth failure.
+- `tests/test_workflows.py::TestVnetmapPasswordFallback` — `_rebuild_vnetmap_cmd` substitution (including single-quote escaping), IB no-op behaviour, auth-failure detection, two-attempt retry success, and no-retry-on-connectivity.
+- `tests/test_workflows.py::TestSwitchConfigPasswordFallback` — primary-password-first happy path, fallback-on-auth-failure persisted on the switch entry, and early break on connectivity errors.
+- `tests/test_workflows.py::TestSwitchConfigWorkflow::test_is_auth_failure_detects_auth_errors` — classifier covers `authentication failed`, `permission denied`, `login incorrect`, `access denied`.
+- `tests/test_oneshot_runner.py::TestSwitchPasswordCandidates` — manual mode yields a single-entry list; autofill loads config and honours precedence; built-in fallback kicks in when the config is missing; explicit `switch_password_candidates` always wins; list is propagated via `_get_workflow_credentials`.
+- `tests/test_oneshot_runner.py::TestPrevalidationSwitchSshFallback` — covers the expanded Pre-Validation probe: single-password all-pass, mixed-defaults pass with fallback note, Onyx-reachable-but-command-rejected pass, one-switch-unreachable warn, all-passwords-auth-failed warn, Tech-Port-mode ProxyJump wiring, and no-jump-host in direct mode.
+- `tests/test_ssh_adapter.py::TestBuildSwitchCredentialCombos` — locks in the shared `(user, password)` ordering: primary first, `admin/admin` factory default included, `admin` × candidates for VMS-synced Onyx, `cumulus` × candidates when the operator's primary user is neither `admin` nor `cumulus`, and dedup.
+
+## [1.5.1] - 2026-03-21
+
+### Fixed (One-Shot Bundle Integrity)
+- **vperfsanity results written outside the PyInstaller bundle:** `VperfsanityWorkflow._step_collect_results` now saves results via `ScriptRunner.get_local_dir()` (which resolves to `get_data_dir()/output/scripts`) instead of `Path(__file__).parent.parent.parent`. On frozen macOS/Windows builds the previous path resolved to a read-only location inside the `.app` bundle, so `ResultBundler` could not see the file and a `vperfsanity_NOT_FOUND.txt` placeholder shipped in place of real data.
+- **Support Tools "Permission denied" on /vast/data/ copy:** `SupportToolWorkflow._step_set_permissions` now uses `sudo cp`, `sudo chown`, and `sudo chmod` when staging `vast_support_tools.py` into `/vast/data/` on both the CNode and the VMS. Clusters where `/vast/data/` is root-owned previously failed Step 2 with `cp: Permission denied`, producing `support_tools_NOT_FOUND.txt`. The error path also surfaces a hint when sudo itself was rejected (password required or missing TTY).
+
+### Fixed (Bundler — no more silently stale data)
+- **`ResultBundler.collect_results` learned a `since=<run-start>` filter:** `_pick_latest` now skips files whose mtime predates the current run. Pre-run files that would previously have been bundled silently are instead recorded in a new `_stale_files` map and surfaced in the manifest.
+- **Per-category status in `manifest.json`:** manifest now includes a `categories` map (`ok` / `stale` / `failed` / `skipped` / `missing`), a `stale` map of excluded pre-run file names, the `operation_status` reported by the runner, and `run_started_at`. Manifest `version` bumped to `1.1`.
+- **Placeholders now describe *why* a category is missing:** `<cat>_STALE.txt`, `<cat>_FAILED.txt`, and `<cat>_SKIPPED.txt` replace the blanket `<cat>_NOT_FOUND.txt` when the bundler knows the real cause. Stale files themselves are never added to the bundle.
+- **`SUMMARY.md` surfaces the same per-category status** so a human reading the bundle can immediately see which operations succeeded, which produced no fresh data, and which were skipped.
+
+### Fixed (Advanced Operations UI)
+- **Test Suite completion banner no longer claims success when ops failed:** the `/advanced-ops/oneshot/status` response now includes `operation_results` (per category) and `selected_operations`. The page renders a completion summary card with per-op `SUCCESS` / `FAILED` / `SKIPPED` badges and tints the banner amber when one or more selected operations did not collect results.
+
+### Changed (One-Shot Runner)
+- **Operation outcomes are tracked in `OneShotState.operation_results`** and threaded to the bundler as `operation_status`. Health checks and the As-Built report phases also report their outcomes so the bundler can distinguish "not selected" from "ran and failed".
+- **Bundling now passes `since=started_at`** to the bundler so only artifacts produced in the current run are considered fresh.
+
+### Tests
+- `tests/test_workflows.py::TestVperfsanityStepExecution::test_step5_collect_results_saves_under_script_runner_local_dir` — regression test ensuring vperfsanity Step 5 writes to `ScriptRunner.get_local_dir()`.
+- `tests/test_result_bundler.py::TestStalenessFilter` — verifies pre-run files are excluded when `since` is set and legacy behaviour is preserved when it is omitted.
+- `tests/test_result_bundler.py::TestCategoryStatus` — operation_status drives `failed` / `skipped` / `missing` manifest entries.
+- `tests/test_result_bundler.py::TestManifestAndPlaceholders` — manifest advertises `categories`, `stale`, and `run_started_at`; `_STALE.txt` / `_FAILED.txt` placeholders replace `_NOT_FOUND.txt` when applicable; stale files never enter the archive.
+- `tests/test_oneshot_runner.py::test_bundle_passes_cluster_ip` — updated for the new `since` / `operation_status` kwargs.
+
+### Fixed (CI — Security Audit workflow)
+- **`security` label auto-created:** `.github/workflows/security.yml` now creates the `security` issue label on demand. Previously every report job failed with `could not add label: 'security' not found` because the label had never been defined in this repo.
+- **Vulnerability detection uses structured JSON, not grep:** the workflow now parses `pip-audit` JSON for dependencies with non-empty `vulns` and `bandit` JSON for `MEDIUM`/`HIGH` `issue_severity`, instead of grepping human-readable strings that appeared even on clean runs. This eliminates the false positives that were causing a spurious tracking issue to be opened on every scheduled run.
+- **Issue de-duplication:** when a `security`-labelled issue is already open, the workflow now comments on it instead of creating a new one.
+- **Run summary:** each scan run emits a `$GITHUB_STEP_SUMMARY` with exact pip-audit and bandit counts for quick triage.
+
+### Changed (Bandit — intentional findings annotated)
+- **32 Medium/High bandit findings across `src/` are now narrowly suppressed with `# nosec BXXX`** and justifying comments, because each one is an intentional consequence of the reporter's architecture (connecting to a freshly-deployed VAST cluster over the network):
+  - **B108 × 11** (`hardcoded_tmp_directory`) — all paths (`/tmp/vast_scripts`, `/tmp/vast_log_bundle`, `/tmp/vast_support_output`, `/tmp/{session_name}*`) live on the **remote VAST CNode** and are created over SSH; the two `session_manager.py` sites additionally embed a `uuid4().hex[:8]` suffix, so they are neither local nor predictable.
+  - **B501 × 9** (`request_with_no_cert_validation`) — VAST VMS ships with self-signed TLS certs and `api.verify_ssl: false` is the documented default (see `.cursor/rules/config-security-11.mdc`).
+  - **B507 × 11** (`ssh_no_host_key_verification`) — the reporter targets CNodes and management switches whose host keys are not yet in `known_hosts` at the time of first contact; `paramiko.AutoAddPolicy()` is required for the post-install discovery workflows this tool exists to support.
+  - **B601 × 1** (`paramiko_calls`) — `ssh_adapter.run_ssh_command`'s `command` argument is always assembled internally from fixed templates plus validated inputs (credentials from interactive prompts, IPs from discovery), never from untrusted external sources.
+- **Result:** bandit (`-ll`) now reports **0 Medium/High findings**, and the `security.yml` detection job no longer has reason to open a tracking issue on clean runs.
 
 ### Added (GitHub Pages and Marketing)
 - **Product Overview page:** Interactive HTML one-pager at `rstamps01.github.io/ps-deploy-report/` showcasing UI screenshots, report previews, key benefits, and quick start steps

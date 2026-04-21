@@ -13,12 +13,13 @@ import sys
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
     Flask,
     Response,
+    current_app,
     jsonify,
     render_template,
     request,
@@ -43,7 +44,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.3"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -168,7 +169,15 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
 
     config_path = config_dir / "config.yaml"
     if not config_path.exists():
-        template_src = bundle_dir / "config" / "config.yaml"
+        # Bootstrap the user's runtime config from the tracked template.
+        # ``config/config.yaml`` itself is gitignored so site-specific values
+        # (e.g. default switch passwords) never land in the repo; operators
+        # populate them in the copy that lives under the per-install data dir.
+        template_src = bundle_dir / "config" / "config.yaml.template"
+        if not template_src.exists():
+            # Fall back to any legacy ``config.yaml`` shipped next to the
+            # template (older bundles) so upgrading installs keep working.
+            template_src = bundle_dir / "config" / "config.yaml"
         if template_src.exists():
             config_path.write_text(template_src.read_text())
 
@@ -205,6 +214,16 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["ONESHOT_LOCK"] = threading.Lock()
     app.config["ONESHOT_CANCEL"] = threading.Event()
     app.config["ONESHOT_RUNNER"] = None
+    # Map cluster_ip -> {"bundle_path": str, "run_started_at": str,
+    #                    "operation_status": dict}.  Populated at the end of
+    # a successful one-shot run so the Download Results button can hand
+    # back the exact bundle the runner produced (with freshness filters
+    # applied) instead of rebuilding and silently importing pre-run
+    # leftovers.  Rehydrated from disk on first request after a server
+    # restart by scanning ``output/bundles/*.zip`` manifests.
+    app.config["ONESHOT_LAST_BUNDLE"] = {}
+    app.config["ONESHOT_LAST_BUNDLE_LOCK"] = threading.Lock()
+    app.config["ONESHOT_LAST_BUNDLE_REHYDRATED"] = False
 
     # Developer Mode - enables Advanced Operations page
     # Set via --dev-mode flag or VAST_DEV_MODE environment variable
@@ -719,7 +738,12 @@ def _register_routes(app: Flask) -> None:
             cluster_ip=cluster_ip or "Unknown",
             cluster_version=data.get("cluster_version", "Unknown"),
         )
-        collected = bundler.collect_results(cluster_ip=cluster_ip)
+        since, op_status = _last_bundle_freshness_for(cluster_ip)
+        collected = bundler.collect_results(
+            cluster_ip=cluster_ip,
+            since=since,
+            operation_status=op_status,
+        )
         return jsonify(
             {
                 "status": "collected",
@@ -742,7 +766,12 @@ def _register_routes(app: Flask) -> None:
             cluster_ip=cluster_ip or "Unknown",
             cluster_version=data.get("cluster_version", "Unknown"),
         )
-        bundler.collect_results(cluster_ip=cluster_ip)
+        since, op_status = _last_bundle_freshness_for(cluster_ip)
+        bundler.collect_results(
+            cluster_ip=cluster_ip,
+            since=since,
+            operation_status=op_status,
+        )
         try:
             bundle_path = bundler.create_bundle(data.get("bundle_name"))
             return jsonify(
@@ -755,6 +784,49 @@ def _register_routes(app: Flask) -> None:
             )
         except ValueError as e:
             return jsonify({"status": "error", "message": str(e)}), 400
+
+    @app.route("/advanced-ops/bundle/last")
+    def advanced_ops_bundle_last():
+        """Return metadata for the most recent one-shot bundle for a cluster.
+
+        Query params:
+          ``cluster_ip`` (required): scopes the lookup to a single cluster.
+
+        On a cold server (no completed one-shot this process yet) the
+        registry is rehydrated from ``output/bundles/*.zip`` by reading
+        each zip's ``manifest.json`` and picking the newest zip whose
+        ``run_started_at`` is non-null and whose ``metadata.cluster_ip``
+        matches — this guarantees we only surface bundles that were
+        produced by the one-shot path (which applies freshness filters),
+        never a rebuild-path zip that may contain stale files.
+        """
+        cluster_ip = (request.args.get("cluster_ip") or "").strip()
+        if not cluster_ip:
+            return jsonify({"status": "error", "message": "cluster_ip is required"}), 400
+        _rehydrate_oneshot_last_bundle_if_needed()
+        with app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+            record = dict(app.config["ONESHOT_LAST_BUNDLE"].get(cluster_ip) or {})
+        bundle_path_str = record.get("bundle_path")
+        if not bundle_path_str:
+            return jsonify({"status": "not_found", "cluster_ip": cluster_ip}), 404
+        bundle_path = Path(bundle_path_str)
+        if not bundle_path.exists():
+            # Registry was valid at one point but the zip was removed on
+            # disk; clear the stale entry so the next lookup rehydrates.
+            with app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+                app.config["ONESHOT_LAST_BUNDLE"].pop(cluster_ip, None)
+            return jsonify({"status": "not_found", "cluster_ip": cluster_ip}), 404
+        return jsonify(
+            {
+                "status": "ok",
+                "cluster_ip": cluster_ip,
+                "bundle_path": str(bundle_path),
+                "name": bundle_path.name,
+                "size": bundle_path.stat().st_size,
+                "run_started_at": record.get("run_started_at"),
+                "operation_status": record.get("operation_status") or {},
+            }
+        )
 
     @app.route("/advanced-ops/bundle/download/<path:filename>")
     def advanced_ops_bundle_download(filename: str):
@@ -793,6 +865,7 @@ def _register_routes(app: Flask) -> None:
         data = request.get_json(silent=True) or {}
         selected_ops = data.get("selected_ops", [])
         include_health = data.get("include_health", True)
+        use_default_creds = data.get("use_default_creds", False)
         credentials = _extract_oneshot_credentials(data)
 
         app.config["ONESHOT_CANCEL"].clear()
@@ -801,12 +874,20 @@ def _register_routes(app: Flask) -> None:
 
         get_advanced_ops_manager()._output_buffer.clear()
 
+        # IMPORTANT: pre-validation must honour the Autofill toggle so the
+        # Switch SSH probe iterates the full candidate list (primary entered
+        # password + ``advanced_operations.default_switch_passwords``).
+        # Without ``config_path`` + ``use_default_creds`` the runner would
+        # fall back to a single-password probe and mask clusters that need
+        # the Cumu1usLinux!/VastData1! fallbacks to authenticate.
         runner = OneShotRunner(
             selected_ops=selected_ops,
             credentials=credentials,
             include_health=include_health,
             cancel_event=app.config["ONESHOT_CANCEL"],
             output_callback=_get_oneshot_output_callback(),
+            config_path=app.config.get("CONFIG_PATH"),
+            use_default_creds=use_default_creds,
         )
 
         with app.config["ONESHOT_LOCK"]:
@@ -860,7 +941,28 @@ def _register_routes(app: Flask) -> None:
             use_default_creds=use_default_creds,
         )
 
+        # Hand off the per-switch credential map that Pre-Validation
+        # discovered on the previous runner (stored in
+        # ``ONESHOT_RUNNER`` when /advanced-ops/oneshot/validate ran).
+        # Without this handoff the fresh execution runner starts with an
+        # empty map, which forces ``VnetmapWorkflow`` back onto the legacy
+        # single-password candidate sweep even though we already know
+        # which password authenticates against each switch.
         with app.config["ONESHOT_LOCK"]:
+            prior_runner = app.config.get("ONESHOT_RUNNER")
+            if prior_runner is not None and prior_runner is not runner:
+                try:
+                    prior_pw_map = getattr(prior_runner, "switch_password_by_ip", {}) or {}
+                    prior_user_map = getattr(prior_runner, "switch_user_by_ip", {}) or {}
+                    if prior_pw_map:
+                        runner.seed_switch_credentials(
+                            switch_user_by_ip=prior_user_map,
+                            switch_password_by_ip=prior_pw_map,
+                        )
+                except Exception:
+                    # Seeding is a best-effort optimisation; the runtime
+                    # fallback in run_all() re-probes if the map is empty.
+                    pass
             app.config["ONESHOT_RUNNING"] = True
             app.config["ONESHOT_RESULT"] = None
             app.config["ONESHOT_RUNNER"] = runner
@@ -870,6 +972,24 @@ def _register_routes(app: Flask) -> None:
                 result = runner.run_all()
                 with app.config["ONESHOT_LOCK"]:
                     app.config["ONESHOT_RESULT"] = result
+                # Record the bundle path so the Download button can serve
+                # the exact zip the runner produced.  ``_record_last_oneshot_bundle``
+                # resolves ``current_app`` internally, so we push an explicit
+                # Flask app context onto this background thread — without it,
+                # the registry write raises ``RuntimeError: Working outside of
+                # application context`` and the Download button keeps serving
+                # whatever bundle the first rehydration captured on startup.
+                # We log (not silently swallow) any residual failure so future
+                # regressions surface immediately instead of masquerading as a
+                # "stale download" user report.
+                try:
+                    with app.app_context():
+                        _record_last_oneshot_bundle(runner, credentials, result)
+                except Exception as exc:  # noqa: BLE001 - best-effort registry update
+                    logger.warning(
+                        "Failed to update one-shot last-bundle registry " "(Download button may serve a stale zip): %s",
+                        exc,
+                    )
             finally:
                 with app.config["ONESHOT_LOCK"]:
                     app.config["ONESHOT_RUNNING"] = False
@@ -1627,6 +1747,132 @@ def _get_oneshot_output_callback() -> Callable[[str, str, Optional[str]], None]:
 
 
 # ---------------------------------------------------------------------------
+# One-shot last-bundle registry helpers: serve the runner's validation
+# bundle directly from the Download button (Option A) and thread
+# ``since``/``operation_status`` into any rebuild fallback so the UI never
+# re-collects stale pre-run output.  Proactive pre-run archiving was
+# intentionally removed because it moved historical same-cluster files the
+# user wants to keep in place; direct-serve alone is sufficient.
+# ---------------------------------------------------------------------------
+
+
+def _record_last_oneshot_bundle(
+    runner: Any,
+    credentials: Dict[str, Any],
+    result: Optional[Dict[str, Any]],
+) -> None:
+    """Store the runner's bundle path + freshness metadata by cluster_ip.
+
+    Called on the background thread when ``run_all`` returns.  Only records
+    successful runs that actually produced a bundle on disk, so the
+    Download button never serves a partial or missing zip.
+    """
+    cluster_ip = (credentials.get("cluster_ip") or "").strip()
+    if not cluster_ip:
+        return
+    state = runner.get_state() if runner else {}
+    status = (state or {}).get("status")
+    bundle_path_str = (state or {}).get("bundle_path") or (result or {}).get("bundle_path")
+    if status != "completed" or not bundle_path_str:
+        return
+    bundle_path = Path(bundle_path_str)
+    if not bundle_path.exists():
+        return
+    record = {
+        "bundle_path": str(bundle_path),
+        "run_started_at": (state or {}).get("started_at"),
+        "completed_at": (state or {}).get("completed_at"),
+        "operation_status": dict((state or {}).get("operation_results") or {}),
+    }
+    with current_app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+        current_app.config["ONESHOT_LAST_BUNDLE"][cluster_ip] = record
+
+
+def _last_bundle_freshness_for(
+    cluster_ip: Optional[str],
+) -> tuple:
+    """Return ``(since, operation_status)`` recorded for *cluster_ip*, if any.
+
+    Threaded through to :meth:`ResultBundler.collect_results` so the rebuild
+    fallback path still honours the freshness filter even when Option A's
+    direct download isn't used (e.g. the bundle was deleted manually but
+    output/ still contains the same-run files).
+    """
+    from datetime import datetime
+
+    if not cluster_ip:
+        return None, None
+    _rehydrate_oneshot_last_bundle_if_needed()
+    with current_app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+        record = dict(current_app.config["ONESHOT_LAST_BUNDLE"].get(cluster_ip) or {})
+    since = None
+    started_at = record.get("run_started_at")
+    if started_at:
+        try:
+            since = datetime.fromisoformat(started_at)
+        except ValueError:
+            since = None
+    op_status = record.get("operation_status") or None
+    return since, op_status
+
+
+def _rehydrate_oneshot_last_bundle_if_needed() -> None:
+    """Populate ONESHOT_LAST_BUNDLE from disk on first request after restart.
+
+    Scans ``output/bundles/*.zip`` (newest-first) and records the most
+    recent zip per cluster whose ``manifest.json`` has a non-null
+    ``run_started_at`` — the flag that identifies bundles produced by the
+    one-shot path (which applies the freshness filter) as opposed to a
+    rebuild-path zip that may contain stale files.  Idempotent; bails out
+    after the first successful rehydration.
+    """
+    import json as _json
+    import zipfile as _zipfile
+
+    if current_app.config.get("ONESHOT_LAST_BUNDLE_REHYDRATED"):
+        return
+    bundle_dir = get_data_dir() / "output" / "bundles"
+    if not bundle_dir.exists():
+        with current_app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+            current_app.config["ONESHOT_LAST_BUNDLE_REHYDRATED"] = True
+        return
+    by_cluster: Dict[str, Dict[str, Any]] = {}
+    try:
+        candidates = sorted(
+            bundle_dir.glob("*.zip"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        candidates = []
+    for zip_path in candidates:
+        try:
+            with _zipfile.ZipFile(zip_path, "r") as zf:
+                if "manifest.json" not in zf.namelist():
+                    continue
+                manifest = _json.loads(zf.read("manifest.json"))
+        except (OSError, _zipfile.BadZipFile, _json.JSONDecodeError):
+            continue
+        run_started = manifest.get("run_started_at")
+        cluster_ip = (manifest.get("metadata") or {}).get("cluster_ip")
+        if not run_started or not cluster_ip:
+            continue
+        if cluster_ip in by_cluster:
+            continue
+        by_cluster[cluster_ip] = {
+            "bundle_path": str(zip_path),
+            "run_started_at": run_started,
+            "completed_at": manifest.get("created"),
+            "operation_status": dict(manifest.get("operation_status") or {}),
+        }
+    with current_app.config["ONESHOT_LAST_BUNDLE_LOCK"]:
+        existing = current_app.config["ONESHOT_LAST_BUNDLE"]
+        for cluster_ip, record in by_cluster.items():
+            existing.setdefault(cluster_ip, record)
+        current_app.config["ONESHOT_LAST_BUNDLE_REHYDRATED"] = True
+
+
+# ---------------------------------------------------------------------------
 # Background report generation
 # ---------------------------------------------------------------------------
 
@@ -2138,6 +2384,25 @@ def _collect_port_mapping_web(
             logger.warning("No switch management IPs found — cannot collect port mapping")
             return None
 
+        # Build hostname->mgmt_ip map and spine IP set so the collector can
+        # resolve LLDP neighbors back to known switches and classify leaf-to-
+        # spine uplinks correctly.  Without these the collector falls back to
+        # the legacy narrow IPL heuristic (symmetric swp29..swp32 only).
+        switch_hostname_map: Dict[str, str] = {}
+        spine_ips_web: List[str] = []
+        for sw in switches:
+            ip = sw.get("mgmt_ip")
+            if not ip:
+                continue
+            for host_field in ("hostname", "name", "host_name"):
+                host = sw.get(host_field)
+                if host:
+                    switch_hostname_map[str(host)] = ip
+                    break
+            role = (sw.get("role") or sw.get("switch_type") or "").lower()
+            if "spine" in role:
+                spine_ips_web.append(ip)
+
         # Try cnodes_network first, then fall back to raw cnodes data (for EBox clusters)
         cnodes_network = raw_data.get("cnodes_network", [])
         cnode_ips = []
@@ -2190,6 +2455,8 @@ def _collect_port_mapping_web(
                     switch_password=params.get("switch_password", ""),
                     proxy_jump=bool(params.get("proxy_jump", True)),
                     tunnel_address=tunnel_addr,
+                    switch_hostname_map=switch_hostname_map or None,
+                    spine_ips=spine_ips_web or None,
                 )
                 result = mapper.collect_port_mapping()
                 if result.get("available"):

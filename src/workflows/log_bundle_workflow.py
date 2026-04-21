@@ -33,7 +33,8 @@ class LogBundleWorkflow:
         "/var/log/messages",
         "/var/log/syslog",
     ]
-    BUNDLE_DIR = "/tmp/vast_log_bundle"
+    # Intentional [B108]: staging directory on the remote VAST CNode (populated via SSH), not a local tempfile.
+    BUNDLE_DIR = "/tmp/vast_log_bundle"  # nosec B108
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -183,7 +184,8 @@ class LogBundleWorkflow:
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         archive_name = f"vast_log_bundle_{timestamp}.tar.gz"
-        archive_path = f"/tmp/{archive_name}"
+        # Intentional [B108]: archive is created on the remote CNode with a timestamped name, not a local tempfile.
+        archive_path = f"/tmp/{archive_name}"  # nosec B108
 
         # Create bundle directory and copy logs
         self._script_runner.execute_remote(host, user, password, f"sudo mkdir -p {self.BUNDLE_DIR}", timeout=30)

@@ -2768,7 +2768,24 @@ class HealthChecker:
             return []
 
         username = self.switch_ssh_config.get("username", "cumulus")
-        password = self.switch_ssh_config.get("password", "")
+        primary_password = self.switch_ssh_config.get("password", "")
+        # RM-2: when the one-shot pipeline has already proved which password
+        # authenticates against which switch IP (see oneshot_runner._resolve_
+        # switch_password_candidates), pass that map through here so each
+        # check uses the correct credential.  Without this we silently fall
+        # back to ``primary_password`` and log spurious auth failures for any
+        # switch that uses a different default password (e.g. a spare leaf
+        # on ``VastData1!`` while the pair is on ``Vastdata1!``).
+        raw_pw_by_ip = self.switch_ssh_config.get("password_by_ip") or {}
+        if not isinstance(raw_pw_by_ip, dict):
+            raw_pw_by_ip = {}
+        password_by_ip: Dict[str, str] = {str(k): str(v) for k, v in raw_pw_by_ip.items() if v}
+
+        def _password_for(switch_ip: str) -> str:
+            pw = password_by_ip.get(str(switch_ip))
+            if pw:
+                return pw
+            return primary_password
 
         jump_kwargs: Dict[str, Any] = {}
         if self.switch_ssh_config.get("proxy_jump"):
@@ -2790,6 +2807,7 @@ class HealthChecker:
         ssh_idx = 0
         for switch_ip in switch_ips:
             self._check_cancel()
+            password = _password_for(switch_ip)
             switch_os = self._detect_switch_type(switch_ip, username, password, **jump_kwargs)
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()

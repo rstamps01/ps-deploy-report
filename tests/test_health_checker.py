@@ -581,6 +581,100 @@ class TestSSHTier3Checks:
 
 
 # ===================================================================
+# RM-2: per-switch password resolution (password_by_ip)
+# ===================================================================
+
+
+class TestSwitchSSHPerIPPassword:
+    """Verify ``run_switch_ssh_checks`` resolves each switch's password from
+    the ``password_by_ip`` map when present, and falls back to the primary
+    ``password`` when a given IP isn't in the map.
+
+    Background: the one-shot pipeline probes each switch IP with every
+    candidate password before launching health checks, and records the
+    winning password per IP on ``self._switch_password_by_ip``.  Without
+    RM-2 the health checker ignored that map and re-used
+    ``switch_ssh_config['password']`` for every check, mis-authenticating
+    any switch on a different default (e.g. a spare leaf on ``VastData1!``
+    while the pair runs ``Vastdata1!``).
+    """
+
+    def _patch_checks(self, checker):
+        """Replace the three per-switch check functions with recorders so we
+        can assert exactly which (ip, password) tuples were used without
+        spinning up fake SSH."""
+        seen = []
+
+        def recorder(check_name):
+            def _fn(host, username, password, *, switch_os="cumulus", **kwargs):
+                seen.append((check_name, host, password))
+                return HealthCheckResult(
+                    check_name=check_name,
+                    category="switch_ssh",
+                    status="pass",
+                    message=f"{check_name} on {host}",
+                    details={"host": host, "switch_os": switch_os},
+                    timestamp=checker._now(),
+                    duration_seconds=0.0,
+                )
+
+            return _fn
+
+        checker._detect_switch_type = lambda *a, **k: "cumulus"
+        checker._check_mlag_status = recorder("MLAG Status")
+        checker._check_switch_ntp = recorder("Switch NTP")
+        checker._check_switch_config_backup = recorder("Switch Config Backup")
+        return seen
+
+    def test_password_by_ip_applied_per_switch(self, mock_api_handler):
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2", "10.0.1.3"],
+            "password_by_ip": {
+                "10.0.1.1": "alpha-pw",
+                "10.0.1.2": "beta-pw",
+                # 10.0.1.3 is intentionally omitted -> must fall back.
+            },
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+
+        by_host = {host: pw for (_n, host, pw) in seen}
+        assert by_host["10.0.1.1"] == "alpha-pw"
+        assert by_host["10.0.1.2"] == "beta-pw"
+        assert by_host["10.0.1.3"] == "primary-pw"
+
+    def test_no_map_falls_back_to_primary(self, mock_api_handler):
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+    def test_malformed_map_is_ignored_safely(self, mock_api_handler):
+        """A non-dict ``password_by_ip`` (e.g. leftover list from a bad call
+        site) must not crash the checker — it should be treated as empty
+        and every switch falls back to the primary password."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1"],
+            "password_by_ip": ["not", "a", "dict"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+
+# ===================================================================
 # WS-B: TestResolveIPs
 # ===================================================================
 

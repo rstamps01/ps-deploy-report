@@ -148,6 +148,93 @@ class TestScriptRunnerRemoteExecution:
         assert result.success is False
 
 
+class TestScriptRunnerRedaction:
+    """RM-1: verify ``display_command`` redacts sensitive text in log echoes.
+
+    When a caller passes a ``display_command`` that differs from ``command``,
+    the real command must still be handed to SSH verbatim, but the operator
+    log (and anything downstream: bundles, clipboard copies, UI pane) must
+    only ever see the redacted form.  The canonical trigger is the vnetmap
+    per-switch password heredoc where ``command`` embeds a JSON map of real
+    passwords — those literals must not appear in a single emitted entry.
+    """
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_replaces_echo(self, mock_ssh):
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        real_cmd = (
+            "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips "
+            "--multiple-passwords <<'VAST_PW_MAP'\n"
+            '{"10.0.0.1": "Vastdata1!", "10.0.0.2": "SpareLeaf!"}\n'
+            "VAST_PW_MAP"
+        )
+        display_cmd = "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips --multiple-passwords <redacted>"
+
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", real_cmd, display_command=display_cmd)
+
+        # SSH gets the real command, including the secret heredoc.
+        called_cmd = mock_ssh.call_args.args[3]
+        assert "Vastdata1!" in called_cmd
+        assert "SpareLeaf!" in called_cmd
+
+        # The emitted log pane never sees the real passwords.
+        joined = "\n".join(m for _, m in emitted)
+        assert "Vastdata1!" not in joined
+        assert "SpareLeaf!" not in joined
+        assert "<redacted>" in joined
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_default_echoes_command_verbatim(self, mock_ssh):
+        """Backwards-compat: when ``display_command`` is omitted, the command
+        is echoed as before so ordinary (safe) shell invocations still appear
+        in the operator pane."""
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "ls -la /tmp")
+
+        joined = "\n".join(m for _, m in emitted)
+        assert "ls -la /tmp" in joined
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_respects_working_dir_prefix(self, mock_ssh):
+        """When ``working_dir`` is set, both the real and display forms get
+        the same ``cd <dir> &&`` prefix so the echoed line remains readable
+        without leaking the working directory back into the wrong form."""
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote(
+            "10.0.0.10",
+            "vastdata",
+            "nodepw",
+            "python3 vnetmap.py -p 'Vastdata1!'",
+            working_dir="/vast/install",
+            display_command="python3 vnetmap.py -p '<switch-password>'",
+        )
+
+        called_cmd = mock_ssh.call_args.args[3]
+        assert called_cmd == "cd /vast/install && python3 vnetmap.py -p 'Vastdata1!'"
+
+        joined = "\n".join(m for _, m in emitted)
+        assert "Vastdata1!" not in joined
+        assert "cd /vast/install && python3 vnetmap.py -p '<switch-password>'" in joined
+
+
 class TestScriptRunnerCleanup:
     @patch("script_runner.run_ssh_command")
     def test_cleanup_remote_success(self, mock_ssh, runner):

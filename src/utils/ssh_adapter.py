@@ -43,11 +43,68 @@ import logging
 import os
 import platform
 import subprocess
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = platform.system() == "Windows"
+
+
+# ---------------------------------------------------------------------------
+# Switch credential ordering
+# ---------------------------------------------------------------------------
+
+
+def build_switch_credential_combos(
+    primary_user: str,
+    password_candidates: List[str],
+) -> List[Tuple[str, str]]:
+    """Return an ordered, deduplicated list of ``(user, password)`` combinations
+    to try when authenticating against an unknown cluster switch.
+
+    Pre-validation, Switch Extraction, and External Port Mapping all consume
+    this ordering so they agree on which credentials to try and in what order.
+    For the typical Cumulus primary user the ordering is:
+
+    * Operator-provided ``primary_user`` × each password candidate first
+      (Connection Settings + the configured ``default_switch_passwords`` —
+      ``Vastdata1!`` primary, ``Cumu1usLinux!`` secondary in the stock
+      config).
+    * ``admin/admin`` (Onyx/MLNX-OS factory default).
+    * When the operator's ``primary_user`` is neither ``cumulus`` nor
+      ``admin``, ``cumulus`` × each password candidate is appended as a
+      fallback so the stock Cumulus account is still exercised.
+
+    The ``admin × <password candidate>`` permutations that earlier releases
+    tried on Onyx-with-VMS-synced passwords are *not* included — operators
+    who need that path can enter the admin credentials explicitly in
+    Connection Settings so the combo list resolves correctly.
+
+    This function never issues network I/O; callers drive the iteration.
+    """
+    combos: List[Tuple[str, str]] = []
+    seen: set = set()
+
+    def _add(user: str, password: str) -> None:
+        if not user or not password:
+            return
+        key = (user, password)
+        if key in seen:
+            return
+        seen.add(key)
+        combos.append((user, password))
+
+    primary = primary_user or "cumulus"
+    for pw in password_candidates or []:
+        _add(primary, pw)
+
+    _add("admin", "admin")
+
+    if primary not in ("cumulus", "admin"):
+        for pw in password_candidates or []:
+            _add("cumulus", pw)
+
+    return combos
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +428,9 @@ def _paramiko_shell(
     use_jump = jump_host and jump_user and jump_password
     jump_client: Optional[paramiko.SSHClient] = None
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # Intentional [B507]: target is a freshly-deployed VAST CNode/switch; AutoAddPolicy is required
+    # for first-contact SSH where host keys are not yet trusted (documented tool behavior).
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
 
     try:
         connect_timeout = min(timeout, 30)
@@ -379,7 +438,9 @@ def _paramiko_shell(
 
         if use_jump:
             jump_client = paramiko.SSHClient()
-            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: jump host is the newly-installed VMS; AutoAddPolicy is required
+            # for first-contact tunneling before host keys are known to the operator.
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             try:
                 jump_client.connect(
                     jump_host,
@@ -499,7 +560,9 @@ def _paramiko_exec(
     use_jump = jump_host and jump_user and jump_password
     jump_client: Optional[paramiko.SSHClient] = None
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # Intentional [B507]: target is a freshly-deployed VAST CNode/switch; AutoAddPolicy is required
+    # for first-contact SSH where host keys are not yet trusted (documented tool behavior).
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
 
     try:
         connect_timeout = min(timeout, 30)
@@ -512,7 +575,9 @@ def _paramiko_exec(
                 host,
             )
             jump_client = paramiko.SSHClient()
-            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: jump host is the newly-installed VMS; AutoAddPolicy is required
+            # for first-contact tunneling before host keys are known to the operator.
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             try:
                 jump_client.connect(
                     jump_host,
@@ -566,7 +631,10 @@ def _paramiko_exec(
         if transport:
             transport.set_keepalive(15)
 
-        _stdin, stdout, stderr = client.exec_command(
+        # Intentional [B601]: `command` is always constructed internally by workflow code from
+        # fixed templates plus validated parameters (host/user/password from credential
+        # prompts and discovered IPs), never sourced from untrusted external input.
+        _stdin, stdout, stderr = client.exec_command(  # nosec B601
             command,
             timeout=timeout,
             get_pty=force_tty,

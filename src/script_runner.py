@@ -67,7 +67,8 @@ class ScriptRunner:
     }
 
     # Default remote paths
-    DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+    # Intentional [B108]: /tmp/vast_scripts is a remote working directory on the VAST CNode (created over SSH), not a local tempfile.
+    DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"  # nosec B108
     DEFAULT_LOCAL_DIR = "output/scripts"
 
     def __init__(
@@ -410,7 +411,9 @@ class ScriptRunner:
 
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: target is a freshly-deployed VAST CNode whose host key is not yet
+            # in known_hosts; AutoAddPolicy is required for first-contact provisioning workflows.
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
                 username=username,
@@ -556,6 +559,7 @@ class ScriptRunner:
         command: str,
         timeout: int = 300,
         working_dir: Optional[str] = None,
+        display_command: Optional[str] = None,
     ) -> ScriptResult:
         """
         Execute a command on a remote host.
@@ -564,9 +568,18 @@ class ScriptRunner:
             host: Remote host
             username: SSH username
             password: SSH password
-            command: Command to execute
+            command: Command to execute (the real command, with any embedded
+                secrets — passed to SSH but **never** written to the log).
             timeout: Command timeout in seconds
             working_dir: Working directory for command execution
+            display_command: Optional redacted form of ``command`` used only
+                for the prompt-style echo in the operator output pane.  Pass
+                a redacted string whenever ``command`` contains embedded
+                heredocs, password JSON maps, tokens, or any other secret
+                material that must not be logged.  When ``None`` (the
+                default), ``command`` is echoed verbatim to preserve the
+                long-standing behaviour for ordinary commands that are safe
+                to show.  See RM-1 in docs/TODO-ROADMAP.md.
 
         Returns:
             ScriptResult with execution status
@@ -578,10 +591,17 @@ class ScriptRunner:
         # Prepend cd if working_dir specified
         if working_dir:
             command = f"cd {working_dir} && {command}"
+            if display_command is not None:
+                display_command = f"cd {working_dir} && {display_command}"
 
-        # Show full SSH command like terminal
+        # Show full SSH command like terminal.  ``display_command`` (when
+        # provided by the caller) is the only form that reaches the output
+        # pane; ``command`` is handed to SSH unmodified.  This prevents
+        # heredoc-embedded credentials (e.g. the vnetmap per-switch password
+        # JSON map) from leaking into logs / bundles / clipboard copies.
+        echoed = display_command if display_command is not None else command
         self._emit("info", f"$ ssh {username}@{host}")
-        self._emit("info", f"{username}@{host}:~$ {command}")
+        self._emit("info", f"{username}@{host}:~$ {echoed}")
         self._emit("info", "")
 
         try:
@@ -638,6 +658,7 @@ class ScriptRunner:
         timeout: int = 600,
         working_dir: Optional[str] = None,
         workflow_id: str = "workflow",
+        display_command: Optional[str] = None,
     ) -> ScriptResult:
         """
         Execute a command on a remote host using a persistent tmux session.
@@ -652,10 +673,13 @@ class ScriptRunner:
             host: Remote host
             username: SSH username
             password: SSH password
-            command: Command to execute
+            command: Command to execute (real command handed to tmux; any
+                embedded secrets in here are never written to the log).
             timeout: Command timeout in seconds (default 10 minutes)
             working_dir: Working directory for command execution
             workflow_id: ID for naming the session
+            display_command: Optional redacted form of ``command`` used only
+                for log echoes.  See ``execute_remote`` for the contract.
 
         Returns:
             ScriptResult with execution status
@@ -669,7 +693,15 @@ class ScriptRunner:
         tmux_ok, tmux_msg = session_mgr.check_tmux_available(host, username, password)
         if not tmux_ok:
             self._emit("warn", "tmux not available, falling back to direct execution")
-            return self.execute_remote(host, username, password, command, timeout, working_dir)
+            return self.execute_remote(
+                host,
+                username,
+                password,
+                command,
+                timeout,
+                working_dir,
+                display_command=display_command,
+            )
 
         self._emit("success", f"tmux found: {tmux_msg}")
 
@@ -681,6 +713,7 @@ class ScriptRunner:
             command=command,
             workflow_id=workflow_id,
             working_dir=working_dir,
+            display_command=display_command,
         )
 
         if not success:
@@ -834,7 +867,9 @@ class ScriptRunner:
 
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: target is a freshly-deployed VAST CNode whose host key is not yet
+            # in known_hosts; AutoAddPolicy is required for first-contact provisioning workflows.
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
                 username=username,

@@ -92,7 +92,7 @@
                     <div class="conn-settings-toolbar-left">
                         <div style="display:flex;align-items:center;gap:6px;">
                             <span class="default-creds-heading">Autofill Default Passwords — Global Setting</span>
-                            <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH: cumulus / Vastdata1!&#10;Switch SSH (alt): admin / admin">&#9432;</span>
+                            <span class="info-icon" title="Default credentials applied when enabled:&#10;&#10;API User: support / 654321&#10;Node SSH: vastdata / vastdata&#10;Switch SSH (primary): cumulus / Vastdata1!&#10;Switch SSH (fallback 1): cumulus / VastData1!&#10;Switch SSH (fallback 2): cumulus / Cumu1usLinux!&#10;Switch SSH (Onyx / MLNX-OS): admin / admin&#10;&#10;If the primary switch password fails authentication, workflows automatically retry with the case-variant (VastData1!), the Cumulus factory default (Cumu1usLinux!), and then the Onyx factory (admin/admin) before reporting failure.">&#9432;</span>
                         </div>
                         <div class="default-creds-widget">
                             <span class="default-creds-label">Disable</span>
@@ -211,6 +211,12 @@
                     <span class="phase-item" data-phase="bundling">Bundling</span>
                 </div>
                 <div class="progress-detail" id="oneShotProgressDetail"></div>
+            </div>
+
+            <!-- One-Shot Completion Summary -->
+            <div id="oneShotSummary" class="oneshot-summary" style="display: none; margin-top: 16px;">
+                <div class="summary-banner" id="oneShotSummaryBanner"></div>
+                <ul class="summary-op-list" id="oneShotSummaryOps"></ul>
             </div>
 
             <div class="btn-group" style="margin-top: 20px;">
@@ -363,6 +369,19 @@
 .phase-item.skipped { background: var(--bg-secondary); color: var(--text-secondary); opacity: 0.5; text-decoration: line-through; }
 .phase-arrow { color: var(--text-secondary); font-size: 14px; }
 .progress-detail { margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+
+.oneshot-summary { border: 1px solid var(--border-color, #ccc); border-radius: 4px; padding: 12px; background: var(--bg-secondary); }
+.oneshot-summary .summary-banner { font-weight: 600; margin-bottom: 8px; padding: 6px 10px; border-radius: 3px; }
+.oneshot-summary.ok .summary-banner { background: #e8f5e9; color: #1b5e20; border-left: 4px solid #4caf50; }
+.oneshot-summary.warn .summary-banner { background: #fff8e1; color: #8a6100; border-left: 4px solid #ff9800; }
+.oneshot-summary.error .summary-banner { background: #fdecea; color: #611a15; border-left: 4px solid #f44336; }
+.oneshot-summary .summary-op-list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.oneshot-summary .summary-op-list li { padding: 3px 0; display: flex; justify-content: space-between; border-bottom: 1px dashed var(--border-color, #ddd); }
+.oneshot-summary .summary-op-list li:last-child { border-bottom: none; }
+.oneshot-summary .op-status { font-weight: 600; padding: 1px 8px; border-radius: 3px; }
+.oneshot-summary .op-status.success { background: #e8f5e9; color: #1b5e20; }
+.oneshot-summary .op-status.failed { background: #fdecea; color: #611a15; }
+.oneshot-summary .op-status.skipped { background: var(--bg-primary); color: var(--text-secondary); }
 </style>
 
 <script>
@@ -660,7 +679,10 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
     line.className = 'output-line ' + cls;
     line.setAttribute('data-tier', tier);
     if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
-    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
+    // RM-4: the single space between the timestamp span and the level tag
+    // is significant — without it, text-selecting a log row yields strings
+    // like ``12:34:56[INFO]`` which break copy-paste into triage tickets.
+    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span> [' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
     if (entry.details) {
         var d = document.createElement('div');
         d.style.marginLeft = '20px';
@@ -937,7 +959,52 @@ function stopPolling() { if (pollInterval) { clearInterval(pollInterval); pollIn
 
 async function downloadResults() {
     var creds = getCredentials();
-    outputPane.append('info', 'Collecting results for download...');
+    // Prefer the bundle created by the most recent one-shot run.  That bundle
+    // was built with freshness filters + pre-run archiving applied, so
+    // re-downloading it matches what the run actually collected (no stale
+    // pre-run artefacts sneak in).  Source of truth:
+    //   1) /advanced-ops/bundle/last — persistent server-side registry
+    //      (survives page reloads, rehydrated from disk on restart).
+    //   2) lastOneShotBundlePath — in-page cache from the live status poller.
+    // Only fall back to the rebuild path when neither is available.
+    if (creds.cluster_ip) {
+        try {
+            var lastResp = await fetch('/advanced-ops/bundle/last?cluster_ip=' + encodeURIComponent(creds.cluster_ip));
+            if (lastResp.ok) {
+                var lastData = await lastResp.json();
+                if (lastData.status === 'ok' && lastData.name) {
+                    outputPane.append('info', 'Downloading last one-shot bundle: ' + lastData.name);
+                    var aLast = document.createElement('a');
+                    aLast.href = '/advanced-ops/bundle/download/' + encodeURIComponent(lastData.name);
+                    aLast.download = lastData.name;
+                    document.body.appendChild(aLast); aLast.click(); document.body.removeChild(aLast);
+                    outputPane.append('success', 'Download started: ' + lastData.name);
+                    return;
+                }
+            }
+        } catch (_) { /* fall through */ }
+    }
+    if (lastOneShotBundlePath) {
+        try {
+            var statusResp = await fetch('/advanced-ops/oneshot/status');
+            var statusData = await statusResp.json();
+            if (statusData.state && statusData.state.bundle_path) {
+                lastOneShotBundlePath = statusData.state.bundle_path;
+            }
+        } catch (_) { /* best-effort refresh */ }
+        var parts = String(lastOneShotBundlePath).split(/[\\\/]/);
+        var bundleName = parts[parts.length - 1];
+        if (bundleName) {
+            outputPane.append('info', 'Downloading one-shot bundle: ' + bundleName);
+            var a = document.createElement('a');
+            a.href = '/advanced-ops/bundle/download/' + encodeURIComponent(bundleName);
+            a.download = bundleName;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            outputPane.append('success', 'Download started: ' + bundleName);
+            return;
+        }
+    }
+    outputPane.append('info', 'No one-shot bundle available \u2014 collecting results for download...');
     try {
         var collectResp = await fetch('/advanced-ops/bundle/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
         var collectData = await collectResp.json();
@@ -956,6 +1023,11 @@ async function downloadResults() {
 var oneShotMode = false;
 var oneShotPollInterval = null;
 var oneShotValidated = false;
+// Absolute path of the most recent one-shot bundle (if the run produced one).
+// Populated by the status poller so "Download Results" can serve the exact
+// bundle that was generated (with freshness filters applied) instead of
+// re-collecting files — which would silently pull in stale pre-run artefacts.
+var lastOneShotBundlePath = null;
 
 async function toggleOneShotMode() {
     oneShotMode = document.getElementById('modeToggle').checked;
@@ -1139,6 +1211,8 @@ async function startOneShot() {
     document.getElementById('btnOneShotCancel').style.display = '';
     document.getElementById('oneShotProgress').style.display = '';
     resetOneShotPhases();
+    // Clear stale bundle pointer; a new run will populate it on completion.
+    lastOneShotBundlePath = null;
 
     try {
         var resp = await fetch('/advanced-ops/oneshot/start', {
@@ -1184,12 +1258,16 @@ function startOneShotPolling() {
                     detail += ' (' + statusData.state.operation_index + '/' + statusData.state.total_operations + ')';
                 }
                 document.getElementById('oneShotProgressDetail').textContent = detail;
+                if (statusData.state.bundle_path) {
+                    lastOneShotBundlePath = statusData.state.bundle_path;
+                }
             }
 
             if (!statusData.running) {
                 stopOneShotPolling();
                 var finalPhase = statusData.state ? statusData.state.phase : 'completed';
                 updateOneShotPhases(finalPhase);
+                renderOneShotSummary(statusData.state || {}, finalPhase);
                 document.getElementById('btnOneShotCancel').style.display = 'none';
                 document.getElementById('btnOneShotValidate').disabled = false;
                 if (finalPhase === 'completed') {
@@ -1241,7 +1319,89 @@ function resetOneShotUI() {
     document.getElementById('btnOneShotValidate').disabled = false;
     document.getElementById('btnOneShotCancel').style.display = 'none';
     document.getElementById('oneShotProgress').style.display = 'none';
+    var summary = document.getElementById('oneShotSummary');
+    if (summary) summary.style.display = 'none';
     stopOneShotPolling();
+}
+
+var OP_LABELS = {
+    'vnetmap': 'VAST vnetmap',
+    'support_tools': 'VAST Support Tools',
+    'vperfsanity': 'VAST vperfsanity',
+    'log_bundle': 'VMS Log Bundle',
+    'switch_config': 'Switch Configuration',
+    'network_config': 'Network Configuration',
+    'health_check': 'Health Checks',
+    'asbuilt_report': 'As-Built Report'
+};
+
+var OP_CATEGORY_FROM_ID = {
+    'vnetmap': 'vnetmap',
+    'support_tool': 'support_tools',
+    'vperfsanity': 'vperfsanity',
+    'log_bundle': 'log_bundle',
+    'switch_config': 'switch_config',
+    'network_config': 'network_config'
+};
+
+function renderOneShotSummary(state, finalPhase) {
+    var summary = document.getElementById('oneShotSummary');
+    var banner = document.getElementById('oneShotSummaryBanner');
+    var list = document.getElementById('oneShotSummaryOps');
+    if (!summary || !banner || !list) return;
+
+    var opResults = state.operation_results || {};
+    var selected = state.selected_operations || [];
+    var rows = [];
+    selected.forEach(function(opId) {
+        var cat = OP_CATEGORY_FROM_ID[opId] || opId;
+        var status = opResults[cat] || 'skipped';
+        rows.push({ category: cat, label: OP_LABELS[cat] || cat, status: status });
+    });
+    if (opResults.health_check) {
+        rows.unshift({ category: 'health_check', label: OP_LABELS.health_check, status: opResults.health_check });
+    }
+    if (opResults.asbuilt_report) {
+        rows.push({ category: 'asbuilt_report', label: OP_LABELS.asbuilt_report, status: opResults.asbuilt_report });
+    }
+
+    var anyFailed = rows.some(function(r) { return r.status === 'failed'; });
+    var anySuccess = rows.some(function(r) { return r.status === 'success'; });
+
+    summary.classList.remove('ok', 'warn', 'error');
+    var bannerText;
+    if (finalPhase === 'cancelled') {
+        summary.classList.add('warn');
+        bannerText = 'Run cancelled before completion.';
+    } else if (finalPhase === 'error') {
+        summary.classList.add('error');
+        bannerText = 'Run ended with an error. Review output for details.';
+    } else if (anyFailed) {
+        summary.classList.add('warn');
+        bannerText = 'Bundle generated, but one or more operations did not collect results. See per-operation status below.';
+    } else if (!anySuccess) {
+        summary.classList.add('warn');
+        bannerText = 'Bundle generated, but no operations reported success.';
+    } else {
+        summary.classList.add('ok');
+        bannerText = 'All selected operations completed successfully. Bundle ready.';
+    }
+    banner.textContent = bannerText;
+
+    list.innerHTML = '';
+    rows.forEach(function(r) {
+        var li = document.createElement('li');
+        var name = document.createElement('span');
+        name.textContent = r.label;
+        var badge = document.createElement('span');
+        badge.className = 'op-status ' + r.status;
+        badge.textContent = r.status.toUpperCase();
+        li.appendChild(name);
+        li.appendChild(badge);
+        list.appendChild(li);
+    });
+
+    summary.style.display = '';
 }
 
 // --- Initialization ---

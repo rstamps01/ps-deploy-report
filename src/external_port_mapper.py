@@ -258,6 +258,9 @@ class ExternalPortMapper:
         switch_password: str,
         proxy_jump: bool = True,
         tunnel_address: Optional[str] = None,
+        switch_password_candidates: Optional[List[str]] = None,
+        switch_hostname_map: Optional[Dict[str, str]] = None,
+        spine_ips: Optional[List[str]] = None,
     ):
         """
         Initialize external port mapper.
@@ -274,6 +277,17 @@ class ExternalPortMapper:
             switch_password: SSH password for switches (typically 'Vastdata1!' or 'admin')
             proxy_jump: Route switch SSH through the CNode as a jump host (default True)
             tunnel_address: Local tunnel endpoint (e.g. '127.0.0.1:54321') for Tech Port mode
+            switch_hostname_map: Optional ``{hostname: mgmt_ip}`` mapping used to
+                resolve LLDP neighbor hostnames back to known switch IPs.  When
+                provided, every LLDP-visible port on every switch is scanned and
+                any neighbor whose hostname maps into ``switch_ips`` is emitted
+                as a switch-to-switch edge.  Without this map the collector
+                falls back to the legacy narrow IPL detection (symmetric port
+                swp29..32).
+            spine_ips: Optional list of switch IPs to treat as spines.  Used
+                only to classify discovered edges as ``ipl`` / ``spine_uplink``
+                / ``spine_fabric``.  If omitted, all edges are classified as
+                ``ipl`` for backward compatibility.
         """
         self.cluster_ip = cluster_ip
         self._api_host = tunnel_address or cluster_ip
@@ -285,6 +299,16 @@ class ExternalPortMapper:
         self.switch_ips = switch_ips
         self.switch_user = switch_user
         self.switch_password = switch_password
+        # Ordered list of switch SSH passwords to try for each (user, os_type)
+        # credential pairing.  The operator-entered primary password always
+        # comes first; any additional defaults follow in caller-supplied order.
+        candidates: List[str] = []
+        if switch_password:
+            candidates.append(switch_password)
+        for pw in switch_password_candidates or []:
+            if pw and pw not in candidates:
+                candidates.append(pw)
+        self.switch_password_candidates: List[str] = candidates or [switch_password]
         self.proxy_jump = proxy_jump
         self.logger = logging.getLogger(__name__)
 
@@ -311,6 +335,19 @@ class ExternalPortMapper:
         # Detect switch OS types (Cumulus vs Onyx) and store credentials
         self.switch_os_map: dict[str, str] = {}  # {switch_ip: 'cumulus' or 'onyx'}
         self.switch_credentials: dict[str, dict[str, str]] = {}  # {switch_ip: {'user': '', 'password': ''}}
+
+        # Hostname -> mgmt_ip map used to resolve LLDP neighbors to known
+        # switches.  Keys are lower-cased for case-insensitive matching; the
+        # reverse map is also maintained for logging convenience.
+        self.switch_hostname_map: Dict[str, str] = {}
+        for host, ip in (switch_hostname_map or {}).items():
+            if host and ip:
+                self.switch_hostname_map[host.lower()] = ip
+        self.switch_ip_to_hostname: Dict[str, str] = {v: k for k, v in self.switch_hostname_map.items()}
+
+        # Set of switch IPs considered "spine" for edge classification.  Kept
+        # as a plain set to make contains-check cheap during parsing.
+        self.spine_ips: set = {ip for ip in (spine_ips or []) if ip}
 
     def _jump_kwargs(self) -> dict:
         """Return jump host keyword args for SSH adapter calls when proxy_jump is enabled.
@@ -350,20 +387,37 @@ class ExternalPortMapper:
         credentials_to_try = []
         seen: set = set()
 
-        if self.switch_user == "admin":
-            credentials_to_try.append(("admin", self.switch_password, "onyx"))
-            seen.add(("admin", self.switch_password))
-            if self.switch_password != "admin":
-                credentials_to_try.append(("admin", "admin", "onyx"))
-                seen.add(("admin", "admin"))
-            credentials_to_try.append(("cumulus", self.switch_password, "cumulus"))
+        def _add(user: str, password: str, os_type: str) -> None:
+            key = (user, password, os_type)
+            if key in seen:
+                return
+            seen.add(key)
+            credentials_to_try.append((user, password, os_type))
+
+        # Iterate user/OS pairings against every candidate password so that when
+        # a cluster has switches provisioned with mixed defaults (e.g. a VMS-
+        # synced Cumulus pair on ``Vastdata1!`` and a freshly reset leaf still
+        # carrying the factory ``Cumu1usLinux!``), authentication succeeds
+        # without manual intervention.  See release-packaging-12.mdc Fix 1 /
+        # CHANGELOG 1.5.2.
+        primary_user = self.switch_user or "cumulus"
+        password_list = list(self.switch_password_candidates) or [self.switch_password]
+
+        if primary_user == "admin":
+            for pw in password_list:
+                _add("admin", pw, "onyx")
+            if "admin" not in password_list:
+                _add("admin", "admin", "onyx")
+            for pw in password_list:
+                _add("cumulus", pw, "cumulus")
         else:
-            credentials_to_try.append((self.switch_user, self.switch_password, "cumulus"))
-            seen.add((self.switch_user, self.switch_password))
-            if ("admin", "admin") not in seen:
-                credentials_to_try.append(("admin", "admin", "onyx"))
-            if ("cumulus", self.switch_password) not in seen:
-                credentials_to_try.append(("cumulus", self.switch_password, "cumulus"))
+            for pw in password_list:
+                _add(primary_user, pw, "cumulus")
+            _add("admin", "admin", "onyx")
+            for pw in password_list:
+                _add("admin", pw, "onyx")
+                if primary_user != "cumulus":
+                    _add("cumulus", pw, "cumulus")
 
         for user, password, expected_os in credentials_to_try:
             try:
@@ -837,7 +891,8 @@ class ExternalPortMapper:
 
             # Get CNodes
             url = f"https://{self._api_host}/api/v7/vms/1/network_settings/"
-            response = requests.get(url, headers=headers, verify=False, timeout=30)
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            response = requests.get(url, headers=headers, verify=False, timeout=30)  # nosec B501
 
             if response.status_code != 200:
                 raise Exception(f"API request failed: HTTP {response.status_code} - {response.text}")
@@ -891,7 +946,8 @@ class ExternalPortMapper:
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
             url = f"https://{self._api_host}/api/v7/eboxes/"
-            response = requests.get(url, headers=headers, verify=False, timeout=30)
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            response = requests.get(url, headers=headers, verify=False, timeout=30)  # nosec B501
 
             if response.status_code != 200:
                 self.logger.warning(f"Failed to get EBox data: HTTP {response.status_code}")
@@ -950,7 +1006,8 @@ class ExternalPortMapper:
 
             # Collect CNodes
             url = f"https://{self._api_host}/api/v7/cnodes/"
-            response = requests.get(url, headers=headers, verify=False, timeout=30)
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            response = requests.get(url, headers=headers, verify=False, timeout=30)  # nosec B501
 
             if response.status_code == 200:
                 data = response.json()
@@ -972,7 +1029,8 @@ class ExternalPortMapper:
 
             # Collect DNodes
             url = f"https://{self._api_host}/api/v7/dnodes/"
-            response = requests.get(url, headers=headers, verify=False, timeout=30)
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            response = requests.get(url, headers=headers, verify=False, timeout=30)  # nosec B501
 
             if response.status_code == 200:
                 data = response.json()
@@ -1464,23 +1522,41 @@ class ExternalPortMapper:
 
     def _collect_ipl_connections(self) -> List[Dict[str, Any]]:
         """
-        Collect IPL (Inter-Peer Link) connections between switches using LLDP.
+        Collect switch-to-switch LLDP edges (IPL, spine uplinks, spine fabric).
 
-        Supports both Cumulus Linux ('nv show interface') and Mellanox Onyx ('show lldp remote').
-        Deduplicates connections so each physical link is counted once.
+        Supports both Cumulus Linux (``nv show interface``) and Mellanox Onyx
+        (``show lldp remote``).  When ``switch_hostname_map`` was provided at
+        construction time, every LLDP-visible port on every switch in
+        ``switch_ips`` is scanned and each neighbor that resolves to another
+        known switch is emitted as an edge.  When no hostname map is available
+        the collector falls back to the legacy narrow detection (symmetric
+        peer-link on swp29..swp32) to preserve behavior for existing callers.
+
+        Each edge is deduplicated (unordered pair of ports) and tagged with a
+        ``connection_type``:
+
+        * ``ipl``           — leaf ↔ leaf (MLAG peer link)
+        * ``spine_uplink``  — leaf ↔ spine
+        * ``spine_fabric``  — spine ↔ spine (super-spine, future use)
+
+        Without ``spine_ips`` configured, all edges are tagged ``ipl`` for
+        backward compatibility with the pre-existing Logical Network Diagram.
 
         Returns:
-            List of unique IPL connections with format:
-            [{
-                'switch1_ip': '10.143.11.153',
-                'switch1_port': 'swp29',
-                'switch2_ip': '10.143.11.154',
-                'switch2_port': 'swp29',
-                'port_number': 29
-            }]
+            List of unique edges with format::
+
+                {
+                    'switch1_ip':      '10.143.11.153',
+                    'switch1_port':    'swp1',
+                    'switch2_ip':      '10.143.11.156',
+                    'switch2_port':    'swp10',
+                    'port_number':     1,
+                    'connection_type': 'spine_uplink',
+                    'notes':           'Spine uplink',
+                }
         """
-        ipl_connections = []
-        seen_connections = set()
+        edges: List[Dict[str, Any]] = []
+        seen_edges: set = set()
 
         for switch_ip in self.switch_ips:
             try:
@@ -1530,19 +1606,34 @@ class ExternalPortMapper:
                     else:  # onyx
                         ipl_data = self._parse_onyx_lldp_for_ipl(stdout, switch_ip)
 
-                    # Deduplicate: only add if we haven't seen the reverse connection
+                    # Deduplicate by unordered (ip, port) pair so each
+                    # physical link appears exactly once regardless of which
+                    # switch we observed it from.
                     for conn in ipl_data:
-                        # Create a normalized key (always put lower IP first)
                         sw1_ip = conn["switch1_ip"]
                         sw2_ip = conn["switch2_ip"]
-                        port = conn["port_number"]
+                        sw1_port = conn.get("switch1_port", "") or ""
+                        sw2_port = conn.get("switch2_port", "") or ""
 
-                        key = tuple(sorted([sw1_ip, sw2_ip]) + [port])
+                        endpoints = sorted(
+                            [(sw1_ip, sw1_port), (sw2_ip, sw2_port)],
+                            key=lambda e: (e[0], e[1]),
+                        )
+                        key = (endpoints[0][0], endpoints[0][1], endpoints[1][0], endpoints[1][1])
+                        if key in seen_edges:
+                            continue
+                        seen_edges.add(key)
 
-                        if key not in seen_connections:
-                            seen_connections.add(key)
-                            ipl_connections.append(conn)
-                            self.logger.info(f"Found IPL: {conn['switch1_port']} ↔ {conn['switch2_port']}")
+                        conn = self._classify_edge(conn)
+                        edges.append(conn)
+                        self.logger.info(
+                            "Found %s edge: %s:%s <-> %s:%s",
+                            conn.get("connection_type", "ipl"),
+                            sw1_ip,
+                            sw1_port,
+                            sw2_ip,
+                            sw2_port,
+                        )
                 else:
                     self.logger.warning(f"Failed to get LLDP data from {switch_ip}: {stderr}")
 
@@ -1550,170 +1641,346 @@ class ExternalPortMapper:
                 self.logger.error(f"Error collecting IPL from {switch_ip}: {e}")
 
         self.logger.info(
-            f"Collected {len(ipl_connections)} unique IPL connections " f"({len(ipl_connections) * 2} total ports)"
+            "Collected %d unique switch-to-switch edges (%s)",
+            len(edges),
+            ", ".join(
+                f"{t}={sum(1 for e in edges if e.get('connection_type') == t)}"
+                for t in ("ipl", "spine_uplink", "spine_fabric")
+            )
+            or "none",
         )
-        return ipl_connections
+        return edges
+
+    def _classify_edge(self, conn: Dict[str, Any]) -> Dict[str, Any]:
+        """Tag an LLDP-derived switch edge with a ``connection_type``.
+
+        Leaves the original keys untouched and adds:
+
+        * ``connection_type`` — ``ipl`` / ``spine_uplink`` / ``spine_fabric``
+        * ``notes`` — human-readable label used by the report tables when an
+          explicit ``notes`` value is not already present.
+
+        When ``spine_ips`` is empty (legacy callers), the edge is always
+        classified as ``ipl`` for backward compatibility.
+        """
+        if conn.get("connection_type"):
+            return conn  # already classified upstream
+
+        sw1_ip = conn.get("switch1_ip", "")
+        sw2_ip = conn.get("switch2_ip", "")
+        spine_set = self.spine_ips or set()
+
+        sw1_is_spine = sw1_ip in spine_set
+        sw2_is_spine = sw2_ip in spine_set
+
+        if sw1_is_spine and sw2_is_spine:
+            conn_type = "spine_fabric"
+            default_note = "Spine fabric"
+        elif sw1_is_spine or sw2_is_spine:
+            conn_type = "spine_uplink"
+            default_note = "Spine uplink"
+        else:
+            conn_type = "ipl"
+            default_note = "IPL"
+
+        conn["connection_type"] = conn_type
+        conn.setdefault("notes", default_note)
+        return conn
+
+    def _resolve_neighbor_to_switch_ip(
+        self,
+        remote_hostname: str,
+        remote_mgmt_ip: str = "",
+    ) -> str:
+        """Map an LLDP neighbor's hostname (or advertised mgmt-ip) to a known switch IP.
+
+        Returns an empty string when the neighbor does not correspond to any
+        switch in ``self.switch_ips``.  Used by the generalized port walk to
+        decide whether a given LLDP entry should be emitted as an edge.
+        """
+        # Advertised mgmt IP is the strongest signal when present.
+        if remote_mgmt_ip and remote_mgmt_ip in self.switch_ips:
+            return remote_mgmt_ip
+
+        # Hostname match (case-insensitive) via the caller-supplied map.
+        if remote_hostname:
+            host = remote_hostname.lower()
+            direct = self.switch_hostname_map.get(host)
+            if direct:
+                return direct
+            # Tolerate FQDN / short-name mismatches (e.g. "leaf-a.lab" vs "leaf-a")
+            short = host.split(".", 1)[0]
+            if short != host:
+                mapped = self.switch_hostname_map.get(short)
+                if mapped:
+                    return mapped
+        return ""
 
     def _parse_cumulus_lldp_for_ipl(self, json_output: str, current_switch_ip: str) -> List[Dict[str, Any]]:
         """
-        Parse Cumulus 'nv show interface' JSON output to find IPL connections.
+        Parse Cumulus ``nv show interface --output json`` for switch edges.
 
-        The JSON structure from 'nv show interface --output json' looks like:
-        {
-          "swp29": {
-            "type": "swp",
-            "link": {
-              "state": {"up": {}}
-            },
-            "lldp": [{
-              "hostname": "se-var-1-1",
-              "port": [{"id": "swp29"}]
-            }]
-          }
-        }
+        Two modes:
+
+        * **Generalized walk** (``switch_hostname_map`` provided at construction):
+          iterate every port with LLDP data and emit an edge for every neighbor
+          whose hostname (or advertised mgmt-ip) resolves to a known switch IP.
+          Captures MLAG peer links on non-default ports **and** leaf-to-spine
+          uplinks, which the legacy scan missed.
+        * **Legacy narrow scan** (no hostname map): fall back to the original
+          swp29..swp32 symmetric-port heuristic for backward compatibility.
 
         Args:
-            json_output: JSON output from 'nv show interface'
-            current_switch_ip: IP of the switch we're querying
+            json_output: JSON output from ``nv show interface --output json``.
+            current_switch_ip: IP of the switch we're querying.
 
         Returns:
-            List of IPL connections found on this switch
+            List of unclassified switch-edge dicts (``connection_type`` is
+            attached later in ``_collect_ipl_connections`` via
+            ``_classify_edge``).
         """
         import json
 
-        ipl_connections = []
+        ipl_connections: List[Dict[str, Any]] = []
 
         try:
             data = json.loads(json_output)
-
-            self.vlog.log(f"Parsing interface data for IPL discovery on {current_switch_ip}")
-            self.vlog.log_data("Interface JSON keys", {"ports": list(data.keys())[:10]})
-
-            # Look for swp29-32 (typical IPL ports)
-            for port_name in ["swp29", "swp30", "swp31", "swp32"]:
-                if port_name not in data:
-                    continue
-
-                port_data = data[port_name]
-                self.vlog.log(
-                    f"Checking {port_name} for IPL: keys={list(port_data.keys()) if isinstance(port_data, dict) else 'not dict'}"
-                )
-
-                if not isinstance(port_data, dict):
-                    continue
-
-                # Check for LLDP neighbor data
-                # Structure: lldp.neighbor.{hostname}.port.name
-                lldp_data = port_data.get("lldp", {})
-                if isinstance(lldp_data, dict):
-                    neighbor_data = lldp_data.get("neighbor", {})
-                    if isinstance(neighbor_data, dict):
-                        # Iterate through all neighbors (usually just one)
-                        for remote_hostname, neighbor_info in neighbor_data.items():
-                            if not isinstance(neighbor_info, dict):
-                                continue
-
-                            # Get neighbor port name
-                            port_info = neighbor_info.get("port", {})
-                            neighbor_port = None
-                            if isinstance(port_info, dict):
-                                neighbor_port = port_info.get("name", "")
-
-                            self.vlog.log(f"{port_name}: remote_host={remote_hostname}, remote_port={neighbor_port}")
-
-                            # If neighbor port matches local port, it's an IPL
-                            if neighbor_port and neighbor_port == port_name:
-                                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
-                                port_num = int(port_name.replace("swp", ""))
-
-                                ipl_connections.append(
-                                    {
-                                        "switch1_ip": current_switch_ip,
-                                        "switch1_port": port_name,
-                                        "switch2_ip": remote_switch_ip,
-                                        "switch2_port": neighbor_port,
-                                        "port_number": port_num,
-                                    }
-                                )
-                                self.vlog.log(
-                                    f"✓ IPL found: {port_name} ↔ {neighbor_port}",
-                                    self.vlog.GREEN,
-                                )
-
         except json.JSONDecodeError as e:
             self.logger.warning(f"Failed to parse JSON from nv show interface: {e}")
             self.vlog.log_error("JSON parse failed", e)
-        except Exception as e:
-            self.logger.error(f"Error parsing LLDP data: {e}")
-            self.vlog.log_error("IPL parsing error", e)
+            return ipl_connections
+
+        self.vlog.log(f"Parsing interface data for edge discovery on {current_switch_ip}")
+        self.vlog.log_data("Interface JSON keys", {"ports": list(data.keys())[:20]})
+
+        use_generalized = bool(self.switch_hostname_map) or bool(self.spine_ips)
+
+        if use_generalized:
+            # Walk every port; emit edges for any LLDP neighbor that resolves
+            # to a switch we know about.
+            for port_name, port_data in data.items():
+                if not isinstance(port_data, dict):
+                    continue
+                # Skip non-physical / non-switchable interfaces early.
+                if not (isinstance(port_name, str) and port_name.startswith(("swp", "eth", "Eth"))):
+                    continue
+
+                lldp_data = port_data.get("lldp", {})
+                if not isinstance(lldp_data, dict):
+                    continue
+                neighbor_data = lldp_data.get("neighbor", {})
+                if not isinstance(neighbor_data, dict):
+                    continue
+
+                for remote_hostname, neighbor_info in neighbor_data.items():
+                    if not isinstance(neighbor_info, dict):
+                        continue
+
+                    port_info = neighbor_info.get("port", {})
+                    neighbor_port = ""
+                    if isinstance(port_info, dict):
+                        neighbor_port = str(port_info.get("name", "") or "")
+
+                    # Cumulus exposes advertised management IP at
+                    # ``neighbor.mgmt-ip`` or ``neighbor.chassis.mgmt-ip``;
+                    # tolerate both shapes.
+                    remote_mgmt_ip = str(neighbor_info.get("mgmt-ip", "") or "")
+                    if not remote_mgmt_ip:
+                        chassis = neighbor_info.get("chassis", {})
+                        if isinstance(chassis, dict):
+                            remote_mgmt_ip = str(chassis.get("mgmt-ip", "") or "")
+
+                    remote_switch_ip = self._resolve_neighbor_to_switch_ip(
+                        remote_hostname=str(remote_hostname),
+                        remote_mgmt_ip=remote_mgmt_ip,
+                    )
+                    if not remote_switch_ip:
+                        continue  # not a known switch -> not an interconnect
+                    if remote_switch_ip == current_switch_ip:
+                        continue  # loopback / self-advertised
+
+                    port_num = self._port_number(port_name)
+                    ipl_connections.append(
+                        {
+                            "switch1_ip": current_switch_ip,
+                            "switch1_port": port_name,
+                            "switch2_ip": remote_switch_ip,
+                            "switch2_port": neighbor_port,
+                            "port_number": port_num,
+                        }
+                    )
+                    self.vlog.log(
+                        f"✓ Edge: {current_switch_ip}:{port_name} <-> {remote_switch_ip}:{neighbor_port} "
+                        f"(remote host={remote_hostname})",
+                        self.vlog.GREEN,
+                    )
+            return ipl_connections
+
+        # ----- Legacy narrow scan (symmetric peer link on swp29..32) -----
+        for port_name in ("swp29", "swp30", "swp31", "swp32"):
+            if port_name not in data:
+                continue
+
+            port_data = data[port_name]
+            if not isinstance(port_data, dict):
+                continue
+
+            lldp_data = port_data.get("lldp", {})
+            if not isinstance(lldp_data, dict):
+                continue
+            neighbor_data = lldp_data.get("neighbor", {})
+            if not isinstance(neighbor_data, dict):
+                continue
+
+            for remote_hostname, neighbor_info in neighbor_data.items():
+                if not isinstance(neighbor_info, dict):
+                    continue
+                port_info = neighbor_info.get("port", {})
+                neighbor_port = port_info.get("name", "") if isinstance(port_info, dict) else ""
+
+                if neighbor_port and neighbor_port == port_name:
+                    remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+                    port_num = self._port_number(port_name)
+                    ipl_connections.append(
+                        {
+                            "switch1_ip": current_switch_ip,
+                            "switch1_port": port_name,
+                            "switch2_ip": remote_switch_ip,
+                            "switch2_port": neighbor_port,
+                            "port_number": port_num,
+                        }
+                    )
+                    self.vlog.log(
+                        f"✓ IPL found: {port_name} <-> {neighbor_port} (remote {remote_hostname})",
+                        self.vlog.GREEN,
+                    )
 
         return ipl_connections
 
+    @staticmethod
+    def _port_number(port_name: str) -> int:
+        """Best-effort extraction of a numeric port identifier for sorting/labels."""
+        digits = re.findall(r"\d+", port_name or "")
+        try:
+            return int(digits[-1]) if digits else 0
+        except (TypeError, ValueError):
+            return 0
+
     def _parse_onyx_lldp_for_ipl(self, lldp_output: str, current_switch_ip: str) -> List[Dict[str, Any]]:
         """
-        Parse Mellanox Onyx 'show lldp remote' output to find IPL connections.
+        Parse Mellanox Onyx ``show lldp remote`` output into switch edges.
 
-        Onyx format from 'show lldp remote':
-        Local Interface     Chassis ID          Port ID             System Name
-        -----------------   -----------------   -----------------   -----------
-        Eth1/29             f4:02:70:c1:22:00   Eth1/29             switch-2
-        Eth1/30             f4:02:70:c1:22:00   Eth1/30             switch-2
+        Onyx column layout::
 
-        Args:
-            lldp_output: Text output from 'show lldp remote'
-            current_switch_ip: IP of the switch we're querying
+            Local Interface     Chassis ID          Port ID             System Name
+            -----------------   -----------------   -----------------   -----------
+            Eth1/29             f4:02:70:c1:22:00   Eth1/29             switch-2
+            Eth1/30             f4:02:70:c1:22:00   Eth1/30             switch-2
+            Eth1/1              f4:02:70:aa:bb:cc   Eth1/10             spine-1
+
+        Two modes (mirrors ``_parse_cumulus_lldp_for_ipl``):
+
+        * **Generalized walk** (``switch_hostname_map`` or ``spine_ips`` set):
+          every Eth* port is inspected, symmetric-port check is dropped, and
+          every neighbor whose System Name (or Chassis ID) resolves back to a
+          known switch is emitted as an edge.  This is what lets the
+          collector discover leaf-to-spine uplinks on Onyx fabrics.
+        * **Legacy narrow scan** (no hostname map): retains the original
+          swp29..swp32 symmetric-port heuristic for backward compatibility
+          with 2-leaf Onyx deployments that rely on `_get_other_switch_ip`.
 
         Returns:
-            List of IPL connections found on this switch
+            List of unclassified switch-edge dicts.  ``connection_type`` is
+            attached later in ``_collect_ipl_connections`` via
+            ``_classify_edge``.  Port names keep Onyx's native ``Eth1/N``
+            format in generalized mode; legacy mode continues to emit
+            ``swpN`` for consistency with the Cumulus narrow scan.
         """
-        ipl_connections = []
+        ipl_connections: List[Dict[str, Any]] = []
+
+        use_generalized = bool(self.switch_hostname_map) or bool(self.spine_ips)
 
         try:
             self.vlog.log(f"Parsing LLDP data for IPL discovery on {current_switch_ip} (Onyx)")
 
-            # Look for Eth1/29-32 (typical IPL ports on Onyx switches)
             for line in lldp_output.split("\n"):
-                # Skip header lines
+                # Skip header, separator, and empty lines.
                 if "Local Interface" in line or "---" in line or not line.strip():
                     continue
 
-                # Split line into columns
                 parts = line.split()
-                if len(parts) >= 4:
-                    local_interface = parts[0]  # e.g., "Eth1/29"
-                    # chassis_id = parts[1]  # Not used, but available
-                    remote_port = parts[2]  # e.g., "Eth1/29"
-                    # remote_hostname = parts[3]  # Not used, but available
+                if len(parts) < 4:
+                    continue
 
-                    # Check if this is an IPL port (Eth1/29-32)
-                    if local_interface.startswith("Eth1/"):
-                        try:
-                            local_port_num = int(local_interface.split("/")[1])
-                        except (IndexError, ValueError):
-                            continue
+                local_interface = parts[0]
+                chassis_id = parts[1]
+                remote_port = parts[2]
+                # System Name may contain spaces; join remaining tokens.
+                remote_hostname = " ".join(parts[3:]).strip()
 
-                        # Typical IPL ports are 29-32
-                        if 29 <= local_port_num <= 32:
-                            # Verify the remote port matches the local port (typical IPL behavior)
-                            if remote_port == local_interface:
-                                # Convert to swp naming for consistency
-                                local_swp = f"swp{local_port_num}"
-                                remote_swp = f"swp{local_port_num}"
-                                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+                if use_generalized:
+                    # Accept any Eth*/* or swp* interface.
+                    if not (local_interface.startswith(("Eth", "swp"))):
+                        continue
 
-                                ipl_connections.append(
-                                    {
-                                        "switch1_ip": current_switch_ip,
-                                        "switch1_port": local_swp,
-                                        "switch2_ip": remote_switch_ip,
-                                        "switch2_port": remote_swp,
-                                        "port_number": local_port_num,
-                                    }
-                                )
-                                self.vlog.log(
-                                    f"✓ IPL found: {local_swp} ↔ {remote_swp} (Onyx: {local_interface} ↔ {remote_port})",
-                                    self.vlog.GREEN,
-                                )
+                    remote_switch_ip = self._resolve_neighbor_to_switch_ip(
+                        remote_hostname=remote_hostname,
+                    )
+                    # Chassis-ID (base MAC) fallback: if hostname didn't
+                    # resolve, callers can populate ``switch_chassis_map``
+                    # in a future revision.  Today we simply drop the
+                    # unresolved entry so we don't invent edges.
+                    if not remote_switch_ip or remote_switch_ip == current_switch_ip:
+                        continue
+
+                    port_num = self._port_number(local_interface)
+                    ipl_connections.append(
+                        {
+                            "switch1_ip": current_switch_ip,
+                            "switch1_port": local_interface,
+                            "switch2_ip": remote_switch_ip,
+                            "switch2_port": remote_port,
+                            "port_number": port_num,
+                        }
+                    )
+                    self.vlog.log(
+                        f"✓ Edge: {current_switch_ip}:{local_interface} <-> "
+                        f"{remote_switch_ip}:{remote_port} (remote host={remote_hostname}, "
+                        f"chassis={chassis_id})",
+                        self.vlog.GREEN,
+                    )
+                    continue
+
+                # ----- Legacy narrow scan (Eth1/29..32 symmetric) -----
+                if not local_interface.startswith("Eth1/"):
+                    continue
+                try:
+                    local_port_num = int(local_interface.split("/")[1])
+                except (IndexError, ValueError):
+                    continue
+                if not (29 <= local_port_num <= 32):
+                    continue
+                if remote_port != local_interface:
+                    continue
+
+                local_swp = f"swp{local_port_num}"
+                remote_swp = f"swp{local_port_num}"
+                remote_switch_ip = self._get_other_switch_ip(current_switch_ip)
+
+                ipl_connections.append(
+                    {
+                        "switch1_ip": current_switch_ip,
+                        "switch1_port": local_swp,
+                        "switch2_ip": remote_switch_ip,
+                        "switch2_port": remote_swp,
+                        "port_number": local_port_num,
+                    }
+                )
+                self.vlog.log(
+                    f"✓ IPL found: {local_swp} <-> {remote_swp} "
+                    f"(Onyx: {local_interface} <-> {remote_port}, host={remote_hostname})",
+                    self.vlog.GREEN,
+                )
 
         except Exception as e:
             self.logger.error(f"Error parsing Onyx LLDP data: {e}")

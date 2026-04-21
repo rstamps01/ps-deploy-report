@@ -170,6 +170,23 @@ advanced_operations:
   # Auto-fill default credentials (support/654321)
   autofill_default_passwords: true
 
+  # Ordered list of default switch SSH passwords to try when autofill is
+  # enabled.  Some clusters have switches provisioned with mixed defaults
+  # (e.g. a VMS-set primary on the Cumulus pair plus the original factory
+  # password on a spare leaf, or a case-variant left behind by an older
+  # installer).  Workflows iterate this list in order, using the first
+  # password that authenticates.  The first entry is considered primary.
+  #
+  # SECURITY: never commit real passwords to this file.  Copy this template
+  # to ``config/config.yaml`` (already gitignored) and populate the real
+  # values there, or supply them via the ``VAST_DEFAULT_SWITCH_PASSWORDS``
+  # environment variable as a colon-separated list (primary first).  An
+  # empty list disables autofill for switch SSH.
+  default_switch_passwords: []
+  #  - "<your-primary-switch-password>"
+  #  - "<your-secondary-switch-password>"
+  #  - "<your-factory-default-switch-password>"
+
   # Default selections for Reporter tile operations
   reporter_defaults:
     pre_validation: true
@@ -188,6 +205,16 @@ advanced_operations:
     pre_validation: true
     include_report: true
     include_health: true
+
+# Bundle Packaging Configuration
+bundle:
+  # When the vperfsanity workflow is skipped (it can take up to 30 minutes)
+  # the result bundler detects a pre-run vperfsanity_results_*.txt file on
+  # disk as "stale".  With this flag enabled (default), the bundler ships
+  # that prior output under performance/vperfsanity_PRIOR_<name>.txt with
+  # a banner so reports never regress to a bare STALE placeholder.  Set
+  # to false if your workflow forbids shipping any non-current data.
+  include_prior_vperfsanity: true
 
 # Security Configuration
 security:

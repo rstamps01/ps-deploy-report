@@ -19,7 +19,75 @@ from utils.ssh_adapter import (
     _subprocess_ssh,
     _paramiko_exec,
     _pexpect_interactive,
+    build_switch_credential_combos,
 )
+
+
+class TestBuildSwitchCredentialCombos(unittest.TestCase):
+    """The combo builder determines the credential ordering used by
+    ExternalPortMapper._detect_switch_os, SwitchConfigWorkflow._step_discover_switches,
+    and OneShotRunner._probe_switch_candidates.  Keeping them in lockstep
+    avoids drift that would cause pre-validation and the workflow to disagree
+    on whether a switch is reachable."""
+
+    def test_primary_user_with_passwords_comes_first(self):
+        combos = build_switch_credential_combos("cumulus", ["Vastdata1!", "Cumu1usLinux!"])
+        self.assertEqual(combos[0], ("cumulus", "Vastdata1!"))
+        self.assertEqual(combos[1], ("cumulus", "Cumu1usLinux!"))
+
+    def test_onyx_factory_admin_admin_included_after_primary_combos(self):
+        combos = build_switch_credential_combos("cumulus", ["Vastdata1!", "Cumu1usLinux!"])
+        self.assertEqual(combos[2], ("admin", "admin"))
+
+    def test_does_not_include_admin_with_candidate_passwords(self):
+        # Operators who need an Onyx switch with a VMS-synced password should
+        # enter the admin credentials explicitly in Connection Settings; the
+        # default combo list intentionally excludes admin/<each candidate>
+        # so we don't lock out admin accounts on misconfigured clusters by
+        # burning through bad-password attempts.
+        combos = build_switch_credential_combos("cumulus", ["Vastdata1!", "Cumu1usLinux!"])
+        self.assertNotIn(("admin", "Vastdata1!"), combos)
+        self.assertNotIn(("admin", "Cumu1usLinux!"), combos)
+
+    def test_primary_admin_user_does_not_duplicate_admin_admin(self):
+        combos = build_switch_credential_combos("admin", ["admin", "Vastdata1!"])
+        # admin/admin should appear exactly once even though it's both a
+        # primary combo and the factory default.
+        self.assertEqual(combos.count(("admin", "admin")), 1)
+
+    def test_combos_are_deduplicated(self):
+        combos = build_switch_credential_combos("cumulus", ["Vastdata1!", "Vastdata1!"])
+        seen = set()
+        for combo in combos:
+            self.assertNotIn(combo, seen)
+            seen.add(combo)
+
+    def test_empty_candidates_still_includes_factory_default(self):
+        combos = build_switch_credential_combos("cumulus", [])
+        self.assertEqual(combos, [("admin", "admin")])
+
+    def test_custom_primary_user_adds_cumulus_fallback_but_not_admin_with_candidates(self):
+        combos = build_switch_credential_combos("support", ["Vastdata1!"])
+        self.assertEqual(combos[0], ("support", "Vastdata1!"))
+        self.assertIn(("admin", "admin"), combos)
+        self.assertIn(("cumulus", "Vastdata1!"), combos)
+        # The admin × <candidate> permutations are intentionally omitted.
+        self.assertNotIn(("admin", "Vastdata1!"), combos)
+
+    def test_exact_ordering_matches_spec(self):
+        """Locks in the final ordering requested by operators: Connection
+        Settings → Vastdata1! → VastData1! → Cumu1usLinux! → admin/admin."""
+        combos = build_switch_credential_combos("cumulus", ["OperatorPw!", "Vastdata1!", "VastData1!", "Cumu1usLinux!"])
+        self.assertEqual(
+            combos,
+            [
+                ("cumulus", "OperatorPw!"),
+                ("cumulus", "Vastdata1!"),
+                ("cumulus", "VastData1!"),
+                ("cumulus", "Cumu1usLinux!"),
+                ("admin", "admin"),
+            ],
+        )
 
 
 class TestSubprocessSSH(unittest.TestCase):

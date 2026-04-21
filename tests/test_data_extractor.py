@@ -485,5 +485,87 @@ class TestReportSection(unittest.TestCase):
         self.assertEqual(section.status, "complete")
 
 
+class TestInferIplFromSwitchPair(unittest.TestCase):
+    """Generalized IPL / spine-uplink inference when LLDP data is unavailable.
+
+    Guards against the "no spine-to-leaf lines in the Logical Network Diagram"
+    bug observed when ``vnetmap`` output contains no ``LLDP neighbors on ...``
+    blocks and the fallback inference was restricted to two-leaf clusters.
+    """
+
+    def setUp(self):
+        self.extractor = VastDataExtractor(config={})
+
+    @staticmethod
+    def _mock_mapper(switch_map):
+        mapper = MagicMock()
+        mapper.switch_map = switch_map
+        return mapper
+
+    def test_two_leaves_emit_single_ipl(self):
+        mapper = self._mock_mapper(
+            {
+                "10.0.0.153": {"designation": "SWA", "hostname": "leaf-a", "role": "leaf"},
+                "10.0.0.154": {"designation": "SWB", "hostname": "leaf-b", "role": "leaf"},
+            }
+        )
+
+        result = self.extractor._infer_ipl_from_switch_pair(mapper)
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["connection_type"], "IPL")
+        self.assertEqual(result[0]["switch_designation"], "SWA")
+        self.assertEqual(result[0]["node_designation"], "SWB")
+        self.assertIn("inferred", result[0]["notes"].lower())
+
+    def test_two_leaves_plus_spine_emit_ipl_and_spine_uplinks(self):
+        """Regression: 3-switch clusters (2 leaves + 1 spine) must still produce output."""
+        mapper = self._mock_mapper(
+            {
+                "10.0.0.153": {"designation": "SWA", "hostname": "leaf-a", "role": "leaf"},
+                "10.0.0.154": {"designation": "SWB", "hostname": "leaf-b", "role": "leaf"},
+                "10.0.0.156": {"designation": "SP1", "hostname": "spine-1", "role": "spine"},
+            }
+        )
+
+        result = self.extractor._infer_ipl_from_switch_pair(mapper)
+
+        ipl_entries = [r for r in result if r["connection_type"] == "IPL"]
+        spine_entries = [r for r in result if r["connection_type"] == "spine_uplink"]
+
+        self.assertEqual(len(ipl_entries), 1, "Expect one leaf-to-leaf IPL")
+        self.assertEqual(len(spine_entries), 2, "Expect one spine_uplink per leaf")
+
+        spine_pairs = {(e["switch_designation"], e["node_designation"]) for e in spine_entries}
+        self.assertEqual(spine_pairs, {("SP1", "SWA"), ("SP1", "SWB")})
+        for e in spine_entries:
+            self.assertIn("inferred", e["notes"].lower())
+            self.assertEqual(e["switch1_port"], "")
+            self.assertEqual(e["switch2_port"], "")
+
+    def test_single_switch_returns_empty(self):
+        mapper = self._mock_mapper({"10.0.0.153": {"designation": "SWA", "hostname": "leaf-a", "role": "leaf"}})
+        self.assertEqual(self.extractor._infer_ipl_from_switch_pair(mapper), [])
+
+    def test_empty_switch_map_returns_empty(self):
+        self.assertEqual(self.extractor._infer_ipl_from_switch_pair(self._mock_mapper({})), [])
+
+    def test_four_leaves_emit_all_pair_ipls(self):
+        """Racks with four leaves (rare) should emit all leaf-pair IPLs as a safe default."""
+        mapper = self._mock_mapper(
+            {
+                "10.0.0.1": {"designation": "SWA", "hostname": "l1", "role": "leaf"},
+                "10.0.0.2": {"designation": "SWB", "hostname": "l2", "role": "leaf"},
+                "10.0.0.3": {"designation": "SWC", "hostname": "l3", "role": "leaf"},
+                "10.0.0.4": {"designation": "SWD", "hostname": "l4", "role": "leaf"},
+            }
+        )
+
+        result = self.extractor._infer_ipl_from_switch_pair(mapper)
+
+        ipls = [r for r in result if r["connection_type"] == "IPL"]
+        self.assertEqual(len(ipls), 6, "4 leaves -> C(4,2) = 6 leaf pairs")
+
+
 if __name__ == "__main__":
     unittest.main()

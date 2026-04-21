@@ -10,6 +10,7 @@ VAST Support Tools Workflow
 """
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -19,6 +20,53 @@ from utils.ssh_adapter import run_ssh_command
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# RM-3: VAST ``inspect`` tool streams an alarm table of the form
+#   ``<ISO-timestamp> | <SEVERITY> | <message>``
+# where SEVERITY is one of INFO / MINOR / MAJOR / CRITICAL / UNKNOWN.  The
+# previous keyword-based classifier in _step_run_support_tools scanned each
+# line for the substring ``error`` and promoted any match to the ERROR level
+# — which mis-surfaced *MINOR* alarms whose free-text payload happened to
+# contain the word "error" (e.g. "DNS query failed ... due to internal
+# error").  Honour the explicit severity token first; fall back to the
+# keyword heuristics only when the line does not match the alarm-table
+# shape.
+_ALARM_LINE_RE = re.compile(
+    r"""^\s*
+        \d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}  # ISO date + time
+        (?:\.\d+)?                              # optional fractional seconds
+        (?:[+\-]\d{2}:?\d{2}|Z)?                # optional timezone suffix
+        \s*\|\s*
+        (?P<severity>INFO|MINOR|MAJOR|CRITICAL|UNKNOWN)
+        \s*\|\s*
+        .+$
+    """,
+    re.VERBOSE,
+)
+
+_ALARM_SEVERITY_TO_LEVEL = {
+    "CRITICAL": "error",
+    "MAJOR": "warn",
+    "MINOR": "info",
+    "INFO": "info",
+    "UNKNOWN": "info",
+}
+
+
+def _classify_alarm_line(line: str) -> Optional[str]:
+    """Return the log level implied by a VAST alarm-table row, or ``None``.
+
+    The mapping is deliberate: MINOR alarms are operator-visible noise
+    and should render as INFO, MAJOR alarms warrant a WARN badge, and
+    CRITICAL alarms are the only ones that surface as ERROR.  Anything
+    that isn't an alarm-table row returns ``None`` so the caller can fall
+    back to its default classification rules.
+    """
+    match = _ALARM_LINE_RE.match(line)
+    if not match:
+        return None
+    return _ALARM_SEVERITY_TO_LEVEL.get(match.group("severity").upper(), "info")
 
 
 class SupportToolWorkflow:
@@ -144,7 +192,9 @@ class SupportToolWorkflow:
         try:
             # Pull file from CNode to a local temp file
             jump_client = paramiko.SSHClient()
-            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: jump host is the newly-installed CNode/VMS pair targeted by the
+            # support-tool workflow; AutoAddPolicy is required for first-contact connections.
+            jump_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             jump_client.connect(
                 jump_host,
                 username=jump_user,
@@ -169,7 +219,9 @@ class SupportToolWorkflow:
             sock = jump_transport.open_channel("direct-tcpip", (vms_ip, 22), ("127.0.0.1", 0))
 
             vms_client = paramiko.SSHClient()
-            vms_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: VMS reached via jump host in post-install context; AutoAddPolicy
+            # is required because host keys are not yet distributed to the operator.
+            vms_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             vms_client.connect(
                 vms_ip,
                 username=jump_user,
@@ -240,17 +292,42 @@ class SupportToolWorkflow:
         password = self._credentials.get("node_password")
         vms_internal_ip = self._credentials.get("vms_internal_ip")
 
-        remote_script = self._step_data.get("remote_script_path", "/tmp/vast_scripts/vast_support_tools.py")
+        # Intentional [B108]: default path is on the remote VAST CNode (under /tmp/vast_scripts), not local.
+        remote_script = self._step_data.get(
+            "remote_script_path", "/tmp/vast_scripts/vast_support_tools.py"  # nosec B108
+        )
 
-        # Copy script to /vast/data/ so it is visible inside the VMS container
+        # Copy script to /vast/data/ so it is visible inside the VMS container.
+        # /vast/data/ is typically owned by root; the vastdata user needs sudo
+        # to write there on most clusters (see observed "Permission denied" on
+        # plain cp).  We also fix ownership so subsequent chmod/exec succeed.
         self.emit("info", "Copying script to container-accessible path...")
-        copy_cmd = f"cp {remote_script} {self.CONTAINER_SCRIPT_PATH}"
+        copy_cmd = (
+            f"sudo cp {remote_script} {self.CONTAINER_SCRIPT_PATH} && "
+            f"sudo chown {user}:{user} {self.CONTAINER_SCRIPT_PATH} && "
+            f"sudo chmod 755 {self.CONTAINER_SCRIPT_PATH}"
+        )
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {copy_cmd}")
 
         rc, stdout, stderr = run_ssh_command(host, user, password, copy_cmd, timeout=30)
         if rc != 0:
             self.emit("error", f"Copy failed: {stderr}")
+            hint = ""
+            combined = (stdout + stderr).lower()
+            if "permission denied" in combined:
+                hint = (
+                    f"{self.CONTAINER_SCRIPT_PATH} is not writable by {user}. "
+                    f"Confirm {user} has passwordless sudo on this CNode "
+                    f"(the workflow uses `sudo cp` because /vast/data/ is typically root-owned)."
+                )
+            elif "sudo:" in combined and ("password" in combined or "tty" in combined):
+                hint = (
+                    f"`sudo` on {host} required a password or a TTY. "
+                    f"Configure passwordless sudo for {user} and retry."
+                )
+            if hint:
+                self.emit("warn", f"Hint: {hint}")
             return {"success": False, "message": f"Failed to copy script to /vast/data/: {stderr}"}
 
         self.emit("success", f"Copied to {self.CONTAINER_SCRIPT_PATH}")
@@ -276,9 +353,10 @@ class SupportToolWorkflow:
 
             self.emit("success", f"Script pushed to VMS {vms_internal_ip}")
 
-            # Set permissions and verify on VMS via jump SSH
+            # Set permissions and verify on VMS via jump SSH.  /vast/data/
+            # on the VMS is typically root-owned, so use sudo.
             self.emit("info", "Setting execute permissions on VMS...")
-            chmod_cmd = f"chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            chmod_cmd = f"sudo chmod +x {self.CONTAINER_SCRIPT_PATH}"
             self.emit("info", f"$ {chmod_cmd}")
 
             rc, stdout, stderr = run_ssh_command(
@@ -309,9 +387,10 @@ class SupportToolWorkflow:
             if stdout:
                 self.emit("info", stdout.strip())
         else:
-            # Set execute permissions on the container copy
+            # Set execute permissions on the container copy.  /vast/data/ is
+            # typically root-owned so sudo is required.
             self.emit("info", "Setting execute permissions...")
-            chmod_cmd = f"chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            chmod_cmd = f"sudo chmod +x {self.CONTAINER_SCRIPT_PATH}"
             self.emit("info", f"$ {chmod_cmd}")
 
             rc, stdout, stderr = run_ssh_command(host, user, password, chmod_cmd, timeout=30)
@@ -368,17 +447,24 @@ class SupportToolWorkflow:
         # Show output
         output = stdout + stderr
         for line in output.strip().split("\n"):
-            if line.strip():
-                # Determine log level based on content
-                ll = line.lower()
-                if "error" in ll and "traceback" not in ll:
-                    self.emit("error", line)
-                elif "warning" in ll or "warn" in ll:
-                    self.emit("warn", line)
-                elif "success" in ll or "passed" in ll or "complete" in ll:
-                    self.emit("success", line)
-                else:
-                    self.emit("info", line)
+            if not line.strip():
+                continue
+            # RM-3: honour the alarm-table severity token when present so
+            # MINOR alarms whose payload contains "error" don't get
+            # mis-promoted to the ERROR level.
+            alarm_level = _classify_alarm_line(line)
+            if alarm_level is not None:
+                self.emit(alarm_level, line)
+                continue
+            ll = line.lower()
+            if "error" in ll and "traceback" not in ll:
+                self.emit("error", line)
+            elif "warning" in ll or "warn" in ll:
+                self.emit("warn", line)
+            elif "success" in ll or "passed" in ll or "complete" in ll:
+                self.emit("success", line)
+            else:
+                self.emit("info", line)
 
         self._step_data["support_tools_output"] = output
 
@@ -410,9 +496,11 @@ class SupportToolWorkflow:
 
         # Find where support tools output was created
         # Check multiple possible locations
+        # Intentional [B108]: all entries are candidate locations on the remote VAST CNode,
+        # checked over SSH; none are opened on the local filesystem.
         possible_dirs = [
             "/vast/data/support-checks",
-            "/tmp/vast_support_output",
+            "/tmp/vast_support_output",  # nosec B108
             "/vast/data/support_checks",
             "/userdata/support-checks",
         ]
@@ -517,7 +605,9 @@ class SupportToolWorkflow:
         try:
             # Create SSH client
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: CNode SCP target; AutoAddPolicy is required for first-contact
+            # post-install archive downloads where host keys are not yet known.
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             ssh.connect(host, username=user, password=password, timeout=30)
 
             # SCP download

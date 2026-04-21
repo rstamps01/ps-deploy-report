@@ -21,15 +21,25 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# Category-status values used in the manifest and SUMMARY.md.
+STATUS_OK = "ok"
+STATUS_STALE = "stale"
+STATUS_MISSING = "missing"
+STATUS_FAILED = "failed"
+STATUS_SKIPPED = "skipped"
+
+
 class ResultBundler:
     """Bundles validation results into downloadable ZIP archives."""
 
-    BUNDLE_MANIFEST_VERSION = "1.0"
+    BUNDLE_MANIFEST_VERSION = "1.2"
 
     def __init__(
         self,
         output_dir: Optional[Path] = None,
         output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
+        *,
+        include_prior_vperfsanity: bool = True,
     ):
         if output_dir is None:
             from utils import get_data_dir
@@ -38,7 +48,21 @@ class ResultBundler:
         self._output_dir = output_dir
         self._output_callback = output_callback
         self._collected_files: Dict[str, Path] = {}
+        self._stale_files: Dict[str, Path] = {}
+        self._category_status: Dict[str, str] = {}
+        self._operation_status: Dict[str, str] = {}
+        self._since: Optional[datetime] = None
         self._metadata: Dict[str, Any] = {}
+        # RM-5: when vperfsanity is ``stale`` (a pre-run file exists but
+        # wasn't regenerated this run) we ship the prior output under a
+        # ``vperfsanity_PRIOR_<name>.txt`` arcname with a banner so the
+        # bundle never regresses from "here is last run's performance data"
+        # to "STALE placeholder, no data attached".  Operators can opt out
+        # by setting ``bundle.include_prior_vperfsanity: false`` in config
+        # / passing ``include_prior_vperfsanity=False`` when constructing
+        # the bundler.  Recorded in manifest as ``vperfsanity_prior_source``.
+        self._include_prior_vperfsanity = bool(include_prior_vperfsanity)
+        self._prior_vperfsanity_source: Optional[Path] = None
 
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         """Emit output message via callback, or fall back to the Python logger."""
@@ -128,9 +152,44 @@ class ResultBundler:
         candidates: List[Path],
         cluster_ip: Optional[str],
         match_fn,
+        *,
+        since: Optional[datetime] = None,
     ) -> Optional[Path]:
-        """Return the most recent file that passes *match_fn*, or None."""
+        """Return the most recent file that passes *match_fn*, or None.
+
+        When *since* is given, files whose ``mtime`` is strictly older than
+        *since* are skipped so the bundler does not silently pick up results
+        produced by an earlier run.
+        """
         for f in sorted(candidates, reverse=True):
+            if since is not None:
+                try:
+                    if datetime.fromtimestamp(f.stat().st_mtime) < since:
+                        continue
+                except OSError:
+                    continue
+            if cluster_ip is None or match_fn(f, cluster_ip):
+                return f
+        return None
+
+    def _pick_stale(
+        self,
+        candidates: List[Path],
+        cluster_ip: Optional[str],
+        match_fn,
+        since: datetime,
+    ) -> Optional[Path]:
+        """Return the newest pre-*since* file matching *match_fn*, or None.
+
+        Used purely to annotate the bundle so a reader can see that older
+        data exists on disk but was intentionally excluded.
+        """
+        for f in sorted(candidates, reverse=True):
+            try:
+                if datetime.fromtimestamp(f.stat().st_mtime) >= since:
+                    continue
+            except OSError:
+                continue
             if cluster_ip is None or match_fn(f, cluster_ip):
                 return f
         return None
@@ -159,172 +218,238 @@ class ResultBundler:
         self,
         results_dir: Optional[Path] = None,
         cluster_ip: Optional[str] = None,
+        since: Optional[datetime] = None,
+        operation_status: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Path]:
         """Collect validation result files scoped to *cluster_ip*.
 
         For each category the most recent matching file is selected.
         When *cluster_ip* is ``None`` the latest file regardless of cluster
         is chosen.
+
+        When *since* is given, only files whose ``mtime`` is at or after
+        *since* are treated as fresh results for this run.  Older matching
+        files are tracked separately as ``stale`` so the bundle can report
+        that pre-existing data was intentionally excluded, instead of
+        silently including results from an earlier run.
+
+        *operation_status* is an optional ``{category: "success"|"failed"|
+        "skipped"}`` map from the caller (one-shot runner) describing which
+        operations were actually executed.  It is used to choose between
+        ``missing``, ``failed`` and ``skipped`` when no fresh file is found.
         """
+        self._since = since
+        self._operation_status = dict(operation_status or {})
+
         if cluster_ip:
             self.emit("info", f"Collecting results for cluster {cluster_ip}...")
         else:
             self.emit("info", "Collecting validation results (all clusters)...")
+        if since is not None:
+            self.emit("info", f"Only including results produced at or after {since.isoformat(timespec='seconds')}")
 
         if results_dir is None:
             from utils import get_data_dir
 
             results_dir = get_data_dir() / "output"
         collected: Dict[str, Path] = {}
+        stale: Dict[str, Path] = {}
+
+        def _record(category: str, candidates: List[Path], match_fn) -> None:
+            hit = self._pick_latest(candidates, cluster_ip, match_fn, since=since)
+            if hit:
+                collected[category] = hit
+                self.emit("success", f"Found {category}: {hit.name}")
+                return
+            if since is not None:
+                stale_hit = self._pick_stale(candidates, cluster_ip, match_fn, since)
+                if stale_hit:
+                    stale[category] = stale_hit
+                    self.emit(
+                        "warn",
+                        f"Stale {category} found (pre-run): {stale_hit.name} — excluded from bundle",
+                    )
 
         scripts_dir = results_dir / "scripts"
 
         # -- Health check results --
         health_dir = results_dir / "health"
         if health_dir.exists():
-            hit = self._pick_latest(
+            _record(
+                "health_check",
                 list(health_dir.glob("health_check_*.json")),
-                cluster_ip,
                 self._json_has_cluster_ip,
             )
-            if hit:
-                collected["health_check"] = hit
-                self.emit("success", f"Found health check: {hit.name}")
-
-            # Health remediation text (paired by timestamp with the JSON)
-            hit_rem = self._pick_latest(
+            _record(
+                "health_remediation",
                 list(health_dir.glob("health_remediation_*.txt")),
-                cluster_ip,
                 self._text_header_has_ip,
             )
-            if hit_rem:
-                collected["health_remediation"] = hit_rem
-                self.emit("success", f"Found health remediation: {hit_rem.name}")
 
         # -- Network configurations --
         network_dir = scripts_dir / "network_configs"
         if network_dir.exists():
-            hit = self._pick_latest(
+            _record(
+                "network_config",
                 list(network_dir.glob("network_summary_*.json")),
-                cluster_ip,
                 self._json_has_cluster_ip,
             )
-            if hit:
-                collected["network_config"] = hit
-                self.emit("success", f"Found network config: {hit.name}")
-
-                timestamp = self._extract_timestamp(hit.name)
+            net_hit = collected.get("network_config")
+            if net_hit:
+                timestamp = self._extract_timestamp(net_hit.name)
                 if timestamp:
                     self._collect_network_text_files(network_dir, timestamp, collected)
 
         # -- Switch configurations --
         switch_dir = scripts_dir / "switch_configs"
         if switch_dir.exists():
-            hit = self._pick_latest(
+            _record(
+                "switch_config",
                 list(switch_dir.glob("switch_configs_*.json")),
-                cluster_ip,
                 self._json_has_cluster_ip,
             )
-            if hit:
-                collected["switch_config"] = hit
-                self.emit("success", f"Found switch config: {hit.name}")
-
-                timestamp = self._extract_timestamp(hit.name)
+            sw_hit = collected.get("switch_config")
+            if sw_hit:
+                timestamp = self._extract_timestamp(sw_hit.name)
                 if timestamp:
                     for idx, txt in enumerate(sorted(switch_dir.glob(f"switch_*_{timestamp}.txt"))):
                         key = "switch_config_txt" if idx == 0 else f"switch_config_txt_{idx}"
                         collected[key] = txt
                         self.emit("success", f"Found switch backup: {txt.name}")
 
-        # -- vnetmap results --
         if scripts_dir.exists():
-            hit = self._pick_latest(
+            # -- vnetmap results --
+            _record(
+                "vnetmap",
                 list(scripts_dir.glob("vnetmap_results_*.json")),
-                cluster_ip,
                 lambda f, ip: self._json_has_cluster_ip(f, ip) or self._filename_has_ip(f, ip),
             )
-            if hit:
-                collected["vnetmap"] = hit
-                self.emit("success", f"Found vnetmap results: {hit.name}")
-
-            # vnetmap output text
-            hit_out = self._pick_latest(
+            _record(
+                "vnetmap_output",
                 list(scripts_dir.glob("vnetmap_output_*.txt")),
-                cluster_ip,
                 self._filename_has_ip,
             )
-            if hit_out:
-                collected["vnetmap_output"] = hit_out
-                self.emit("success", f"Found vnetmap output: {hit_out.name}")
 
-        # -- vperfsanity results --
-        if scripts_dir.exists():
-            hit = self._pick_latest(
+            # -- vperfsanity results --
+            _record(
+                "vperfsanity",
                 list(scripts_dir.glob("vperfsanity_results_*.txt")),
-                cluster_ip,
                 self._filename_has_ip,
             )
-            if hit:
-                collected["vperfsanity"] = hit
-                self.emit("success", f"Found vperfsanity results: {hit.name}")
 
-        # -- Support tool archives (via sidecar .meta.json or text header) --
-        if scripts_dir.exists():
-            hit = self._pick_latest(
+            # -- Support tool archives --
+            _record(
+                "support_tools",
                 list(scripts_dir.glob("*support_tool_logs*.tgz")),
-                cluster_ip,
                 lambda f, ip: self._sidecar_matches(f, ip) or self._text_header_has_ip(f, ip),
             )
-            if hit:
-                collected["support_tools"] = hit
-                self.emit("success", f"Found support tools archive: {hit.name}")
 
-        # -- Log bundles (via verification JSON cluster_ip) --
-        if scripts_dir.exists():
-            hit = self._pick_latest(
+            # -- Log bundles --
+            _record(
+                "log_bundle",
                 list(scripts_dir.glob("vast_log_bundle_*.tar.gz")),
-                cluster_ip,
                 self._verification_matches,
             )
-            if hit:
-                collected["log_bundle"] = hit
-                self.emit("success", f"Found log bundle: {hit.name}")
 
-        # -- Report PDFs (filter by sidecar cluster_ip, JSON cluster_ip, or cluster_name in filename) --
+        # -- Report PDFs --
         from utils import get_data_dir as _gdd
 
         reports_dir = _gdd() / "reports"
         if reports_dir.exists():
+            pdf_candidates = list(reports_dir.glob("vast_asbuilt_report_*.pdf"))
             hit = self._pick_latest(
-                list(reports_dir.glob("vast_asbuilt_report_*.pdf")),
+                pdf_candidates,
                 cluster_ip,
                 lambda f, ip: (self._sidecar_matches(f, ip) or self._filename_has_ip(f, ip)),
+                since=since,
             )
             if hit is None:
                 cluster_name = self._metadata.get("cluster_name", "")
                 if cluster_name and cluster_name != "Unknown":
                     hit = self._pick_latest(
-                        list(reports_dir.glob("vast_asbuilt_report_*.pdf")),
+                        pdf_candidates,
                         cluster_name,
                         lambda f, cn: cn.lower() in f.name.lower(),
+                        since=since,
                     )
             if hit:
                 collected["asbuilt_report"] = hit
                 self.emit("success", f"Found As-Built report: {hit.name}")
+            elif since is not None:
+                stale_hit = self._pick_stale(
+                    pdf_candidates,
+                    cluster_ip,
+                    lambda f, ip: (self._sidecar_matches(f, ip) or self._filename_has_ip(f, ip)),
+                    since,
+                )
+                if stale_hit:
+                    stale["asbuilt_report"] = stale_hit
+                    self.emit(
+                        "warn",
+                        f"Stale asbuilt_report found (pre-run): {stale_hit.name} — excluded from bundle",
+                    )
 
-            # Companion JSON data file (paired by matching stem timestamp)
-            json_hit = self._pick_latest(
+            # Companion JSON data file
+            _record(
+                "asbuilt_json",
                 list(reports_dir.glob("vast_data_*.json")),
-                cluster_ip,
                 self._json_has_cluster_ip,
             )
-            if json_hit:
-                collected["asbuilt_json"] = json_hit
-                self.emit("success", f"Found As-Built JSON: {json_hit.name}")
 
         self._collected_files = collected
+        self._stale_files = stale
+        self._category_status = self._compute_category_status(collected, stale)
         self.emit("info", f"Collected {len(collected)} result files for bundle")
+        if stale:
+            self.emit(
+                "warn",
+                f"Detected {len(stale)} stale pre-run file(s); they are excluded and flagged in the manifest.",
+            )
         return collected
+
+    def _compute_category_status(
+        self,
+        collected: Dict[str, Path],
+        stale: Dict[str, Path],
+    ) -> Dict[str, str]:
+        """Derive per-category status from what was collected vs. stale.
+
+        Status values:
+          - ``ok``      — a fresh file was bundled for this category.
+          - ``stale``   — only a pre-run file exists; excluded from bundle.
+          - ``failed``  — operation was run but failed (per operation_status).
+          - ``skipped`` — operation was not selected/run.
+          - ``missing`` — expected category with no file and no operation_status signal.
+        """
+        status: Dict[str, str] = {}
+        # Canonical category list we report on; extra sub-files (network_commands,
+        # switch_config_txt_*) are implied by the parent and not surfaced here.
+        categories = [
+            "health_check",
+            "network_config",
+            "switch_config",
+            "vnetmap",
+            "vperfsanity",
+            "support_tools",
+            "log_bundle",
+            "asbuilt_report",
+            "asbuilt_json",
+        ]
+        for cat in categories:
+            if cat in collected:
+                status[cat] = STATUS_OK
+                continue
+            if cat in stale:
+                status[cat] = STATUS_STALE
+                continue
+            op_state = self._operation_status.get(cat, "")
+            if op_state == "failed":
+                status[cat] = STATUS_FAILED
+            elif op_state in ("skipped", "not_run"):
+                status[cat] = STATUS_SKIPPED
+            else:
+                status[cat] = STATUS_MISSING
+        return status
 
     @staticmethod
     def _extract_timestamp(filename: str) -> Optional[str]:
@@ -351,6 +476,33 @@ class ResultBundler:
                 self.emit("success", f"Found {category}: {f.name}")
                 break
 
+    CATEGORY_NAMES = {
+        "health_check": "Health Check Results",
+        "health_remediation": "Health Remediation Report",
+        "network_config": "Network Configuration Summary",
+        "network_commands": "Network Commands History",
+        "network_interfaces": "Interface Configuration",
+        "network_routing": "Routing Table",
+        "network_bonds": "Bond Configuration",
+        "switch_config": "Switch Configuration (JSON)",
+        "switch_config_txt": "Switch Configuration (Text)",
+        "vnetmap": "vnetmap Topology Validation",
+        "vnetmap_output": "vnetmap Raw Output",
+        "support_tools": "VAST Support Tools Output",
+        "vperfsanity": "vperfsanity Performance Results",
+        "log_bundle": "VMS Log Bundle",
+        "asbuilt_report": "As-Built Report PDF",
+        "asbuilt_json": "As-Built Report Data (JSON)",
+    }
+
+    STATUS_LABELS = {
+        STATUS_OK: "OK (from this run)",
+        STATUS_STALE: "STALE (pre-run file excluded)",
+        STATUS_FAILED: "FAILED (operation did not produce output)",
+        STATUS_SKIPPED: "SKIPPED (operation not selected)",
+        STATUS_MISSING: "MISSING (no matching file found)",
+    }
+
     def generate_summary(self) -> str:
         """Generate a markdown summary of collected results."""
         lines = [
@@ -360,43 +512,71 @@ class ResultBundler:
             f"**IP:** {self._metadata.get('cluster_ip', 'Unknown')}",
             f"**Version:** {self._metadata.get('cluster_version', 'Unknown')}",
             f"**Bundle Created:** {self._metadata.get('bundle_created', 'Unknown')}",
-            "",
-            "## Included Files",
-            "",
         ]
-
-        category_names = {
-            "health_check": "Health Check Results",
-            "health_remediation": "Health Remediation Report",
-            "network_config": "Network Configuration Summary",
-            "network_commands": "Network Commands History",
-            "network_interfaces": "Interface Configuration",
-            "network_routing": "Routing Table",
-            "network_bonds": "Bond Configuration",
-            "switch_config": "Switch Configuration (JSON)",
-            "switch_config_txt": "Switch Configuration (Text)",
-            "vnetmap": "vnetmap Topology Validation",
-            "vnetmap_output": "vnetmap Raw Output",
-            "support_tools": "VAST Support Tools Output",
-            "vperfsanity": "vperfsanity Performance Results",
-            "log_bundle": "VMS Log Bundle",
-            "asbuilt_report": "As-Built Report PDF",
-            "asbuilt_json": "As-Built Report Data (JSON)",
-        }
-
-        for category, filepath in self._collected_files.items():
-            name = category_names.get(category, category)
-            lines.append(f"- **{name}**: `{filepath.name}`")
-
+        if self._since is not None:
+            lines.append(f"**Run Started:** {self._since.isoformat(timespec='seconds')}")
         lines.extend(
             [
                 "",
-                "## Validation Status",
+                "## Category Status",
                 "",
             ]
         )
 
-        # Parse health check for summary if available
+        for category, status in self._category_status.items():
+            name = self.CATEGORY_NAMES.get(category, category)
+            label = self.STATUS_LABELS.get(status, status.upper())
+            if status == STATUS_OK:
+                filepath = self._collected_files.get(category)
+                fname = filepath.name if filepath else ""
+                lines.append(f"- **{name}**: {label} — `{fname}`")
+            elif status == STATUS_STALE:
+                stale = self._stale_files.get(category)
+                fname = stale.name if stale else ""
+                # RM-5: when vperfsanity STALE was rescued as a PRIOR file,
+                # say so explicitly in SUMMARY.md rather than claim it was
+                # excluded.  Readers of the bundle can then trust the
+                # ``performance/`` folder holds continuity data.
+                if (
+                    category == "vperfsanity"
+                    and self._prior_vperfsanity_source is not None
+                    and self._prior_vperfsanity_source == stale
+                ):
+                    lines.append(
+                        f"- **{name}**: STALE (included as PRIOR with banner) — " f"`vperfsanity_PRIOR_{fname}`"
+                    )
+                else:
+                    lines.append(f"- **{name}**: {label} — `{fname}` (not included)")
+            else:
+                lines.append(f"- **{name}**: {label}")
+
+        # Also list the ancillary files bundled alongside parent categories
+        extras = [
+            k
+            for k in self._collected_files
+            if k not in self._category_status
+            and k
+            in (
+                "health_remediation",
+                "network_commands",
+                "network_interfaces",
+                "network_routing",
+                "network_bonds",
+                "vnetmap_output",
+            )
+            or k.startswith("switch_config_txt")
+        ]
+        if extras:
+            lines.extend(["", "## Additional Files", ""])
+            for category in extras:
+                filepath = self._collected_files.get(category)
+                if not filepath:
+                    continue
+                name = self.CATEGORY_NAMES.get(category, category)
+                lines.append(f"- **{name}**: `{filepath.name}`")
+
+        lines.extend(["", "## Validation Status", ""])
+
         health_file = self._collected_files.get("health_check")
         if health_file and health_file.exists():
             try:
@@ -451,27 +631,16 @@ class ResultBundler:
         self.emit("info", f"Creating bundle: {zip_name}")
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            # Add manifest
-            manifest = {
-                "version": self.BUNDLE_MANIFEST_VERSION,
-                "metadata": self._metadata,
-                "files": {k: v.name for k, v in self._collected_files.items()},
-                "created": datetime.now().isoformat(),
-            }
-            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+            # Reset per-run side effects so repeat calls on the same
+            # bundler instance don't leak state from a previous bundle.
+            self._prior_vperfsanity_source = None
 
-            # Add summary
-            summary_md = self.generate_summary()
-            zf.writestr("SUMMARY.md", summary_md)
-
-            # Add all collected files
             for category, filepath in self._collected_files.items():
                 if filepath.exists():
                     arcname = self._archive_path(category, filepath.name)
                     zf.write(filepath, arcname)
                     self.emit("success", f"Added: {arcname}")
 
-            # Write placeholders for missing top-level categories
             cip = self._metadata.get("cluster_ip", "unknown")
             placeholder_categories = {
                 "health_check": "health",
@@ -484,12 +653,29 @@ class ResultBundler:
                 "asbuilt_report": "reports",
                 "asbuilt_json": "reports",
             }
-            for cat, folder in placeholder_categories.items():
-                if cat not in self._collected_files:
-                    note = f"No {cat.replace('_', ' ')} results found for cluster {cip}.\n"
-                    arcname = f"{folder}/{cat}_NOT_FOUND.txt"
-                    zf.writestr(arcname, note)
-                    self.emit("info", f"Placeholder: {arcname}")
+            self._write_placeholders(zf, placeholder_categories, cip)
+
+            # Manifest / SUMMARY are written last so they can reference
+            # side-effect fields (e.g. ``vperfsanity_prior_source``) set
+            # while the placeholder loop ran above.
+            manifest = {
+                "version": self.BUNDLE_MANIFEST_VERSION,
+                "metadata": self._metadata,
+                "files": {k: v.name for k, v in self._collected_files.items()},
+                "categories": dict(self._category_status),
+                "stale": {k: v.name for k, v in self._stale_files.items()},
+                "operation_status": dict(self._operation_status),
+                "run_started_at": self._since.isoformat() if self._since else None,
+                "created": datetime.now().isoformat(),
+                "vperfsanity_prior_source": (
+                    self._prior_vperfsanity_source.name if self._prior_vperfsanity_source else None
+                ),
+                "include_prior_vperfsanity": self._include_prior_vperfsanity,
+            }
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+            summary_md = self.generate_summary()
+            zf.writestr("SUMMARY.md", summary_md)
 
         file_size = zip_path.stat().st_size
         size_str = self._format_size(file_size)
@@ -539,6 +725,91 @@ class ResultBundler:
                 )
         return bundles
 
+    def _write_placeholders(
+        self,
+        zf: zipfile.ZipFile,
+        placeholder_categories: Dict[str, str],
+        cip: str,
+    ) -> None:
+        """Write per-category placeholder files for anything not collected.
+
+        Split out from :meth:`create_bundle` so the RM-5 "attach prior
+        vperfsanity output instead of a one-line STALE note" branch has a
+        single, testable home.  Any side effects (e.g. setting
+        ``self._prior_vperfsanity_source``) happen inside this method and
+        are then reflected in the manifest by the caller.
+        """
+        for cat, folder in placeholder_categories.items():
+            if cat in self._collected_files:
+                continue
+            status = self._category_status.get(cat, STATUS_MISSING)
+            if status == STATUS_STALE:
+                stale_path = self._stale_files.get(cat)
+                stale_name = stale_path.name if stale_path else ""
+
+                # RM-5: vperfsanity gets special treatment — ship the
+                # prior output (with a loud banner) under a ``_PRIOR_``
+                # arcname instead of the bare _STALE placeholder, so
+                # bundles never regress from real data to a one-line
+                # note when a run simply didn't rerun the 30-minute
+                # performance check.  Fully opt-out via the bundler's
+                # ``include_prior_vperfsanity`` flag.
+                if (
+                    cat == "vperfsanity"
+                    and self._include_prior_vperfsanity
+                    and stale_path is not None
+                    and stale_path.exists()
+                ):
+                    try:
+                        prior_body = stale_path.read_text(encoding="utf-8", errors="replace")
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("Failed to read prior vperfsanity file %s: %s", stale_path, exc)
+                        prior_body = ""
+                    try:
+                        prior_mtime = datetime.fromtimestamp(stale_path.stat().st_mtime).isoformat(timespec="seconds")
+                    except OSError:
+                        prior_mtime = "unknown"
+                    banner = (
+                        "=" * 72 + "\n"
+                        "NOTE: This is the prior vperfsanity output from an earlier run.\n"
+                        f"Source file:    {stale_name}\n"
+                        f"Original mtime: {prior_mtime}\n"
+                        f"Run started:    {self._since.isoformat(timespec='seconds') if self._since else 'unknown'}\n"
+                        "vperfsanity was not rerun during this run (it can take up to\n"
+                        "30 minutes), so this file is included for continuity only.\n"
+                        "Do NOT treat these numbers as current-run performance data.\n" + "=" * 72 + "\n\n"
+                    )
+                    arcname = f"{folder}/vperfsanity_PRIOR_{stale_name}"
+                    zf.writestr(arcname, banner + prior_body)
+                    self.emit(
+                        "info",
+                        f"Attached prior vperfsanity output as {arcname} (with banner)",
+                    )
+                    self._prior_vperfsanity_source = stale_path
+                    continue
+
+                note = (
+                    f"No fresh {cat.replace('_', ' ')} results for cluster {cip} "
+                    f"in this run.\nA pre-run file exists on disk "
+                    f"({stale_name}) but was excluded from this bundle to avoid "
+                    f"silently shipping stale data.\n"
+                )
+                arcname = f"{folder}/{cat}_STALE.txt"
+            elif status == STATUS_FAILED:
+                note = (
+                    f"The {cat.replace('_', ' ')} operation ran but failed for "
+                    f"cluster {cip}. See the operation log for the root cause.\n"
+                )
+                arcname = f"{folder}/{cat}_FAILED.txt"
+            elif status == STATUS_SKIPPED:
+                note = f"The {cat.replace('_', ' ')} operation was not selected for this run (cluster {cip}).\n"
+                arcname = f"{folder}/{cat}_SKIPPED.txt"
+            else:
+                note = f"No {cat.replace('_', ' ')} results found for cluster {cip}.\n"
+                arcname = f"{folder}/{cat}_NOT_FOUND.txt"
+            zf.writestr(arcname, note)
+            self.emit("info", f"Placeholder: {arcname}")
+
     @staticmethod
     def _archive_path(category: str, filename: str) -> str:
         """Determine the archive subdirectory for a file category."""
@@ -571,6 +842,12 @@ class ResultBundler:
 def get_result_bundler(
     output_dir: Optional[Path] = None,
     output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
+    *,
+    include_prior_vperfsanity: bool = True,
 ) -> ResultBundler:
     """Factory function for creating ResultBundler instances."""
-    return ResultBundler(output_dir=output_dir, output_callback=output_callback)
+    return ResultBundler(
+        output_dir=output_dir,
+        output_callback=output_callback,
+        include_prior_vperfsanity=include_prior_vperfsanity,
+    )

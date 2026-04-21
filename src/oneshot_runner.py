@@ -26,7 +26,14 @@ logger = get_logger(__name__)
 
 DOWNLOAD_DEPENDENT_OPS = frozenset({"vnetmap", "support_tool", "vperfsanity"})
 SSH_NODE_OPS = frozenset({"vnetmap", "support_tool", "vperfsanity", "log_bundle", "network_config"})
-SSH_SWITCH_OPS = frozenset({"switch_config"})
+# Operations that authenticate against the cluster switches.  ``vnetmap`` is
+# included because its Step 4 invokes ``vnetmap.py`` with switch credentials
+# and, on mixed-default clusters, relies on the per-switch password map that
+# ``_validate_switch_ssh`` populates during pre-validation.  Skipping this
+# check when vnetmap is selected would leave ``_switch_password_by_ip``
+# empty, forcing the workflow back onto the legacy single-password
+# candidate sweep even when the operator has correct credentials.
+SSH_SWITCH_OPS = frozenset({"switch_config", "vnetmap"})
 TOOL_FRESHNESS_WARN_DAYS = 10
 
 # Config override for validation API calls: disable SSL verify, short timeout, single retry
@@ -86,6 +93,11 @@ class OneShotState:
     error: Optional[str] = None
     bundle_path: Optional[str] = None
     validation_results: List[Dict[str, str]] = field(default_factory=list)
+    # Per-operation outcome keyed by the bundler-facing category name
+    # ("vnetmap", "vperfsanity", "support_tools", ...).  Values are
+    # "success", "failed" or "skipped".  Used by the bundler to flag
+    # stale/missing categories and by the UI to render per-op status.
+    operation_results: Dict[str, str] = field(default_factory=dict)
 
 
 class OneShotRunner:
@@ -114,9 +126,88 @@ class OneShotRunner:
         self._lock = threading.Lock()
         self._tunnel = None
         self._tunnel_address: Optional[str] = None
+        self._switch_password_candidates: List[str] = self._resolve_switch_password_candidates()
+        if self._switch_password_candidates:
+            self._credentials.setdefault("switch_password_candidates", list(self._switch_password_candidates))
+        # Populated by ``_validate_switch_ssh`` after the pre-validation probe
+        # determines which credential combo authenticates against each switch.
+        # Workflows (notably ``VnetmapWorkflow``) consume this via
+        # ``_get_workflow_credentials`` so they can hand per-switch passwords
+        # to tools like ``vnetmap.py --multiple-passwords`` in clusters where
+        # different switches carry different default passwords.
+        self._switch_password_by_ip: Dict[str, str] = {}
+        self._switch_user_by_ip: Dict[str, str] = {}
 
     _SUPPORT_CREDS = {"username": "support", "password": "654321"}
     _ADMIN_CREDS = {"username": "admin", "password": "123456"}
+
+    # NOTE:  We deliberately do NOT ship a hardcoded fallback list of switch
+    # passwords in source here.  That would re-introduce the credential-leak
+    # class of issue addressed by the RM-1 remediation — operators would end
+    # up with plaintext defaults committed in the repo alongside source code
+    # intended to *redact* them.  Autofill candidates come from config or
+    # from the ``VAST_DEFAULT_SWITCH_PASSWORDS`` env var (colon-separated)
+    # only.
+
+    def _resolve_switch_password_candidates(self) -> List[str]:
+        """Build the ordered list of switch SSH passwords to try.
+
+        Precedence:
+          1. Explicit ``switch_password_candidates`` already on the credentials dict (UI override).
+          2. When autofill is enabled:
+               a. ``advanced_operations.default_switch_passwords`` list from
+                  ``config/config.yaml`` (deduplicated, primary first), and/or
+               b. ``VAST_DEFAULT_SWITCH_PASSWORDS`` environment variable (colon-separated,
+                  primary first); entries are appended to the config-derived list without
+                  duplicates.
+          3. Otherwise a single-entry list containing the user-entered ``switch_password``.
+
+        The operator-entered ``switch_password`` (primary) is always promoted to the head of the
+        list if present, so manual entry overrides autofill ordering.  If autofill is enabled but
+        neither config nor env var supplies candidates, ``_resolve_switch_password_candidates``
+        emits a one-line warning and returns whatever single password the UI did supply (or an
+        empty list) — it does **not** fall back to hardcoded defaults.
+        """
+        existing = self._credentials.get("switch_password_candidates")
+        if isinstance(existing, (list, tuple)) and existing:
+            return [str(p) for p in existing if str(p)]
+
+        candidates: List[str] = []
+        if self._use_default_creds:
+            try:
+                import yaml
+
+                if self._config_path:
+                    with open(self._config_path, "r", encoding="utf-8") as f:
+                        cfg = yaml.safe_load(f) or {}
+                    cfg_list = cfg.get("advanced_operations", {}).get("default_switch_passwords") or []
+                    for pw in cfg_list:
+                        if pw and str(pw) not in candidates:
+                            candidates.append(str(pw))
+            except Exception as exc:
+                logger.debug("Could not load default_switch_passwords from config: %s", exc)
+
+            import os as _os
+
+            env_raw = _os.environ.get("VAST_DEFAULT_SWITCH_PASSWORDS", "")
+            if env_raw:
+                for pw in env_raw.split(":"):
+                    if pw and pw not in candidates:
+                        candidates.append(pw)
+
+            if not candidates and not self._credentials.get("switch_password"):
+                logger.warning(
+                    "Autofill requested but no default switch passwords are configured. "
+                    "Populate advanced_operations.default_switch_passwords in config/config.yaml "
+                    "or set the VAST_DEFAULT_SWITCH_PASSWORDS environment variable "
+                    "(colon-separated, primary first)."
+                )
+
+        user_pw = self._credentials.get("switch_password", "")
+        if user_pw:
+            candidates = [user_pw] + [p for p in candidates if p != user_pw]
+
+        return candidates
 
     def _get_api_creds(self, phase: str) -> Dict[str, str]:
         """Return API credentials appropriate for the given phase.
@@ -143,6 +234,15 @@ class OneShotRunner:
         if self._use_default_creds and op_id == "vperfsanity":
             creds["username"] = self._ADMIN_CREDS["username"]
             creds["password"] = self._ADMIN_CREDS["password"]
+        if self._switch_password_candidates:
+            creds["switch_password_candidates"] = list(self._switch_password_candidates)
+        # Per-switch credentials discovered during pre-validation.  Workflows
+        # use this to talk to each switch with the exact password that
+        # authenticated during the Switch SSH check rather than probing blind.
+        if self._switch_password_by_ip:
+            creds["switch_password_by_ip"] = dict(self._switch_password_by_ip)
+        if self._switch_user_by_ip:
+            creds["switch_user_by_ip"] = dict(self._switch_user_by_ip)
         if self._tunnel_address:
             creds["tunnel_address"] = self._tunnel_address
         if self._tunnel:
@@ -151,6 +251,44 @@ class OneShotRunner:
             if self._tunnel.vms_management_ip:
                 creds["vms_management_ip"] = self._tunnel.vms_management_ip
         return creds
+
+    def seed_switch_credentials(
+        self,
+        switch_user_by_ip: Optional[Dict[str, str]] = None,
+        switch_password_by_ip: Optional[Dict[str, str]] = None,
+    ) -> None:
+        """Pre-populate the per-switch credential map from an external source.
+
+        The Web UI flow is split across two HTTP endpoints
+        (``/advanced-ops/oneshot/validate`` runs pre-validation, then
+        ``/advanced-ops/oneshot/start`` executes the operations), and each
+        endpoint spins up a fresh ``OneShotRunner``.  Without this hook the
+        per-switch password map discovered during pre-validation would be
+        discarded the moment the operator clicks "Run", forcing
+        ``VnetmapWorkflow`` to fall back to the legacy single-password
+        candidate sweep even though we already know exactly which password
+        authenticates against each switch.  ``app.py`` uses this setter to
+        hand the map from the completed pre-validation runner to the new
+        execution runner.
+        """
+        if switch_password_by_ip:
+            for ip, pw in switch_password_by_ip.items():
+                if ip and pw:
+                    self._switch_password_by_ip[str(ip)] = str(pw)
+        if switch_user_by_ip:
+            for ip, user in switch_user_by_ip.items():
+                if ip and user:
+                    self._switch_user_by_ip[str(ip)] = str(user)
+
+    @property
+    def switch_password_by_ip(self) -> Dict[str, str]:
+        """Read-only view of the per-switch winning password map."""
+        return dict(self._switch_password_by_ip)
+
+    @property
+    def switch_user_by_ip(self) -> Dict[str, str]:
+        """Read-only view of the per-switch winning SSH user map."""
+        return dict(self._switch_user_by_ip)
 
     # ------------------------------------------------------------------
     # Output helper
@@ -205,6 +343,8 @@ class OneShotRunner:
                 "error": self._state.error,
                 "bundle_path": self._state.bundle_path,
                 "validation_results": list(self._state.validation_results),
+                "operation_results": dict(self._state.operation_results),
+                "selected_operations": list(self._selected_ops),
             }
 
     def is_running(self) -> bool:
@@ -325,7 +465,8 @@ class OneShotRunner:
 
         try:
             url = f"https://{cluster_ip}/api/clusters/"
-            resp = _requests_lib.get(url, timeout=10, verify=False)  # noqa: S501
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            resp = _requests_lib.get(url, timeout=10, verify=False)  # noqa: S501  # nosec B501
             if resp.status_code in (200, 401, 403):
                 return ValidationCheck(
                     "Cluster API", "pass", f"Cluster API reachable (HTTP {resp.status_code}).", "connectivity"
@@ -407,12 +548,244 @@ class OneShotRunner:
                 "connectivity",
             )
 
+    _SWITCH_AUTH_FAILURE_INDICATORS = (
+        "authentication failed",
+        "permission denied",
+        "login incorrect",
+        "access denied",
+    )
+    _SWITCH_CONNECTIVITY_FAILURE_INDICATORS = (
+        "timed out",
+        "timeout",
+        "connection refused",
+        "connection failed",
+        "unable to connect",
+        "no route to host",
+        "host unreachable",
+        "network is unreachable",
+        "name or service not known",
+    )
+
+    @classmethod
+    def _stderr_is_auth_failure(cls, stderr: str) -> bool:
+        """True when stderr looks like a credential problem vs. connectivity/command issue."""
+        if not stderr:
+            return False
+        lowered = stderr.lower()
+        return any(token in lowered for token in cls._SWITCH_AUTH_FAILURE_INDICATORS)
+
+    @classmethod
+    def _stderr_is_connectivity_failure(cls, stderr: str) -> bool:
+        """True when stderr indicates the switch is not reachable at the network/SSH layer."""
+        if not stderr:
+            return False
+        lowered = stderr.lower()
+        return any(token in lowered for token in cls._SWITCH_CONNECTIVITY_FAILURE_INDICATORS)
+
+    def _switch_jump_kwargs(self) -> Dict[str, Any]:
+        """Return jump-host SSH kwargs matching the workflow path.
+
+        In Tech Port mode the Reporter has no direct L3 path to the cluster
+        management network, so switch SSH must ProxyJump through a cluster
+        node.  :meth:`SwitchConfigWorkflow._jump_kwargs` uses exactly this
+        shape; pre-validation must match or it will falsely report switches
+        as unreachable/auth-failed on clusters where only some switches are
+        reachable from the Reporter's LAN.
+        """
+        if not self._tunnel_address:
+            return {}
+        node_password = self._credentials.get("node_password")
+        if not node_password:
+            return {}
+        return {
+            "jump_host": self._credentials.get("cluster_ip"),
+            "jump_user": self._credentials.get("node_user", "vastdata"),
+            "jump_password": node_password,
+        }
+
+    def _probe_switch_candidates(self, switch_ip: str, switch_user: str, candidates: List[str]) -> Dict[str, Any]:
+        """Probe a single switch with each ``(user, password)`` combination.
+
+        Builds the combo list via
+        :func:`utils.ssh_adapter.build_switch_credential_combos` so this
+        pre-validation step agrees with
+        :meth:`ExternalPortMapper._detect_switch_os` and
+        :meth:`SwitchConfigWorkflow._step_discover_switches` on which
+        credentials to try (Cumulus default first, then Onyx's
+        ``admin``/factory password, then Onyx with a VMS-synced password).
+
+        Uses the same ProxyJump kwargs as the runtime workflow so Tech Port
+        mode routes through a cluster node instead of going direct.
+
+        Returns a dict with keys: ``status`` (``pass`` / ``reachable`` /
+        ``auth_failed`` / ``unreachable``), ``user`` / ``password`` (winning
+        pair when status is ``pass`` or ``reachable``), and ``detail``
+        (human-readable note).
+        """
+        from utils.ssh_adapter import run_ssh_command, run_interactive_ssh, build_switch_credential_combos
+
+        combos = build_switch_credential_combos(switch_user, list(candidates or []))
+        if not combos:
+            return {"status": "auth_failed", "user": None, "password": None, "detail": "no credentials available"}
+
+        jump_kwargs = self._switch_jump_kwargs()
+        via = f" via ProxyJump {jump_kwargs['jump_host']}" if jump_kwargs else ""
+        self._emit(
+            "info",
+            f"  Probing {switch_ip} with {len(combos)} credential combo(s){via}",
+        )
+        attempt_log: List[str] = []
+
+        last_stderr = ""
+        last_rc = -1
+        reachable_user: Optional[str] = None
+        reachable_password: Optional[str] = None
+        connectivity_failure = False
+
+        def _stderr_snippet(s: str) -> str:
+            if not s:
+                return "no stderr"
+            line = s.strip().split("\n")[-1][:160]
+            return line or "empty"
+
+        for idx, (user, password) in enumerate(combos, start=1):
+            rc, stdout, stderr = run_ssh_command(switch_ip, user, password, "hostname", timeout=15, **jump_kwargs)
+            last_rc, last_stderr = rc, stderr
+
+            if rc == 0:
+                attempt_log.append(f"{idx}. std-ssh {user}@{switch_ip}: OK")
+                self._emit("info", f"    combo {idx}/{len(combos)} std-ssh {user}@{switch_ip}: OK")
+                return {
+                    "status": "pass",
+                    "user": user,
+                    "password": password,
+                    "detail": stdout.strip() or switch_ip,
+                    "attempt_log": attempt_log,
+                }
+
+            if self._stderr_is_connectivity_failure(stderr):
+                # Network/SSH-layer failure — retrying with another credential
+                # combo will hit the same error.  Bail out.
+                reason = _stderr_snippet(stderr)
+                attempt_log.append(f"{idx}. std-ssh {user}@{switch_ip}: connectivity — {reason}")
+                self._emit(
+                    "warn",
+                    f"    combo {idx}/{len(combos)} std-ssh {user}@{switch_ip}: connectivity — {reason}",
+                )
+                connectivity_failure = True
+                break
+
+            if self._stderr_is_auth_failure(stderr):
+                attempt_log.append(f"{idx}. std-ssh {user}@{switch_ip}: auth failed — {_stderr_snippet(stderr)}")
+                self._emit(
+                    "info",
+                    f"    combo {idx}/{len(combos)} std-ssh {user}@{switch_ip}: auth failed — "
+                    f"{_stderr_snippet(stderr)}",
+                )
+                # Onyx often rejects std-ssh auth in a way that looks like a permission
+                # denial — retry through the MLNX-OS interactive path.  If that also
+                # fails we move on to the next credential combo.
+                rc_i, stdout_i, stderr_i = run_interactive_ssh(
+                    switch_ip, user, password, "show version", timeout=15, **jump_kwargs
+                )
+                last_rc, last_stderr = rc_i, stderr_i
+                if rc_i == 0:
+                    attempt_log.append(f"{idx}. interactive-ssh {user}@{switch_ip}: OK")
+                    self._emit(
+                        "info",
+                        f"    combo {idx}/{len(combos)} interactive-ssh {user}@{switch_ip}: OK",
+                    )
+                    return {
+                        "status": "pass",
+                        "user": user,
+                        "password": password,
+                        "detail": (stdout_i.strip().split("\n")[0] if stdout_i else switch_ip),
+                        "attempt_log": attempt_log,
+                    }
+                if self._stderr_is_connectivity_failure(stderr_i):
+                    reason = _stderr_snippet(stderr_i)
+                    attempt_log.append(f"{idx}. interactive-ssh {user}@{switch_ip}: connectivity — {reason}")
+                    self._emit(
+                        "warn",
+                        f"    combo {idx}/{len(combos)} interactive-ssh {user}@{switch_ip}: connectivity — "
+                        f"{reason}",
+                    )
+                    connectivity_failure = True
+                    break
+                if self._stderr_is_auth_failure(stderr_i):
+                    attempt_log.append(
+                        f"{idx}. interactive-ssh {user}@{switch_ip}: auth failed — {_stderr_snippet(stderr_i)}"
+                    )
+                    continue
+                # Reached + authenticated, probe command rejected — Onyx runtime.
+                attempt_log.append(
+                    f"{idx}. interactive-ssh {user}@{switch_ip}: reachable (cmd rc={rc_i}) — "
+                    f"{_stderr_snippet(stderr_i)}"
+                )
+                if reachable_user is None:
+                    reachable_user, reachable_password = user, password
+                continue
+
+            # std-ssh returned non-zero but the error is neither auth nor a
+            # network-layer failure: the switch is reachable and authenticated
+            # (Onyx rejects raw ``hostname`` outside the MLNX-OS shell).  Keep
+            # looking for a combo that returns a clean rc==0.
+            attempt_log.append(
+                f"{idx}. std-ssh {user}@{switch_ip}: reachable (cmd rc={rc}) — {_stderr_snippet(stderr)}"
+            )
+            if reachable_user is None:
+                reachable_user, reachable_password = user, password
+
+        if reachable_user is not None:
+            detail = f"rc={last_rc}"
+            if last_stderr:
+                first_line = last_stderr.strip().split("\n")[-1][:120]
+                if first_line:
+                    detail = f"{detail}: {first_line}"
+            return {
+                "status": "reachable",
+                "user": reachable_user,
+                "password": reachable_password,
+                "detail": detail,
+                "attempt_log": attempt_log,
+            }
+
+        # All combos exhausted without authenticating.  Surface the most
+        # actionable reason — auth failure vs. network unreachability.
+        if connectivity_failure or self._stderr_is_connectivity_failure(last_stderr):
+            detail = (last_stderr.strip().split("\n")[-1][:160] if last_stderr else "timeout") or "timeout"
+            return {
+                "status": "unreachable",
+                "user": None,
+                "password": None,
+                "detail": detail,
+                "attempt_log": attempt_log,
+            }
+        if self._stderr_is_auth_failure(last_stderr):
+            return {
+                "status": "auth_failed",
+                "user": None,
+                "password": None,
+                "detail": last_stderr.strip().split("\n")[-1][:160],
+                "attempt_log": attempt_log,
+            }
+        return {
+            "status": "unreachable",
+            "user": None,
+            "password": None,
+            "detail": (last_stderr.strip().split("\n")[-1][:160] if last_stderr else "timeout") or "timeout",
+            "attempt_log": attempt_log,
+        }
+
     def _validate_switch_ssh(self) -> ValidationCheck:
         cluster_ip = self._credentials.get("cluster_ip", "").strip()
         switch_user = self._credentials.get("switch_user", "cumulus")
         switch_password = self._credentials.get("switch_password", "")
 
-        if not switch_password:
+        candidates = list(self._switch_password_candidates or [])
+        if switch_password and switch_password not in candidates:
+            candidates.insert(0, switch_password)
+        if not candidates:
             return ValidationCheck("Switch SSH", "fail", "Switch SSH password not provided.", "connectivity")
 
         try:
@@ -435,26 +808,90 @@ class OneShotRunner:
                     "Switch SSH", "warn", "No switches found via API; switch operations may be skipped.", "connectivity"
                 )
 
-            first_ip = switches[0].get("mgmt_ip", "")
-            if not first_ip:
+            switch_ips = [sw.get("mgmt_ip", "") for sw in switches if sw.get("mgmt_ip")]
+            if not switch_ips:
                 return ValidationCheck(
-                    "Switch SSH", "warn", "Switch found but no mgmt_ip; cannot test SSH.", "connectivity"
+                    "Switch SSH", "warn", "Switches found but none have mgmt_ip; cannot test SSH.", "connectivity"
                 )
 
-            from utils.ssh_adapter import run_ssh_command
+            results_by_ip: Dict[str, Dict[str, Any]] = {
+                ip: self._probe_switch_candidates(ip, switch_user, candidates) for ip in switch_ips
+            }
 
-            rc, stdout, _ = run_ssh_command(first_ip, switch_user, switch_password, "hostname", timeout=15)
-            if rc == 0:
+            # Remember the winning (user, password) for every switch that
+            # authenticated so downstream workflows can use per-switch creds
+            # instead of guessing one password at a time.
+            for ip, r in results_by_ip.items():
+                if r.get("status") in ("pass", "reachable") and r.get("password"):
+                    self._switch_password_by_ip[ip] = r["password"]
+                    if r.get("user"):
+                        self._switch_user_by_ip[ip] = r["user"]
+
+            passes = [ip for ip, r in results_by_ip.items() if r["status"] == "pass"]
+            reachables = [ip for ip, r in results_by_ip.items() if r["status"] == "reachable"]
+            auth_failures = [ip for ip, r in results_by_ip.items() if r["status"] == "auth_failed"]
+            unreachables = [ip for ip, r in results_by_ip.items() if r["status"] == "unreachable"]
+            total = len(switch_ips)
+            successful = len(passes) + len(reachables)
+
+            primary_user = switch_user
+            primary_password = candidates[0] if candidates else ""
+            used_fallback = any(
+                r.get("password") and (r.get("user") != primary_user or r.get("password") != primary_password)
+                for r in results_by_ip.values()
+                if r["status"] in ("pass", "reachable")
+            )
+            fallback_note = " (one or more switches authenticated via fallback credentials)" if used_fallback else ""
+
+            if auth_failures or unreachables:
+                failure_bits: List[str] = []
+                if auth_failures:
+                    failure_bits.append(f"auth failed on {len(auth_failures)}/{total} ({', '.join(auth_failures)})")
+                if unreachables:
+                    failure_bits.append(f"unreachable {len(unreachables)}/{total} ({', '.join(unreachables)})")
+
+                # Echo the per-combo attempt log for each failing switch so
+                # the operator (and future me) can see exactly which
+                # (user, password) combos were tried and how each one was
+                # rejected.  Indispensable when the UI warns "auth failed"
+                # but the operator can manually SSH in with the same creds.
+                for ip in auth_failures + unreachables:
+                    attempts = results_by_ip[ip].get("attempt_log") or []
+                    if attempts:
+                        self._emit("warn", f"  Switch {ip} attempt log:")
+                        for line in attempts:
+                            self._emit("warn", f"    - {line}")
+
+                return ValidationCheck(
+                    "Switch SSH",
+                    "warn",
+                    f"Switch SSH connected on {successful}/{total} switches{fallback_note}; "
+                    + "; ".join(failure_bits)
+                    + ". Switch operations may skip affected switches.",
+                    "connectivity",
+                )
+
+            if not passes and reachables:
+                # Every switch is reachable with an authenticated candidate but the
+                # raw probe command didn't return 0 on any of them (e.g. an Onyx-only
+                # cluster rejecting ``hostname`` outside MLNX-OS).  Treat as pass
+                # because workflows use the right shell per OS.
                 return ValidationCheck(
                     "Switch SSH",
                     "pass",
-                    f"Switch SSH connected ({stdout.strip() if stdout else first_ip}).",
+                    f"Switch SSH authenticated on {total}/{total} switch(es){fallback_note}; probe command returned non-zero but switch is reachable.",
                     "connectivity",
                 )
+
+            summary_bits: List[str] = []
+            for ip in passes:
+                detail = results_by_ip[ip]["detail"]
+                summary_bits.append(f"{ip} ({detail})" if detail else ip)
+
             return ValidationCheck(
                 "Switch SSH",
-                "warn",
-                f"Switch SSH connected but command failed (rc={rc}). Switch operations may encounter issues.",
+                "pass",
+                f"Switch SSH connected on {total}/{total} switch(es){fallback_note}: {', '.join(summary_bits)}.",
                 "connectivity",
             )
         except Exception as exc:
@@ -570,6 +1007,27 @@ class OneShotRunner:
         try:
             if self._credentials.get("tech_port"):
                 self._setup_tunnel()
+
+            # Safety net: when a switch-touching op is selected but the
+            # per-switch password map is empty (e.g. the operator clicked
+            # "Run" without running Pre-Validation first, or app.py did not
+            # hand off the map from the previous runner), probe the
+            # switches now so ``VnetmapWorkflow`` can take its per-switch
+            # fast path.  This is a no-op when the map is already seeded
+            # via ``seed_switch_credentials`` or a prior
+            # ``_validate_switch_ssh`` call.
+            if (
+                bool(set(self._selected_ops) & SSH_SWITCH_OPS)
+                and not self._switch_password_by_ip
+                and self._credentials.get("cluster_ip")
+                and self._credentials.get("switch_password")
+            ):
+                try:
+                    self._validate_switch_ssh()
+                except Exception as probe_exc:  # pragma: no cover - defensive
+                    # A probe failure here must never block execution; the
+                    # workflow will simply fall back to the legacy sweep.
+                    self._emit("warn", f"Pre-execution switch probe failed: {probe_exc}")
 
             # Phase 1: Selected Operations
             self._run_operations()
@@ -742,6 +1200,13 @@ class OneShotRunner:
                     "username": self._credentials.get("switch_user", "cumulus"),
                     "password": switch_pw,
                 }
+                # RM-2: propagate the pre-validated per-IP password map so
+                # health_checker.run_switch_ssh_checks uses the correct
+                # credential for each switch instead of falling back to
+                # ``switch_pw`` on every call (which mis-authenticates any
+                # switch on a different default password).
+                if self._switch_password_by_ip:
+                    switch_ssh_config["password_by_ip"] = dict(self._switch_password_by_ip)
                 if self._tunnel_address:
                     switch_ssh_config["proxy_jump"] = {
                         "host": self._credentials.get("cluster_ip"),
@@ -791,16 +1256,33 @@ class OneShotRunner:
 
             self._emit("success", "Health check results saved.")
 
+            with self._lock:
+                self._state.operation_results["health_check"] = "success"
+
             api.close()
         except _OneShotCancelled:
             raise
         except Exception as exc:
             self._emit("error", f"Health checks failed (non-blocking): {exc}")
             logger.warning("Health checks failed: %s", exc)
+            with self._lock:
+                self._state.operation_results["health_check"] = "failed"
 
     # ------------------------------------------------------------------
     # Phase: Operations
     # ------------------------------------------------------------------
+
+    # Map runner operation ids → the category keys used by ResultBundler
+    # and `OneShotState.operation_results`.  Keeping the mapping local
+    # avoids pulling the bundler into this phase purely for naming.
+    _OP_CATEGORY_MAP = {
+        "vnetmap": "vnetmap",
+        "support_tool": "support_tools",
+        "vperfsanity": "vperfsanity",
+        "log_bundle": "log_bundle",
+        "switch_config": "switch_config",
+        "network_config": "network_config",
+    }
 
     def _run_operations(self) -> None:
         self._check_cancel()
@@ -822,9 +1304,13 @@ class OneShotRunner:
                 self._state.operation_index = idx
                 self._state.current_operation = op_id
 
+            category = self._OP_CATEGORY_MAP.get(op_id, op_id)
+
             wf_instance = WorkflowRegistry.get(op_id)
             if not wf_instance:
                 self._emit("warn", f"Workflow '{op_id}' not found in registry, skipping.")
+                with self._lock:
+                    self._state.operation_results[category] = "skipped"
                 continue
 
             self._emit("info", "")
@@ -837,6 +1323,7 @@ class OneShotRunner:
             if hasattr(wf_instance, "set_credentials"):
                 wf_instance.set_credentials(self._get_workflow_credentials(op_id))
 
+            op_success = True
             steps = wf_instance.get_steps()
             for step in steps:
                 self._check_cancel()
@@ -855,13 +1342,17 @@ class OneShotRunner:
                     else:
                         self._emit("error", f"  [ERROR] {msg} ({elapsed}ms)")
                         self._emit("warn", f"  Workflow '{op_id}' step {step_id} failed; continuing to next operation.")
+                        op_success = False
                         break
                 except Exception as step_exc:
                     elapsed = int((time.time() - start) * 1000)
                     self._emit("error", f"  [EXCEPTION] {step_exc} ({elapsed}ms)")
                     self._emit("warn", f"  Workflow '{op_id}' aborted; continuing to next operation.")
+                    op_success = False
                     break
 
+            with self._lock:
+                self._state.operation_results[category] = "success" if op_success else "failed"
             self._emit("info", f"--- {getattr(wf_instance, 'name', op_id)} complete ---")
 
     # ------------------------------------------------------------------
@@ -983,9 +1474,41 @@ class OneShotRunner:
             else:
                 self._emit("info", "Health checks not selected — skipping.")
 
-            # Port mapping collection (when both node and switch credentials are present)
+            # Port mapping source priority:
+            #   1. Fresh vnetmap output (vnetmap_output_<cluster_ip>_*.txt)
+            #      produced by the vnetmap workflow in this run — preferred
+            #      because it already contains full switch/port topology
+            #      from VAST's own tool and is cheaper than re-SSHing.
+            #   2. ExternalPortMapper (SSH) — fallback when vnetmap is not
+            #      available or fails to parse.
+            # Matches the /generate web path (app.py _run) so both code paths
+            # populate the Port Mapping section identically.
+            use_vnetmap = False
             self._check_cancel()
-            if node_pw and switch_pw:
+            vnetmap_file = self._find_latest_vnetmap_output(self._credentials.get("cluster_ip", ""))
+            if vnetmap_file:
+                try:
+                    from vnetmap_parser import VNetMapParser
+
+                    self._emit("info", f"Found vnetmap output: {vnetmap_file.name} — using as port mapping source")
+                    parser = VNetMapParser(str(vnetmap_file))
+                    vnetmap_result = parser.parse()
+                    if vnetmap_result.get("available") and vnetmap_result.get("topology"):
+                        raw_data["port_mapping_vnetmap"] = vnetmap_result
+                        use_vnetmap = True
+                        self._emit(
+                            "info",
+                            f"Vnetmap data parsed: {len(vnetmap_result['topology'])} connections",
+                        )
+                    else:
+                        self._emit(
+                            "warn",
+                            "Vnetmap parse returned no topology — falling back to SSH port mapping.",
+                        )
+                except Exception as vn_exc:  # noqa: BLE001 - non-fatal
+                    self._emit("warn", f"Vnetmap parse failed ({vn_exc}) — falling back to SSH port mapping.")
+
+            if not use_vnetmap and node_pw and switch_pw:
                 self._emit("info", "Collecting port mapping data via SSH...")
                 try:
                     from external_port_mapper import ExternalPortMapper
@@ -993,6 +1516,26 @@ class OneShotRunner:
                     switch_inventory = raw_data.get("switch_inventory", {})
                     switches = switch_inventory.get("switches", [])
                     switch_ips = [sw.get("mgmt_ip") for sw in switches if sw.get("mgmt_ip")]
+
+                    # Resolve hostnames and spine IPs up-front so
+                    # ExternalPortMapper can scan every port on every switch
+                    # and classify leaf-to-spine uplinks correctly.  Without
+                    # these the mapper reverts to the legacy narrow IPL
+                    # heuristic (swp29..swp32 symmetric pairs only).
+                    switch_hostname_map: Dict[str, str] = {}
+                    spine_ips: List[str] = []
+                    for sw in switches:
+                        ip = sw.get("mgmt_ip")
+                        if not ip:
+                            continue
+                        for host_field in ("hostname", "name", "host_name"):
+                            host = sw.get(host_field)
+                            if host:
+                                switch_hostname_map[str(host)] = ip
+                                break
+                        role = (sw.get("role") or sw.get("switch_type") or "").lower()
+                        if "spine" in role:
+                            spine_ips.append(ip)
 
                     if self._tunnel_address:
                         entry_ip = self._credentials.get("cluster_ip")
@@ -1025,8 +1568,11 @@ class OneShotRunner:
                                     switch_ips=switch_ips,
                                     switch_user=self._credentials.get("switch_user", "cumulus"),
                                     switch_password=switch_pw,
+                                    switch_password_candidates=list(self._switch_password_candidates) or None,
                                     proxy_jump=bool(self._credentials.get("proxy_jump", True)),
                                     tunnel_address=self._tunnel_address,
+                                    switch_hostname_map=switch_hostname_map or None,
+                                    spine_ips=spine_ips or None,
                                 )
                                 result = mapper.collect_port_mapping()
                                 if result.get("available"):
@@ -1049,7 +1595,11 @@ class OneShotRunner:
             self._check_cancel()
             self._emit("info", "Processing and extracting report data...")
             data_extractor = create_data_extractor(config)
-            processed = data_extractor.extract_all_data(raw_data, use_external_port_mapping=use_ext_port_mapping)
+            processed = data_extractor.extract_all_data(
+                raw_data,
+                use_external_port_mapping=use_ext_port_mapping,
+                use_vnetmap=use_vnetmap,
+            )
             if not processed:
                 self._emit("error", "Data processing failed, skipping report.")
                 api.close()
@@ -1082,8 +1632,13 @@ class OneShotRunner:
             self._emit("info", "Generating PDF report...")
             if report_builder.generate_pdf_report(processed, str(pdf_path)):
                 self._emit("success", f"PDF saved: {pdf_path.name}")
+                with self._lock:
+                    self._state.operation_results["asbuilt_report"] = "success"
+                    self._state.operation_results["asbuilt_json"] = "success"
             else:
                 self._emit("error", "PDF generation failed.")
+                with self._lock:
+                    self._state.operation_results["asbuilt_report"] = "failed"
 
             import json as json_mod
 
@@ -1101,6 +1656,8 @@ class OneShotRunner:
         except Exception as exc:
             self._emit("error", f"Report generation failed (non-blocking): {exc}")
             logger.warning("Report generation failed: %s", exc)
+            with self._lock:
+                self._state.operation_results["asbuilt_report"] = "failed"
 
     # ------------------------------------------------------------------
     # Phase: Bundle
@@ -1124,13 +1681,43 @@ class OneShotRunner:
 
             cluster_ip = self._credentials.get("cluster_ip", "").strip()
             resolved_name = getattr(self, "_resolved_cluster_name", None) or cluster_ip or "Unknown"
-            bundler = ResultBundler(output_callback=self._output_callback)
+            # RM-5: honour the ``bundle.include_prior_vperfsanity`` flag
+            # from config.yaml (default on).  Operators who prefer to hard
+            # exclude prior vperfsanity output can turn it off without a
+            # code change.
+            bundle_cfg = (self._load_config() or {}).get("bundle") or {}
+            include_prior_vperf = bool(bundle_cfg.get("include_prior_vperfsanity", True))
+            bundler = ResultBundler(
+                output_callback=self._output_callback,
+                include_prior_vperfsanity=include_prior_vperf,
+            )
             bundler.set_metadata(
                 cluster_name=resolved_name,
                 cluster_ip=cluster_ip or "Unknown",
                 cluster_version=self._credentials.get("cluster_version", "Unknown"),
             )
-            bundler.collect_results(cluster_ip=cluster_ip or None)
+
+            since: Optional[datetime] = None
+            started_at = self._state.started_at
+            if started_at:
+                try:
+                    since = datetime.fromisoformat(started_at)
+                except ValueError:
+                    logger.warning("Unable to parse started_at=%r for bundler since filter", started_at)
+
+            # Mark any selected op that never produced a result_state entry
+            # as "skipped" so the bundler can distinguish skipped vs failed.
+            with self._lock:
+                op_results = dict(self._state.operation_results)
+            for op_id in self._selected_ops:
+                cat = self._OP_CATEGORY_MAP.get(op_id, op_id)
+                op_results.setdefault(cat, "skipped")
+
+            bundler.collect_results(
+                cluster_ip=cluster_ip or None,
+                since=since,
+                operation_status=op_results,
+            )
             bundle_path = bundler.create_bundle()
 
             with self._lock:
@@ -1146,6 +1733,31 @@ class OneShotRunner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _find_latest_vnetmap_output(self, cluster_ip: str) -> Optional[Path]:
+        """Return the most recent vnetmap output file for ``cluster_ip``.
+
+        Scans ``output/scripts/`` for ``vnetmap_output_{cluster_ip}_*.txt``
+        and returns the newest match.  Scoped strictly by cluster IP to
+        prevent cross-cluster contamination of port-mapping topology.
+        Returns ``None`` if the directory is missing or no match exists.
+        """
+        if not cluster_ip:
+            return None
+        try:
+            from utils import get_data_dir
+
+            scripts_dir = get_data_dir() / "output" / "scripts"
+            if not scripts_dir.is_dir():
+                return None
+            matches = sorted(
+                scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"),
+                reverse=True,
+            )
+            return Path(matches[0]) if matches else None
+        except Exception as exc:  # noqa: BLE001 - purely advisory lookup
+            logger.warning("vnetmap output lookup failed: %s", exc)
+            return None
 
     def _load_config(self) -> Dict[str, Any]:
         """Load YAML config from the configured path."""

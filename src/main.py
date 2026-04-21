@@ -26,7 +26,7 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 # Add src directory to Python path (must run before local imports when run as script)
 sys.path.insert(0, str(Path(__file__).parent))
@@ -390,6 +390,25 @@ class VastReportGenerator:
             switches = switch_inventory.get("switches", [])
             switch_ips = [sw.get("mgmt_ip") for sw in switches if sw.get("mgmt_ip")]
 
+            # Prepare hostname->IP map and spine IP set for the generalized
+            # LLDP walk that discovers leaf-to-spine uplinks (see
+            # ExternalPortMapper docstring).  Legacy behavior preserved when
+            # either is empty.
+            switch_hostname_map: Dict[str, str] = {}
+            spine_ips: List[str] = []
+            for sw in switches:
+                ip = sw.get("mgmt_ip")
+                if not ip:
+                    continue
+                for host_field in ("hostname", "name", "host_name"):
+                    host = sw.get(host_field)
+                    if host:
+                        switch_hostname_map[str(host)] = ip
+                        break
+                role = (sw.get("role") or sw.get("switch_type") or "").lower()
+                if "spine" in role:
+                    spine_ips.append(ip)
+
             if not switch_ips:
                 self.logger.warning("No switches found - skipping port mapping")
                 return None
@@ -432,6 +451,8 @@ class VastReportGenerator:
                         switch_password=switch_password,
                         proxy_jump=not args.no_proxy_jump,
                         tunnel_address=tunnel_addr,
+                        switch_hostname_map=switch_hostname_map or None,
+                        spine_ips=spine_ips or None,
                     )
                     port_mapping_data = port_mapper.collect_port_mapping()
                     if port_mapping_data.get("available"):
@@ -737,7 +758,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.0")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.3")
 
     return parser
 

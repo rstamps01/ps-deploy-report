@@ -450,6 +450,13 @@ class RackCentricDiagramGenerator:
             rn = switch_rack.get(id(sw), "Default")
             rack_map[rn]["switches"].append(sw)
 
+        # --- Order switches within each rack so Network A lands on the left
+        # (SWA position) and Network B on the right (SWB position).  Prevents
+        # the visual "cross" that occurs when the diagram's left/right position
+        # disagrees with the Port Mapping tables' SWA/SWB assignment.
+        for rn in rack_map:
+            rack_map[rn]["switches"] = self._sort_switches_by_network(rack_map[rn]["switches"], port_map)
+
         # Build ordered list
         results: List[Dict[str, Any]] = []
         for rn in sorted(rack_map.keys()):
@@ -465,6 +472,53 @@ class RackCentricDiagramGenerator:
             )
 
         return results
+
+    @staticmethod
+    def _sort_switches_by_network(
+        switches: List[Dict[str, Any]],
+        port_map: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Order rack-local switches so Network A lands at position 0 (SWA/left).
+
+        Uses a two-key sort:
+
+        1. **Primary** — the network this switch serves more connections to in
+           ``port_map``.  ``A`` → 0, ``B`` → 1, unknown/mixed → 2.  This keeps
+           the diagram aligned with VAST's left=A / right=B visual convention
+           regardless of how the API returned the switch list.
+        2. **Secondary** — management IP ascending.  Matches the SWA/SWB
+           assignment used by ``EnhancedPortMapper._build_switch_map`` so the
+           Port Mapping tables and the Logical Network Diagram agree on which
+           physical switch is "SWA" for every cluster.
+        """
+        if not switches:
+            return switches
+
+        # Tally per-switch network counts from port_map.
+        counts: Dict[str, Dict[str, int]] = defaultdict(lambda: {"A": 0, "B": 0})
+        for conn in port_map or []:
+            sw_ip = conn.get("switch_ip", "")
+            network = (conn.get("network") or "").upper()
+            if not sw_ip or network not in ("A", "B"):
+                continue
+            counts[sw_ip][network] += 1
+
+        def _primary_key(sw: Any) -> int:
+            if not isinstance(sw, dict):
+                return 2
+            tally = counts.get(sw.get("mgmt_ip", ""), {"A": 0, "B": 0})
+            if tally["A"] > tally["B"]:
+                return 0
+            if tally["B"] > tally["A"]:
+                return 1
+            return 2
+
+        def _secondary_key(sw: Any) -> str:
+            if not isinstance(sw, dict):
+                return ""
+            return sw.get("mgmt_ip", "") or ""
+
+        return sorted(switches, key=lambda s: (_primary_key(s), _secondary_key(s)))
 
     def _default_rack(self, cboxes: list, bottom_devices: list, switches: list, bottom_label: str) -> Dict[str, Any]:
         return {

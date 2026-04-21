@@ -44,7 +44,8 @@ class ToolManager:
         },
     }
 
-    REMOTE_DIR = "/tmp/vast_scripts"
+    # Intentional [B108]: remote working directory on the VAST CNode, not a local tempfile.
+    REMOTE_DIR = "/tmp/vast_scripts"  # nosec B108
 
     def __init__(self, output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None):
         self._output_callback = output_callback
@@ -233,7 +234,9 @@ class ToolManager:
             from scp import SCPClient
 
             ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: target is a freshly-deployed VAST CNode; AutoAddPolicy is required
+            # for first-contact tool-upload workflows where host keys are not yet trusted.
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             ssh.connect(
                 host,
                 username=username,

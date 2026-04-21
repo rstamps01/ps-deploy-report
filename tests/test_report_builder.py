@@ -336,5 +336,106 @@ class TestReportGenerationError(unittest.TestCase):
         self.assertIsInstance(error, Exception)
 
 
+class TestSpinePortTables(unittest.TestCase):
+    """Coverage for the SP1 Port-to-Device Mapping table emitted when spine
+    switches have LLDP-discovered (or inferred) uplinks.
+
+    Regression guard for the "spine switch missing from port mapping tables"
+    bug reported against the Logical Network Diagram.
+    """
+
+    def setUp(self):
+        self.builder = VastReportBuilder()
+        self.switches = [
+            {"mgmt_ip": "10.0.0.153", "hostname": "leaf-a", "role": "leaf"},
+            {"mgmt_ip": "10.0.0.154", "hostname": "leaf-b", "role": "leaf"},
+            {"mgmt_ip": "10.0.0.156", "hostname": "spine-1", "role": "spine"},
+        ]
+        self.headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
+
+    def _capture_table_data(self, content):
+        """Pull the raw table rows we built by inspecting the brand-compliance call."""
+        captured = {}
+
+        def _fake_create_vast_table(data, title, headers):
+            captured.setdefault("calls", []).append({"data": data, "title": title})
+            return ["<table-flowable>"]
+
+        with patch.object(self.builder.brand_compliance, "create_vast_table", side_effect=_fake_create_vast_table):
+            result = self.builder._create_spine_port_tables(
+                port_mapping_data=content,
+                switches=self.switches,
+                leaf_switch_ips={"10.0.0.153", "10.0.0.154"},
+                headers=self.headers,
+            )
+        return captured.get("calls", []), result
+
+    def test_returns_empty_when_no_spine_uplinks(self):
+        port_mapping_data = {
+            "ipl_connections": [
+                {
+                    "switch1_ip": "10.0.0.153",
+                    "switch2_ip": "10.0.0.154",
+                    "connection_type": "ipl",
+                    "switch_designation": "SWA",
+                    "node_designation": "SWB",
+                }
+            ]
+        }
+        calls, content = self._capture_table_data(port_mapping_data)
+        self.assertEqual(calls, [])
+        self.assertEqual(content, [])
+
+    def test_emits_spine_table_with_uplink_rows(self):
+        port_mapping_data = {
+            "ipl_connections": [
+                {
+                    "switch1_ip": "10.0.0.156",
+                    "switch2_ip": "10.0.0.153",
+                    "connection_type": "spine_uplink",
+                    "switch_designation": "SP1",
+                    "node_designation": "SWA",
+                    "notes": "Spine uplink",
+                },
+                {
+                    "switch1_ip": "10.0.0.156",
+                    "switch2_ip": "10.0.0.154",
+                    "connection_type": "spine_uplink",
+                    "switch_designation": "SP1",
+                    "node_designation": "SWB",
+                    "notes": "Spine uplink (inferred)",
+                },
+            ]
+        }
+        calls, _content = self._capture_table_data(port_mapping_data)
+
+        self.assertEqual(len(calls), 1, "Exactly one spine table expected for a single spine")
+        call = calls[0]
+        self.assertIn("SP1", call["title"], "Title should surface the spine designation")
+        self.assertIn("spine-1", call["title"], "Title should also show the hostname")
+
+        rows = call["data"]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual({rows[0][0], rows[1][0]}, {"SP1"})
+        self.assertEqual({rows[0][1], rows[1][1]}, {"SWA", "SWB"})
+        for row in rows:
+            self.assertEqual(row[2], "Uplink")
+
+    def test_leaf_ips_excluded_from_spine_candidates(self):
+        """Even if a leaf appears in a spine_uplink endpoint, it must not get a spine table."""
+        port_mapping_data = {
+            "ipl_connections": [
+                {
+                    "switch1_ip": "10.0.0.156",
+                    "switch2_ip": "10.0.0.153",
+                    "connection_type": "spine_uplink",
+                },
+            ]
+        }
+        calls, _content = self._capture_table_data(port_mapping_data)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("leaf-a", calls[0]["title"], "Leaf must not be promoted to a spine table")
+
+
 if __name__ == "__main__":
     unittest.main()

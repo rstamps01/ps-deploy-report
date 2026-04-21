@@ -88,6 +88,65 @@ class TestRackGrouping:
         assert racks[0]["rack_name"] == "Default"
 
 
+class TestSortSwitchesByNetwork:
+    """Ordering of rack-local switches so SWA=left=NetA and SWB=right=NetB.
+
+    Regression coverage for the "crossing leaf paths" visual bug where the
+    diagram used API iteration order instead of network-majority order,
+    putting the Network B switch on the left (SWA position) when the API
+    returned it first.
+    """
+
+    def test_network_a_majority_sorts_first(self):
+        """Switch with mostly Network A connections should land at index 0 (SWA/left)."""
+        sw_b = _make_switch("switch-B", "10.0.0.154")
+        sw_a = _make_switch("switch-A", "10.0.0.153")
+        port_map = [
+            _make_port_map_entry("10.0.0.1", "10.0.0.153", network="A"),
+            _make_port_map_entry("10.0.0.2", "10.0.0.153", network="A"),
+            _make_port_map_entry("10.0.0.1", "10.0.0.154", network="B"),
+            _make_port_map_entry("10.0.0.2", "10.0.0.154", network="B"),
+        ]
+
+        # Caller-supplied order deliberately puts the B switch first to mimic
+        # the problematic case seen in production.
+        ordered = RackCentricDiagramGenerator._sort_switches_by_network([sw_b, sw_a], port_map)
+
+        assert ordered[0]["hostname"] == "switch-A", "Network A majority switch must be at position 0 (SWA/left)"
+        assert ordered[1]["hostname"] == "switch-B", "Network B majority switch must be at position 1 (SWB/right)"
+
+    def test_stable_fallback_to_mgmt_ip_when_no_port_map(self):
+        """With no port_map evidence, fall back to mgmt_ip ascending (matches enhanced_port_mapper)."""
+        sw_high = _make_switch("sw-high", "10.0.0.154")
+        sw_low = _make_switch("sw-low", "10.0.0.153")
+
+        ordered = RackCentricDiagramGenerator._sort_switches_by_network([sw_high, sw_low], [])
+
+        assert ordered[0]["hostname"] == "sw-low"
+        assert ordered[1]["hostname"] == "sw-high"
+
+    def test_empty_input_returns_empty(self):
+        assert RackCentricDiagramGenerator._sort_switches_by_network([], []) == []
+
+    def test_build_rack_groups_produces_sorted_switches(self):
+        """Integration: _build_rack_groups returns per-rack switch order that honors Network A/B."""
+        gen = RackCentricDiagramGenerator()
+        sw_b = _make_switch("switch-B", "10.0.0.154")
+        sw_a = _make_switch("switch-A", "10.0.0.153")
+        cboxes = [_make_cbox("cb-1", "Rack-1", "10.0.0.1")]
+        port_map = [
+            _make_port_map_entry("10.0.0.1", "10.0.0.153", network="A"),
+            _make_port_map_entry("10.0.0.1", "10.0.0.154", network="B"),
+        ]
+
+        racks = gen._build_rack_groups(cboxes, [], [sw_b, sw_a], port_map, None, "DB")
+
+        assert len(racks) == 1
+        rack_switches = racks[0]["switches"]
+        assert rack_switches[0]["hostname"] == "switch-A"
+        assert rack_switches[1]["hostname"] == "switch-B"
+
+
 class TestSpineDetection:
     def test_spine_detected_when_not_in_rack(self):
         gen = RackCentricDiagramGenerator()

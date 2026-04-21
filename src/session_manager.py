@@ -73,7 +73,9 @@ class SessionManager:
 
     def _get_log_path(self, session_name: str) -> str:
         """Get the log file path for a session."""
-        return f"/tmp/{session_name}.log"
+        # Intentional [B108]: session_name embeds a uuid4 hex suffix and this path lives on the
+        # remote VAST CNode (created via SSH), so it is neither local nor predictable.
+        return f"/tmp/{session_name}.log"  # nosec B108
 
     def check_tmux_available(self, host: str, username: str, password: str) -> Tuple[bool, str]:
         """Check if tmux is available on the remote host."""
@@ -90,9 +92,18 @@ class SessionManager:
         command: str,
         workflow_id: str = "workflow",
         working_dir: Optional[str] = None,
+        display_command: Optional[str] = None,
     ) -> Tuple[bool, str, SessionInfo]:
         """
         Start a new tmux session with the given command.
+
+        ``display_command``, when provided, is a redacted form of ``command``
+        used only for log echoes in the operator output pane.  The real
+        ``command`` is still handed to the remote shell via the heredoc-built
+        wrapper script, so secrets (e.g. the vnetmap per-switch password
+        JSON map) execute normally but never reach logs / bundles.  Keeping
+        this parameter at ``None`` preserves the long-standing behaviour for
+        commands that are safe to show.  See RM-1 in docs/TODO-ROADMAP.md.
         """
         session_name = self._generate_session_name(workflow_id)
         log_file = self._get_log_path(session_name)
@@ -103,13 +114,15 @@ class SessionManager:
         else:
             full_cmd = command
 
+        echoed_cmd = display_command if display_command is not None else command
         self._emit("info", f"$ tmux new-session -d -s {session_name}")
-        self._emit("info", f"  Command: {command}")
+        self._emit("info", f"  Command: {echoed_cmd}")
         self._emit("info", f"  Log file: {log_file}")
 
         # Write command to a temp script file on remote host to avoid escaping issues
         # This ensures proper shell expansion of variables and command substitutions
-        script_file = f"/tmp/{session_name}_cmd.sh"
+        # Intentional [B108]: remote CNode path; session_name contains a uuid4 suffix.
+        script_file = f"/tmp/{session_name}_cmd.sh"  # nosec B108
 
         # Create the wrapper script using heredoc
         # The script runs the command and records the exit code
@@ -306,7 +319,8 @@ chmod +x {script_file}"""
         self.kill_session(host, username, password, session_name)
 
         # Remove log file and script file
-        script_file = f"/tmp/{session_name}_cmd.sh"
+        # Intentional [B108]: remote CNode path (see _get_log_path / start_session).
+        script_file = f"/tmp/{session_name}_cmd.sh"  # nosec B108
         rm_cmd = f"rm -f {log_file} {script_file}"
         self._emit("info", f"$ {rm_cmd}")
         run_ssh_command(host, username, password, rm_cmd, timeout=10)
