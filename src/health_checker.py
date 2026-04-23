@@ -2757,13 +2757,14 @@ class HealthChecker:
         """
         from utils.switch_ssh_probe import probe_switch_password
 
-        return probe_switch_password(
+        winner: Optional[str] = probe_switch_password(
             switch_ip,
             switch_user,
             candidates,
             logger=self.logger,
             **ssh_kwargs,
         )
+        return winner
 
     def _detect_switch_type(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> str:
         """Detect whether a switch runs Onyx or Cumulus Linux.
@@ -2812,7 +2813,7 @@ class HealthChecker:
         # back to ``primary_password`` and log spurious auth failures for any
         # switch that uses a different default password (e.g. a spare leaf
         # on ``VastData1!`` while the pair is on ``Vastdata1!``).
-        raw_pw_by_ip = self.switch_ssh_config.get("password_by_ip") or {}
+        raw_pw_by_ip: Any = self.switch_ssh_config.get("password_by_ip") or {}
         if not isinstance(raw_pw_by_ip, dict):
             raw_pw_by_ip = {}
         password_by_ip: Dict[str, str] = {str(k): str(v) for k, v in raw_pw_by_ip.items() if v}
@@ -2835,7 +2836,7 @@ class HealthChecker:
         # different default password than the one typed in Connection
         # Settings.  The probe runs a single cheap ``hostname``/``show
         # version`` per candidate per switch and stops on the first win.
-        raw_candidates = self.switch_ssh_config.get("password_candidates") or []
+        raw_candidates: Any = self.switch_ssh_config.get("password_candidates") or []
         if isinstance(raw_candidates, (list, tuple)):
             candidate_list: List[str] = [str(p) for p in raw_candidates if str(p)]
         else:

@@ -230,12 +230,13 @@ class OneShotRunner:
         helper so both tiles share one implementation.
         """
         existing = self._credentials.get("switch_password_candidates")
-        return _shared_resolve_switch_password_candidates(
+        resolved: List[str] = _shared_resolve_switch_password_candidates(
             user_password=self._credentials.get("switch_password", ""),
             config_path=self._config_path,
             use_default_creds=self._use_default_creds,
             existing=existing if isinstance(existing, (list, tuple)) else None,
         )
+        return resolved
 
     def _get_api_creds(self, phase: str) -> Dict[str, str]:
         """Return API credentials appropriate for the given phase.

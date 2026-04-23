@@ -108,7 +108,7 @@ def probe_switch_password(
         try:
             rc, _stdout, stderr = run_ssh_command(switch_ip, user, password, "hostname", timeout=15, **ssh_kwargs)
             if rc == 0:
-                return password
+                return str(password)
             # Only fall back to interactive ``show version`` when the
             # failure looks like auth — a rc != 0 with permission-denied
             # / authentication-failed in stderr is the Onyx signature.
@@ -118,7 +118,7 @@ def probe_switch_password(
                     switch_ip, user, password, "show version", timeout=15, **ssh_kwargs
                 )
                 if rc_i == 0:
-                    return password
+                    return str(password)
         except Exception as exc:  # noqa: BLE001 - defensive per-candidate trap
             log.debug("Switch %s probe raised %s; trying next candidate", switch_ip, exc)
             continue

@@ -1981,12 +1981,13 @@ def _preprobe_switch_passwords_for_job(
     from utils.switch_ssh_probe import build_switch_password_by_ip
 
     try:
-        return build_switch_password_by_ip(
+        result: Dict[str, str] = build_switch_password_by_ip(
             switch_ips=switch_ips,
             switch_user=params.get("switch_user", "cumulus"),
             candidates=list(switch_password_candidates),
             **jump_kwargs,
         )
+        return result
     except Exception:  # noqa: BLE001 — probe failures must not abort the job
         return {}
 
