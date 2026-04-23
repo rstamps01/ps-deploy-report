@@ -20,6 +20,7 @@ import logging
 import logging.handlers
 import os
 import queue
+import re
 import sys
 from pathlib import Path
 from typing import Dict, Optional, Any
@@ -96,10 +97,28 @@ class SensitiveDataFilter(logging.Filter):
     """
     Filter to prevent sensitive data from being logged.
 
-    This filter scans log messages for potential sensitive information
-    like passwords, tokens, and API keys, and redacts them before logging.
+    This filter scans log messages for credential *shapes* -- a recognised
+    key (``password``, ``token``, ``secret``, ``auth``, ...) followed by a
+    separator (``:`` or ``=``) and a concrete value -- and replaces the
+    whole ``key<sep>value`` span with a ``KEY_[REDACTED]`` marker.
+
+    RM-14: this used to be a blunt substring scanner that redacted ANY
+    message containing the literal word ``password``/``token``/``key``,
+    which mangled narrative operator prose (e.g. "Primary switch password
+    failed authentication -- retrying with fallback candidate 2/3") and
+    even ate our own RM-1 redaction sentinel ``<switch-password>``.  The
+    new contract is:
+
+    * prose / sentinels without a ``:`` or ``=`` separator pass through
+      untouched;
+    * ``key: value`` / ``key=value`` / ``"key": "value"`` / prose
+      disclosures like ``password is: secret`` are redacted;
+    * the redacted form remains ``<KEY>_[REDACTED]`` so downstream log
+      consumers that search for that marker keep working.
     """
 
+    # Keys preserved for backwards-compat with the pre-RM-14 marker
+    # contract (``PASSWORD_[REDACTED]``, ``TOKEN_[REDACTED]``, ...).
     SENSITIVE_PATTERNS = [
         "password",
         "passwd",
@@ -113,21 +132,47 @@ class SensitiveDataFilter(logging.Filter):
         "cookie",
     ]
 
+    # Match shape:  [optional quote] KEY [optional quote]
+    #               (optional filler *verbs*: "is", "was", "received", ...)
+    #               REQUIRED ":" or "=" separator
+    #               (optional prefix word, e.g. "Bearer")
+    #               [optional quote] VALUE [optional quote]
+    #
+    # The required ``[:=]`` is what distinguishes a real credential from
+    # narrative prose -- "password failed authentication" has no ``:`` so
+    # it does not match, but "password: secret123" and the JSON form
+    # '"password": "secret123"' both do.  The filler-verb allowlist keeps
+    # phrases like "Secret sauce: our recipe" from matching (``sauce`` is
+    # not a verb, so the separator does not sit adjacent to the key).
+    _CREDENTIAL_FILLER_VERB = r"(?:is|was|were|are|received|provided|set|returned|got|equal|equals)"
+    _CREDENTIAL_RE = re.compile(
+        r"""
+        (?P<lq>['"]?)                               # optional opening quote around key
+        \b(?P<key>password|passwd|pwd|token|key|secret|authori[sz]ation|auth|credential|session|cookie)\b
+        (?P=lq)                                     # matching closing quote (or empty)
+        (?:\s+"""
+        + _CREDENTIAL_FILLER_VERB
+        + r""")*                                    # optional filler verbs (is/was/received/...)
+        \s*[:=]\s*                                  # REQUIRED separator -- the core gate
+        (?:\w+\s+)?                                 # optional prefix word (e.g. "Bearer")
+        ['"]?                                       # optional opening quote around value
+        [^\s'",;]+                                  # value body (no whitespace/quote/delim)
+        ['"]?                                       # optional closing quote
+        """,
+        re.IGNORECASE | re.VERBOSE,
+    )
+
     def filter(self, record):
-        """Filter out sensitive data from log records."""
+        """Redact credential-shaped key/value pairs in the record message."""
         if hasattr(record, "msg") and isinstance(record.msg, str):
-            msg_lower = record.msg.lower()
-            for pattern in self.SENSITIVE_PATTERNS:
-                if pattern in msg_lower:
-                    # Find the pattern and replace it with redacted version
-                    start_idx = msg_lower.find(pattern)
-                    if start_idx != -1:
-                        # Replace the pattern and some following characters
-                        end_idx = min(start_idx + len(pattern) + 15, len(record.msg))
-                        original_part = record.msg[start_idx:end_idx]
-                        record.msg = record.msg.replace(original_part, f"{pattern.upper()}_[REDACTED]")
-                        break  # Only replace the first occurrence
+            record.msg = self._CREDENTIAL_RE.sub(self._redact_match, record.msg)
         return True
+
+    @staticmethod
+    def _redact_match(match: "re.Match[str]") -> str:
+        """Replace the whole ``key<sep>value`` span with ``<KEY>_[REDACTED]``."""
+        key = match.group("key").upper()
+        return f"{key}_[REDACTED]"
 
 
 def setup_logging(config: Optional[Dict[str, Any]] = None, config_file: Optional[str] = None) -> logging.Logger:

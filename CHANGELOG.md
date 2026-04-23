@@ -7,6 +7,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-03-21
+
+Log-formatting hygiene pass addressing two operator-reported defects in
+the Reporter-tile output from
+`import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt`. Both
+fixes are narrow and additive; no workflow/pipeline behaviour changes.
+
+### Fixed
+
+- **RM-14a: `SensitiveDataFilter` no longer redacts narrative prose that
+  merely contains the word "password"/"token"/"key"/etc.** The pre-RM-14
+  filter was a substring scanner: any message containing the literal
+  string "password" (or any other sensitive key) had the next ~15
+  characters replaced with `PASSWORD_[REDACTED]`. That mangled
+  operator-visible sentences like
+  `"Primary switch password failed authentication — retrying with
+  fallback candidate 2/3"` into
+  `"Primary switch PASSWORD_[REDACTED]— retrying with fallback candidate
+  2/3"`, and even ate our own RM-1 display sentinel
+  `<switch-password>`. The filter now requires an actual credential
+  *shape* — a recognised key followed by a `:` or `=` separator and a
+  concrete value — before redacting. Prose, log banners, and the RM-1
+  sentinel pass through untouched; real disclosures like
+  `password: secret123`, `password=hunter2`, `{"password":"Vastdata1!"}`,
+  prose-style `User password is: secret123`, and
+  `Authorization: Bearer <token>` are still redacted to the legacy
+  `<KEY>_[REDACTED]` marker so downstream log consumers keep working.
+- **RM-14b: Post-command `echo $?` / return-code lines classify as
+  `[INFO]`, not `[ERROR]`.** `ScriptRunner.execute_remote()` appends a
+  shell-transcript tail after every SSH command —
+  `vastdata@host:~$ echo $?` / `<rc>` / `[Command completed in Xs]`.
+  Previously, when `rc != 0`, the first two lines were emitted at
+  `error` level, producing log blocks like::
+
+      [ERROR] vastdata@10.143.11.203:~$ echo $?
+      [ERROR] 1
+      [INFO]  [Command completed in 32.93s]
+
+  The real error is already flagged on the preceding stderr traceback
+  via the RM-8 classifier; the transcript framing should not duplicate
+  it. Both lines now emit at `info` so operator scans for `[ERROR]`
+  surface only genuine diagnostics (matching the "no false-positive
+  error tags" contract tightened in v1.5.4).
+- **RM-14c: Tool-emitted `{WARNING}` / `{CRITICAL}` tags on stdout
+  promote to `[WARN]` instead of falling through as `[INFO]`.**
+  `ScriptRunner._classify_output_line()` had a single narrow `{ERROR}
+  general exception` branch; every other `{<LEVEL>}` tag from a remote
+  tool rendered as `[INFO]`. That hid real diagnostic signal —
+  vnetmap.py lines like
+  `(P123) {WARNING} [vnetmap.py:109] Unable to determine suitable
+  switch API for 10.143.11.153` appeared as plain `[INFO]` in the
+  operator pane (see the 04:15 Reporter run in
+  `import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt`).
+  Added a `{warning}` / `{critical}` substring branch that returns
+  `warn` so the operator log surfaces the underlying warning the tool
+  meant to raise.
+
+### Changed
+
+- Test count is now **1106** (up from 1057): added 11 new RM-14 tests —
+  5 in `tests/test_logging.py::TestSensitiveDataFilterRM14`, 2 in
+  `tests/test_script_runner.py::TestExecuteRemotePostCommandLevel`,
+  and 4 in `tests/test_script_runner.py::TestOutputClassification`
+  (RM-14c: vnetmap `{WARNING}` / bare `{WARNING}` / `{INFO}` /
+  `{CRITICAL}` classification).
+
+### Known follow-up (RM-15, planned)
+
+The Reporter tile's `vnetmap` still uses the legacy candidate-sweep
+path (`-p '<single-pw>'` re-run per candidate) because
+`_run_report_job` populates `switch_password_candidates` but not
+`switch_password_by_ip`. For homogeneous fleets this succeeds on a
+later candidate; for heterogeneous fleets no single candidate can
+authenticate. RM-15 will run the Test-Suite-style probe upfront in
+`_run_report_job` and feed `--multiple-passwords` with a per-switch
+map — making the Reporter-tile `vnetmap` survive heterogeneous default
+passwords the same way the Test-Suite tile already does.
+
 ## [1.5.4] - 2026-03-21
 
 Test-Suite log-triage follow-up — addresses five defects (RM-6..RM-8

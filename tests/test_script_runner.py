@@ -235,6 +235,75 @@ class TestScriptRunnerRedaction:
         assert "cd /vast/install && python3 vnetmap.py -p '<switch-password>'" in joined
 
 
+class TestExecuteRemotePostCommandLevel:
+    """RM-14: the post-command shell prompt + return code are transcript,
+    not diagnostics.
+
+    ``execute_remote`` appends the following fixed lines after the SSH
+    command finishes::
+
+        <user>@<host>:~$ echo $?
+        <rc>
+        [Command completed in <d>s]
+
+    Previously, when ``rc != 0`` the first two lines were emitted at level
+    ``error``, producing the misleading operator log seen in
+    import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt ::
+
+        [ERROR] vastdata@10.143.11.203:~$ echo $?
+        [ERROR] 1
+        [INFO]  [Command completed in 32.93s]
+
+    The real error is already flagged on the preceding
+    ``Traceback``/``Exception:`` lines via :meth:`_classify_stderr_line`
+    (RM-8).  The transcript framing must classify at ``info`` regardless
+    of outcome so operator scans for ``[ERROR]`` only surface real
+    diagnostics.
+    """
+
+    @patch("script_runner.run_ssh_command")
+    def test_echo_and_rc_emit_info_on_failure(self, mock_ssh):
+        mock_ssh.return_value = (1, "", "Exception: boom")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "false")
+
+        echo_levels = [lvl for lvl, msg in emitted if "echo $?" in msg]
+        rc_levels = [lvl for lvl, msg in emitted if msg == "1"]
+
+        assert echo_levels, "expected an ``echo $?`` line in the log"
+        assert rc_levels, "expected the return-code line in the log"
+        assert all(lvl == "info" for lvl in echo_levels), f"echo $? line must emit at info; saw {echo_levels!r}"
+        assert all(lvl == "info" for lvl in rc_levels), f"return-code line must emit at info; saw {rc_levels!r}"
+
+    @patch("script_runner.run_ssh_command")
+    def test_echo_and_rc_emit_info_on_success(self, mock_ssh):
+        """Symmetrical guard: the same lines must be ``info`` on success
+        too (previously they leaked ``success`` level, which dyed the
+        prompt line green in the UI)."""
+        mock_ssh.return_value = (0, "ok", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "true")
+
+        echo_levels = [lvl for lvl, msg in emitted if "echo $?" in msg]
+        rc_levels = [lvl for lvl, msg in emitted if msg == "0"]
+        assert all(
+            lvl == "info" for lvl in echo_levels
+        ), f"echo $? line must emit at info on success; saw {echo_levels!r}"
+        assert all(
+            lvl == "info" for lvl in rc_levels
+        ), f"return-code line must emit at info on success; saw {rc_levels!r}"
+
+
 class TestScriptRunnerCleanup:
     @patch("script_runner.run_ssh_command")
     def test_cleanup_remote_success(self, mock_ssh, runner):
@@ -267,6 +336,34 @@ class TestOutputClassification:
     def test_classify_ssh_retry_suppressed(self, runner):
         result = runner._classify_output_line("Try again using SSH_KEY2")
         assert result is None
+
+    # ------------------------------------------------------------------
+    # RM-14c: tool-emitted ``{WARNING}`` / ``{CRITICAL}`` tags on stdout
+    # must promote to the matching log level.  Previously every
+    # ``{<LEVEL>}`` other than the specific ``{ERROR} general exception``
+    # branch fell through to ``info``, which caused vnetmap.py output like
+    # ``{WARNING} Unable to determine suitable switch API for <ip>`` to
+    # render as ``[INFO]`` in the operator pane (see the 04:15 Reporter
+    # run in import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt).
+    # ------------------------------------------------------------------
+
+    def test_classify_vnetmap_warning_tag_promotes_to_warn(self, runner):
+        line = "2026-04-23 04:15:52,614 (P190875) {WARNING} [vnetmap.py:109] Unable to determine suitable switch API for 10.143.11.153"  # noqa: E501
+        assert runner._classify_output_line(line) == "warn"
+
+    def test_classify_bare_warning_tag_promotes_to_warn(self, runner):
+        assert runner._classify_output_line("{WARNING} some tool message") == "warn"
+
+    def test_classify_info_tag_stays_info(self, runner):
+        line = "2026-04-23 04:15:21,006 (P190875) {INFO} [vnetmap.py:528] Discovering 2 switch manufacturer by ip..."
+        assert runner._classify_output_line(line) == "info"
+
+    def test_classify_critical_tag_promotes_to_warn(self, runner):
+        # ``{CRITICAL}`` is rare enough that we conservatively surface it
+        # at ``warn`` (the existing ``error`` level is reserved for
+        # stderr diagnostics via ``_classify_stderr_line``); the point is
+        # it must NOT render as ``info``.
+        assert runner._classify_output_line("{CRITICAL} unrecoverable fault") == "warn"
 
 
 class TestStderrTracebackClassification:

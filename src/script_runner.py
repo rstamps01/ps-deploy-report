@@ -512,6 +512,18 @@ class ScriptRunner:
         # --- Warn: actual failures the user should know about ---
         if "{error}" in ll and "general exception" in ll:
             return "warn"
+        # RM-14c: tool-emitted ``{WARNING}`` / ``{CRITICAL}`` tags.
+        # vnetmap.py (and other VAST scripts) write structured log lines
+        # like ``(P123) {WARNING} [vnetmap.py:109] Unable to determine
+        # suitable switch API for <ip>`` to stdout.  Without this branch
+        # they rendered as ``[INFO]`` in the operator pane, hiding a
+        # real diagnostic signal (see import/Assets-2026-04-21c/
+        # output-results-logs-2026-04-21.txt -- the 04:15 Reporter run).
+        # ``{INFO}`` is left to fall through as ``info``; ``{ERROR}``
+        # that isn't the suppressed ``general exception`` retry noise
+        # is already handled above.
+        if "{warning}" in ll or "{critical}" in ll:
+            return "warn"
         if "failed getting data from" in ll:
             return "warn"
         if "failed nodes:" in ll:
@@ -695,9 +707,21 @@ class ScriptRunner:
                     self._emit(self._classify_stderr_line(line), line)
 
             self._emit("info", "")
-            result_level = "success" if success else "error"
-            self._emit(result_level, f"{username}@{host}:~$ echo $?")
-            self._emit(result_level, str(rc))
+            # RM-14: the ``echo $?`` prompt and the return code are shell
+            # transcript, not diagnostics.  Previously we emitted both at
+            # ``error`` level on failure (and ``success`` level on ok),
+            # which produced misleading operator logs such as::
+            #
+            #     [ERROR] vastdata@host:~$ echo $?
+            #     [ERROR] 1
+            #     [INFO]  [Command completed in 32.93s]
+            #
+            # The real error is already flagged via the preceding stderr
+            # traceback classification (RM-8).  Keep the transcript framing
+            # at ``info`` so operator scans for ``[ERROR]`` only surface
+            # genuine diagnostics.
+            self._emit("info", f"{username}@{host}:~$ echo $?")
+            self._emit("info", str(rc))
             self._emit("info", f"[Command completed in {duration_sec:.2f}s]")
 
             return ScriptResult(

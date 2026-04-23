@@ -297,5 +297,93 @@ class TestSensitiveDataFilter(unittest.TestCase):
             self.assertEqual(record.msg, original_msg)
 
 
+class TestSensitiveDataFilterRM14(unittest.TestCase):
+    """RM-14: narrow redaction to real credential shapes.
+
+    The original substring-based filter redacted ANY message containing the
+    literal word "password"/"token"/"key"/... -- including narrative prose
+    such as "Primary switch password failed authentication -- retrying with
+    fallback candidate 2/3" and our own RM-1 redaction sentinel
+    "<switch-password>".  See
+    import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt for the
+    operator-facing symptom that triggered this fix.  The filter must now
+    only fire when a credential *shape* is present (``key: value``,
+    ``key=value``, ``"key": "value"``, etc.) -- i.e. a recognised key
+    followed by ``:`` or ``=`` and a concrete value.
+    """
+
+    def setUp(self):
+        self.filter = SensitiveDataFilter()
+
+    def _apply(self, msg: str) -> str:
+        record = logging.LogRecord("t", logging.INFO, "", 0, msg, (), None)
+        self.filter.filter(record)
+        return record.msg
+
+    # ------------------------------------------------------------------
+    # Prose / sentinel: must NOT be touched by the filter.
+    # ------------------------------------------------------------------
+
+    def test_narrative_prose_preserved(self):
+        """The exact wording VnetmapWorkflow emits on a fallback retry."""
+        msg = "Primary switch password failed authentication -- retrying with fallback candidate 2/3"
+        self.assertEqual(self._apply(msg), msg)
+
+    def test_rm1_sentinel_preserved(self):
+        """RM-1 inserts ``<switch-password>`` as a redacted-display sentinel.
+
+        The filter must not mangle it further (previously the substring
+        match turned ``-p '<switch-password>'`` into
+        ``-p '<switch-PASSWORD_[REDACTED]``).
+        """
+        msg = "python3 vnetmap.py -u cumulus -p '<switch-password>'"
+        self.assertEqual(self._apply(msg), msg)
+
+    def test_common_english_preserved(self):
+        for msg in [
+            "Authentication failed -- verify credentials in Connection Settings.",
+            "Session started successfully.",
+            "Secret sauce: our recipe is reliability.",
+            "The encryption key is stored in the TPM module.",
+            "Switch SSH connected on 2/3 switches; auth failed on 1/3.",
+            "Tool Freshness: All cached tools are up to date.",
+        ]:
+            self.assertEqual(self._apply(msg), msg, msg=f"should not redact: {msg!r}")
+
+    # ------------------------------------------------------------------
+    # Real credentials: MUST be redacted; the value must not survive.
+    # ------------------------------------------------------------------
+
+    def test_key_colon_value_redacted(self):
+        out = self._apply("User password: secret123")
+        self.assertNotIn("secret123", out)
+        self.assertIn("PASSWORD_[REDACTED]", out)
+
+    def test_key_equals_value_redacted(self):
+        out = self._apply("Connecting via password=hunter2 now")
+        self.assertNotIn("hunter2", out)
+        self.assertIn("PASSWORD_[REDACTED]", out)
+
+    def test_quoted_json_value_redacted(self):
+        out = self._apply('config: {"password": "Vastdata1!", "user": "cumulus"}')
+        self.assertNotIn("Vastdata1!", out)
+        self.assertIn("PASSWORD_[REDACTED]", out)
+        # Unrelated JSON fields must survive.
+        self.assertIn("cumulus", out)
+
+    def test_token_bearer_redacted(self):
+        out = self._apply("Authorization: Bearer abc123def456")
+        self.assertNotIn("abc123def456", out)
+        # Matches the existing "auth" key legacy marker contract.
+        self.assertIn("AUTH", out)
+        self.assertIn("REDACTED", out)
+
+    def test_prose_disclosure_redacted(self):
+        """Prose-style disclosure ``<key> is: <value>`` must still redact."""
+        out = self._apply("User password is: secret123")
+        self.assertNotIn("secret123", out)
+        self.assertIn("PASSWORD_[REDACTED]", out)
+
+
 if __name__ == "__main__":
     unittest.main()
