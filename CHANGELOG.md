@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.6] - 2026-03-21
+
+Heterogeneous-fleet switch-SSH authentication parity pass. Three changes
+close the last gaps where the Reporter tile and Test Suite tile produced
+different results for the same cluster because one code path threaded the
+pre-validated per-IP password map and the other didn't. Also bundles a
+Windows launch crash-resilience fix that prevents silent exits when port
+5173 is reserved by Hyper-V / WSL2.
+
+### Fixed
+
+- **RM-15: Reporter tile now pre-probes switches and feeds `VnetmapWorkflow`
+  + `HealthChecker` a `switch_password_by_ip` map.** The Reporter tile
+  previously took the legacy candidate-sweep path because
+  `_run_report_job` populated `switch_password_candidates` but not
+  `switch_password_by_ip`, so `VnetmapWorkflow`'s Fast path
+  (`--multiple-passwords` heredoc map) was never engaged. On a
+  heterogeneous fleet (two leaves on `Vastdata1!`, a third on
+  `VastData1!`) `vnetmap` would cycle through candidate sweeps or fail
+  outright. Extracted the RM-13 probe logic into a shared
+  `src/utils/switch_ssh_probe.py` utility (`probe_switch_password` for a
+  single IP with Onyx interactive-shell fallback via `show version`,
+  `build_switch_password_by_ip` for a fleet); `HealthChecker._probe_switch_password`
+  is now a thin delegator. `_run_report_job` gained
+  `_preprobe_switch_passwords_for_job()` which calls
+  `api_handler.get_switches_detail()`, builds the map via
+  `build_switch_password_by_ip`, and hands it to both `VnetmapWorkflow.set_credentials`
+  and the downstream `HealthChecker`. Short-circuits cleanly when <2
+  candidates, no switches in VMS, or neither vnetmap nor switch-health
+  is selected. The Reporter tile now engages the Fast path just like
+  the Test Suite tile and succeeds on heterogeneous fleets in a single
+  invocation.
+- **RM-16: Test Suite tile's report-embedded health check now
+  authenticates switches with the pre-validated per-IP password map.**
+  The Test Suite one-shot pipeline pre-validates switch SSH in Phase 0
+  and stores a working `{ip -> password}` map in
+  `OneShotRunner._switch_password_by_ip` (populated by either Phase 0
+  pre-validation or a `seed_switch_credentials` handoff from a prior
+  pre-validation runner). Every switch-touching workflow in Phase 1
+  (`vnetmap`, `switch_config`) receives that map via
+  `_get_workflow_credentials`, and the standalone `_run_health` phase
+  threads it as `switch_ssh_config["password_by_ip"]` (RM-2). The
+  report-embedded health check in `OneShotRunner._run_report` — which
+  runs at the end of the one-shot pipeline when the operator selects
+  both "Include As-Built Report" and "Include Health Checks" — silently
+  discarded both the per-IP map and the resolved candidate list and
+  handed `HealthChecker` only the single UI-entered `switch_password`.
+  On a heterogeneous fleet (e.g. `10.143.11.153` on `cumulus/Vastdata1!`
+  and `10.143.11.154` on `cumulus/VastData1!`) that single password
+  mis-authenticated every switch and turned `switch_ssh` into
+  `[ERR] MLAG Status` / `[WARN] Switch NTP` / `[WARN] Switch Config
+  Readability` in the final bundle's health JSON — even though the same
+  run's `vnetmap_output_*.txt` and `switch_configs_*.json` confirmed a
+  working credential. Evidence:
+  `import/Reporter-v-Tests-results/vast_data_selab-var-203_20260422_235751.json`
+  (Reporter: `switch_ssh = Pass`) vs `..._20260423_001402.json`
+  (Test Suite: `switch_ssh = error + 2 warnings`) on the same cluster
+  back-to-back. `_run_report` now mirrors `_run_health`'s RM-2 threading,
+  so switch SSH checks inside the report-generation phase behave
+  identically to the Reporter tile and no longer false-positive on
+  heterogeneous fleets.
+- **Windows launch crash resilience.** When the default UI port 5173 is
+  reserved by Hyper-V / WSL2 (a known Windows 10/11 behaviour —
+  `OSError: [WinError 10013] WSAEACCES`), `vast-reporter.exe` would
+  raise immediately on `make_server()` and exit before the console
+  surfaced any diagnostic, leaving operators staring at a window that
+  flashed open and closed. `run_gui()` in `src/main.py` now walks a
+  candidate list (`5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180,
+  8080, 9090`) under `try/except OSError`, prints a `NOTE:` banner when
+  a fallback is selected, and on total exhaustion prints an actionable
+  `ERROR:` explaining how to override with `--port <number>` and pauses
+  via `input("Press Enter to close...")` when `sys.frozen` is true. The
+  `if __name__ == "__main__":` block gained a top-level
+  `try/except Exception` that prints `FATAL ERROR: {exc}` +
+  `traceback.print_exc()` and again pauses on `sys.frozen` so the
+  console stays open long enough for the operator to capture the
+  failure. A new `--port <number>` CLI argument (parsed by
+  `_extract_port_from_argv` and consumed before argparse sees it) lets
+  operators override the default non-interactively. No version bump
+  reserved for this fix alone — it ships as part of v1.5.6.
+
+### Changed
+
+- Test count is **1110** (up from 1106): 4 new RM-16 tests in
+  `tests/test_oneshot_runner.py::TestRM16ReportHealthAuthParity` (per-IP
+  map threading, candidate-list threading, empty-map omission, proxy-jump
+  coexistence), plus 17 RM-15 tests in
+  `tests/test_utils_switch_ssh_probe.py` and 8 in
+  `tests/test_app.py::TestRM15SwitchPreProbe` that were already staged
+  on the branch.
+
 ## [1.5.5] - 2026-03-21
 
 Log-formatting hygiene pass addressing two operator-reported defects in

@@ -192,6 +192,234 @@ class TestGenerateAutofillCandidates(unittest.TestCase):
         self.assertFalse(params["use_default_creds"])
 
 
+class TestRM15SwitchPreProbe(unittest.TestCase):
+    """RM-15: before ``_run_report_job`` hands off to ``VnetmapWorkflow``
+    it must pre-probe switches using the resolved candidate list and
+    build a ``switch_password_by_ip`` map — mirroring what
+    ``OneShotRunner._validate_switch_ssh`` does for the Test Suite
+    tile.  Without this map, ``VnetmapWorkflow`` falls back to the
+    legacy single-``-p`` candidate sweep which cannot succeed on
+    heterogeneous fleets (e.g. two leaves on ``Vastdata1!`` plus a
+    spare on ``VastData1!``).
+
+    These tests exercise the extracted helper
+    ``_preprobe_switch_passwords_for_job`` directly so the contract is
+    testable in isolation.  Call-site integration (feeding the map
+    into ``vnetmap_creds["switch_password_by_ip"]`` and
+    ``switch_ssh_config["password_by_ip"]``) is a trivial 2-line hand-off
+    reviewed by eye.
+    """
+
+    def setUp(self):
+        from app import _preprobe_switch_passwords_for_job  # noqa: F401 — import probe
+
+        self._probe_helper_import_ok = True
+
+    def _make_api_handler(self, switch_ips):
+        """Build a MagicMock that quacks like ``VastAPIHandler`` for the
+        purposes of the pre-probe (only ``get_switches_detail`` is
+        consumed).  Returns a list of dicts with ``mgmt_ip`` fields
+        matching how the real ``/api/switches/`` endpoint shapes its
+        payload."""
+        handler = MagicMock()
+        handler.get_switches_detail.return_value = [{"mgmt_ip": ip} for ip in switch_ips]
+        return handler
+
+    def test_skipped_when_no_vnetmap_no_health_check(self):
+        # Neither workflow needs per-switch credentials, so skip the
+        # probe entirely — zero SSH round-trips, zero API calls.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1", "10.0.0.2"])
+        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={"switch_user": "cumulus"},
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=False,
+                has_health_switch=False,
+            )
+        self.assertEqual(result, {})
+        mock_build.assert_not_called()
+        handler.get_switches_detail.assert_not_called()
+
+    def test_skipped_when_single_candidate(self):
+        # One candidate = nothing to probe; the legacy single-``-p``
+        # path is trivially correct for homogeneous fleets and runs
+        # per-switch SSH anyway.  Skipping here also saves a full
+        # ``/api/switches/`` call on clusters that don't use Autofill.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1"])
+        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={"switch_user": "cumulus"},
+                switch_password_candidates=["only-one-pw"],
+                has_vnetmap=True,
+                has_health_switch=True,
+            )
+        self.assertEqual(result, {})
+        mock_build.assert_not_called()
+
+    def test_skipped_when_empty_candidates(self):
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1"])
+        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={"switch_user": "cumulus"},
+                switch_password_candidates=[],
+                has_vnetmap=True,
+                has_health_switch=True,
+            )
+        self.assertEqual(result, {})
+        mock_build.assert_not_called()
+
+    def test_skipped_when_no_switches_found(self):
+        # InfiniBand cluster or a VMS that hasn't registered its
+        # switches yet — ``get_switches_detail`` returns ``[]``.  The
+        # probe must short-circuit (not hang or error) and return an
+        # empty map so the downstream workflow's Fast-path guard stays
+        # deselected.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler([])
+        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={"switch_user": "cumulus"},
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=True,
+                has_health_switch=True,
+            )
+        self.assertEqual(result, {})
+        mock_build.assert_not_called()
+
+    def test_probes_and_returns_map_when_vnetmap_and_candidates(self):
+        # Happy path: Reporter tile has Autofill on with >=2 candidates
+        # and vnetmap is selected.  The probe must run and return a
+        # per-switch map.  Verify also that the proxy-jump kwargs
+        # (cluster IP as bastion + node user/password) are forwarded.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1", "10.0.0.2"])
+        fake_map = {"10.0.0.1": "Vastdata1!", "10.0.0.2": "VastData1!"}
+
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={
+                    "cluster_ip": "10.0.0.254",
+                    "switch_user": "cumulus",
+                    "node_user": "vastdata",
+                    "node_password": "node-pw",
+                    "proxy_jump": True,
+                },
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=True,
+                has_health_switch=False,
+            )
+
+        self.assertEqual(result, fake_map)
+        mock_build.assert_called_once()
+        call_kwargs = mock_build.call_args.kwargs
+        # The probe MUST see both switch IPs + both candidates.
+        self.assertEqual(list(call_kwargs["switch_ips"]), ["10.0.0.1", "10.0.0.2"])
+        self.assertEqual(call_kwargs["switch_user"], "cumulus")
+        self.assertEqual(
+            list(call_kwargs["candidates"]),
+            ["Vastdata1!", "VastData1!"],
+        )
+        # Proxy-jump wiring: cluster IP is the bastion when proxy_jump is enabled.
+        self.assertEqual(call_kwargs.get("jump_host"), "10.0.0.254")
+        self.assertEqual(call_kwargs.get("jump_user"), "vastdata")
+        self.assertEqual(call_kwargs.get("jump_password"), "node-pw")
+
+    def test_probes_when_only_health_switch_active(self):
+        # vnetmap off but health-check Tier-3 wants switches —
+        # HealthChecker benefits from the map too (it can skip its
+        # in-process RM-13 probe when a pre-resolved map is supplied).
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1"])
+        fake_map = {"10.0.0.1": "Vastdata1!"}
+
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={
+                    "cluster_ip": "10.0.0.254",
+                    "switch_user": "cumulus",
+                    "node_user": "vastdata",
+                    "node_password": "node-pw",
+                    "proxy_jump": True,
+                },
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=False,
+                has_health_switch=True,
+            )
+
+        self.assertEqual(result, fake_map)
+        mock_build.assert_called_once()
+
+    def test_proxy_jump_disabled_forwards_no_jump_host(self):
+        # When proxy_jump is explicitly False, the probe runs direct
+        # and the jump_host kwarg must NOT be populated — otherwise
+        # operators on the same L2 domain as the switches would see a
+        # bastion hop they don't need (and that may not even be
+        # reachable).
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.0.0.1"])
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value={"10.0.0.1": "Vastdata1!"},
+        ) as mock_build:
+            _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={
+                    "cluster_ip": "10.0.0.254",
+                    "switch_user": "cumulus",
+                    "node_user": "vastdata",
+                    "node_password": "node-pw",
+                    "proxy_jump": False,
+                },
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=True,
+                has_health_switch=False,
+            )
+
+        call_kwargs = mock_build.call_args.kwargs
+        self.assertNotIn("jump_host", call_kwargs)
+
+    def test_api_handler_failure_returns_empty_map(self):
+        # /api/switches/ can fail for a host of reasons (VMS still
+        # booting, tunnel flap, 401 in the middle of the job).  The
+        # pre-probe must never abort the whole report — it swallows
+        # the failure, returns an empty map, and the downstream
+        # workflows fall back to their legacy paths.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = MagicMock()
+        handler.get_switches_detail.side_effect = RuntimeError("VMS unreachable")
+        result = _preprobe_switch_passwords_for_job(
+            api_handler=handler,
+            params={"switch_user": "cumulus", "proxy_jump": False},
+            switch_password_candidates=["Vastdata1!", "VastData1!"],
+            has_vnetmap=True,
+            has_health_switch=True,
+        )
+        self.assertEqual(result, {})
+
+
 class TestConfigRoutes(unittest.TestCase):
 
     def setUp(self):

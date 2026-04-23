@@ -44,7 +44,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.5"
+APP_VERSION = "1.5.6"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -1901,6 +1901,96 @@ def _update_progress(app: Flask, key: str, phase: str, percent: int, label: str)
         app.config[key] = {"percent": min(percent, 100), "phase": phase, "label": label}
 
 
+def _preprobe_switch_passwords_for_job(
+    api_handler: Any,
+    params: Dict[str, Any],
+    switch_password_candidates: List[str],
+    has_vnetmap: bool,
+    has_health_switch: bool,
+) -> Dict[str, str]:
+    """RM-15: pre-probe every switch once to build a ``{ip: password}`` map.
+
+    The Reporter tile's Fast-path in ``VnetmapWorkflow._step_run_vnetmap``
+    engages ``vnetmap.py --multiple-passwords`` only when every switch
+    IP has an entry in ``switch_password_by_ip``.  On heterogeneous
+    fleets (e.g. two leaves on ``Vastdata1!`` plus a spare on
+    ``VastData1!``) this is the *only* path that can succeed — the
+    legacy single-``-p '<pw>'`` sweep fails for at least one switch no
+    matter which candidate is tried.  ``OneShotRunner._validate_switch_ssh``
+    already produces this map for the Test Suite tile; RM-15 gives the
+    Reporter tile the same capability without duplicating the probe
+    logic — :func:`utils.switch_ssh_probe.build_switch_password_by_ip`
+    is the shared implementation.
+
+    Short-circuits (return empty dict, zero network I/O) when:
+
+    * Neither vnetmap nor the Tier-3 switch health-check is selected
+      (nobody will consume the map — avoid the ``/api/switches/`` call
+      and the per-switch probe I/O).
+    * The candidate list is empty or has a single entry (homogeneous
+      fleet; probing is wasted work).
+    * The VMS API reports no switches (IB cluster or a cluster that
+      hasn't registered its switches yet).
+
+    Any failure of ``get_switches_detail`` is swallowed and returns
+    ``{}`` — a probe crash must never abort the main report pipeline.
+    Downstream workflows simply fall back to their legacy paths when
+    the map is empty.
+
+    Args:
+        api_handler: Authenticated :class:`api_handler.VastAPIHandler`
+            — only ``get_switches_detail`` is consumed.
+        params: The same ``params`` dict passed to ``_run_report_job``
+            (``cluster_ip`` / ``switch_user`` / ``node_user`` /
+            ``node_password`` / ``proxy_jump`` are the keys used here).
+        switch_password_candidates: Resolved candidate list from
+            :func:`utils.switch_password_candidates.resolve_switch_password_candidates`.
+        has_vnetmap: ``params.run_vnetmap`` — whether the vnetmap
+            workflow will actually run.
+        has_health_switch: ``True`` when Tier-3 switch health checks
+            will run (i.e. health-check enabled AND SSH credentials
+            configured).
+
+    Returns:
+        Mapping of ``{switch_mgmt_ip: winning_password}`` — possibly
+        empty.  Callers fan this into ``vnetmap_creds`` and
+        ``switch_ssh_config`` unchanged.
+    """
+    if not (has_vnetmap or has_health_switch):
+        return {}
+    if not switch_password_candidates or len(switch_password_candidates) < 2:
+        return {}
+
+    try:
+        switches_detail = api_handler.get_switches_detail() or []
+    except Exception:  # noqa: BLE001 — probe failures must not abort the job
+        return {}
+
+    switch_ips = [str(s.get("mgmt_ip")) for s in switches_detail if s.get("mgmt_ip")]
+    if not switch_ips:
+        return {}
+
+    jump_kwargs: Dict[str, Any] = {}
+    if params.get("proxy_jump", True):
+        jump_kwargs = {
+            "jump_host": params.get("cluster_ip", ""),
+            "jump_user": params.get("node_user", "vastdata"),
+            "jump_password": params.get("node_password", ""),
+        }
+
+    from utils.switch_ssh_probe import build_switch_password_by_ip
+
+    try:
+        return build_switch_password_by_ip(
+            switch_ips=switch_ips,
+            switch_user=params.get("switch_user", "cumulus"),
+            candidates=list(switch_password_candidates),
+            **jump_kwargs,
+        )
+    except Exception:  # noqa: BLE001 — probe failures must not abort the job
+        return {}
+
+
 def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
     """Execute the report pipeline in a background thread."""
     from api_handler import create_vast_api_handler
@@ -2046,6 +2136,32 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
 
+        # RM-15: pre-probe switches once so the Fast path of
+        # ``VnetmapWorkflow`` (``vnetmap.py --multiple-passwords``) can
+        # engage on heterogeneous fleets (e.g. two leaves on
+        # ``Vastdata1!`` and a spare on ``VastData1!``) — this is the
+        # Reporter-tile parallel of what
+        # ``OneShotRunner._validate_switch_ssh`` does for the Test
+        # Suite tile.  The map is also handed to ``HealthChecker`` so
+        # Tier-3 checks skip their in-process RM-13 probe.  Any
+        # failure here is non-fatal and falls back to the legacy
+        # single-``-p`` candidate sweep.
+        has_health_switch_preprobe = bool(
+            has_health and params.get("enable_port_mapping", False) and params.get("switch_password", "")
+        )
+        switch_password_by_ip: Dict[str, str] = _preprobe_switch_passwords_for_job(
+            api_handler=api_handler,
+            params=params,
+            switch_password_candidates=switch_password_candidates,
+            has_vnetmap=has_vnetmap,
+            has_health_switch=has_health_switch_preprobe,
+        )
+        if switch_password_by_ip:
+            job_logger.info(
+                "RM-15: pre-probed %d switch(es); vnetmap --multiple-passwords fast path will engage",
+                len(switch_password_by_ip),
+            )
+
         # Optional: run vnetmap workflow before data collection
         if has_vnetmap:
             _check_cancel(app)
@@ -2076,6 +2192,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 # default when Autofill Password is active.
                 if switch_password_candidates:
                     vnetmap_creds["switch_password_candidates"] = list(switch_password_candidates)
+                # RM-15: when the pre-probe built a per-switch map,
+                # hand it through so ``VnetmapWorkflow`` engages its
+                # Fast path (``--multiple-passwords`` via heredoc
+                # wrapper) instead of the legacy candidate sweep.
+                if switch_password_by_ip:
+                    vnetmap_creds["switch_password_by_ip"] = dict(switch_password_by_ip)
                 vnetmap_wf.set_credentials(vnetmap_creds)
                 ok, prereq_msg = vnetmap_wf.validate_prerequisites()
                 if not ok:
@@ -2144,6 +2266,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     # that uses a different default.
                     if switch_password_candidates:
                         switch_ssh_config["password_candidates"] = list(switch_password_candidates)
+                    # RM-15: if the pre-probe already built the map, hand
+                    # it through directly so ``run_switch_ssh_checks``
+                    # skips its own in-process RM-13 probe (saves a
+                    # second round-trip per switch when vnetmap ran).
+                    if switch_password_by_ip:
+                        switch_ssh_config["password_by_ip"] = dict(switch_password_by_ip)
                     if params.get("proxy_jump", True):
                         switch_ssh_config["proxy_jump"] = {
                             "host": params["cluster_ip"],

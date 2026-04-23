@@ -1469,6 +1469,20 @@ class OneShotRunner:
                             "username": self._credentials.get("switch_user", "cumulus"),
                             "password": switch_pw,
                         }
+                        # RM-16: match _run_health (RM-2) + _run_report_job
+                        # (RM-13 + RM-15) parity so the report-embedded
+                        # HealthChecker uses the pre-validated per-IP
+                        # password for each switch.  Without this, a
+                        # heterogeneous fleet (switches on different
+                        # default passwords) authenticates every switch
+                        # with the single UI-entered password and
+                        # mis-reports switch_ssh as error/warning even
+                        # though vnetmap / switch_config succeeded in
+                        # the same one-shot run.
+                        if self._switch_password_by_ip:
+                            sw_cfg["password_by_ip"] = dict(self._switch_password_by_ip)
+                        if self._switch_password_candidates:
+                            sw_cfg["password_candidates"] = list(self._switch_password_candidates)
                         if self._tunnel_address:
                             sw_cfg["proxy_jump"] = {
                                 "host": self._credentials.get("cluster_ip"),

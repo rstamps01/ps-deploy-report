@@ -739,8 +739,11 @@ class TestSwitchSSHPasswordCandidates:
                 return 0, host, ""
             return 255, "", "Permission denied (publickey,password)"
 
-        with patch("health_checker.run_ssh_command", side_effect=fake_run_ssh_command), patch(
-            "health_checker.run_interactive_ssh", return_value=(255, "", "denied")
+        # RM-15: probe SSH I/O was lifted to ``utils.switch_ssh_probe`` so
+        # the mocks now target that module.  ``HealthChecker._probe_switch_
+        # password`` is a thin delegator as of v1.5.6.
+        with patch("utils.switch_ssh_probe.run_ssh_command", side_effect=fake_run_ssh_command), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
         ):
             checker.run_switch_ssh_checks()
 
@@ -761,8 +764,9 @@ class TestSwitchSSHPasswordCandidates:
         checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
         seen = self._patch_checks(checker)
 
-        with patch("health_checker.run_ssh_command", return_value=(255, "", "Permission denied")), patch(
-            "health_checker.run_interactive_ssh", return_value=(255, "", "denied")
+        # RM-15: probe SSH I/O moved to utils.switch_ssh_probe.
+        with patch("utils.switch_ssh_probe.run_ssh_command", return_value=(255, "", "Permission denied")), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
         ):
             checker.run_switch_ssh_checks()
 
@@ -790,8 +794,9 @@ class TestSwitchSSHPasswordCandidates:
                 return 0, host, ""
             return 255, "", "denied"
 
-        with patch("health_checker.run_ssh_command", side_effect=fake_run_ssh_command), patch(
-            "health_checker.run_interactive_ssh", return_value=(255, "", "denied")
+        # RM-15: probe SSH I/O moved to utils.switch_ssh_probe.
+        with patch("utils.switch_ssh_probe.run_ssh_command", side_effect=fake_run_ssh_command), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
         ):
             checker.run_switch_ssh_checks()
 

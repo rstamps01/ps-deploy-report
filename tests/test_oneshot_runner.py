@@ -1735,5 +1735,133 @@ class TestVnetmapPortMappingInReport(unittest.TestCase):
             )
 
 
+class TestRM16ReportHealthAuthParity(unittest.TestCase):
+    """RM-16: ``OneShotRunner._run_report`` must thread the pre-validated
+    per-IP password map and resolved candidate list into the HealthChecker
+    it embeds so the Test Suite tile's ``switch_ssh`` category authenticates
+    against heterogeneous fleets the same way the Reporter tile
+    (``_run_report_job`` + RM-15) and the standalone ``_run_health`` phase
+    (RM-2) already do.
+    """
+
+    def _make_runner(self, cluster_ip="10.0.0.1", tunnel_address=None):
+        from oneshot_runner import OneShotRunner
+
+        runner = OneShotRunner(
+            selected_ops=[],
+            credentials={
+                "cluster_ip": cluster_ip,
+                "username": "admin",
+                "password": "apipw",
+                "node_user": "vastdata",
+                "node_password": "nodepw",
+                "switch_user": "cumulus",
+                "switch_password": "primary",
+            },
+            include_report=True,
+            include_health=True,
+        )
+        if tunnel_address:
+            runner._tunnel_address = tunnel_address
+        return runner
+
+    def _invoke_run_report(self, runner):
+        """Invoke ``_run_report`` with the minimum mocks needed for the
+        HealthChecker construction path."""
+        mock_api = MagicMock()
+        mock_api.get_all_data.return_value = {"cluster_summary": {"name": "cx"}}
+        mock_extractor = MagicMock()
+        mock_extractor.extract_all_data.return_value = {"cluster_summary": {"name": "cx"}}
+        mock_report_builder = MagicMock()
+        mock_report_builder.generate_pdf_report.return_value = True
+
+        mock_hc = MagicMock()
+        mock_hc.run_all_checks.return_value = MagicMock(results=[], summary={"pass": 0, "fail": 0, "warning": 0})
+
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=mock_api),
+            patch("data_extractor.create_data_extractor", return_value=mock_extractor),
+            patch("report_builder.create_report_builder", return_value=mock_report_builder),
+            patch("report_builder.ReportConfig.from_yaml", return_value=MagicMock()),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+            patch("health_checker.HealthChecker", return_value=mock_hc) as MockHC,
+            patch("external_port_mapper.ExternalPortMapper"),
+        ):
+            runner._run_report()
+        return MockHC
+
+    def test_run_report_threads_switch_password_by_ip_into_healthchecker(self):
+        """``self._switch_password_by_ip`` must land in ``switch_ssh_config``."""
+        runner = self._make_runner()
+        runner._switch_password_by_ip = {"10.0.0.1": "pw1", "10.0.0.2": "pw2"}
+
+        MockHC = self._invoke_run_report(runner)
+
+        MockHC.assert_called_once()
+        sw_cfg = MockHC.call_args.kwargs["switch_ssh_config"]
+        self.assertEqual(
+            sw_cfg["password_by_ip"],
+            {"10.0.0.1": "pw1", "10.0.0.2": "pw2"},
+            "per-IP password map must be threaded into HealthChecker",
+        )
+        self.assertIsNot(
+            sw_cfg["password_by_ip"],
+            runner._switch_password_by_ip,
+            "dict must be copied to avoid shared-state mutation",
+        )
+
+    def test_run_report_threads_switch_password_candidates_into_healthchecker(self):
+        """``self._switch_password_candidates`` must land in ``switch_ssh_config``."""
+        runner = self._make_runner()
+        runner._switch_password_candidates = ["primary", "Vastdata1!", "VastData1!"]
+
+        MockHC = self._invoke_run_report(runner)
+
+        MockHC.assert_called_once()
+        sw_cfg = MockHC.call_args.kwargs["switch_ssh_config"]
+        self.assertEqual(
+            sw_cfg["password_candidates"],
+            ["primary", "Vastdata1!", "VastData1!"],
+            "candidate list must be threaded for HealthChecker's probe fallback",
+        )
+        self.assertIsNot(
+            sw_cfg["password_candidates"],
+            runner._switch_password_candidates,
+            "list must be copied to avoid shared-state mutation",
+        )
+
+    def test_run_report_omits_password_by_ip_when_empty(self):
+        """Empty per-IP map must not pollute ``switch_ssh_config``."""
+        runner = self._make_runner()
+        runner._switch_password_by_ip = {}
+
+        MockHC = self._invoke_run_report(runner)
+
+        MockHC.assert_called_once()
+        sw_cfg = MockHC.call_args.kwargs["switch_ssh_config"]
+        self.assertNotIn(
+            "password_by_ip",
+            sw_cfg,
+            "empty per-IP map must be omitted, not handed to HealthChecker as {}",
+        )
+
+    def test_run_report_preserves_proxy_jump_with_new_keys(self):
+        """Tunnel + per-IP map + candidates must coexist in ``switch_ssh_config``."""
+        runner = self._make_runner(tunnel_address=("127.0.0.1", 2200))
+        runner._switch_password_by_ip = {"10.0.0.1": "pw1"}
+        runner._switch_password_candidates = ["primary", "Vastdata1!"]
+
+        MockHC = self._invoke_run_report(runner)
+
+        MockHC.assert_called_once()
+        sw_cfg = MockHC.call_args.kwargs["switch_ssh_config"]
+        self.assertEqual(sw_cfg["password_by_ip"], {"10.0.0.1": "pw1"})
+        self.assertEqual(sw_cfg["password_candidates"], ["primary", "Vastdata1!"])
+        self.assertIn("proxy_jump", sw_cfg)
+        self.assertEqual(sw_cfg["proxy_jump"]["host"], "10.0.0.1")
+        self.assertEqual(sw_cfg["proxy_jump"]["username"], "vastdata")
+        self.assertEqual(sw_cfg["proxy_jump"]["password"], "nodepw")
+
+
 if __name__ == "__main__":
     unittest.main()
