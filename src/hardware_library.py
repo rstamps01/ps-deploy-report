@@ -138,6 +138,18 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "dell_genoa_ebox_1u.png",
         "description": "Dell Genoa 1U EBox",
     },
+    "supermicro_milan_ebox": {
+        "type": "ebox",
+        "height_u": 2,
+        "image_filename": "supermicro_milan_ebox_2u.png",
+        "description": "Supermicro Milan EBox",
+    },
+    "smc_milan_ebox": {
+        "type": "ebox",
+        "height_u": 2,
+        "image_filename": "smc_milan_ebox_2u.png",
+        "description": "SMC Milan EBox",
+    },
     # =========================================================================
     # Switches
     # =========================================================================
