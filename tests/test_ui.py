@@ -43,6 +43,12 @@ def flask_server(tmp_path_factory):
     template_src = Path(__file__).parent.parent / "config" / "config.yaml.template"
     config_dst = config_dir / "config.yaml"
     template_dst = config_dir / "config.yaml.template"
+    # RM-1 Supplementary untracked config/config.yaml (.gitignored + git
+    # rm --cached) so CI runners don't ship it.  Fall back to the
+    # template — which the app bootstrap already copies when starting
+    # fresh — so the UI tests are resilient to that absence.
+    if not config_src.exists():
+        config_src = template_src
     config_dst.write_text(config_src.read_text())
     template_dst.write_text(template_src.read_text())
 
