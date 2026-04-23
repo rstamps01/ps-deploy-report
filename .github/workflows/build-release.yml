@@ -128,19 +128,25 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Ensure config files exist (Windows; cluster_profiles.json is gitignored)
+      - name: Ensure config files exist (Windows; cluster_profiles.json + config.yaml are gitignored)
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path config | Out-Null
           if (!(Test-Path config/cluster_profiles.json)) { '{}' | Set-Content -Path config/cluster_profiles.json }
+          # RM-1 Supplementary untracked config/config.yaml; the PyInstaller
+          # spec still bundles it, so seed from the committed template.
+          if (!(Test-Path config/config.yaml)) { Copy-Item config/config.yaml.template config/config.yaml }
 
-      - name: Ensure config files exist (macOS/Linux; cluster_profiles.json is gitignored)
+      - name: Ensure config files exist (macOS/Linux; cluster_profiles.json + config.yaml are gitignored)
         if: matrix.os == 'macos-latest'
         shell: bash
         run: |
           mkdir -p config
           [ -f config/cluster_profiles.json ] || echo '{}' > config/cluster_profiles.json
+          # RM-1 Supplementary untracked config/config.yaml; the PyInstaller
+          # spec still bundles it, so seed from the committed template.
+          [ -f config/config.yaml ] || cp config/config.yaml.template config/config.yaml
 
       - name: Install macOS build deps (cairo for SVG diagrams, create-dmg for .dmg)
         if: matrix.os == 'macos-latest'
