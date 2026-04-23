@@ -304,6 +304,26 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Ensure config files exist (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path config | Out-Null
+          if (!(Test-Path config/cluster_profiles.json)) { '{}' | Set-Content -Path config/cluster_profiles.json }
+          # RM-1 Supplementary untracked config/config.yaml; the PyInstaller
+          # spec still bundles it, so seed from the committed template.
+          if (!(Test-Path config/config.yaml)) { Copy-Item config/config.yaml.template config/config.yaml }
+
+      - name: Ensure config files exist (macOS)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: |
+          mkdir -p config
+          [ -f config/cluster_profiles.json ] || echo '{}' > config/cluster_profiles.json
+          # RM-1 Supplementary untracked config/config.yaml; the PyInstaller
+          # spec still bundles it, so seed from the committed template.
+          [ -f config/config.yaml ] || cp config/config.yaml.template config/config.yaml
+
       - name: Build application
         run: ${{ matrix.script }}
 
