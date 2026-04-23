@@ -66,6 +66,59 @@ class TestExternalPortMapperInit:
         assert mapper.switch_ips == ["10.0.0.10", "10.0.0.11"]
 
 
+class TestSwitchPasswordCandidates:
+    """Verify mixed-case password fallback honors the ordered candidate list."""
+
+    def _make_mapper(self, tmp_path, candidates=None):
+        with patch("external_port_mapper.VerboseLogger") as mock_vlog_cls, patch(
+            "utils.get_data_dir", return_value=tmp_path
+        ), patch("builtins.print"):
+            mock_vlog_cls.return_value = MagicMock()
+            return ExternalPortMapper(
+                cluster_ip="10.0.0.1",
+                api_user="support",
+                api_password="pw",
+                cnode_ip="10.0.0.2",
+                node_user="vastdata",
+                node_password="nodepw",
+                switch_ips=["10.0.0.10"],
+                switch_user="cumulus",
+                switch_password="Vastdata1!",
+                switch_password_candidates=candidates,
+            )
+
+    def test_candidates_default_to_single_password(self, tmp_path):
+        m = self._make_mapper(tmp_path)
+        assert m.switch_password_candidates == ["Vastdata1!"]
+
+    def test_candidates_preserve_order_with_primary_first(self, tmp_path):
+        m = self._make_mapper(tmp_path, candidates=["VastData1!", "Vastdata1!"])
+        # operator-entered primary is promoted to the front
+        assert m.switch_password_candidates[0] == "Vastdata1!"
+        assert "VastData1!" in m.switch_password_candidates
+
+    def test_candidates_dedupe(self, tmp_path):
+        m = self._make_mapper(tmp_path, candidates=["Vastdata1!", "Vastdata1!", "VastData1!"])
+        assert m.switch_password_candidates.count("Vastdata1!") == 1
+
+    def test_detect_falls_back_to_second_password(self, tmp_path):
+        m = self._make_mapper(tmp_path, candidates=["Vastdata1!", "VastData1!"])
+        with patch("external_port_mapper.run_ssh_command") as mock_ssh, patch(
+            "external_port_mapper.run_interactive_ssh"
+        ):
+            # First attempt with primary password fails auth; second attempt
+            # (same user, fallback password) succeeds with Cumulus output.
+            mock_ssh.side_effect = [
+                (1, "", "Authentication failed for user cumulus"),
+                (0, "cumulus linux hostname: leaf-1", ""),
+            ]
+            os_type, user, pw = m._detect_switch_os("10.0.0.10")
+
+        assert os_type == "cumulus"
+        assert user == "cumulus"
+        assert pw == "VastData1!"
+
+
 class TestSwitchDetection:
     def test_detect_cumulus_switch(self, mapper):
         with patch("external_port_mapper.run_ssh_command") as mock_ssh:
@@ -257,6 +310,240 @@ class TestCorrelation:
         assert result["port_map"][0]["node_hostname"] == "node-1"
         assert isinstance(result["cross_connections"], list)
         assert result["total_connections"] == 1
+
+
+@pytest.fixture
+def mapper_with_spine(tmp_path):
+    """ExternalPortMapper configured with a three-switch fabric (2 leaves + 1 spine).
+
+    Covers the spine-aware edge classification paths introduced for the
+    'no spine-to-leaf mapping in the Logical Network Diagram' fix.
+    """
+    with patch("external_port_mapper.VerboseLogger") as mock_vlog_cls, patch(
+        "utils.get_data_dir", return_value=tmp_path
+    ), patch("builtins.print"):
+        mock_vlog_cls.return_value = MagicMock()
+        m = ExternalPortMapper(
+            cluster_ip="10.0.0.1",
+            api_user="admin",
+            api_password="pass",
+            cnode_ip="10.0.0.2",
+            node_user="vastdata",
+            node_password="pass",
+            switch_ips=["10.0.0.153", "10.0.0.154", "10.0.0.156"],
+            switch_user="cumulus",
+            switch_password="pass",
+            switch_hostname_map={
+                "se-var-sw-1": "10.0.0.153",
+                "se-sw-2": "10.0.0.154",
+                "se-client-1-2": "10.0.0.156",
+            },
+            spine_ips=["10.0.0.156"],
+        )
+    return m
+
+
+class TestEdgeClassification:
+    """Tag LLDP-discovered switch edges as ipl / spine_uplink / spine_fabric."""
+
+    def test_leaf_to_leaf_is_ipl(self, mapper_with_spine):
+        edge = {"switch1_ip": "10.0.0.153", "switch2_ip": "10.0.0.154"}
+        classified = mapper_with_spine._classify_edge(edge)
+        assert classified["connection_type"] == "ipl"
+        assert classified["notes"] == "IPL"
+
+    def test_leaf_to_spine_is_spine_uplink(self, mapper_with_spine):
+        edge = {"switch1_ip": "10.0.0.153", "switch2_ip": "10.0.0.156"}
+        classified = mapper_with_spine._classify_edge(edge)
+        assert classified["connection_type"] == "spine_uplink"
+        assert classified["notes"] == "Spine uplink"
+
+    def test_spine_to_spine_is_fabric(self, mapper_with_spine):
+        mapper_with_spine.spine_ips = {"10.0.0.156", "10.0.0.157"}
+        edge = {"switch1_ip": "10.0.0.156", "switch2_ip": "10.0.0.157"}
+        classified = mapper_with_spine._classify_edge(edge)
+        assert classified["connection_type"] == "spine_fabric"
+        assert classified["notes"] == "Spine fabric"
+
+    def test_no_spine_ips_defaults_to_ipl(self, mapper):
+        """Legacy callers (no spine list) must continue to tag every edge as ipl."""
+        edge = {"switch1_ip": "10.0.0.10", "switch2_ip": "10.0.0.11"}
+        classified = mapper._classify_edge(edge)
+        assert classified["connection_type"] == "ipl"
+
+    def test_preserves_existing_connection_type(self, mapper_with_spine):
+        edge = {"switch1_ip": "10.0.0.153", "switch2_ip": "10.0.0.156", "connection_type": "ipl"}
+        classified = mapper_with_spine._classify_edge(edge)
+        assert classified["connection_type"] == "ipl", "Explicit upstream tag must win"
+
+
+class TestNeighborResolution:
+    def test_resolves_by_exact_hostname(self, mapper_with_spine):
+        assert mapper_with_spine._resolve_neighbor_to_switch_ip("se-var-sw-1") == "10.0.0.153"
+
+    def test_hostname_match_is_case_insensitive(self, mapper_with_spine):
+        assert mapper_with_spine._resolve_neighbor_to_switch_ip("SE-VAR-SW-1") == "10.0.0.153"
+
+    def test_resolves_fqdn_by_short_name(self, mapper_with_spine):
+        assert mapper_with_spine._resolve_neighbor_to_switch_ip("se-var-sw-1.lab.example") == "10.0.0.153"
+
+    def test_resolves_by_advertised_mgmt_ip(self, mapper_with_spine):
+        """Hostname missing but mgmt-ip advertised -> still resolves."""
+        assert mapper_with_spine._resolve_neighbor_to_switch_ip("", remote_mgmt_ip="10.0.0.154") == "10.0.0.154"
+
+    def test_unknown_neighbor_returns_empty(self, mapper_with_spine):
+        assert mapper_with_spine._resolve_neighbor_to_switch_ip("some-node-42") == ""
+
+
+class TestCumulusLldpGeneralizedWalk:
+    """Regression coverage for the 'no leaf→spine uplinks' bug.
+
+    The legacy parser only looked at swp29..swp32 and required symmetric
+    ports, so spine uplinks on swp1 were silently dropped.  The generalized
+    walk must discover them whenever ``switch_hostname_map`` is provided.
+    """
+
+    def test_generalized_walk_emits_uplink_from_leaf(self, mapper_with_spine):
+        json_output = (
+            "{"
+            '  "swp1": {'
+            '    "lldp": {'
+            '      "neighbor": {'
+            '        "se-client-1-2": {'
+            '          "port": {"name": "swp10"},'
+            '          "mgmt-ip": "10.0.0.156"'
+            "        }"
+            "      }"
+            "    }"
+            "  },"
+            '  "swp29": {'
+            '    "lldp": {'
+            '      "neighbor": {'
+            '        "se-sw-2": {'
+            '          "port": {"name": "swp29"}'
+            "        }"
+            "      }"
+            "    }"
+            "  }"
+            "}"
+        )
+
+        edges = mapper_with_spine._parse_cumulus_lldp_for_ipl(json_output, "10.0.0.153")
+
+        remote_ips = {e["switch2_ip"] for e in edges}
+        assert "10.0.0.156" in remote_ips, "Spine uplink on swp1 must be detected"
+        assert "10.0.0.154" in remote_ips, "IPL on swp29 must still be detected"
+
+        uplink = next(e for e in edges if e["switch2_ip"] == "10.0.0.156")
+        assert uplink["switch1_port"] == "swp1"
+        assert uplink["switch2_port"] == "swp10"
+
+    def test_generalized_walk_ignores_unknown_hosts(self, mapper_with_spine):
+        """Neighbors that aren't cluster switches (e.g. node LLDP) are dropped."""
+        json_output = (
+            "{"
+            '  "swp3": {'
+            '    "lldp": {'
+            '      "neighbor": {'
+            '        "some-compute-node": {"port": {"name": "enp1s0f0"}}'
+            "      }"
+            "    }"
+            "  }"
+            "}"
+        )
+        edges = mapper_with_spine._parse_cumulus_lldp_for_ipl(json_output, "10.0.0.153")
+        assert edges == []
+
+    def test_legacy_narrow_scan_when_no_hostname_map(self, mapper):
+        """Without a hostname map / spine list, the collector preserves legacy behavior.
+
+        This is the compatibility guarantee so existing 2-leaf deployments
+        continue to function without reconfiguration.
+        """
+        json_output = (
+            "{"
+            '  "swp1": {'
+            '    "lldp": {'
+            '      "neighbor": {'
+            '        "leaf-b": {"port": {"name": "swp10"}}'
+            "      }"
+            "    }"
+            "  },"
+            '  "swp29": {'
+            '    "lldp": {'
+            '      "neighbor": {'
+            '        "leaf-b": {"port": {"name": "swp29"}}'
+            "      }"
+            "    }"
+            "  }"
+            "}"
+        )
+        edges = mapper._parse_cumulus_lldp_for_ipl(json_output, "10.0.0.10")
+        # Legacy mode must only pick up the symmetric swp29 peer-link,
+        # ignoring the asymmetric swp1 entry.
+        assert len(edges) == 1
+        assert edges[0]["switch1_port"] == "swp29"
+
+
+class TestOnyxLldpGeneralizedWalk:
+    """Regression coverage for the Mellanox Onyx parallel to the Cumulus walk.
+
+    Before PMI-4 the Onyx parser only inspected ports Eth1/29..Eth1/32 with a
+    symmetric remote-port check, so leaf-to-spine uplinks on arbitrary ports
+    were silently dropped on Onyx-only fabrics.  The generalized walk must
+    discover them whenever ``switch_hostname_map`` is configured.
+    """
+
+    ONYX_OUTPUT = (
+        "Local Interface     Chassis ID          Port ID             System Name\n"
+        "-----------------   -----------------   -----------------   -----------\n"
+        "Eth1/1              f4:02:70:aa:bb:cc   Eth1/10             se-client-1-2\n"
+        "Eth1/29             f4:02:70:c1:22:00   Eth1/29             se-sw-2\n"
+    )
+
+    def test_generalized_walk_emits_uplink_and_ipl(self, mapper_with_spine):
+        edges = mapper_with_spine._parse_onyx_lldp_for_ipl(self.ONYX_OUTPUT, "10.0.0.153")
+        remote_ips = {e["switch2_ip"] for e in edges}
+        assert "10.0.0.156" in remote_ips, "Spine uplink on Eth1/1 must be detected"
+        assert "10.0.0.154" in remote_ips, "MLAG peer-link on Eth1/29 must still be detected"
+
+        uplink = next(e for e in edges if e["switch2_ip"] == "10.0.0.156")
+        assert uplink["switch1_port"] == "Eth1/1", "Onyx native naming preserved in generalized mode"
+        assert uplink["switch2_port"] == "Eth1/10"
+        assert uplink["port_number"] == 1
+
+    def test_generalized_walk_drops_unknown_hosts(self, mapper_with_spine):
+        onyx = (
+            "Local Interface     Chassis ID          Port ID             System Name\n"
+            "-----------------   -----------------   -----------------   -----------\n"
+            "Eth1/5              aa:bb:cc:dd:ee:ff   enp1s0f0            compute-node-42\n"
+        )
+        assert mapper_with_spine._parse_onyx_lldp_for_ipl(onyx, "10.0.0.153") == []
+
+    def test_generalized_walk_skips_self_advertisement(self, mapper_with_spine):
+        """A switch that somehow shows up as its own neighbor must not produce a self-edge."""
+        onyx = (
+            "Local Interface     Chassis ID          Port ID             System Name\n"
+            "-----------------   -----------------   -----------------   -----------\n"
+            "Eth1/7              f4:02:70:c1:22:00   Eth1/7              se-var-sw-1\n"
+        )
+        edges = mapper_with_spine._parse_onyx_lldp_for_ipl(onyx, "10.0.0.153")
+        assert edges == [], "Self-advertised hostname must not yield a loopback edge"
+
+    def test_legacy_narrow_scan_when_no_hostname_map(self, mapper):
+        """Without a hostname map, the Onyx parser must preserve the historical narrow scan."""
+        onyx = (
+            "Local Interface     Chassis ID          Port ID             System Name\n"
+            "-----------------   -----------------   -----------------   -----------\n"
+            "Eth1/1              aa:bb:cc:dd:ee:ff   Eth1/10             leaf-b\n"
+            "Eth1/29             f4:02:70:c1:22:00   Eth1/29             leaf-b\n"
+        )
+        edges = mapper._parse_onyx_lldp_for_ipl(onyx, "10.0.0.10")
+        assert len(edges) == 1
+        # Legacy mode converts Eth1/29 -> swp29 for consistency with the
+        # Cumulus narrow scan.  Eth1/1 is asymmetric and must be skipped.
+        assert edges[0]["switch1_port"] == "swp29"
+        assert edges[0]["port_number"] == 29
 
 
 class TestProxyJumpConfig:

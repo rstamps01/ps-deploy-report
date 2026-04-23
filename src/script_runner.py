@@ -11,6 +11,7 @@ validation scripts on VAST clusters.
 import hashlib
 import os
 import platform
+import re
 import shutil
 import subprocess
 import tempfile
@@ -67,7 +68,8 @@ class ScriptRunner:
     }
 
     # Default remote paths
-    DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+    # Intentional [B108]: /tmp/vast_scripts is a remote working directory on the VAST CNode (created over SSH), not a local tempfile.
+    DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"  # nosec B108
     DEFAULT_LOCAL_DIR = "output/scripts"
 
     def __init__(
@@ -82,6 +84,13 @@ class ScriptRunner:
         """
         self._output_callback = output_callback
         self._local_dir: Optional[Path] = None
+        # RM-8: per-stream state flag so ``_classify_stderr_line`` can
+        # treat code-snippet lines inside a Python traceback (the ones
+        # indented below a ``File "...", line N, in func`` frame) as
+        # ``error`` instead of the default ``warn``.  Without this a
+        # single traceback renders as [ERROR][WARN][WARN][ERROR] in the
+        # operator log, which makes triage miserable.
+        self._stderr_in_traceback: bool = False
 
     def _emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         """Emit output to the callback if set."""
@@ -410,7 +419,9 @@ class ScriptRunner:
 
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: target is a freshly-deployed VAST CNode whose host key is not yet
+            # in known_hosts; AutoAddPolicy is required for first-contact provisioning workflows.
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
                 username=username,
@@ -501,6 +512,18 @@ class ScriptRunner:
         # --- Warn: actual failures the user should know about ---
         if "{error}" in ll and "general exception" in ll:
             return "warn"
+        # RM-14c: tool-emitted ``{WARNING}`` / ``{CRITICAL}`` tags.
+        # vnetmap.py (and other VAST scripts) write structured log lines
+        # like ``(P123) {WARNING} [vnetmap.py:109] Unable to determine
+        # suitable switch API for <ip>`` to stdout.  Without this branch
+        # they rendered as ``[INFO]`` in the operator pane, hiding a
+        # real diagnostic signal (see import/Assets-2026-04-21c/
+        # output-results-logs-2026-04-21.txt -- the 04:15 Reporter run).
+        # ``{INFO}`` is left to fall through as ``info``; ``{ERROR}``
+        # that isn't the suppressed ``general exception`` retry noise
+        # is already handled above.
+        if "{warning}" in ll or "{critical}" in ll:
+            return "warn"
         if "failed getting data from" in ll:
             return "warn"
         if "failed nodes:" in ll:
@@ -515,38 +538,98 @@ class ScriptRunner:
 
         return "info"
 
-    @staticmethod
-    def _classify_stderr_line(line: str) -> str:
+    # RM-8: lines like ``ValueError: bad token`` / ``RuntimeError: boom``
+    # that appear at the tail of a Python traceback.  Used by
+    # :meth:`_classify_stderr_line` to flip the traceback-continuation
+    # state off and still classify the summary as ``error``.
+    _EXCEPTION_SUMMARY_RE = re.compile(
+        r"^(?:[A-Za-z_][A-Za-z0-9_\.]*(?:Error|Exception|Warning|Interrupt|Timeout|Failure)):\s",
+        re.IGNORECASE,
+    )
+
+    def _classify_stderr_line(self, line: str) -> str:
         """Classify a stderr line, returning an appropriate log level.
 
         Many programs write non-error diagnostics to stderr (SSH warnings,
         ping probes, etc.).  This method distinguishes true errors from
         informational noise.
+
+        RM-8: this is intentionally stateful via ``self._stderr_in_traceback``
+        so that indented code-snippet lines between ``File "...", line N,
+        in foo`` frames (the source excerpts Python prints) classify as
+        ``error`` instead of the default ``warn``.  The net effect is
+        that a full Python traceback renders as one contiguous [ERROR]
+        block in the operator log, not a checkerboard of [ERROR]/[WARN].
+
+        Callers that process streams from unrelated sources can reset
+        the state by calling :meth:`_reset_stderr_classifier_state`
+        (e.g. between remote-command invocations).
         """
+        raw = line
         ll = line.lower().strip()
         if not ll:
+            # A blank line typically ends a traceback block.  Reset state
+            # so the *next* indented line isn't mis-classified as error.
+            self._stderr_in_traceback = False
             return "info"
 
         # SSH host-key / known-hosts warnings are informational
         if "permanently added" in ll and "known hosts" in ll:
+            self._stderr_in_traceback = False
             return "info"
         if ll.startswith("warning:") and "known hosts" in ll:
+            self._stderr_in_traceback = False
             return "info"
 
         # Ping diagnostic output — warn, not error
         if ll.startswith("ping:"):
+            self._stderr_in_traceback = False
             return "warn"
 
-        # Python traceback lines — real errors
+        # Traceback header opens the continuation state.
         if ll.startswith("traceback (most recent call last"):
-            return "error"
-        if ll.startswith("file ") and ", line " in ll and ", in " in ll:
-            return "error"
-        if ll.startswith("exception:") or ll.startswith("raise "):
+            self._stderr_in_traceback = True
             return "error"
 
-        # Generic — default to warn for stderr
+        # ``File "...", line N, in foo`` frame header.  Keep state on so
+        # the next indented source line classifies as error.
+        if ll.startswith("file ") and ", line " in ll and ", in " in ll:
+            self._stderr_in_traceback = True
+            return "error"
+
+        # RM-8: inside a traceback, any indented non-empty line is part
+        # of the source excerpt Python prints beneath the frame header
+        # (e.g. ``    return subprocess.check_output(cmd, ...)``).  That
+        # belongs to the traceback block, not a separate warning.
+        if self._stderr_in_traceback and (raw.startswith((" ", "\t"))):
+            return "error"
+
+        # Explicit ``raise X`` / ``Exception:`` lines — real errors.
+        # These typically appear either inside the traceback source
+        # excerpts or at the tail (the exception summary).  Keep state
+        # on for ``raise``-in-source but let the summary line turn it
+        # off so subsequent unrelated stderr doesn't inherit ``error``.
+        if ll.startswith("raise "):
+            return "error"
+        if ll.startswith("exception:"):
+            self._stderr_in_traceback = False
+            return "error"
+        if self._EXCEPTION_SUMMARY_RE.match(line.strip()):
+            self._stderr_in_traceback = False
+            return "error"
+
+        # Anything else — we've left the traceback block.
+        self._stderr_in_traceback = False
         return "warn"
+
+    def _reset_stderr_classifier_state(self) -> None:
+        """Reset the RM-8 traceback-continuation state.
+
+        Public (for tests and for callers that process multiple remote
+        commands from a single ``ScriptRunner`` instance) so state from
+        a prior command can't contaminate classification of the next.
+        """
+        self._stderr_in_traceback = False
 
     def execute_remote(
         self,
@@ -556,6 +639,7 @@ class ScriptRunner:
         command: str,
         timeout: int = 300,
         working_dir: Optional[str] = None,
+        display_command: Optional[str] = None,
     ) -> ScriptResult:
         """
         Execute a command on a remote host.
@@ -564,9 +648,18 @@ class ScriptRunner:
             host: Remote host
             username: SSH username
             password: SSH password
-            command: Command to execute
+            command: Command to execute (the real command, with any embedded
+                secrets — passed to SSH but **never** written to the log).
             timeout: Command timeout in seconds
             working_dir: Working directory for command execution
+            display_command: Optional redacted form of ``command`` used only
+                for the prompt-style echo in the operator output pane.  Pass
+                a redacted string whenever ``command`` contains embedded
+                heredocs, password JSON maps, tokens, or any other secret
+                material that must not be logged.  When ``None`` (the
+                default), ``command`` is echoed verbatim to preserve the
+                long-standing behaviour for ordinary commands that are safe
+                to show.  See RM-1 in docs/TODO-ROADMAP.md.
 
         Returns:
             ScriptResult with execution status
@@ -578,10 +671,17 @@ class ScriptRunner:
         # Prepend cd if working_dir specified
         if working_dir:
             command = f"cd {working_dir} && {command}"
+            if display_command is not None:
+                display_command = f"cd {working_dir} && {display_command}"
 
-        # Show full SSH command like terminal
+        # Show full SSH command like terminal.  ``display_command`` (when
+        # provided by the caller) is the only form that reaches the output
+        # pane; ``command`` is handed to SSH unmodified.  This prevents
+        # heredoc-embedded credentials (e.g. the vnetmap per-switch password
+        # JSON map) from leaking into logs / bundles / clipboard copies.
+        echoed = display_command if display_command is not None else command
         self._emit("info", f"$ ssh {username}@{host}")
-        self._emit("info", f"{username}@{host}:~$ {command}")
+        self._emit("info", f"{username}@{host}:~$ {echoed}")
         self._emit("info", "")
 
         try:
@@ -598,13 +698,30 @@ class ScriptRunner:
                     if line_level is not None:
                         self._emit(line_level, line)
             if stderr:
+                # RM-8: reset the traceback-continuation flag at the
+                # start of each stderr stream so state from a previous
+                # remote command can't contaminate this one's first
+                # indented line.
+                self._reset_stderr_classifier_state()
                 for line in stderr.strip().split("\n"):
                     self._emit(self._classify_stderr_line(line), line)
 
             self._emit("info", "")
-            result_level = "success" if success else "error"
-            self._emit(result_level, f"{username}@{host}:~$ echo $?")
-            self._emit(result_level, str(rc))
+            # RM-14: the ``echo $?`` prompt and the return code are shell
+            # transcript, not diagnostics.  Previously we emitted both at
+            # ``error`` level on failure (and ``success`` level on ok),
+            # which produced misleading operator logs such as::
+            #
+            #     [ERROR] vastdata@host:~$ echo $?
+            #     [ERROR] 1
+            #     [INFO]  [Command completed in 32.93s]
+            #
+            # The real error is already flagged via the preceding stderr
+            # traceback classification (RM-8).  Keep the transcript framing
+            # at ``info`` so operator scans for ``[ERROR]`` only surface
+            # genuine diagnostics.
+            self._emit("info", f"{username}@{host}:~$ echo $?")
+            self._emit("info", str(rc))
             self._emit("info", f"[Command completed in {duration_sec:.2f}s]")
 
             return ScriptResult(
@@ -638,6 +755,7 @@ class ScriptRunner:
         timeout: int = 600,
         working_dir: Optional[str] = None,
         workflow_id: str = "workflow",
+        display_command: Optional[str] = None,
     ) -> ScriptResult:
         """
         Execute a command on a remote host using a persistent tmux session.
@@ -652,10 +770,13 @@ class ScriptRunner:
             host: Remote host
             username: SSH username
             password: SSH password
-            command: Command to execute
+            command: Command to execute (real command handed to tmux; any
+                embedded secrets in here are never written to the log).
             timeout: Command timeout in seconds (default 10 minutes)
             working_dir: Working directory for command execution
             workflow_id: ID for naming the session
+            display_command: Optional redacted form of ``command`` used only
+                for log echoes.  See ``execute_remote`` for the contract.
 
         Returns:
             ScriptResult with execution status
@@ -669,7 +790,15 @@ class ScriptRunner:
         tmux_ok, tmux_msg = session_mgr.check_tmux_available(host, username, password)
         if not tmux_ok:
             self._emit("warn", "tmux not available, falling back to direct execution")
-            return self.execute_remote(host, username, password, command, timeout, working_dir)
+            return self.execute_remote(
+                host,
+                username,
+                password,
+                command,
+                timeout,
+                working_dir,
+                display_command=display_command,
+            )
 
         self._emit("success", f"tmux found: {tmux_msg}")
 
@@ -681,6 +810,7 @@ class ScriptRunner:
             command=command,
             workflow_id=workflow_id,
             working_dir=working_dir,
+            display_command=display_command,
         )
 
         if not success:
@@ -834,7 +964,9 @@ class ScriptRunner:
 
         try:
             client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            # Intentional [B507]: target is a freshly-deployed VAST CNode whose host key is not yet
+            # in known_hosts; AutoAddPolicy is required for first-contact provisioning workflows.
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
                 username=username,

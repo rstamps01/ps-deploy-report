@@ -258,7 +258,9 @@ class VMSTunnel:
         # 2. SSH to entry CNode (kept alive for the tunnel lifetime)
         logger.info("Opening persistent SSH to %s for API tunnel...", self.tech_port_ip)
         self._ssh_client = paramiko.SSHClient()
-        self._ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # Intentional [B507]: tunnel target is the freshly-deployed CNode (tech_port_ip) used for
+        # post-install discovery; AutoAddPolicy is required for first-contact operations.
+        self._ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
         self._ssh_client.connect(
             self.tech_port_ip,
             username=self.ssh_user,

@@ -70,7 +70,7 @@
                             <input type="password" id="nodePassword" name="node_password" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default password: Vastdata1!&#10; - Alt Passwords: VastData1! / cumulus / Cumu1usLinux!&#10; - onyx/Cisco/Arista: admin">&#9432;</span></label>
+                            <label for="switchPassword">Switch Password <span class="info-icon" title="Default password: Vastdata1!&#10; - Alt Passwords: VastData1! / Cumu1usLinux! (Cumulus factory default)&#10; - Onyx / Cisco / Arista: admin / admin">&#9432;</span></label>
                             <input type="password" id="switchPassword" name="switch_password" class="form-control">
                         </div>
                     </div>
@@ -1230,7 +1230,7 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
     line.className = 'output-line ' + cls;
     line.setAttribute('data-tier', tier);
     if (visible.indexOf(tier) === -1) line.classList.add('tier-hidden');
-    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span>[' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
+    line.innerHTML = '<span class="timestamp">' + entry.timestamp + '</span> [' + entry.level.toUpperCase() + '] ' + this._escapeHtml(entry.message);
     if (entry.details) {
         var d = document.createElement('div');
         d.style.marginLeft = '20px';
@@ -2263,6 +2263,8 @@ async function runReporterGenerate(creds, includeHealth) {
     try { manualPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) {}
 
     var doVnetmap = document.getElementById('rptRunVnetmap');
+    var useDefaultsEl = document.getElementById('useDefaultCreds');
+    var useDefaults = useDefaultsEl ? useDefaultsEl.checked : false;
     var payload = Object.assign({}, creds, {
         switch_placement: switchPlacement,
         manual_placements: JSON.stringify(manualPlacements),
@@ -2271,7 +2273,11 @@ async function runReporterGenerate(creds, includeHealth) {
         enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
         proxy_jump: creds.proxy_jump ? 'on' : '',
         tech_port: creds.tech_port ? 'on' : '',
-        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : ''
+        run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : '',
+        // RM-13: relay the Autofill Password checkbox so /generate can
+        // expand the single switch_password into the full candidate
+        // list (UI -> config -> env -> built-in VAST/Cumulus defaults).
+        use_default_creds: useDefaults ? 'on' : ''
     });
 
     startReporterLogStream();
@@ -2774,7 +2780,29 @@ function resetOneShotUI() {
 
 async function downloadResults() {
     var creds = getCredentials();
-    outputPane.append('info', 'Collecting results for download...');
+    // Prefer the exact bundle the one-shot runner produced (Option A):
+    // it was built with freshness filters + pre-run archiving applied
+    // and is guaranteed not to contain weeks-old leftover files that a
+    // fresh rebuild would sweep in.  Only fall back to rebuild when no
+    // one-shot bundle has been produced yet for this cluster.
+    if (creds.cluster_ip) {
+        try {
+            var lastResp = await fetch('/advanced-ops/bundle/last?cluster_ip=' + encodeURIComponent(creds.cluster_ip));
+            if (lastResp.ok) {
+                var lastData = await lastResp.json();
+                if (lastData.status === 'ok' && lastData.name) {
+                    outputPane.append('info', 'Downloading last one-shot bundle: ' + lastData.name);
+                    var a0 = document.createElement('a');
+                    a0.href = '/advanced-ops/bundle/download/' + encodeURIComponent(lastData.name);
+                    a0.download = lastData.name;
+                    document.body.appendChild(a0); a0.click(); document.body.removeChild(a0);
+                    outputPane.append('success', 'Download started: ' + lastData.name);
+                    return;
+                }
+            }
+        } catch (_) { /* fall through to rebuild */ }
+    }
+    outputPane.append('info', 'No one-shot bundle on record \u2014 collecting results for download...');
     try {
         var collectResp = await fetch('/advanced-ops/bundle/collect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cluster_name: creds.cluster_ip, cluster_ip: creds.cluster_ip, cluster_version: 'Unknown' }) });
         var collectData = await collectResp.json();

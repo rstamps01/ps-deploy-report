@@ -148,6 +148,162 @@ class TestScriptRunnerRemoteExecution:
         assert result.success is False
 
 
+class TestScriptRunnerRedaction:
+    """RM-1: verify ``display_command`` redacts sensitive text in log echoes.
+
+    When a caller passes a ``display_command`` that differs from ``command``,
+    the real command must still be handed to SSH verbatim, but the operator
+    log (and anything downstream: bundles, clipboard copies, UI pane) must
+    only ever see the redacted form.  The canonical trigger is the vnetmap
+    per-switch password heredoc where ``command`` embeds a JSON map of real
+    passwords — those literals must not appear in a single emitted entry.
+    """
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_replaces_echo(self, mock_ssh):
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        real_cmd = (
+            "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips "
+            "--multiple-passwords <<'VAST_PW_MAP'\n"
+            '{"10.0.0.1": "Vastdata1!", "10.0.0.2": "SpareLeaf!"}\n'
+            "VAST_PW_MAP"
+        )
+        display_cmd = "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips --multiple-passwords <redacted>"
+
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", real_cmd, display_command=display_cmd)
+
+        # SSH gets the real command, including the secret heredoc.
+        called_cmd = mock_ssh.call_args.args[3]
+        assert "Vastdata1!" in called_cmd
+        assert "SpareLeaf!" in called_cmd
+
+        # The emitted log pane never sees the real passwords.
+        joined = "\n".join(m for _, m in emitted)
+        assert "Vastdata1!" not in joined
+        assert "SpareLeaf!" not in joined
+        assert "<redacted>" in joined
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_default_echoes_command_verbatim(self, mock_ssh):
+        """Backwards-compat: when ``display_command`` is omitted, the command
+        is echoed as before so ordinary (safe) shell invocations still appear
+        in the operator pane."""
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "ls -la /tmp")
+
+        joined = "\n".join(m for _, m in emitted)
+        assert "ls -la /tmp" in joined
+
+    @patch("script_runner.run_ssh_command")
+    def test_display_command_respects_working_dir_prefix(self, mock_ssh):
+        """When ``working_dir`` is set, both the real and display forms get
+        the same ``cd <dir> &&`` prefix so the echoed line remains readable
+        without leaking the working directory back into the wrong form."""
+        mock_ssh.return_value = (0, "", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote(
+            "10.0.0.10",
+            "vastdata",
+            "nodepw",
+            "python3 vnetmap.py -p 'Vastdata1!'",
+            working_dir="/vast/install",
+            display_command="python3 vnetmap.py -p '<switch-password>'",
+        )
+
+        called_cmd = mock_ssh.call_args.args[3]
+        assert called_cmd == "cd /vast/install && python3 vnetmap.py -p 'Vastdata1!'"
+
+        joined = "\n".join(m for _, m in emitted)
+        assert "Vastdata1!" not in joined
+        assert "cd /vast/install && python3 vnetmap.py -p '<switch-password>'" in joined
+
+
+class TestExecuteRemotePostCommandLevel:
+    """RM-14: the post-command shell prompt + return code are transcript,
+    not diagnostics.
+
+    ``execute_remote`` appends the following fixed lines after the SSH
+    command finishes::
+
+        <user>@<host>:~$ echo $?
+        <rc>
+        [Command completed in <d>s]
+
+    Previously, when ``rc != 0`` the first two lines were emitted at level
+    ``error``, producing the misleading operator log seen in
+    import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt ::
+
+        [ERROR] vastdata@10.143.11.203:~$ echo $?
+        [ERROR] 1
+        [INFO]  [Command completed in 32.93s]
+
+    The real error is already flagged on the preceding
+    ``Traceback``/``Exception:`` lines via :meth:`_classify_stderr_line`
+    (RM-8).  The transcript framing must classify at ``info`` regardless
+    of outcome so operator scans for ``[ERROR]`` only surface real
+    diagnostics.
+    """
+
+    @patch("script_runner.run_ssh_command")
+    def test_echo_and_rc_emit_info_on_failure(self, mock_ssh):
+        mock_ssh.return_value = (1, "", "Exception: boom")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "false")
+
+        echo_levels = [lvl for lvl, msg in emitted if "echo $?" in msg]
+        rc_levels = [lvl for lvl, msg in emitted if msg == "1"]
+
+        assert echo_levels, "expected an ``echo $?`` line in the log"
+        assert rc_levels, "expected the return-code line in the log"
+        assert all(lvl == "info" for lvl in echo_levels), f"echo $? line must emit at info; saw {echo_levels!r}"
+        assert all(lvl == "info" for lvl in rc_levels), f"return-code line must emit at info; saw {rc_levels!r}"
+
+    @patch("script_runner.run_ssh_command")
+    def test_echo_and_rc_emit_info_on_success(self, mock_ssh):
+        """Symmetrical guard: the same lines must be ``info`` on success
+        too (previously they leaked ``success`` level, which dyed the
+        prompt line green in the UI)."""
+        mock_ssh.return_value = (0, "ok", "")
+        emitted = []
+
+        def cb(level, message, _meta):
+            emitted.append((level, message))
+
+        runner = ScriptRunner(output_callback=cb)
+        runner.execute_remote("10.0.0.10", "vastdata", "nodepw", "true")
+
+        echo_levels = [lvl for lvl, msg in emitted if "echo $?" in msg]
+        rc_levels = [lvl for lvl, msg in emitted if msg == "0"]
+        assert all(
+            lvl == "info" for lvl in echo_levels
+        ), f"echo $? line must emit at info on success; saw {echo_levels!r}"
+        assert all(
+            lvl == "info" for lvl in rc_levels
+        ), f"return-code line must emit at info on success; saw {rc_levels!r}"
+
+
 class TestScriptRunnerCleanup:
     @patch("script_runner.run_ssh_command")
     def test_cleanup_remote_success(self, mock_ssh, runner):
@@ -180,6 +336,133 @@ class TestOutputClassification:
     def test_classify_ssh_retry_suppressed(self, runner):
         result = runner._classify_output_line("Try again using SSH_KEY2")
         assert result is None
+
+    # ------------------------------------------------------------------
+    # RM-14c: tool-emitted ``{WARNING}`` / ``{CRITICAL}`` tags on stdout
+    # must promote to the matching log level.  Previously every
+    # ``{<LEVEL>}`` other than the specific ``{ERROR} general exception``
+    # branch fell through to ``info``, which caused vnetmap.py output like
+    # ``{WARNING} Unable to determine suitable switch API for <ip>`` to
+    # render as ``[INFO]`` in the operator pane (see the 04:15 Reporter
+    # run in import/Assets-2026-04-21c/output-results-logs-2026-04-21.txt).
+    # ------------------------------------------------------------------
+
+    def test_classify_vnetmap_warning_tag_promotes_to_warn(self, runner):
+        line = "2026-04-23 04:15:52,614 (P190875) {WARNING} [vnetmap.py:109] Unable to determine suitable switch API for 10.143.11.153"  # noqa: E501
+        assert runner._classify_output_line(line) == "warn"
+
+    def test_classify_bare_warning_tag_promotes_to_warn(self, runner):
+        assert runner._classify_output_line("{WARNING} some tool message") == "warn"
+
+    def test_classify_info_tag_stays_info(self, runner):
+        line = "2026-04-23 04:15:21,006 (P190875) {INFO} [vnetmap.py:528] Discovering 2 switch manufacturer by ip..."
+        assert runner._classify_output_line(line) == "info"
+
+    def test_classify_critical_tag_promotes_to_warn(self, runner):
+        # ``{CRITICAL}`` is rare enough that we conservatively surface it
+        # at ``warn`` (the existing ``error`` level is reserved for
+        # stderr diagnostics via ``_classify_stderr_line``); the point is
+        # it must NOT render as ``info``.
+        assert runner._classify_output_line("{CRITICAL} unrecoverable fault") == "warn"
+
+
+class TestStderrTracebackClassification:
+    """RM-8: a full Python traceback on stderr must render as one
+    contiguous [ERROR] block, not a checkerboard of [ERROR]/[WARN].
+    The classifier is stateful (per-stream) so indented source lines
+    beneath a ``File "...", line N, in foo`` frame inherit ``error``.
+    """
+
+    def test_frame_header_classifies_as_error(self, runner):
+        line = '  File "/opt/vast/vnetmap.py", line 1234, in main'
+        assert runner._classify_stderr_line(line) == "error"
+
+    def test_traceback_header_classifies_as_error(self, runner):
+        assert runner._classify_stderr_line("Traceback (most recent call last):") == "error"
+
+    def test_indented_code_snippet_inside_traceback_is_error(self, runner):
+        """RM-8 core case: the indented source line between two
+        ``File "..."`` frames used to be classified as ``warn``, which
+        made tracebacks look like [ERROR][WARN][WARN][ERROR].  After
+        RM-8 it must classify as ``error``.
+        """
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("Traceback (most recent call last):") == "error"
+        assert runner._classify_stderr_line('  File "vnetmap.py", line 42, in main') == "error"
+        assert runner._classify_stderr_line("    return subprocess.check_output(cmd, shell=True)") == "error"
+        assert runner._classify_stderr_line('  File "api.py", line 17, in connect') == "error"
+        assert runner._classify_stderr_line("    raise ConnectionError('fabric API unreachable')") == "error"
+        assert runner._classify_stderr_line("ConnectionError: fabric API unreachable") == "error"
+
+    def test_full_traceback_renders_as_contiguous_error_block(self, runner):
+        """End-to-end: feeding the classifier a realistic vnetmap
+        traceback (matching what the Test Suite showed) yields every
+        line classified as ``error`` — no inline ``warn`` breaks.
+        """
+        runner._reset_stderr_classifier_state()
+        traceback_lines = [
+            "Traceback (most recent call last):",
+            '  File "/opt/vast/vnetmap.py", line 1234, in main',
+            "    topology = build_topology(switches)",
+            '  File "/opt/vast/vnetmap.py", line 567, in build_topology',
+            "    client.connect(switch_ip)",
+            '  File "/opt/vast/api.py", line 99, in connect',
+            "    raise Exception(f'Failed to connect to switch {switch_ip}')",
+            "Exception: Failed to connect to switch 10.143.11.156",
+        ]
+        levels = [runner._classify_stderr_line(line) for line in traceback_lines]
+        assert all(
+            level == "error" for level in levels
+        ), f"RM-8: expected every traceback line to classify as 'error', got {levels}"
+
+    def test_blank_line_after_traceback_resets_state(self, runner):
+        """A blank line ends the traceback block.  Subsequent indented
+        output (unrelated) must not be mis-classified as ``error``.
+        """
+        runner._reset_stderr_classifier_state()
+        runner._classify_stderr_line("Traceback (most recent call last):")
+        runner._classify_stderr_line('  File "x.py", line 1, in y')
+        runner._classify_stderr_line("    do_thing()")
+        # Blank line ends the block.
+        assert runner._classify_stderr_line("") == "info"
+        # Now an indented line is not part of any traceback; default warn.
+        assert runner._classify_stderr_line("    some debug line") == "warn"
+
+    def test_ssh_host_key_warning_stays_info(self, runner):
+        """RM-8 must not regress the pre-existing SSH host-key warning
+        classification — these are informational, not errors.
+        """
+        runner._reset_stderr_classifier_state()
+        line = "Warning: Permanently added '10.143.11.156' (ED25519) to the list of known hosts."
+        assert runner._classify_stderr_line(line) == "info"
+
+    def test_ping_diagnostic_stays_warn(self, runner):
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("ping: cannot resolve host") == "warn"
+
+    def test_exception_summary_regex_matches_common_exceptions(self, runner):
+        """Exception-summary detection must handle the tail of a
+        traceback for common exception classes (ValueError, KeyError,
+        RuntimeError, TimeoutError, …) so they classify as ``error``
+        and reset the traceback-continuation state.
+        """
+        for exc_line in [
+            "ValueError: bad literal",
+            "KeyError: 'missing'",
+            "RuntimeError: boom",
+            "TimeoutError: connection timed out",
+            "paramiko.ssh_exception.AuthenticationException: authentication failed",
+        ]:
+            runner._reset_stderr_classifier_state()
+            assert runner._classify_stderr_line(exc_line) == "error", f"expected {exc_line!r} to classify as error"
+
+    def test_unrelated_stderr_after_reset_classifies_as_warn(self, runner):
+        """After ``_reset_stderr_classifier_state`` an indented line
+        that isn't preceded by a traceback header must default to warn,
+        the same as before RM-8.
+        """
+        runner._reset_stderr_classifier_state()
+        assert runner._classify_stderr_line("   some odd stderr line") == "warn"
 
 
 class TestCopyToRemote:

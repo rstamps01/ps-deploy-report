@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from script_runner import ScriptRunner
 from utils.logger import get_logger
-from utils.ssh_adapter import run_ssh_command, run_interactive_ssh
+from utils.ssh_adapter import run_ssh_command, run_interactive_ssh, build_switch_credential_combos
 
 logger = get_logger(__name__)
 
@@ -92,6 +92,23 @@ class SwitchConfigWorkflow:
             }
         return {}
 
+    _AUTH_FAILURE_INDICATORS = (
+        "authentication failed",
+        "permission denied",
+        "login incorrect",
+        "access denied",
+    )
+
+    @classmethod
+    def _is_auth_failure(cls, stderr: str) -> bool:
+        """Return True when ``stderr`` indicates a credential problem rather than
+        a connectivity problem.  Used by Step 1 to decide whether to retry with
+        the next password candidate or abort early."""
+        if not stderr:
+            return False
+        lowered = stderr.lower()
+        return any(token in lowered for token in cls._AUTH_FAILURE_INDICATORS)
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -158,7 +175,8 @@ class SwitchConfigWorkflow:
         self.emit("info", f"$ curl -k -u {username}:*** {url}")
 
         try:
-            response = requests.get(url, auth=(username, password), verify=False, timeout=30)
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+            response = requests.get(url, auth=(username, password), verify=False, timeout=30)  # nosec B501
             response.raise_for_status()
             switches = response.json()
 
@@ -182,7 +200,8 @@ class SwitchConfigWorkflow:
             url_v1 = f"https://{api_host}/api/v1/switches/"
             self.emit("info", f"Trying fallback: {url_v1}")
             try:
-                response = requests.get(url_v1, auth=(username, password), verify=False, timeout=30)
+                # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
+                response = requests.get(url_v1, auth=(username, password), verify=False, timeout=30)  # nosec B501
                 response.raise_for_status()
                 switches = response.json()
                 ips = [s.get("mgmt_ip") for s in switches if s.get("mgmt_ip")]
@@ -282,27 +301,66 @@ class SwitchConfigWorkflow:
         connected_switches = []
         failed_switches = []
 
+        # Ordered candidate list (primary first).  Populated by OneShotRunner
+        # when autofill is enabled; otherwise a single-entry list containing
+        # the operator-entered password.
+        raw_candidates = self._credentials.get("switch_password_candidates") or []
+        password_candidates: list[str] = []
+        if switch_password:
+            password_candidates.append(switch_password)
+        for pw in raw_candidates:
+            if pw and pw not in password_candidates:
+                password_candidates.append(pw)
+
+        # Expand into (user, password) combos so Onyx/MLNX-OS switches that
+        # require admin instead of cumulus also authenticate.  Order matches
+        # ExternalPortMapper._detect_switch_os.
+        credential_combos = build_switch_credential_combos(switch_user, password_candidates)
+        primary_combo = credential_combos[0] if credential_combos else (switch_user, switch_password)
+
         for ip in switch_ips:
             model = api_switch_models.get(ip, "").upper()
             self.emit("info", f"$ ssh {switch_user}@{ip} hostname")
 
-            # Try standard SSH first
-            rc, stdout, stderr = run_ssh_command(
-                ip, switch_user, switch_password, "hostname", timeout=15, **self._jump_kwargs()
-            )
+            rc = 1
+            stdout = ""
+            stderr = ""
+            winning_user: Optional[str] = None
+            winning_password: Optional[str] = None
 
-            if rc != 0:
-                # Try interactive SSH for Onyx switches
-                self.emit("info", f"  Standard SSH failed, trying interactive (Onyx)...")
-                rc, stdout, stderr = run_interactive_ssh(
-                    ip, switch_user, switch_password, "show version", timeout=15, **self._jump_kwargs()
-                )
+            for idx, (user, candidate) in enumerate(credential_combos):
+                if idx > 0:
+                    self.emit(
+                        "info",
+                        f"  Auth failed with combo {idx}/{len(credential_combos)} — " f"retrying as {user}@{ip}",
+                    )
+
+                rc, stdout, stderr = run_ssh_command(ip, user, candidate, "hostname", timeout=15, **self._jump_kwargs())
+
+                if rc != 0:
+                    self.emit("info", f"  Standard SSH failed, trying interactive (Onyx) as {user}...")
+                    rc, stdout, stderr = run_interactive_ssh(
+                        ip, user, candidate, "show version", timeout=15, **self._jump_kwargs()
+                    )
+
+                if rc == 0:
+                    winning_user, winning_password = user, candidate
+                    break
+
+                if not self._is_auth_failure(stderr):
+                    # Connectivity-style failure: no point retrying other combos.
+                    break
 
             if rc == 0:
                 hostname = stdout.strip().split("\n")[0] if stdout else ip
 
-                # Detect switch type from API model + SSH probes
-                switch_type = self._detect_switch_type(ip, switch_user, switch_password, model, stdout)
+                switch_type = self._detect_switch_type(
+                    ip,
+                    winning_user or switch_user,
+                    winning_password or switch_password,
+                    model,
+                    stdout,
+                )
 
                 connected_switches.append(
                     {
@@ -310,9 +368,13 @@ class SwitchConfigWorkflow:
                         "type": switch_type,
                         "hostname": hostname,
                         "model": model,
+                        "user": winning_user or switch_user,
+                        "password": winning_password or switch_password,
                     }
                 )
-                self.emit("success", f"  Connected: {ip} ({switch_type}) - {hostname}")
+                used_fallback = bool((winning_user, winning_password) != primary_combo and winning_user is not None)
+                suffix = f" [using fallback {winning_user}@{ip}]" if used_fallback else ""
+                self.emit("success", f"  Connected: {ip} ({switch_type}) - {hostname}{suffix}")
             else:
                 error_msg = stderr.strip().split("\n")[-1] if stderr else "Connection failed"
                 failed_switches.append({"ip": ip, "error": error_msg})
@@ -354,6 +416,10 @@ class SwitchConfigWorkflow:
             ip = switch["ip"]
             switch_type = switch["type"]
             hostname = switch["hostname"]
+            # Reuse the credentials that authenticated in Step 1.  Falls back to
+            # credentials-supplied values for legacy callers that don't store them.
+            effective_user = switch.get("user") or switch_user
+            effective_password = switch.get("password") or switch_password
 
             self.emit("info", f"--- Switch: {hostname} ({ip}) - Type: {switch_type} ---")
 
@@ -370,20 +436,19 @@ class SwitchConfigWorkflow:
             switch_config = {"type": switch_type, "hostname": hostname, "commands": {}}
 
             for cmd in commands:
-                self.emit("info", f"$ ssh {switch_user}@{ip} '{cmd}'")
+                self.emit("info", f"$ ssh {effective_user}@{ip} '{cmd}'")
 
                 if switch_type.startswith("cumulus"):
                     rc, stdout, stderr = run_ssh_command(
-                        ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                        ip, effective_user, effective_password, cmd, timeout=30, **self._jump_kwargs()
                     )
                 else:
-                    # Onyx/MLNX-OS require interactive SSH (enable mode)
                     rc, stdout, stderr = run_interactive_ssh(
-                        ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                        ip, effective_user, effective_password, cmd, timeout=30, **self._jump_kwargs()
                     )
                     if rc != 0:
                         rc, stdout, stderr = run_ssh_command(
-                            ip, switch_user, switch_password, cmd, timeout=30, **self._jump_kwargs()
+                            ip, effective_user, effective_password, cmd, timeout=30, **self._jump_kwargs()
                         )
 
                 if rc == 0 and stdout:

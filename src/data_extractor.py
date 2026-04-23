@@ -1886,41 +1886,97 @@ class VastDataExtractor:
         return ipl_formatted
 
     def _infer_ipl_from_switch_pair(self, mapper: Any) -> List[Dict[str, Any]]:
-        """Infer IPL connection when exactly two leaf switches form an MLAG pair.
+        """Infer switch-to-switch topology when LLDP data is unavailable.
 
-        VAST deployments with two leaf switches always have an IPL (Inter-Peer
-        Link).  When the vnetmap output lacks LLDP data we can still represent
-        the IPL because the pair relationship is implicit.
+        VAST deployments follow predictable patterns that let us still produce
+        something useful when ``vnetmap`` or SSH LLDP fails to return neighbor
+        data:
+
+        * Every leaf-switch pair has an MLAG Inter-Peer Link (IPL) — emitted
+          with ``connection_type="IPL"``.
+        * Every spine is uplinked to every leaf in the same fabric — emitted
+          with ``connection_type="spine_uplink"`` so the Logical Network
+          Diagram can at least draw a dashed placeholder between each spine
+          and leaf even before real port data is collected.
+
+        The emitted entries carry ``notes`` ending in ``"(inferred)"`` so
+        downstream rendering can style / caption them differently from
+        LLDP-confirmed links.  Ports are left blank.
         """
-        sw_map = getattr(mapper, "switch_map", {})
-        if len(sw_map) != 2:
+        sw_map = getattr(mapper, "switch_map", {}) or {}
+        if len(sw_map) < 2:
             return []
 
-        sorted_ips = sorted(sw_map.keys())
-        sw1_ip, sw2_ip = sorted_ips
-        sw1_des = sw_map[sw1_ip]["designation"]
-        sw2_des = sw_map[sw2_ip]["designation"]
+        leaves: List[Tuple[str, Dict[str, Any]]] = []
+        spines: List[Tuple[str, Dict[str, Any]]] = []
+        for ip, info in sw_map.items():
+            if not ip:
+                continue
+            if info.get("role") == "spine":
+                spines.append((ip, info))
+            else:
+                leaves.append((ip, info))
 
-        self.logger.info(
-            "Inferred IPL between %s (%s) and %s (%s)",
-            sw1_des,
-            sw1_ip,
-            sw2_des,
-            sw2_ip,
-        )
+        leaves.sort(key=lambda item: item[0])
+        spines.sort(key=lambda item: item[0])
 
-        return [
-            {
-                "switch_designation": sw1_des,
-                "node_designation": sw2_des,
-                "notes": "IPL (inferred)",
-                "connection_type": "IPL",
-                "switch1_ip": sw1_ip,
-                "switch2_ip": sw2_ip,
-                "switch1_port": "",
-                "switch2_port": "",
-            }
-        ]
+        inferred: List[Dict[str, Any]] = []
+
+        # --- Leaf-to-leaf IPL pairs ---
+        # One IPL per unordered pair of leaves.  Two leaves -> one entry;
+        # four-leaf racks (rare) -> two rack-local IPLs; we don't attempt to
+        # guess which leaves are paired, so we emit all combinations.  LLDP
+        # data, when available, takes precedence and replaces these entries.
+        for i in range(len(leaves)):
+            for j in range(i + 1, len(leaves)):
+                ip_a, info_a = leaves[i]
+                ip_b, info_b = leaves[j]
+                inferred.append(
+                    {
+                        "switch_designation": info_a["designation"],
+                        "node_designation": info_b["designation"],
+                        "notes": "IPL (inferred)",
+                        "connection_type": "IPL",
+                        "switch1_ip": ip_a,
+                        "switch2_ip": ip_b,
+                        "switch1_port": "",
+                        "switch2_port": "",
+                    }
+                )
+                self.logger.info(
+                    "Inferred IPL between %s (%s) and %s (%s)",
+                    info_a["designation"],
+                    ip_a,
+                    info_b["designation"],
+                    ip_b,
+                )
+
+        # --- Spine-to-leaf uplinks ---
+        # Assume full-mesh spine/leaf connectivity (VAST reference design).
+        # Each spine is uplinked to every leaf in the fabric.
+        for spine_ip, spine_info in spines:
+            for leaf_ip, leaf_info in leaves:
+                inferred.append(
+                    {
+                        "switch_designation": spine_info["designation"],
+                        "node_designation": leaf_info["designation"],
+                        "notes": "Spine uplink (inferred)",
+                        "connection_type": "spine_uplink",
+                        "switch1_ip": spine_ip,
+                        "switch2_ip": leaf_ip,
+                        "switch1_port": "",
+                        "switch2_port": "",
+                    }
+                )
+                self.logger.info(
+                    "Inferred spine uplink %s (%s) -> %s (%s)",
+                    spine_info["designation"],
+                    spine_ip,
+                    leaf_info["designation"],
+                    leaf_ip,
+                )
+
+        return inferred
 
     def extract_all_data(
         self,

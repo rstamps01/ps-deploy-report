@@ -23,10 +23,11 @@ import getpass
 import os
 import sys
 import threading
+import traceback
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 # Add src directory to Python path (must run before local imports when run as script)
 sys.path.insert(0, str(Path(__file__).parent))
@@ -390,6 +391,25 @@ class VastReportGenerator:
             switches = switch_inventory.get("switches", [])
             switch_ips = [sw.get("mgmt_ip") for sw in switches if sw.get("mgmt_ip")]
 
+            # Prepare hostname->IP map and spine IP set for the generalized
+            # LLDP walk that discovers leaf-to-spine uplinks (see
+            # ExternalPortMapper docstring).  Legacy behavior preserved when
+            # either is empty.
+            switch_hostname_map: Dict[str, str] = {}
+            spine_ips: List[str] = []
+            for sw in switches:
+                ip = sw.get("mgmt_ip")
+                if not ip:
+                    continue
+                for host_field in ("hostname", "name", "host_name"):
+                    host = sw.get(host_field)
+                    if host:
+                        switch_hostname_map[str(host)] = ip
+                        break
+                role = (sw.get("role") or sw.get("switch_type") or "").lower()
+                if "spine" in role:
+                    spine_ips.append(ip)
+
             if not switch_ips:
                 self.logger.warning("No switches found - skipping port mapping")
                 return None
@@ -432,6 +452,8 @@ class VastReportGenerator:
                         switch_password=switch_password,
                         proxy_jump=not args.no_proxy_jump,
                         tunnel_address=tunnel_addr,
+                        switch_hostname_map=switch_hostname_map or None,
+                        spine_ips=spine_ips or None,
                     )
                     port_mapping_data = port_mapper.collect_port_mapping()
                     if port_mapping_data.get("available"):
@@ -737,7 +759,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.0")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.6")
 
     return parser
 
@@ -821,12 +843,33 @@ def _wait_for_server(host: str, port: int, timeout: float = 10.0) -> bool:
     return False
 
 
+# Ports tried in order when the requested port is unavailable.  Primary
+# driver: the packaged Windows ``vast-reporter.exe`` crashed silently on
+# v1.5.0 when port 5173 was held by Hyper-V / WSL2 dynamic port
+# exclusions (Windows error WSAEACCES / 10013 — "An attempt was made to
+# access a socket in a way forbidden by its access permissions").  5174–
+# 5180 are near-neighbours for quick recovery on the same operator
+# machine; 8080 and 9090 are conventional HTTP fallbacks that are almost
+# never reserved.  Operators can still override explicitly via
+# ``--port <number>``; that value is tried first and fallbacks extend
+# (not replace) the list.
+_FALLBACK_PORTS = [5173, 5174, 5175, 5176, 5177, 5178, 5179, 5180, 8080, 9090]
+
+
 def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -> int:
     """Launch the Flask web UI and open the default browser.
 
+    The requested ``port`` is tried first; on ``OSError`` (Windows
+    WSAEACCES, POSIX EADDRINUSE, permission-denied, etc.) the remaining
+    entries from :data:`_FALLBACK_PORTS` are attempted in order so the
+    packaged exe doesn't silently die on a conflict with Hyper-V / WSL2
+    reserved ranges.  If every candidate fails, a remediation hint is
+    printed and the ``input()`` pause (frozen exe only) keeps the
+    console window open long enough to read it.
+
     Args:
         host: Host address to bind to
-        port: Port number to listen on
+        port: Port number to listen on (tried first, then fallbacks)
         dev_mode: Enable Developer Mode for advanced operations
     """
     from werkzeug.serving import make_server
@@ -838,21 +881,52 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -
     setup_logging(config)
     enable_sse_logging()
 
-    # Pass developer mode to Flask app
     config["DEVELOPER_MODE"] = dev_mode
 
     flask_app = create_flask_app(config)
 
-    server = make_server(host, port, flask_app, threaded=True)
+    # Explicit port first, then every fallback that isn't a duplicate.
+    # Using a dict preserves insertion order and de-dupes in one pass.
+    candidates = list({p: None for p in ([port] + _FALLBACK_PORTS)}.keys())
+
+    server = None
+    bound_port = port
+    for idx, candidate in enumerate(candidates):
+        try:
+            server = make_server(host, candidate, flask_app, threaded=True)
+        except OSError as exc:
+            print(f"Port {candidate} unavailable ({exc}); trying next candidate…")
+            continue
+        bound_port = candidate
+        if idx > 0:
+            # Signal that we're not on the operator-requested port so
+            # any bookmarks / external automation pointing at the
+            # original port surface the mismatch early.
+            print(f"NOTE: requested port {port} was unavailable; bound to fallback port {bound_port} instead.")
+        break
+
+    if server is None:
+        print("ERROR: Unable to bind to any candidate port.")
+        print(f"       Tried: {', '.join(str(p) for p in candidates)}")
+        print("       Another process may already be using these ports, or Hyper-V / WSL2")
+        print("       may have reserved them (Windows `netsh interface ipv4 show excludedportrange protocol=tcp`).")
+        print("       Retry with an explicit override, e.g.: vast-reporter --port 8888")
+        if getattr(sys, "frozen", False):
+            try:
+                input("Press Enter to close...")
+            except EOFError:
+                pass
+        return 1
+
     flask_app.config["_SERVER"] = server
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    if not _wait_for_server(host, port):
+    if not _wait_for_server(host, bound_port):
         print("ERROR: Flask server failed to start.")
         return 1
 
-    url = f"http://{host}:{port}"
+    url = f"http://{host}:{bound_port}"
     print("\n  VAST As-Built Reporter — Web UI")
     print(f"  Running at {url}")
     if dev_mode:
@@ -871,6 +945,47 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -
     return 0
 
 
+def _extract_port_from_argv() -> int:
+    """Extract ``--port <number>`` from :data:`sys.argv` in-place.
+
+    Parsed here — not in :func:`main`'s downstream argparse — because
+    :func:`run_gui` runs before :func:`run_cli` reaches argparse, and
+    ``run_cli`` only knows about cluster / output flags.  Mirrors the
+    existing in-place ``--dev-mode`` handling directly above so both
+    flags are consumed identically.  Returns 5173 (the historical
+    default) when ``--port`` isn't supplied or is malformed; a malformed
+    value prints a warning and falls through to the default rather than
+    aborting, so the Windows exe still launches on a bad shortcut.
+    """
+    default_port = 5173
+    if "--port" not in sys.argv:
+        return default_port
+
+    idx = sys.argv.index("--port")
+    # A trailing ``--port`` with no value is a user typo; warn and keep
+    # the default rather than IndexError'ing out of the launch path.
+    if idx + 1 >= len(sys.argv):
+        print(f"WARNING: --port supplied without a value; falling back to default port {default_port}.")
+        sys.argv.pop(idx)
+        return default_port
+
+    raw = sys.argv[idx + 1]
+    try:
+        parsed = int(raw)
+    except ValueError:
+        print(f"WARNING: --port value {raw!r} is not an integer; falling back to default port {default_port}.")
+        del sys.argv[idx : idx + 2]
+        return default_port
+
+    if not (1 <= parsed <= 65535):
+        print(f"WARNING: --port value {parsed} is out of range (1-65535); falling back to default port {default_port}.")
+        del sys.argv[idx : idx + 2]
+        return default_port
+
+    del sys.argv[idx : idx + 2]
+    return parsed
+
+
 def main() -> int:
     """
     Main entry point — routes to GUI or CLI mode.
@@ -878,15 +993,20 @@ def main() -> int:
     Default (no args or --gui): launches the web UI.
     --cli: runs the original command-line workflow.
     --dev-mode: enables Developer Mode for advanced operations.
+    --port <number>: override the default GUI port (5173).
     """
-    # Check for developer mode flag
     dev_mode = "--dev-mode" in sys.argv
     if dev_mode:
         sys.argv.remove("--dev-mode")
 
+    # Consume ``--port <N>`` before the --gui / --cli router touches
+    # sys.argv, so an invocation like ``vast-reporter --port 8888``
+    # still routes to ``run_gui`` by the default-GUI branch below.
+    port = _extract_port_from_argv()
+
     if len(sys.argv) > 1 and sys.argv[1] == "--gui":
         sys.argv.pop(1)
-        return run_gui(dev_mode=dev_mode)
+        return run_gui(port=port, dev_mode=dev_mode)
 
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         sys.argv.pop(1)
@@ -894,11 +1014,29 @@ def main() -> int:
 
     # If no recognised subcommand and no --cluster flag, default to GUI
     if len(sys.argv) == 1 or not any(a.startswith("--cluster") for a in sys.argv[1:]):
-        return run_gui(dev_mode=dev_mode)
+        return run_gui(port=port, dev_mode=dev_mode)
 
     # Legacy usage: direct CLI args like --cluster ... --output ...
     return run_cli()
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Top-level crash resilience for the packaged Windows ``vast-
+    # reporter.exe``: without this, any unhandled exception in
+    # ``main()`` closed the console window instantly (v1.5.0 users
+    # reported the app "launching and disappearing"; the actual failure
+    # was a socket-bind OSError that now has targeted handling in
+    # ``run_gui``).  Keeping the pause behind ``sys.frozen`` means
+    # ``python src/main.py`` in development still exits cleanly without
+    # blocking test harnesses.
+    try:
+        sys.exit(main())
+    except Exception as exc:  # noqa: BLE001 - intentional last-chance trap
+        print(f"\nFATAL ERROR: {exc}")
+        traceback.print_exc()
+        if getattr(sys, "frozen", False):
+            try:
+                input("Press Enter to close...")
+            except EOFError:
+                pass
+        sys.exit(1)

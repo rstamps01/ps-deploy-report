@@ -16,7 +16,11 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
-from utils.ssh_adapter import run_ssh_command, run_interactive_ssh
+from utils.ssh_adapter import (
+    build_switch_credential_combos,
+    run_ssh_command,
+    run_interactive_ssh,
+)
 
 
 class CancelledError(Exception):
@@ -2729,6 +2733,38 @@ class HealthChecker:
     # Tier 3 -- Switch SSH checks
     # ------------------------------------------------------------------
 
+    def _probe_switch_password(
+        self,
+        switch_ip: str,
+        switch_user: str,
+        candidates: List[str],
+        **ssh_kwargs: Any,
+    ) -> Optional[str]:
+        """Thin delegator to :func:`utils.switch_ssh_probe.probe_switch_password`.
+
+        The probe logic lives in ``utils.switch_ssh_probe`` (RM-15) so
+        the Reporter tile (``app._run_report_job``) and the Health
+        Check tile share a single implementation with a single test
+        surface.  This method preserves the original RM-13
+        instance-method shape so existing callers (and a handful of
+        external test patches) continue to work unchanged.
+
+        Note: SSH I/O now happens inside the utility module, so tests
+        that simulate probe responses must patch
+        ``utils.switch_ssh_probe.run_ssh_command`` /
+        ``utils.switch_ssh_probe.run_interactive_ssh`` rather than
+        the ``health_checker.*`` module-level names.
+        """
+        from utils.switch_ssh_probe import probe_switch_password
+
+        return probe_switch_password(
+            switch_ip,
+            switch_user,
+            candidates,
+            logger=self.logger,
+            **ssh_kwargs,
+        )
+
     def _detect_switch_type(self, host: str, username: str, password: str, **ssh_kwargs: Any) -> str:
         """Detect whether a switch runs Onyx or Cumulus Linux.
 
@@ -2768,7 +2804,18 @@ class HealthChecker:
             return []
 
         username = self.switch_ssh_config.get("username", "cumulus")
-        password = self.switch_ssh_config.get("password", "")
+        primary_password = self.switch_ssh_config.get("password", "")
+        # RM-2: when the one-shot pipeline has already proved which password
+        # authenticates against which switch IP (see oneshot_runner._resolve_
+        # switch_password_candidates), pass that map through here so each
+        # check uses the correct credential.  Without this we silently fall
+        # back to ``primary_password`` and log spurious auth failures for any
+        # switch that uses a different default password (e.g. a spare leaf
+        # on ``VastData1!`` while the pair is on ``Vastdata1!``).
+        raw_pw_by_ip = self.switch_ssh_config.get("password_by_ip") or {}
+        if not isinstance(raw_pw_by_ip, dict):
+            raw_pw_by_ip = {}
+        password_by_ip: Dict[str, str] = {str(k): str(v) for k, v in raw_pw_by_ip.items() if v}
 
         jump_kwargs: Dict[str, Any] = {}
         if self.switch_ssh_config.get("proxy_jump"):
@@ -2778,6 +2825,39 @@ class HealthChecker:
                 "jump_user": pj.get("username"),
                 "jump_password": pj.get("password"),
             }
+
+        # RM-13: When the Reporter tile (or any caller) has not pre-
+        # probed switches but supplies a candidate list, discover which
+        # password authenticates against each switch up front and cache
+        # the winners into ``password_by_ip``.  This mirrors what
+        # ``OneShotRunner._validate_switch_ssh`` does for the Test Suite
+        # tile so both tiles behave identically when a switch uses a
+        # different default password than the one typed in Connection
+        # Settings.  The probe runs a single cheap ``hostname``/``show
+        # version`` per candidate per switch and stops on the first win.
+        raw_candidates = self.switch_ssh_config.get("password_candidates") or []
+        if isinstance(raw_candidates, (list, tuple)):
+            candidate_list: List[str] = [str(p) for p in raw_candidates if str(p)]
+        else:
+            candidate_list = []
+        if candidate_list:
+            probe_ips = [ip for ip in switch_ips if str(ip) not in password_by_ip]
+            if probe_ips:
+                self.logger.info(
+                    "Probing %d switch(es) across %d credential candidate(s) to pick the right password",
+                    len(probe_ips),
+                    len(candidate_list),
+                )
+            for ip in probe_ips:
+                winning_password = self._probe_switch_password(str(ip), username, candidate_list, **jump_kwargs)
+                if winning_password:
+                    password_by_ip[str(ip)] = winning_password
+
+        def _password_for(switch_ip: str) -> str:
+            pw = password_by_ip.get(str(switch_ip))
+            if pw:
+                return pw
+            return primary_password
 
         checks = [
             self._check_mlag_status,
@@ -2790,6 +2870,7 @@ class HealthChecker:
         ssh_idx = 0
         for switch_ip in switch_ips:
             self._check_cancel()
+            password = _password_for(switch_ip)
             switch_os = self._detect_switch_type(switch_ip, username, password, **jump_kwargs)
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()

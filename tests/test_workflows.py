@@ -113,6 +113,258 @@ class TestVnetmapWorkflow:
         assert ok is False
 
 
+class TestVnetmapPasswordFallback:
+    """Verify that the vnetmap workflow retries with alternate switch passwords
+    when the primary credential returns an authentication failure."""
+
+    def _make_workflow(self):
+        workflow = WorkflowRegistry.get("vnetmap")
+        workflow.set_credentials(
+            {
+                "cluster_ip": "10.0.0.1",
+                "node_user": "vastdata",
+                "node_password": "nodepass",
+                "switch_user": "cumulus",
+                "switch_password": "Vastdata1!",
+                "switch_password_candidates": ["Vastdata1!", "VastData1!"],
+            }
+        )
+        workflow._step_data = {
+            "remote_dir": "/tmp/vast_scripts",
+            "network_type": "ETH",
+            "export_commands": ["export MLX_IPS='10.1.1.1'"],
+            "vnetmap_command": "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips -u cumulus -p 'Vastdata1!'",
+            "switch_password": "Vastdata1!",
+            "switch_password_candidates": ["Vastdata1!", "VastData1!"],
+        }
+        return workflow
+
+    def test_rebuild_vnetmap_cmd_replaces_password(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        new_cmd = VnetmapWorkflow._rebuild_vnetmap_cmd(
+            "python3 vnetmap.py -s 1.2.3.4 -i nodes -u cumulus -p 'Vastdata1!'",
+            "VastData1!",
+        )
+        assert "-p 'VastData1!'" in new_cmd
+        assert "Vastdata1!" not in new_cmd
+
+    def test_rebuild_vnetmap_cmd_escapes_quotes(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        new_cmd = VnetmapWorkflow._rebuild_vnetmap_cmd("python3 vnetmap.py -p 'old'", "it's-secret")
+        # Single quotes in the password are escaped shell-safely
+        assert "'it'\\''s-secret'" in new_cmd
+
+    def test_rebuild_vnetmap_cmd_leaves_ib_unchanged(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        ib_cmd = "python3 vnetmap.py -i nodes -ib"
+        assert VnetmapWorkflow._rebuild_vnetmap_cmd(ib_cmd, "anything") == ib_cmd
+
+    def test_is_auth_failure_detects_known_patterns(self):
+        workflow = WorkflowRegistry.get("vnetmap")
+        assert workflow._is_auth_failure("", "Authentication failed on 10.1.1.1")
+        assert workflow._is_auth_failure("Failed to connect to switch", "")
+        assert workflow._is_auth_failure("", "Unable to determine suitable switch API")
+        assert not workflow._is_auth_failure("all good", "connection reset")
+
+    def test_run_vnetmap_retries_with_fallback_on_auth_failure(self):
+        workflow = self._make_workflow()
+        mock_runner = MagicMock()
+        mock_runner.DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+        # First call: auth failure.  Second call: success.
+        mock_runner.execute_remote.side_effect = [
+            MagicMock(success=False, returncode=1, stdout="", stderr="Authentication failed"),
+            MagicMock(success=True, returncode=0, stdout="ok", stderr=""),
+        ]
+        workflow._script_runner = mock_runner
+
+        result = workflow._step_run_vnetmap()
+        assert result["success"] is True
+        assert mock_runner.execute_remote.call_count == 2
+        second_call_cmd = mock_runner.execute_remote.call_args_list[1].kwargs["command"]
+        assert "-p 'VastData1!'" in second_call_cmd
+
+    def test_run_vnetmap_does_not_retry_non_auth_error(self):
+        workflow = self._make_workflow()
+        mock_runner = MagicMock()
+        mock_runner.DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+        mock_runner.execute_remote.return_value = MagicMock(
+            success=False, returncode=255, stdout="", stderr="no route to host"
+        )
+        workflow._script_runner = mock_runner
+
+        result = workflow._step_run_vnetmap()
+        assert result["success"] is False
+        assert mock_runner.execute_remote.call_count == 1
+
+
+class TestVnetmapPerSwitchPasswords:
+    """Verify the fast path that drives vnetmap.py's --multiple-passwords
+    mode via a remote wrapper script that reads the per-switch password
+    map from an ephemeral JSON file (instead of piping passwords on stdin,
+    which is drained by vnetmap's switch-discovery ssh subprocess before
+    getpass is reached)."""
+
+    def _make_workflow(self):
+        workflow = WorkflowRegistry.get("vnetmap")
+        workflow.set_credentials(
+            {
+                "cluster_ip": "10.0.0.1",
+                "node_user": "vastdata",
+                "node_password": "nodepass",
+                "switch_user": "cumulus",
+                "switch_password": "VastData1!",
+                "switch_password_candidates": ["VastData1!", "Vastdata1!", "Cumu1usLinux!"],
+            }
+        )
+        workflow._step_data = {
+            "remote_dir": "/tmp/vast_scripts",
+            "network_type": "ETH",
+            "export_commands": ["export MLX_IPS='10.1.1.156,10.1.1.154,10.1.1.153'"],
+            "vnetmap_command": "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips -u cumulus -p 'VastData1!'",
+            "switch_password": "VastData1!",
+            "switch_password_candidates": ["VastData1!", "Vastdata1!", "Cumu1usLinux!"],
+            "switch_ips": ["10.1.1.156", "10.1.1.154", "10.1.1.153"],
+            "switch_password_by_ip": {
+                "10.1.1.156": "VastData1!",
+                "10.1.1.154": "Vastdata1!",
+                "10.1.1.153": "Vastdata1!",
+            },
+        }
+        return workflow
+
+    def test_build_multiple_passwords_cmd_drops_single_password_flag(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        full_cmd, _display = VnetmapWorkflow._build_multiple_passwords_cmd(
+            "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips -u cumulus -p 'VastData1!'",
+            ["10.1.1.156", "10.1.1.154"],
+            {"10.1.1.156": "VastData1!", "10.1.1.154": "Vastdata1!"},
+            remote_dir="/tmp/vast_scripts",
+            export_str="export MLX_IPS='a,b'",
+        )
+        assert "-p 'VastData1!'" not in full_cmd
+        assert "--multiple-passwords" in full_cmd
+        assert "printf '%s" not in full_cmd  # stdin-piping form is gone
+        assert 'python3 "$_VNM_WRAP"' in full_cmd
+
+    def test_build_multiple_passwords_cmd_encodes_full_map_as_json(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        full_cmd, _display = VnetmapWorkflow._build_multiple_passwords_cmd(
+            "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips -u cumulus -p 'x'",
+            ["10.1.1.153", "10.1.1.156", "10.1.1.154"],
+            {
+                "10.1.1.156": "VastData1!",
+                "10.1.1.154": "Vastdata1!",
+                "10.1.1.153": "Cumu1usLinux!",
+            },
+            remote_dir="/tmp/vast_scripts",
+            export_str="export MLX_IPS='a'",
+        )
+        expected_json = '{"10.1.1.153":"Cumu1usLinux!","10.1.1.156":"VastData1!",' '"10.1.1.154":"Vastdata1!"}'
+        assert expected_json in full_cmd
+        assert "<<'__VNM_PW_EOF__'" in full_cmd
+        assert "<<'__VNM_WRAP_EOF__'" in full_cmd
+        assert 'VAST_SWITCH_PW_FILE="$_VNM_PWF"' in full_cmd
+        assert 'VAST_VNETMAP_PATH="/tmp/vast_scripts/vnetmap.py"' in full_cmd
+
+    def test_build_multiple_passwords_cmd_installs_trap_and_chmod(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        full_cmd, _display = VnetmapWorkflow._build_multiple_passwords_cmd(
+            "python3 vnetmap.py -s x -i y -u cumulus -p 'x'",
+            ["1.2.3.4"],
+            {"1.2.3.4": "it's-secret"},
+            remote_dir="/tmp/vast_scripts",
+            export_str="export MLX_IPS='a'",
+        )
+        assert "umask 077" in full_cmd
+        assert "mktemp /tmp/vast_scripts/.vnetmap_pw.XXXXXX.json" in full_cmd
+        assert "mktemp /tmp/vast_scripts/.vnetmap_wrap.XXXXXX.py" in full_cmd
+        assert 'trap \'rm -f "$_VNM_PWF" "$_VNM_WRAP"\' EXIT HUP INT QUIT TERM' in full_cmd
+        # Single-quote passwords are emitted verbatim inside the JSON
+        # heredoc; the single-quoted heredoc delimiter means no shell
+        # escaping of the body is required.
+        assert '"1.2.3.4":"it\'s-secret"' in full_cmd
+
+    def test_build_multiple_passwords_cmd_returns_redacted_display(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        _full, display = VnetmapWorkflow._build_multiple_passwords_cmd(
+            "python3 vnetmap.py -s $MLX_IPS -i $cnodes_ips -u cumulus -p 'VastData1!'",
+            ["1.1.1.1", "2.2.2.2"],
+            {"1.1.1.1": "VastData1!", "2.2.2.2": "Vastdata1!"},
+            remote_dir="/tmp/vast_scripts",
+            export_str="export MLX_IPS='a'",
+        )
+        assert "VastData1!" not in display
+        assert "Vastdata1!" not in display
+        assert "<redacted: 2 switch credential(s)>" in display
+        assert "<multi-password wrapper>" in display
+        assert "--multiple-passwords" in display
+
+    def test_run_vnetmap_uses_per_switch_map_on_happy_path(self):
+        workflow = self._make_workflow()
+        mock_runner = MagicMock()
+        mock_runner.DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+        mock_runner.execute_remote.return_value = MagicMock(success=True, returncode=0, stdout="topology ok", stderr="")
+        workflow._script_runner = mock_runner
+
+        result = workflow._step_run_vnetmap()
+
+        assert result["success"] is True
+        assert mock_runner.execute_remote.call_count == 1
+        cmd = mock_runner.execute_remote.call_args.kwargs["command"]
+        # JSON map is written via heredoc in switch_ips order
+        assert ('{"10.1.1.156":"VastData1!",' '"10.1.1.154":"Vastdata1!",' '"10.1.1.153":"Vastdata1!"}') in cmd
+        assert "--multiple-passwords" in cmd
+        assert 'python3 "$_VNM_WRAP"' in cmd
+        assert "-p '" not in cmd  # single-password flag must be removed
+        assert "printf '%s" not in cmd  # old stdin-pipe strategy must be gone
+
+    def test_run_vnetmap_skips_fast_path_when_map_incomplete(self):
+        workflow = self._make_workflow()
+        # Remove one IP from the map so the fast path must bail out and fall
+        # back to the legacy candidate-sweep loop.
+        workflow._step_data["switch_password_by_ip"] = {"10.1.1.156": "VastData1!"}
+        mock_runner = MagicMock()
+        mock_runner.DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+        mock_runner.execute_remote.return_value = MagicMock(success=True, returncode=0, stdout="ok", stderr="")
+        workflow._script_runner = mock_runner
+
+        workflow._step_run_vnetmap()
+
+        cmd = mock_runner.execute_remote.call_args.kwargs["command"]
+        assert "_VNM_WRAP" not in cmd  # wrapper scaffolding must be absent
+        assert "-p 'VastData1!'" in cmd
+
+    def test_run_vnetmap_falls_back_to_candidate_sweep_on_fast_path_auth_failure(self):
+        workflow = self._make_workflow()
+        mock_runner = MagicMock()
+        mock_runner.DEFAULT_REMOTE_DIR = "/tmp/vast_scripts"
+        # Fast-path run fails with an auth indicator, then legacy retry
+        # succeeds on the second candidate.
+        mock_runner.execute_remote.side_effect = [
+            MagicMock(success=False, returncode=1, stdout="", stderr="Authentication failed for cumulus"),
+            MagicMock(success=False, returncode=1, stdout="", stderr="Authentication failed for cumulus"),
+            MagicMock(success=True, returncode=0, stdout="ok", stderr=""),
+        ]
+        workflow._script_runner = mock_runner
+
+        result = workflow._step_run_vnetmap()
+
+        assert result["success"] is True
+        assert mock_runner.execute_remote.call_count == 3
+        first_cmd = mock_runner.execute_remote.call_args_list[0].kwargs["command"]
+        assert "--multiple-passwords" in first_cmd
+        assert 'python3 "$_VNM_WRAP"' in first_cmd
+        third_cmd = mock_runner.execute_remote.call_args_list[2].kwargs["command"]
+        assert "-p 'Vastdata1!'" in third_cmd
+
+
 # ===================================================================
 # TestSupportToolWorkflow
 # ===================================================================
@@ -181,6 +433,99 @@ class TestSwitchConfigWorkflow:
     def test_name_contains_switch(self):
         workflow = WorkflowRegistry.get("switch_config")
         assert "switch" in workflow.name.lower()
+
+    def test_is_auth_failure_detects_auth_errors(self):
+        from workflows.switch_config_workflow import SwitchConfigWorkflow
+
+        assert SwitchConfigWorkflow._is_auth_failure("Authentication failed for user cumulus")
+        assert SwitchConfigWorkflow._is_auth_failure("Permission denied, please try again")
+        assert SwitchConfigWorkflow._is_auth_failure("Login incorrect")
+        assert not SwitchConfigWorkflow._is_auth_failure("connection timed out")
+        assert not SwitchConfigWorkflow._is_auth_failure("")
+
+
+class TestSwitchConfigPasswordFallback:
+    """Verify Step 1 retries with the fallback password when the primary one
+    fails authentication, and stores the winning password on the switch entry."""
+
+    def _make_workflow(self):
+        workflow = WorkflowRegistry.get("switch_config")
+        workflow.set_credentials(
+            {
+                "cluster_ip": "10.0.0.1",
+                "username": "support",
+                "password": "654321",
+                "switch_user": "cumulus",
+                "switch_password": "Vastdata1!",
+                "switch_password_candidates": ["Vastdata1!", "VastData1!"],
+            }
+        )
+        return workflow
+
+    def test_discover_uses_primary_password_first(self):
+        workflow = self._make_workflow()
+        workflow._step_data = {}
+        with patch.object(
+            workflow, "_get_switch_ips_from_api", return_value=(["10.1.1.1"], {"10.1.1.1": "ONYX"})
+        ), patch("workflows.switch_config_workflow.run_ssh_command") as mock_ssh, patch(
+            "workflows.switch_config_workflow.run_interactive_ssh"
+        ) as mock_issh, patch.object(
+            workflow, "_detect_switch_type", return_value="cumulus_nvue"
+        ):
+            mock_ssh.return_value = (0, "switch-1\n", "")
+            result = workflow._step_discover_switches()
+
+        assert result["success"] is True
+        connected = workflow._step_data["connected_switches"]
+        assert connected[0]["password"] == "Vastdata1!"
+        mock_issh.assert_not_called()
+
+    def test_discover_falls_back_on_auth_failure(self):
+        workflow = self._make_workflow()
+        workflow._step_data = {}
+        # run_ssh_command is called once per candidate.  run_interactive_ssh is
+        # called for candidate 1 only (because candidate 2's std ssh already
+        # succeeds, so the interactive fallback is not tried for it).
+        ssh_returns = [
+            (1, "", "Authentication failed"),  # candidate 1 std ssh
+            (0, "switch-1\n", ""),  # candidate 2 std ssh succeeds
+        ]
+        with patch.object(
+            workflow, "_get_switch_ips_from_api", return_value=(["10.1.1.1"], {"10.1.1.1": "CUMULUS"})
+        ), patch("workflows.switch_config_workflow.run_ssh_command") as mock_ssh, patch(
+            "workflows.switch_config_workflow.run_interactive_ssh"
+        ) as mock_issh, patch.object(
+            workflow, "_detect_switch_type", return_value="cumulus_linux"
+        ):
+            mock_ssh.side_effect = ssh_returns
+            mock_issh.return_value = (1, "", "Authentication failed")
+
+            result = workflow._step_discover_switches()
+
+        assert result["success"] is True
+        connected = workflow._step_data["connected_switches"]
+        assert len(connected) == 1
+        assert connected[0]["password"] == "VastData1!"
+
+    def test_discover_does_not_retry_on_connectivity_error(self):
+        workflow = self._make_workflow()
+        workflow._step_data = {}
+        with patch.object(
+            workflow, "_get_switch_ips_from_api", return_value=(["10.1.1.1"], {"10.1.1.1": "ONYX"})
+        ), patch("workflows.switch_config_workflow.run_ssh_command") as mock_ssh, patch(
+            "workflows.switch_config_workflow.run_interactive_ssh"
+        ) as mock_issh:
+            mock_ssh.return_value = (1, "", "connection timed out")
+            mock_issh.return_value = (1, "", "connection timed out")
+
+            result = workflow._step_discover_switches()
+
+        # Connectivity failure breaks inner loop early; both ssh + issh tried
+        # once per candidate would be excessive — we expect only one pass.
+        assert result["success"] is False
+        # std ssh + interactive ssh per candidate — but inner break prevents a
+        # second candidate attempt; so at most one candidate worth of calls.
+        assert mock_ssh.call_count <= 2
 
 
 # ===================================================================
@@ -372,6 +717,38 @@ class TestVperfsanityStepExecution:
         workflow.run_step(7)
         calls_str = str(mock_ssh["vperfsanity"].call_args_list)
         assert "VAST_VMS" in calls_str
+
+    def test_step5_collect_results_saves_under_script_runner_local_dir(self, mock_ssh, tmp_path):
+        """Regression: vperfsanity Step 5 must save results under
+        ScriptRunner.get_local_dir() so the ResultBundler (which scans
+        get_data_dir()/output/scripts) can find them.  Previously the file
+        was written inside the .app bundle under Path(__file__)... which
+        the bundler could not see on frozen builds.
+        """
+        workflow = WorkflowRegistry.get("vperfsanity")
+        workflow.set_credentials(
+            {
+                "cluster_ip": "10.0.0.1",
+                "node_user": "vastdata",
+                "node_password": "pass",
+                "username": "admin",
+                "password": "adminpass",
+            }
+        )
+        runner_dir = tmp_path / "scripts_local"
+        runner_dir.mkdir()
+        fake_runner = MagicMock()
+        fake_runner.get_local_dir.return_value = runner_dir
+        workflow._script_runner = fake_runner
+        mock_ssh["vperfsanity"].return_value = (0, "perf summary ok", "")
+
+        result = workflow.run_step(5)
+
+        assert result["success"] is True
+        fake_runner.get_local_dir.assert_called()
+        produced = list(runner_dir.glob("vperfsanity_results_10.0.0.1_*.txt"))
+        assert len(produced) == 1, f"expected exactly one saved result, got {produced}"
+        assert "perf summary ok" in produced[0].read_text()
 
 
 # ===================================================================
@@ -584,6 +961,158 @@ class TestVnetmapParsing:
         assert validation["ports_failed"] == 2
         assert len(validation["failed_nodes"]) == 2
         assert len(validation["recommendations"]) >= 1
+
+
+# ===================================================================
+# TestVnetmapFabricReportCapture (PMI-5)
+# ===================================================================
+
+
+class TestVnetmapFabricReportCapture:
+    """Tests for PMI-5 fabric-report capture.
+
+    ``vnetmap.py`` persists a detailed LLDP dump to
+    ``/vast/log/vnetmap-<timestamp>.txt`` on cnode-1.  The workflow must
+    retrieve that file and splice it into the saved
+    ``vnetmap_output_*.txt`` so ``VNetMapParser._parse_lldp_neighbors``
+    can recover leaf-to-spine edges even when per-switch SSH collection
+    is disabled (offline / support-bundle runs).
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup(self, tmp_path):
+        self.workflow = WorkflowRegistry.get("vnetmap")
+        self.workflow.set_output_callback(MagicMock())
+        self.workflow.set_credentials(
+            {
+                "cluster_ip": "10.0.0.1",
+                "node_user": "vastdata",
+                "node_password": "nodepass",
+            }
+        )
+        self.workflow._step_data = {}
+        mock_runner = MagicMock()
+        mock_runner.get_local_dir.return_value = tmp_path
+        self.workflow._script_runner = mock_runner
+        self.local_dir = tmp_path
+
+    _FABRIC_BODY = (
+        "LLDP neighbors on 10.1.1.156:\n"
+        "    swp31  10.1.1.154  swp31\n"
+        "    swp32  10.1.1.154  swp32\n"
+        "    swp1   10.1.1.153  Eth1/10\n"
+        "\n"
+        "LLDP neighbors on 10.1.1.154:\n"
+        "    swp31  10.1.1.156  swp31\n"
+        "    swp1   10.1.1.153  Eth1/12\n"
+    )
+
+    def _ssh_response(self, path: str, body: str) -> tuple:
+        return (0, f"__VAST_FABRIC_REPORT_PATH__={path}\n{body}", "")
+
+    def test_fetch_fabric_report_uses_expected_shell_command(self):
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = self._ssh_response("/vast/log/vnetmap-202603211800.txt", self._FABRIC_BODY)
+            path, body = self.workflow._fetch_fabric_report("10.0.0.1", "vastdata", "pw")
+            assert path == "/vast/log/vnetmap-202603211800.txt"
+            assert body == self._FABRIC_BODY
+            issued_cmd = mock_ssh.call_args.args[3]
+            assert "ls -1t /vast/log/vnetmap-*.txt" in issued_cmd
+            assert "__VAST_FABRIC_REPORT_MISSING__" in issued_cmd
+            assert "__VAST_FABRIC_REPORT_PATH__" in issued_cmd
+
+    def test_fetch_fabric_report_returns_none_when_file_missing(self):
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = (0, "__VAST_FABRIC_REPORT_MISSING__\n", "")
+            assert self.workflow._fetch_fabric_report("10.0.0.1", "vastdata", "pw") == (None, None)
+
+    def test_fetch_fabric_report_returns_none_on_ssh_error(self):
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = (255, "", "Permission denied")
+            assert self.workflow._fetch_fabric_report("10.0.0.1", "vastdata", "pw") == (None, None)
+
+    def test_fetch_fabric_report_swallows_exceptions(self):
+        with patch("workflows.vnetmap_workflow.run_ssh_command", side_effect=OSError("boom")):
+            assert self.workflow._fetch_fabric_report("10.0.0.1", "vastdata", "pw") == (None, None)
+
+    def test_fetch_fabric_report_skips_when_host_or_password_missing(self):
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            assert self.workflow._fetch_fabric_report("", "vastdata", "pw") == (None, None)
+            assert self.workflow._fetch_fabric_report("10.0.0.1", "vastdata", "") == (None, None)
+            mock_ssh.assert_not_called()
+
+    def test_merge_fabric_report_appends_with_separator(self):
+        merged = self.workflow._merge_fabric_report(
+            "existing clean output\n",
+            "/vast/log/vnetmap-x.txt",
+            self._FABRIC_BODY,
+        )
+        assert "existing clean output" in merged
+        assert "vnetmap fabric report (from CNode): /vast/log/vnetmap-x.txt" in merged
+        assert "LLDP neighbors on 10.1.1.156:" in merged
+
+    def test_step_save_output_appends_fabric_report_and_is_parseable(self):
+        """End-to-end: the file written to disk is parseable by VNetMapParser."""
+        from vnetmap_parser import VNetMapParser
+
+        self.workflow._step_data["vnetmap_output"] = (
+            "switch discovery progress: 3/3 switches\n"
+            "Full topology\n"
+            "host1   10.1.1.156   swp10   10.2.0.1   enp1s0f0   aa:bb:cc:dd:ee:01   net-a\n"
+            "\n"
+            "passed: 1 failed: 0\n"
+        )
+
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = self._ssh_response("/vast/log/vnetmap-20260321T180000.txt", self._FABRIC_BODY)
+            result = self.workflow._step_save_output()
+
+        assert result["success"] is True
+
+        saved_files = sorted(self.local_dir.glob("vnetmap_output_10.0.0.1_*.txt"))
+        assert len(saved_files) == 1
+        saved_text = saved_files[0].read_text()
+        assert "Full topology" in saved_text
+        assert "vnetmap fabric report (from CNode)" in saved_text
+        assert "LLDP neighbors on 10.1.1.156:" in saved_text
+
+        parser = VNetMapParser(str(saved_files[0]))
+        parsed = parser.parse()
+        assert parsed["available"] is True
+        neighbor_pairs = {
+            (n["local_switch_ip"], n["local_port"], n["remote_switch_ip"], n["remote_port"])
+            for n in parsed["lldp_neighbors"]
+        }
+        assert ("10.1.1.156", "swp31", "10.1.1.154", "swp31") in neighbor_pairs
+        assert any(
+            ip == "10.1.1.156" and remote_ip == "10.1.1.153" for ip, _, remote_ip, _ in neighbor_pairs
+        ), "Spine uplink (leaf 156 -> spine 153) must be recoverable from merged file"
+
+    def test_step_save_output_works_when_fabric_report_missing(self):
+        """Absent fabric report must not prevent saving the vnetmap output."""
+        self.workflow._step_data["vnetmap_output"] = "passed: 0 failed: 0\n"
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = (0, "__VAST_FABRIC_REPORT_MISSING__\n", "")
+            result = self.workflow._step_save_output()
+
+        assert result["success"] is True
+        saved = sorted(self.local_dir.glob("vnetmap_output_10.0.0.1_*.txt"))[0].read_text()
+        assert "fabric report" not in saved.lower()
+        assert "passed: 0 failed: 0" in saved
+
+    def test_results_json_records_fabric_report_metadata(self):
+        self.workflow._step_data["vnetmap_output"] = "passed: 0 failed: 0\n"
+        with patch("workflows.vnetmap_workflow.run_ssh_command") as mock_ssh:
+            mock_ssh.return_value = self._ssh_response("/vast/log/vnetmap-meta.txt", self._FABRIC_BODY)
+            self.workflow._step_save_output()
+
+        import json
+
+        results_files = sorted(self.local_dir.glob("vnetmap_results_10.0.0.1_*.json"))
+        assert len(results_files) == 1
+        data = json.loads(results_files[0].read_text())
+        assert data["fabric_report_path"] == "/vast/log/vnetmap-meta.txt"
+        assert data["fabric_report_bytes"] == len(self._FABRIC_BODY)
 
 
 # ===================================================================
@@ -1586,3 +2115,72 @@ class TestSwitchConfigJsonParsing:
         assert sw["commands"]["nv show router bgp --applied -o json"] == {"enable": "off"}
         assert isinstance(sw["commands"]["ip -br link show"], list)
         assert isinstance(sw["commands"]["nv config show"], dict)
+
+
+# ===================================================================
+# RM-3: Alarm-severity-aware classifier for vast_support_tools output
+# ===================================================================
+
+
+class TestAlarmLineClassifier:
+    """Unit-coverage for ``_classify_alarm_line``.
+
+    Background: VAST ``inspect`` streams an alarm table of the form
+    ``<ISO-timestamp> | <SEVERITY> | <message>``.  The previous
+    workflow-level classifier promoted any line containing the substring
+    ``error`` to the ERROR level, so MINOR alarms whose free-text payload
+    happened to include the word "error" (e.g. "DNS query failed ... due
+    to internal error") appeared in the operator pane alongside genuine
+    failures.  RM-3 honours the explicit severity token instead.
+    """
+
+    def test_minor_with_error_text_is_info(self):
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = (
+            "2026-04-21 04:07:39.030154+00:00 | MINOR | selab-var-202 "
+            "ALERT[...]: DNS query failed for domain=brutallyro.com"
+            "due to internal error counter: 866"
+        )
+        assert _classify_alarm_line(line) == "info"
+
+    def test_major_maps_to_warn(self):
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = "2026-04-20 22:26:26.963175+00:00 | MAJOR | Cluster has MAINTENANCE deny"
+        assert _classify_alarm_line(line) == "warn"
+
+    def test_critical_maps_to_error(self):
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = "2026-04-21 06:11:37.663450+00:00 | CRITICAL | selab-var-202 " "PANIC[...]: assertion failed"
+        assert _classify_alarm_line(line) == "error"
+
+    def test_info_severity_maps_to_info(self):
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = "2026-04-20 22:00:00.000000+00:00 | INFO | Routine report"
+        assert _classify_alarm_line(line) == "info"
+
+    def test_unknown_severity_defaults_to_info(self):
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = "2026-04-20 22:00:00.000000+00:00 | UNKNOWN | Unclassified"
+        assert _classify_alarm_line(line) == "info"
+
+    def test_non_alarm_line_returns_none(self):
+        """Ordinary tool output must fall through to the caller's default
+        classifier — otherwise we'd swallow genuine ``ERROR:`` lines."""
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        assert _classify_alarm_line("ERROR: something exploded") is None
+        assert _classify_alarm_line("   ") is None
+        assert _classify_alarm_line("Checking nodes:   0%|   | 0/4 [00:00<?, ?it/s]") is None
+
+    def test_naive_timestamp_without_tz_still_matches(self):
+        """Some inspect builds emit timestamps without an explicit TZ
+        suffix — the classifier must still recognise them."""
+        from workflows.support_tool_workflow import _classify_alarm_line
+
+        line = "2026-04-21 06:11:37 | MAJOR | Time sync issue"
+        assert _classify_alarm_line(line) == "warn"

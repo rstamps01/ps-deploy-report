@@ -133,6 +133,9 @@ output/**/*.pdf
 output/**/*.png
 output/**/*.json
 config/local_config.yaml
+# Local runtime config (may contain site-specific credentials); only the
+# sanitized ``config/config.yaml.template`` is tracked.
+config/config.yaml
 # .vscode/  # Commented out to allow VSCode configuration to be committed
 # VSCode user-specific settings (keep project config, exclude user settings)
 .vscode/settings.json.user
@@ -217,6 +220,8 @@ docs/JeffsPortMapperReview/
 
 # Local tools directory (analyzer, tracer — not published to GitHub)
 tools/
+# Session tracer output (NDJSON recordings)
+tracer-output/
 
 # Local development artifacts
 docs/superpowers/

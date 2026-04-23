@@ -6,6 +6,7 @@ vnetmap Validation Workflow
 
 import json
 import re
+import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -15,6 +16,71 @@ from utils.ssh_adapter import run_ssh_command
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Heredoc markers used by ``_build_multiple_passwords_cmd``. Kept at module
+# scope so tests can reference the exact tokens without duplicating them.
+_VNETMAP_PW_HEREDOC = "__VNM_PW_EOF__"
+_VNETMAP_WRAP_HEREDOC = "__VNM_WRAP_EOF__"
+
+# Wrapper script that installs a ``getpass.getpass()`` monkey-patch backed by
+# a JSON map of per-switch passwords, then runs vnetmap.py as ``__main__``.
+#
+# Why a wrapper is required
+# -------------------------
+# vnetmap.py's ``--multiple-passwords`` mode calls ``getpass.getpass()`` for
+# each switch IP. When invoked via a non-interactive SSH ``exec_command``,
+# getpass falls back to reading ``sys.stdin``. However, *before* getpass is
+# reached, vnetmap's ``check_ssh_keys`` (line 1142/1150) calls
+# ``ssh_exe`` → ``subprocess.check_output("ssh ...", shell=True)`` with the
+# default ``stdin=None``. That ``ssh`` child inherits stdin and drains any
+# bytes piped in via ``printf '%s\\n' pw1 pw2 ... | python3 vnetmap.py``,
+# which causes the subsequent ``getpass`` calls to hit EOF and crash.
+#
+# Reading the password map from an explicit file (set via
+# ``VAST_SWITCH_PW_FILE``) side-steps the stdin race entirely, so the
+# monkey-patched getpass can return the correct password for each switch IP
+# regardless of what happened to stdin during switch discovery.
+_VNETMAP_MULTI_PASSWORD_WRAPPER = textwrap.dedent("""\
+    import json
+    import os
+    import re
+    import sys
+    import getpass as _g
+
+    _pwf = os.environ.pop("VAST_SWITCH_PW_FILE", "")
+    _pw_map = {}
+    if _pwf:
+        try:
+            with open(_pwf, "r") as _fh:
+                _pw_map = json.load(_fh) or {}
+        except Exception:
+            _pw_map = {}
+        finally:
+            try:
+                os.remove(_pwf)
+            except OSError:
+                pass
+
+    _ORIG_GETPASS = _g.getpass
+    _IP_RE = re.compile(r"\\d+\\.\\d+\\.\\d+\\.\\d+")
+
+    def _patched_getpass(prompt="Password: ", stream=None):
+        m = _IP_RE.search(prompt or "")
+        if m:
+            pw = _pw_map.get(m.group(0))
+            if pw is not None:
+                return pw
+        return _ORIG_GETPASS(prompt, stream)
+
+    _g.getpass = _patched_getpass
+
+    _vnetmap_path = os.environ.pop(
+        "VAST_VNETMAP_PATH", "/tmp/vast_scripts/vnetmap.py"
+    )
+    sys.argv[0] = _vnetmap_path
+    import runpy
+    runpy.run_path(_vnetmap_path, run_name="__main__")
+    """)
 
 
 class VnetmapWorkflow:
@@ -301,11 +367,12 @@ class VnetmapWorkflow:
         url = f"https://{api_host}/api/switches/"
 
         try:
+            # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
             if api_token:
                 headers = {"Authorization": f"Bearer {api_token}"}
-                response = requests.get(url, headers=headers, verify=False, timeout=30)
+                response = requests.get(url, headers=headers, verify=False, timeout=30)  # nosec B501
             else:
-                response = requests.get(url, auth=(username, password), verify=False, timeout=30)
+                response = requests.get(url, auth=(username, password), verify=False, timeout=30)  # nosec B501
 
             response.raise_for_status()
             switches = response.json()
@@ -329,9 +396,31 @@ class VnetmapWorkflow:
         switch_user = self._credentials.get("switch_user", "cumulus")
         switch_password = self._credentials.get("switch_password", "")
 
-        # Store switch credentials for later validation
+        # Ordered list of switch passwords to try — populated by OneShotRunner when
+        # autofill is enabled to handle clusters with mixed factory defaults
+        # (e.g. ``Vastdata1!`` on one Cumulus pair vs ``Cumu1usLinux!`` on a
+        # freshly reset leaf).  Workflow step 4 retries the command with each
+        # candidate on auth failure.
+        raw_candidates = self._credentials.get("switch_password_candidates") or []
+        switch_password_candidates: list[str] = []
+        if switch_password:
+            switch_password_candidates.append(switch_password)
+        for pw in raw_candidates:
+            if pw and pw not in switch_password_candidates:
+                switch_password_candidates.append(pw)
+
         self._step_data["switch_user"] = switch_user
         self._step_data["switch_password"] = switch_password
+        self._step_data["switch_password_candidates"] = switch_password_candidates
+
+        # Per-switch credential map produced by the pre-validation probe in
+        # OneShotRunner.  When every listed switch has an entry we hand
+        # vnetmap.py ``--multiple-passwords`` and feed the correct password
+        # per switch on stdin, instead of brute-forcing the whole run with
+        # one password at a time.
+        raw_by_ip = self._credentials.get("switch_password_by_ip") or {}
+        switch_password_by_ip: Dict[str, str] = {str(ip): str(pw) for ip, pw in raw_by_ip.items() if ip and pw}
+        self._step_data["switch_password_by_ip"] = switch_password_by_ip
 
         self.emit("info", "Generating export commands from cluster configuration...")
 
@@ -427,6 +516,9 @@ class VnetmapWorkflow:
             vnetmap_cmd = (
                 f"python3 vnetmap.py -s $MLX_IPS " f"-i {node_ips} " f"-u {switch_user} " f"-p '{switch_password}'"
             )
+            display_vnetmap_cmd = (
+                f"python3 vnetmap.py -s $MLX_IPS " f"-i {node_ips} " f"-u {switch_user} " f"-p '<switch-password>'"
+            )
         else:
             # InfiniBand command
             if dnodes_export:
@@ -436,8 +528,12 @@ class VnetmapWorkflow:
 
             # Note: Not passing -k flag - vnetmap will auto-discover the correct SSH key
             vnetmap_cmd = f"python3 vnetmap.py -i {node_ips} -ib"
+            display_vnetmap_cmd = vnetmap_cmd
 
-        self.emit("info", vnetmap_cmd)
+        # Emit the redacted form — ``vnetmap_cmd`` may carry the literal
+        # switch password via ``-p '<pw>'`` and must not appear verbatim in
+        # operator logs / bundles.  RM-1 / docs/TODO-ROADMAP.md.
+        self.emit("info", display_vnetmap_cmd)
 
         # Store for later steps
         self._step_data["export_commands"] = exports
@@ -447,7 +543,7 @@ class VnetmapWorkflow:
         self._step_data["cnodes_export"] = cnodes_export
         self._step_data["dnodes_export"] = dnodes_export
 
-        details = "\n".join(exports) + "\n\n" + vnetmap_cmd
+        details = "\n".join(exports) + "\n\n" + display_vnetmap_cmd
         return {
             "success": True,
             "message": f"Generated {network_type} configuration with {len(switch_ips)} switch(es)",
@@ -489,52 +585,296 @@ class VnetmapWorkflow:
         self._step_data["exports_ready"] = True
         return {"success": True, "message": "Export commands validated successfully", "details": stdout}
 
+    _VNETMAP_AUTH_INDICATORS = (
+        "authentication failed",
+        "permission denied",
+        "failed to connect to switch",
+        "unable to determine suitable switch api",
+        "login incorrect",
+    )
+
     def _step_run_vnetmap(self) -> Dict[str, Any]:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         remote_dir = self._step_data.get("remote_dir", self._script_runner.DEFAULT_REMOTE_DIR)
+        network_type = self._step_data.get("network_type", "Unknown")
 
         self.emit("info", "Executing vnetmap.py validation script...")
         self.emit("info", f"Remote host: {user}@{host}")
         self.emit("info", f"Working directory: {remote_dir}")
-        self.emit("info", f"Network type: {self._step_data.get('network_type', 'Unknown')}")
+        self.emit("info", f"Network type: {network_type}")
 
-        # Build the full command with exports
         exports = self._step_data.get("export_commands", [])
-        vnetmap_cmd = self._step_data.get("vnetmap_command", "python3 vnetmap.py --validate")
-
+        base_vnetmap_cmd = self._step_data.get("vnetmap_command", "python3 vnetmap.py --validate")
         export_str = " && ".join(exports)
-        full_cmd = f"cd {remote_dir} && {export_str} && {vnetmap_cmd}"
 
-        self.emit("info", "")
-        self.emit("info", "─── Full Command ───")
-        self.emit("info", full_cmd)
-        self.emit("info", "")
+        # For ETH runs we may have multiple switch passwords to try; IB runs
+        # don't use a switch password at all so the candidate list is skipped.
+        candidates: list[str] = []
+        switch_ips: List[str] = []
+        switch_password_by_ip: Dict[str, str] = {}
+        if network_type == "ETH":
+            candidates = list(self._step_data.get("switch_password_candidates") or [])
+            original_password = self._step_data.get("switch_password", "")
+            if not candidates and original_password:
+                candidates = [original_password]
+            switch_ips = list(self._step_data.get("switch_ips") or [])
+            switch_password_by_ip = dict(self._step_data.get("switch_password_by_ip") or {})
 
-        # Use direct SSH execution
-        result = self._script_runner.execute_remote(
-            host=host,
-            username=user,
-            password=password,
-            command=full_cmd,
-            timeout=600,  # 10 minute timeout
+        # Fast path: pre-validation told us which password authenticates
+        # against each switch.  Use vnetmap.py's native ``--multiple-passwords``
+        # flag (which prompts per switch via getpass) and feed the correct
+        # password for each IP on stdin in the same order as ``-s``.  This is
+        # the only reliable way to drive vnetmap against a cluster whose
+        # switches carry different default passwords (e.g. one pair on
+        # ``Vastdata1!`` and a spare leaf on ``VastData1!``).
+        if (
+            network_type == "ETH"
+            and switch_ips
+            and switch_password_by_ip
+            and all(ip in switch_password_by_ip for ip in switch_ips)
+        ):
+            full_cmd, display_cmd = self._build_multiple_passwords_cmd(
+                base_vnetmap_cmd,
+                switch_ips,
+                switch_password_by_ip,
+                remote_dir=remote_dir,
+                export_str=export_str,
+            )
+
+            self.emit(
+                "info",
+                f"Using per-switch passwords from pre-validation ({len(switch_ips)} switch(es)).",
+            )
+            # ``execute_remote`` echoes ``display_command`` (not ``command``)
+            # to the operator log, so the heredoc bodies containing the
+            # password JSON map never reach logs / bundles / clipboard copies.
+            # We deliberately do NOT pre-emit the display form ourselves:
+            # ScriptRunner will handle the single echo via the ``$ ssh`` /
+            # ``user@host:~$`` lines it already prints (RM-1).
+            result = self._script_runner.execute_remote(
+                host=host,
+                username=user,
+                password=password,
+                command=full_cmd,
+                timeout=600,
+                display_command=display_cmd,
+            )
+            if result.success:
+                self._step_data["vnetmap_output"] = result.stdout
+                self._step_data["vnetmap_command"] = display_cmd
+                self.emit("success", "vnetmap.py completed using per-switch credentials.")
+                return {
+                    "success": True,
+                    "message": "vnetmap.py completed successfully",
+                    "details": result.stdout,
+                }
+
+            # If the per-switch attempt still failed (e.g. switch API rejects
+            # the SSH-good password), fall through to the legacy candidate
+            # loop below so we don't silently give up on a recoverable run.
+            self._step_data["vnetmap_command"] = display_cmd
+            if not self._is_auth_failure(result.stdout, result.stderr):
+                self.emit("error", f"vnetmap exited with return code: {result.returncode}")
+                return {
+                    "success": False,
+                    "message": f"vnetmap failed with rc={result.returncode}",
+                    "details": result.stderr or result.stdout,
+                }
+            self.emit(
+                "warn",
+                "Per-switch password run reported auth failure; falling back to candidate-sweep retry.",
+            )
+
+        # Legacy path: try each candidate password in turn.  Only used when
+        # pre-validation didn't provide per-switch credentials (e.g. running
+        # the workflow standalone outside the one-shot pipeline).
+        attempts = max(1, len(candidates))
+        last_result = None
+        last_vnetmap_cmd = base_vnetmap_cmd
+
+        for attempt_index in range(attempts):
+            if network_type == "ETH" and candidates:
+                current_password = candidates[attempt_index]
+                current_vnetmap_cmd = self._rebuild_vnetmap_cmd(base_vnetmap_cmd, current_password)
+                if attempt_index == 0:
+                    self.emit("info", f"Using primary switch password (candidate 1/{attempts})")
+                else:
+                    self.emit(
+                        "warn",
+                        f"Primary switch password failed authentication — "
+                        f"retrying with fallback candidate {attempt_index + 1}/{attempts}",
+                    )
+            else:
+                current_vnetmap_cmd = base_vnetmap_cmd
+
+            last_vnetmap_cmd = current_vnetmap_cmd
+            full_cmd = f"cd {remote_dir} && {export_str} && {current_vnetmap_cmd}"
+
+            # Build a redacted display form: the candidate-sweep path passes
+            # the switch password inline via ``-p '<pw>'``, so we must not let
+            # it surface in the operator log.  ``_rebuild_vnetmap_cmd`` with
+            # a sentinel produces exactly the same command shape minus the
+            # real secret.  RM-1 / docs/TODO-ROADMAP.md.
+            redacted_vnetmap_cmd = self._rebuild_vnetmap_cmd(base_vnetmap_cmd, "<switch-password>")
+            display_cmd = f"cd {remote_dir} && {export_str} && {redacted_vnetmap_cmd}"
+
+            last_result = self._script_runner.execute_remote(
+                host=host,
+                username=user,
+                password=password,
+                command=full_cmd,
+                timeout=600,
+                display_command=display_cmd,
+            )
+
+            if last_result.success:
+                self._step_data["vnetmap_output"] = last_result.stdout
+                # Persist the redacted form — this value ends up in the
+                # step summary JSON / bundle, and must not contain a real
+                # switch password.  RM-1.
+                self._step_data["vnetmap_command"] = redacted_vnetmap_cmd
+                if attempt_index > 0:
+                    self.emit("success", f"vnetmap.py succeeded with fallback password (candidate {attempt_index + 1})")
+                return {
+                    "success": True,
+                    "message": "vnetmap.py completed successfully",
+                    "details": last_result.stdout,
+                }
+
+            if not self._is_auth_failure(last_result.stdout, last_result.stderr):
+                break
+
+        result = last_result
+        if result is None:
+            return {"success": False, "message": "vnetmap did not execute"}
+
+        self.emit("error", f"vnetmap exited with return code: {result.returncode}")
+        if len(candidates) > 1:
+            self.emit(
+                "error",
+                f"Authentication failed on all {len(candidates)} candidate switch password(s). "
+                "Verify the correct password in Connection Settings.",
+            )
+        # Even on failure, never persist the real password.  Replace the
+        # ``-p '<pw>'`` argument in whatever form we last tried.  RM-1.
+        self._step_data["vnetmap_command"] = self._rebuild_vnetmap_cmd(last_vnetmap_cmd, "<switch-password>")
+        return {
+            "success": False,
+            "message": f"vnetmap failed with rc={result.returncode}",
+            "details": result.stderr or result.stdout,
+        }
+
+    def _is_auth_failure(self, stdout: str, stderr: str) -> bool:
+        """Return True if the combined output matches known auth/connect failure patterns."""
+        combined = f"{stdout or ''}\n{stderr or ''}".lower()
+        return any(token in combined for token in self._VNETMAP_AUTH_INDICATORS)
+
+    @staticmethod
+    def _rebuild_vnetmap_cmd(base_cmd: str, new_password: str) -> str:
+        """Replace the ``-p '<pw>'`` argument in the vnetmap command with ``new_password``.
+
+        If the base command does not contain a ``-p`` flag (e.g. IB mode), the
+        command is returned unchanged.  Escaping single quotes inside the
+        password is handled so shells receive the literal string.
+        """
+        import re
+
+        escaped = new_password.replace("'", "'\\''")
+        pattern = re.compile(r"-p\s+'[^']*'")
+        if pattern.search(base_cmd):
+            return pattern.sub(f"-p '{escaped}'", base_cmd, count=1)
+        return base_cmd
+
+    @staticmethod
+    def _build_multiple_passwords_cmd(
+        base_cmd: str,
+        switch_ips: List[str],
+        switch_password_by_ip: Dict[str, str],
+        *,
+        remote_dir: str = "/tmp/vast_scripts",
+        export_str: str = "",
+    ) -> Tuple[str, str]:
+        """Build the remote shell command that runs ``vnetmap.py`` in
+        ``--multiple-passwords`` mode using the per-switch password map
+        discovered during pre-validation.
+
+        The command:
+
+        1. ``cd`` into the remote deploy directory and re-emits the cluster
+           export statements so ``$MLX_IPS`` / ``$cnodes_ips`` / ``$dnodes_ips``
+           expand correctly.
+        2. ``mktemp`` two files with mode ``600``:
+           * a JSON password map (``VAST_SWITCH_PW_FILE``) keyed by switch IP
+           * the Python wrapper that monkey-patches ``getpass.getpass``.
+        3. Installs a ``trap`` that removes both temp files on any exit
+           (success, failure, signal).
+        4. Writes each file via a single-quoted heredoc so shell expansion
+           never touches the payload.
+        5. Invokes ``python3 "$_VNM_WRAP" …`` with the vnetmap CLI args
+           (``-p '<pw>'`` stripped, ``--multiple-passwords`` appended).
+
+        The stdin-piping approach this replaces (``printf '%s\\n' pw1 pw2 | vnetmap.py``)
+        fails because vnetmap's SSH key probe spawns an ``ssh`` subprocess
+        that inherits stdin and drains the piped passwords before ``getpass``
+        is reached — see ``_VNETMAP_MULTI_PASSWORD_WRAPPER`` docstring.
+
+        Returns:
+            Tuple of ``(full_cmd, display_cmd)`` where ``display_cmd`` is a
+            redacted one-line summary suitable for echoing in the operator
+            log (no passwords, no heredoc bodies).
+        """
+        cli_args = re.sub(r"-p\s+'[^']*'\s*", "", base_cmd).strip()
+        if "--multiple-passwords" not in cli_args:
+            cli_args = f"{cli_args} --multiple-passwords"
+        cli_args_wrapped = re.sub(
+            r"^python3\s+vnetmap\.py\s*",
+            'python3 "$_VNM_WRAP" ',
+            cli_args,
+        ).strip()
+
+        pw_map_ordered = {ip: switch_password_by_ip[ip] for ip in switch_ips}
+        pw_json = json.dumps(pw_map_ordered, separators=(",", ":"))
+
+        prefix_parts: List[str] = [f"cd {remote_dir}"]
+        if export_str:
+            prefix_parts.append(export_str)
+        prefix = " && ".join(prefix_parts)
+
+        pw_heredoc = _VNETMAP_PW_HEREDOC
+        wrap_heredoc = _VNETMAP_WRAP_HEREDOC
+        wrapper_body = _VNETMAP_MULTI_PASSWORD_WRAPPER.rstrip("\n")
+
+        full_cmd = (
+            f"{prefix} && {{ "
+            "umask 077; "
+            f"_VNM_PWF=$(mktemp {remote_dir}/.vnetmap_pw.XXXXXX.json); "
+            f"_VNM_WRAP=$(mktemp {remote_dir}/.vnetmap_wrap.XXXXXX.py); "
+            'trap \'rm -f "$_VNM_PWF" "$_VNM_WRAP"\' EXIT HUP INT QUIT TERM; '
+            f"cat > \"$_VNM_PWF\" <<'{pw_heredoc}'\n"
+            f"{pw_json}\n"
+            f"{pw_heredoc}\n"
+            f"cat > \"$_VNM_WRAP\" <<'{wrap_heredoc}'\n"
+            f"{wrapper_body}\n"
+            f"{wrap_heredoc}\n"
+            f'VAST_SWITCH_PW_FILE="$_VNM_PWF" '
+            f'VAST_VNETMAP_PATH="{remote_dir}/vnetmap.py" '
+            f"{cli_args_wrapped}; "
+            "}"
         )
 
-        if not result.success:
-            self.emit("error", f"vnetmap exited with return code: {result.returncode}")
-            return {
-                "success": False,
-                "message": f"vnetmap failed with rc={result.returncode}",
-                "details": result.stderr or result.stdout,
-            }
-
-        self._step_data["vnetmap_output"] = result.stdout
-        return {
-            "success": True,
-            "message": "vnetmap.py completed successfully",
-            "details": result.stdout,
-        }
+        display_cli = re.sub(
+            r'python3\s+"\$_VNM_WRAP"',
+            "python3 <multi-password wrapper>",
+            cli_args_wrapped,
+        )
+        display_cmd = (
+            f"{prefix} && "
+            f"VAST_SWITCH_PW_FILE=<redacted: {len(switch_ips)} switch credential(s)> "
+            f'VAST_VNETMAP_PATH="{remote_dir}/vnetmap.py" {display_cli}'
+        )
+        return full_cmd, display_cmd
 
     def _step_validate_results(self) -> Dict[str, Any]:
         output = self._step_data.get("vnetmap_output", "")
@@ -736,6 +1076,89 @@ class VnetmapWorkflow:
 
         return "\n".join(filtered_lines)
 
+    # Shell fragment that picks the newest ``/vast/log/vnetmap-*.txt`` file
+    # and prints its path on a sentinel line followed by its full body.  Kept
+    # at module scope so tests can assert the exact command without
+    # duplicating the fragment.  ``-maxdepth 1`` guards against accidentally
+    # walking into sub-mounts; the sentinel token makes the path boundary
+    # unambiguous when the report itself happens to start with a dash.
+    _FABRIC_REPORT_FETCH_CMD = (
+        "latest=$(ls -1t /vast/log/vnetmap-*.txt 2>/dev/null | head -1); "
+        'if [ -z "$latest" ]; then echo "__VAST_FABRIC_REPORT_MISSING__"; exit 0; fi; '
+        'echo "__VAST_FABRIC_REPORT_PATH__=$latest"; '
+        'cat "$latest"'
+    )
+
+    def _fetch_fabric_report(self, host: str, user: str, password: str) -> Tuple[Optional[str], Optional[str]]:
+        """Retrieve vnetmap's fabric-report file from the CNode.
+
+        ``vnetmap.py`` writes ``/vast/log/vnetmap-<timestamp>.txt`` after a
+        successful run.  The file contains a complete ``LLDP neighbors on
+        <IP>:`` block for every switch in the fabric (leaves *and* spines)
+        — exactly the format ``vnetmap_parser._parse_lldp_neighbors``
+        already understands.  Pulling this report back to the reporter
+        restores full spine visibility on support-bundle / offline runs
+        where per-switch SSH (``ExternalPortMapper``) is disabled.
+
+        Failures are swallowed and logged at ``warn`` level so a missing
+        or unreadable report never aborts the parent workflow step.
+
+        Returns:
+            Tuple of ``(remote_path, contents)``.  Either element may be
+            ``None`` if the file is missing or unreadable.
+        """
+        if not host or not password:
+            return None, None
+
+        try:
+            rc, stdout, stderr = run_ssh_command(
+                host,
+                user,
+                password,
+                self._FABRIC_REPORT_FETCH_CMD,
+                timeout=60,
+            )
+        except Exception as exc:  # noqa: BLE001 — best-effort, never fatal
+            self.emit("warn", f"Fabric-report fetch raised: {exc}")
+            return None, None
+
+        if rc != 0:
+            self.emit(
+                "warn",
+                f"Fabric-report fetch returned rc={rc}: {(stderr or '').strip()[:200]}",
+            )
+            return None, None
+
+        if "__VAST_FABRIC_REPORT_MISSING__" in stdout:
+            self.emit("info", "No /vast/log/vnetmap-*.txt fabric report found on CNode.")
+            return None, None
+
+        # Split off the sentinel header line without touching the body
+        # (``split('\n', 1)`` preserves every subsequent newline).
+        head, _, body = stdout.partition("\n")
+        path: Optional[str] = None
+        if head.startswith("__VAST_FABRIC_REPORT_PATH__="):
+            path = head.split("=", 1)[1].strip() or None
+        else:
+            # No sentinel — treat the whole payload as the body.
+            body = stdout
+
+        if not body.strip():
+            return path, None
+        return path, body
+
+    def _merge_fabric_report(self, clean_output: str, fabric_path: Optional[str], fabric_body: str) -> str:
+        """Append the fabric-report body to ``clean_output`` with a delimiter.
+
+        The delimiter is a stand-alone ``#`` comment line that ``VNetMapParser``
+        ignores while ``_parse_lldp_neighbors`` happily matches the
+        ``LLDP neighbors on <IP>:`` blocks that follow.  Keeping the section
+        header visible in the saved text file also makes the merged output
+        self-describing for human operators.
+        """
+        separator = "\n\n# --- vnetmap fabric report (from CNode): " f"{fabric_path or 'unknown'} ---\n"
+        return clean_output.rstrip() + separator + fabric_body
+
     def _step_save_output(self) -> Dict[str, Any]:
         self.emit("info", "Saving vnetmap results...")
         local_dir = self._script_runner.get_local_dir()
@@ -747,11 +1170,35 @@ class VnetmapWorkflow:
         # Filter output to remove SSH retry noise
         clean_output = self._filter_vnetmap_output(raw_output)
 
-        # Save filtered output
+        # PMI-5: fetch the fabric-report file that vnetmap.py writes on the
+        # CNode and append it to the text we persist, so
+        # ``VNetMapParser._parse_lldp_neighbors`` can recover the full set of
+        # switch-to-switch edges (including spine uplinks) even when
+        # ExternalPortMapper is disabled (offline / support-bundle runs).
+        fabric_path, fabric_body = self._fetch_fabric_report(
+            self._credentials.get("cluster_ip", ""),
+            self._credentials.get("node_user", "vastdata"),
+            self._credentials.get("node_password", ""),
+        )
+        merged_output = clean_output
+        if fabric_body:
+            merged_output = self._merge_fabric_report(clean_output, fabric_path, fabric_body)
+            self._step_data["fabric_report_path"] = fabric_path
+            self._step_data["fabric_report_bytes"] = len(fabric_body)
+            self.emit(
+                "success",
+                f"Appended fabric report from CNode: {fabric_path} ({len(fabric_body)} chars)",
+            )
+
+        # Save filtered (+ fabric-report) output
         output_file = local_dir / f"vnetmap_output_{cluster_ip}_{timestamp}.txt"
-        output_file.write_text(clean_output)
+        output_file.write_text(merged_output)
         self.emit("info", f"[SAVED] {output_file}")
-        self.emit("info", f"  Filtered {len(raw_output)} -> {len(clean_output)} chars (removed SSH retry noise)")
+        self.emit(
+            "info",
+            f"  Filtered {len(raw_output)} -> {len(clean_output)} chars "
+            f"(removed SSH retry noise); wrote {len(merged_output)} chars incl. fabric report",
+        )
 
         # Save structured results
         results_file = local_dir / f"vnetmap_results_{cluster_ip}_{timestamp}.json"
@@ -764,6 +1211,8 @@ class VnetmapWorkflow:
             "dnodes_export": self._step_data.get("dnodes_export", ""),
             "vnetmap_command": self._step_data.get("vnetmap_command", ""),
             "validation": self._step_data.get("validation_results", {}),
+            "fabric_report_path": self._step_data.get("fabric_report_path"),
+            "fabric_report_bytes": self._step_data.get("fabric_report_bytes", 0),
         }
         results_file.write_text(json.dumps(results_data, indent=2))
         self.emit("info", f"[SAVED] {results_file}")

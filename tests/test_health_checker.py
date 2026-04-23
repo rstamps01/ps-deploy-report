@@ -581,6 +581,250 @@ class TestSSHTier3Checks:
 
 
 # ===================================================================
+# RM-2: per-switch password resolution (password_by_ip)
+# ===================================================================
+
+
+class TestSwitchSSHPerIPPassword:
+    """Verify ``run_switch_ssh_checks`` resolves each switch's password from
+    the ``password_by_ip`` map when present, and falls back to the primary
+    ``password`` when a given IP isn't in the map.
+
+    Background: the one-shot pipeline probes each switch IP with every
+    candidate password before launching health checks, and records the
+    winning password per IP on ``self._switch_password_by_ip``.  Without
+    RM-2 the health checker ignored that map and re-used
+    ``switch_ssh_config['password']`` for every check, mis-authenticating
+    any switch on a different default (e.g. a spare leaf on ``VastData1!``
+    while the pair runs ``Vastdata1!``).
+    """
+
+    def _patch_checks(self, checker):
+        """Replace the three per-switch check functions with recorders so we
+        can assert exactly which (ip, password) tuples were used without
+        spinning up fake SSH."""
+        seen = []
+
+        def recorder(check_name):
+            def _fn(host, username, password, *, switch_os="cumulus", **kwargs):
+                seen.append((check_name, host, password))
+                return HealthCheckResult(
+                    check_name=check_name,
+                    category="switch_ssh",
+                    status="pass",
+                    message=f"{check_name} on {host}",
+                    details={"host": host, "switch_os": switch_os},
+                    timestamp=checker._now(),
+                    duration_seconds=0.0,
+                )
+
+            return _fn
+
+        checker._detect_switch_type = lambda *a, **k: "cumulus"
+        checker._check_mlag_status = recorder("MLAG Status")
+        checker._check_switch_ntp = recorder("Switch NTP")
+        checker._check_switch_config_backup = recorder("Switch Config Backup")
+        return seen
+
+    def test_password_by_ip_applied_per_switch(self, mock_api_handler):
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2", "10.0.1.3"],
+            "password_by_ip": {
+                "10.0.1.1": "alpha-pw",
+                "10.0.1.2": "beta-pw",
+                # 10.0.1.3 is intentionally omitted -> must fall back.
+            },
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+
+        by_host = {host: pw for (_n, host, pw) in seen}
+        assert by_host["10.0.1.1"] == "alpha-pw"
+        assert by_host["10.0.1.2"] == "beta-pw"
+        assert by_host["10.0.1.3"] == "primary-pw"
+
+    def test_no_map_falls_back_to_primary(self, mock_api_handler):
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+    def test_malformed_map_is_ignored_safely(self, mock_api_handler):
+        """A non-dict ``password_by_ip`` (e.g. leftover list from a bad call
+        site) must not crash the checker — it should be treated as empty
+        and every switch falls back to the primary password."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1"],
+            "password_by_ip": ["not", "a", "dict"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+        checker.run_switch_ssh_checks()
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+
+# ===================================================================
+# RM-13: password_candidates probing (Reporter tile parity)
+# ===================================================================
+
+
+class TestSwitchSSHPasswordCandidates:
+    """Verify ``run_switch_ssh_checks`` probes ``password_candidates`` on
+    behalf of the Reporter tile, which hasn't pre-resolved per-switch
+    passwords the way the Test Suite tile does.
+
+    The Reporter tile populates ``switch_ssh_config['password_candidates']``
+    with the output of :func:`utils.switch_password_candidates.resolve_
+    switch_password_candidates` so a switch using a published default
+    (e.g. ``Cumu1usLinux!``) authenticates regardless of what the
+    operator typed in Connection Settings.
+    """
+
+    def _patch_checks(self, checker):
+        """Same recorder helper as TestSwitchSSHPerIPPassword."""
+        seen = []
+
+        def recorder(check_name):
+            def _fn(host, username, password, *, switch_os="cumulus", **kwargs):
+                seen.append((check_name, host, password))
+                return HealthCheckResult(
+                    check_name=check_name,
+                    category="switch_ssh",
+                    status="pass",
+                    message=f"{check_name} on {host}",
+                    details={"host": host, "switch_os": switch_os},
+                    timestamp=checker._now(),
+                    duration_seconds=0.0,
+                )
+
+            return _fn
+
+        checker._detect_switch_type = lambda *a, **k: "cumulus"
+        checker._check_mlag_status = recorder("MLAG Status")
+        checker._check_switch_ntp = recorder("Switch NTP")
+        checker._check_switch_config_backup = recorder("Switch Config Backup")
+        return seen
+
+    def test_candidates_probe_picks_winning_password_per_switch(self, mock_api_handler):
+        """Switch 10.0.1.1 accepts Vastdata1!, 10.0.1.2 accepts VastData1! —
+        the probe must map each switch to its winning password."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2"],
+            "password_candidates": ["primary-pw", "Vastdata1!", "VastData1!"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+
+        # Simulate the probe: 10.0.1.1 rejects primary-pw, accepts Vastdata1!.
+        # 10.0.1.2 rejects primary-pw, rejects Vastdata1!, accepts VastData1!.
+        def fake_run_ssh_command(host, user, password, command, timeout=15, **kwargs):
+            allow = {
+                "10.0.1.1": "Vastdata1!",
+                "10.0.1.2": "VastData1!",
+            }
+            if allow.get(host) == password:
+                return 0, host, ""
+            return 255, "", "Permission denied (publickey,password)"
+
+        # RM-15: probe SSH I/O was lifted to ``utils.switch_ssh_probe`` so
+        # the mocks now target that module.  ``HealthChecker._probe_switch_
+        # password`` is a thin delegator as of v1.5.6.
+        with patch("utils.switch_ssh_probe.run_ssh_command", side_effect=fake_run_ssh_command), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
+        ):
+            checker.run_switch_ssh_checks()
+
+        by_host = {host: pw for (_n, host, pw) in seen}
+        assert by_host["10.0.1.1"] == "Vastdata1!"
+        assert by_host["10.0.1.2"] == "VastData1!"
+
+    def test_candidates_fall_back_to_primary_when_all_rejected(self, mock_api_handler):
+        """When no candidate authenticates, each check still runs with the
+        primary password.  The checks themselves will report ``fail`` but
+        the probe must not swallow the whole run."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1"],
+            "password_candidates": ["nope1", "nope2"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+
+        # RM-15: probe SSH I/O moved to utils.switch_ssh_probe.
+        with patch("utils.switch_ssh_probe.run_ssh_command", return_value=(255, "", "Permission denied")), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
+        ):
+            checker.run_switch_ssh_checks()
+
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+    def test_candidates_skipped_when_password_by_ip_already_has_entry(self, mock_api_handler):
+        """When the caller already pre-resolved a winning password for a
+        switch (Test Suite tile path), don't re-probe that switch — the
+        pre-resolved value wins and the probe isn't called for it."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1", "10.0.1.2"],
+            "password_by_ip": {"10.0.1.1": "preresolved-pw"},
+            "password_candidates": ["Vastdata1!", "VastData1!"],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+
+        calls: list = []
+
+        def fake_run_ssh_command(host, user, password, command, timeout=15, **kwargs):
+            calls.append(host)
+            if host == "10.0.1.2" and password == "Vastdata1!":
+                return 0, host, ""
+            return 255, "", "denied"
+
+        # RM-15: probe SSH I/O moved to utils.switch_ssh_probe.
+        with patch("utils.switch_ssh_probe.run_ssh_command", side_effect=fake_run_ssh_command), patch(
+            "utils.switch_ssh_probe.run_interactive_ssh", return_value=(255, "", "denied")
+        ):
+            checker.run_switch_ssh_checks()
+
+        # 10.0.1.1 must not be probed — its password was pre-resolved.
+        assert "10.0.1.1" not in calls
+        by_host = {host: pw for (_n, host, pw) in seen}
+        assert by_host["10.0.1.1"] == "preresolved-pw"
+        assert by_host["10.0.1.2"] == "Vastdata1!"
+
+    def test_empty_candidates_noop(self, mock_api_handler):
+        """No candidates -> no probe, behaviour identical to RM-2 path."""
+        switch_config = {
+            "username": "cumulus",
+            "password": "primary-pw",
+            "switch_ips": ["10.0.1.1"],
+            "password_candidates": [],
+        }
+        checker = HealthChecker(api_handler=mock_api_handler, switch_ssh_config=switch_config)
+        seen = self._patch_checks(checker)
+
+        with patch("health_checker.run_ssh_command") as mock_ssh:
+            checker.run_switch_ssh_checks()
+            mock_ssh.assert_not_called()
+
+        assert {pw for (_n, _h, pw) in seen} == {"primary-pw"}
+
+
+# ===================================================================
 # WS-B: TestResolveIPs
 # ===================================================================
 

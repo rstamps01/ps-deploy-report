@@ -13,7 +13,6 @@ vperfsanity Performance Test Workflow
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from script_runner import ScriptRunner
@@ -32,8 +31,9 @@ class VperfsanityWorkflow:
     min_vast_version = "5.0"
 
     PACKAGE_NAME = "vperfsanity-latest-stable.tar.gz"
-    REMOTE_DIR = "/tmp/vast_scripts"
-    VPERF_DIR = "/tmp/vast_scripts/vperfsanity"
+    # Intentional [B108]: both paths live on the remote VAST CNode (populated via SSH), not local tempfiles.
+    REMOTE_DIR = "/tmp/vast_scripts"  # nosec B108
+    VPERF_DIR = "/tmp/vast_scripts/vperfsanity"  # nosec B108
     DEFAULT_VIP_POOL = "main"
 
     # vperfsanity uses admin credentials
@@ -441,9 +441,12 @@ class VperfsanityWorkflow:
                 self.emit("info", line)
         self.emit("info", "-" * 40)
 
-        # Save results locally
-        local_dir = Path(__file__).parent.parent.parent / "output" / "scripts"
-        local_dir.mkdir(parents=True, exist_ok=True)
+        # Save results locally under the writable data directory so the
+        # ResultBundler (which scans get_data_dir()/output/scripts) can find
+        # them.  Using Path(__file__).parent... resolves inside the .app
+        # bundle on frozen builds and hides the results from the bundler.
+        assert self._script_runner is not None
+        local_dir = self._script_runner.get_local_dir()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         results_file = local_dir / f"vperfsanity_results_{host}_{timestamp}.txt"

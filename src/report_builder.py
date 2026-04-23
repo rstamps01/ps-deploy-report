@@ -4025,6 +4025,103 @@ class VastReportBuilder:
         content.append(Spacer(1, 8))
         return content
 
+    def _create_spine_port_tables(
+        self,
+        port_mapping_data: Dict[str, Any],
+        switches: List[Dict[str, Any]],
+        leaf_switch_ips: set,
+        headers: List[str],
+    ) -> List[Any]:
+        """Render one Port-to-Device Mapping table per spine switch.
+
+        Spine switches are not discovered through the MAC-based port map
+        (``port_map`` only holds leaf<->node correlations), so they never
+        appear in the main per-switch loop above.  When LLDP-derived (or
+        inferred) ``spine_uplink`` / ``spine_fabric`` entries are present in
+        ``ipl_connections``, we render a dedicated table for each spine so
+        the reader can see which leaves each spine is connected to, even
+        without full node-level data.
+
+        Inputs intentionally kept simple (no PDF styling objects) so the
+        helper is easy to unit-test.
+        """
+        content: List[Any] = []
+        ipl_connections = port_mapping_data.get("ipl_connections", []) or []
+        if not ipl_connections:
+            return content
+
+        # Collect the set of switch IPs that appear as an endpoint of a
+        # spine_uplink / spine_fabric entry but are NOT leaves (i.e., not in
+        # the port_map-derived leaf set).  Those are the spines to render.
+        spine_ips: List[str] = []
+        spine_seen: set = set()
+        for conn in ipl_connections:
+            conn_type = (conn.get("connection_type") or "").lower()
+            if conn_type not in ("spine_uplink", "spine_fabric"):
+                continue
+            for ip in (conn.get("switch1_ip"), conn.get("switch2_ip")):
+                if not ip or ip in spine_seen:
+                    continue
+                if ip in leaf_switch_ips:
+                    continue
+                spine_seen.add(ip)
+                spine_ips.append(ip)
+
+        if not spine_ips:
+            return content
+
+        # Build an IP -> hostname / designation lookup so the table title and
+        # per-row "local side" label match the leaf-side tables.
+        switch_lookup: Dict[str, Dict[str, Any]] = {sw.get("mgmt_ip"): sw for sw in switches if sw.get("mgmt_ip")}
+
+        for sp_idx, spine_ip in enumerate(sorted(spine_ips), start=1):
+            spine_info = switch_lookup.get(spine_ip, {})
+            spine_hostname = spine_info.get("hostname") or spine_info.get("name") or spine_ip
+            # Designation: prefer one from an ipl_connection that involves this spine.
+            spine_designation = f"SP{sp_idx}"
+            for conn in ipl_connections:
+                if conn.get("switch1_ip") == spine_ip:
+                    cand = conn.get("switch_designation", "")
+                    if cand:
+                        spine_designation = cand
+                        break
+                if conn.get("switch2_ip") == spine_ip:
+                    cand = conn.get("node_designation", "")
+                    if cand:
+                        spine_designation = cand
+                        break
+
+            table_data: List[List[str]] = []
+            for conn in ipl_connections:
+                conn_type = (conn.get("connection_type") or "").lower()
+                if conn_type not in ("spine_uplink", "spine_fabric"):
+                    continue
+                ip1 = conn.get("switch1_ip", "")
+                ip2 = conn.get("switch2_ip", "")
+                if spine_ip not in (ip1, ip2):
+                    continue
+
+                if ip1 == spine_ip:
+                    local = conn.get("switch_designation", "") or spine_designation
+                    remote = conn.get("node_designation", "") or ""
+                else:
+                    local = conn.get("node_designation", "") or spine_designation
+                    remote = conn.get("switch_designation", "") or ""
+
+                default_note = "Spine uplink" if conn_type == "spine_uplink" else "Spine fabric"
+                note = conn.get("notes") or default_note
+                network_label = "Uplink" if conn_type == "spine_uplink" else "Fabric"
+                table_data.append([local, remote, network_label, "", note])
+
+            if not table_data:
+                continue
+
+            table_title = f"{spine_designation} ({spine_hostname}) Port-to-Device Mapping"
+            content.extend(self.brand_compliance.create_vast_table(table_data, table_title, headers))
+            content.append(Spacer(1, 12))
+
+        return content
+
     def _create_port_mapping_section(
         self,
         port_mapping_data: Dict[str, Any],
@@ -4234,40 +4331,74 @@ class VastReportBuilder:
 
                 table_data.append([port_display, node_display, network, speed, notes_str])
 
-            # Add IPL/MLAG connections to this switch's table
+            # Add IPL / spine-uplink rows to this switch's table.  Each
+            # entry in ``ipl_connections`` is either:
+            #
+            #   * IPL (leaf<->leaf, ``connection_type == "ipl"``)
+            #   * spine uplink (leaf<->spine, ``connection_type == "spine_uplink"``)
+            #   * spine fabric (spine<->spine, rendered only under spine tables)
+            #
+            # We want every row whose endpoint is the leaf currently being
+            # rendered to show up in that leaf's table, with the peer-side
+            # designation on the right.
             ipl_connections = port_mapping_data.get("ipl_connections", [])
-            if ipl_connections:
-                for ipl_conn in ipl_connections:
-                    sw_des = ipl_conn.get("switch_designation", "")
-                    peer_des = ipl_conn.get("node_designation", "")
-                    ipl_note = ipl_conn.get("notes", "IPL")
+            for ipl_conn in ipl_connections:
+                conn_type = (ipl_conn.get("connection_type") or "ipl").lower()
+                if conn_type == "spine_fabric":
+                    continue  # spine<->spine links belong in the spine table
+                ip1 = ipl_conn.get("switch1_ip", "")
+                ip2 = ipl_conn.get("switch2_ip", "")
 
+                local_side, remote_side = None, None
+                if ip1 == switch_ip:
+                    local_side = ipl_conn.get("switch_designation", "")
+                    remote_side = ipl_conn.get("node_designation", "")
+                elif ip2 == switch_ip:
+                    # Flip the pair so the "local" column always shows this leaf.
+                    local_side = ipl_conn.get("node_designation", "")
+                    remote_side = ipl_conn.get("switch_designation", "")
+                else:
+                    # Legacy rows without switch IPs rely on switch_num heuristic.
+                    if conn_type != "ipl" or (ip1 and ip2):
+                        continue
                     if switch_num == 1:
-                        table_data.append(
-                            [
-                                sw_des or "SWA",
-                                peer_des or "SWB",
-                                "A/B",
-                                "",
-                                ipl_note,
-                            ]
-                        )
+                        local_side = ipl_conn.get("switch_designation", "") or "SWA"
+                        remote_side = ipl_conn.get("node_designation", "") or "SWB"
                     elif switch_num == 2:
-                        table_data.append(
-                            [
-                                peer_des or "SWB",
-                                sw_des or "SWA",
-                                "A/B",
-                                "",
-                                ipl_note,
-                            ]
-                        )
+                        local_side = ipl_conn.get("node_designation", "") or "SWB"
+                        remote_side = ipl_conn.get("switch_designation", "") or "SWA"
+                    else:
+                        continue
+
+                default_note = "Spine uplink" if conn_type == "spine_uplink" else "IPL"
+                ipl_note = ipl_conn.get("notes") or default_note
+                network_label = "Uplink" if conn_type == "spine_uplink" else "A/B"
+
+                table_data.append(
+                    [
+                        local_side or "",
+                        remote_side or "",
+                        network_label,
+                        "",
+                        ipl_note,
+                    ]
+                )
 
             # Create table
             table_title = f"Switch {switch_num} Port-to-Device Mapping"
             table_elements = self.brand_compliance.create_vast_table(table_data, table_title, headers)
             content.extend(table_elements)
             content.append(Spacer(1, 12))
+
+        # --- Spine switch tables (if any spine_uplink / spine_fabric entries exist) ---
+        content.extend(
+            self._create_spine_port_tables(
+                port_mapping_data=port_mapping_data,
+                switches=switches,
+                leaf_switch_ips=port_map_switch_ips,
+                headers=headers,
+            )
+        )
 
         # Add diagnostic summary if available
         diagnostic_summary = port_mapping_data.get("diagnostic_summary")
