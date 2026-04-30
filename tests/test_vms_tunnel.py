@@ -17,6 +17,7 @@ from utils.vms_tunnel import (
     discover_vms_management_ip,
     parse_find_vms_output,
     parse_management_ip,
+    parse_management_ip_candidates,
 )
 from api_handler import VastApiHandler, create_vast_api_handler
 
@@ -124,6 +125,42 @@ IB_M_ALIAS_DIRECT = """\
     inet 172.16.5.99/24 scope global ib0:m
 """
 
+# Allen Institute (`VAST-ALLENINSTITUTE-01`) live `ip addr show` payload from
+# c-128-4 captured 2026-04-30 via tech port 192.168.2.2.  Confirmed bound
+# listeners on this CNode for TCP/443: nginx on 100.64.44.2 (em3 base) and
+# vCD21_main on 100.64.24.4 / 100.64.24.13 / 172.16.254.243.  Critically,
+# *nothing* listens on the bond0:m alias 172.16.128.4:443 -- which is exactly
+# what the pre-TP-2 alias-priority rule would have picked.  This fixture
+# encodes the cluster-shape that broke report generation in CZ-Bio's run
+# even after TP-1.
+ALLEN_INSTITUTE_IP_ADDR_OUTPUT = """\
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    inet 127.0.0.1/8 scope host lo
+2: em1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+3: em2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    inet 192.168.3.3/24 brd 192.168.3.255 scope global em2
+4: em3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    inet 100.64.44.2/20 scope global em3
+    inet 100.64.44.9/20 scope global secondary em3:e
+5: em4: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+6: em5: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+7: ib0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 172.16.254.243/24 scope global ib0
+    inet 100.64.24.4/20 scope global ib0
+8: ib1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 100.64.24.13/20 scope global ib1
+9: ib2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 172.16.0.4/18 brd 172.16.63.255 scope global ib2:a
+10: ib3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 172.16.64.4/18 brd 172.16.127.255 scope global ib3:b
+13: ib4: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 2044 qdisc fq_codel master bond0 state UP group default qlen 256
+14: ib5: <BROADCAST,MULTICAST,SLAVE,UP,LOWER_UP> mtu 2044 qdisc fq_codel master bond0 state UP group default qlen 256
+15: bond0: <BROADCAST,MULTICAST,MASTER,UP,LOWER_UP> mtu 2044 qdisc noqueue state UP group default qlen 1000
+    inet 172.16.128.4/18 brd 172.16.191.255 scope global bond0:m
+16: docker0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN group default
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+"""
+
 
 class TestParseManagementIp:
     def test_selab_primary(self):
@@ -205,25 +242,129 @@ class TestParseManagementIp:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# parse_management_ip_candidates (TP-2 -- empirical probe-based selection)
+# ---------------------------------------------------------------------------
+
+
+class TestParseManagementIpCandidates:
+    def test_empty(self):
+        assert parse_management_ip_candidates("") == []
+        assert parse_management_ip_candidates(None) == []  # type: ignore[arg-type]
+
+    def test_selab_eth_base_first(self):
+        assert parse_management_ip_candidates(SELAB_IP_ADDR_OUTPUT) == [
+            "10.143.11.202",  # enp194s0f0 (ETH base)
+            "10.143.11.61",  # enp194s0f0:e (ETH :e secondary)
+        ]
+
+    def test_allen_institute_priority(self):
+        # The whole point of TP-2: nginx is bound to 100.64.44.2 (em3 base),
+        # so candidates must put it ahead of bond0:m's 172.16.128.4 -- which
+        # is what the pre-TP-2 alias rule was wrongly returning.
+        cands = parse_management_ip_candidates(ALLEN_INSTITUTE_IP_ADDR_OUTPUT)
+        assert cands[0] == "192.168.3.3"  # em2 base (admin LAN, but ETH base wins first)
+        assert cands[1] == "100.64.44.2"  # em3 base (the actual customer mgmt -- nginx VMS UI)
+        assert cands.index("100.64.44.2") < cands.index("172.16.128.4")
+        assert cands.index("100.64.44.2") < cands.index("172.16.0.4")
+        assert cands[-1] == "172.16.128.4"  # bond0:m goes LAST
+        # Loopback and docker excluded entirely.
+        assert "127.0.0.1" not in cands
+        assert "172.17.0.1" not in cands
+
+    def test_includes_cgnat(self):
+        # CGNAT (100.64/10) must be a candidate -- it's the customer-facing
+        # range on VAST IPoIB clusters.  Pre-TP-2 the regex skipped it.
+        out = "    inet 100.64.44.2/20 scope global em3\n"
+        assert parse_management_ip_candidates(out) == ["100.64.44.2"]
+
+    def test_excludes_link_local(self):
+        out = "    inet 169.254.1.1/16 scope link eth0\n    inet 10.0.0.5/24 scope global eth0\n"
+        assert parse_management_ip_candidates(out) == ["10.0.0.5"]
+
+    def test_excludes_loopback_docker_bridge(self):
+        out = (
+            "    inet 127.0.0.1/8 scope host lo\n"
+            "    inet 172.17.0.1/16 scope global docker0\n"
+            "    inet 192.168.42.1/24 scope global br-abc\n"
+            "    inet 169.254.1.1/16 scope link veth0a\n"
+            "    inet 10.0.0.5/24 scope global eth0\n"
+        )
+        assert parse_management_ip_candidates(out) == ["10.0.0.5"]
+
+    def test_eth_e_alias_after_eth_base(self):
+        out = "    inet 10.0.0.5/24 scope global eth0\n" "    inet 10.0.0.99/24 scope global secondary eth0:e\n"
+        assert parse_management_ip_candidates(out) == ["10.0.0.5", "10.0.0.99"]
+
+    def test_ib_after_eth_bond_m_last(self):
+        out = (
+            "    inet 192.168.1.5/24 scope global em2\n"
+            "    inet 172.16.10.5/18 scope global ib2:a\n"
+            "    inet 172.16.128.5/18 scope global bond0:m\n"
+        )
+        cands = parse_management_ip_candidates(out)
+        assert cands == ["192.168.1.5", "172.16.10.5", "172.16.128.5"]
+
+    def test_no_routable_returns_empty(self):
+        # Loopback + CGNAT-ineligible + docker only: but with TP-2's wider
+        # regex, the 100.64.44.2 on em3 IS routable, so this returns it.
+        cands = parse_management_ip_candidates(LOOPBACK_AND_CGNAT_ONLY)
+        assert cands == ["100.64.44.2"]  # em3 CGNAT base now valid
+
+    def test_ipoib_high_mtu_no_effect(self):
+        out = (
+            "9: ib2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP\n"
+            "    inet 172.16.10.5/18 scope global ib2\n"
+        )
+        assert parse_management_ip_candidates(out) == ["172.16.10.5"]
+
+    def test_dedups_duplicate_ips(self):
+        # Same IP appearing twice (rare, but happens with weird configs)
+        # should appear only once in the candidate list.
+        out = "    inet 10.0.0.5/24 scope global eth0\n" "    inet 10.0.0.5/24 scope global eth0\n"
+        assert parse_management_ip_candidates(out) == ["10.0.0.5"]
+
+
 # Probe response constants for the new 443 short-circuit step.
 # Format mirrors what `_check_management_via_internal_ip` emits over SSH.
 _PROBE_443_OPEN = (0, "OPEN\n", "")
 _PROBE_443_CLOSED = (0, "CLOSED\n", "")
 
 
+def _multi_probe(results):
+    """Build the (rc, stdout, stderr) tuple for the multi-IP TP-2 probe.
+
+    `results` is a list of (ip, status) where status is "OPEN" or "CLOSED".
+    The probe shell loop emits one line per IP in the form ``<ip> OPEN`` or
+    ``<ip> CLOSED``.  Returns (0, joined_stdout, "").
+    """
+    return (0, "\n".join(f"{ip} {status}" for ip, status in results) + "\n", "")
+
+
 class TestDiscoverVmsManagementIp:
+    """End-to-end SSH discovery with TP-2 probe-based candidate selection.
+
+    Mock sequence per call:
+      1. motd grep                      (always)
+      2. (optional) clush fallback      (only if motd failed)
+      3. 443 short-circuit on motd IP   (always after step 1/2)
+      4. ip-addr hop (jumped)           (only if step 3 closed)
+      5. multi-IP 443 probe loop        (only if step 4 produced candidates)
+    """
+
     @patch("utils.vms_tunnel.run_ssh_command")
     def test_success_via_motd(self, mock_ssh):
-        """MOTD discovery + 443 closed -> ip-addr hop."""
+        """MOTD + 443 closed on internal -> ip-addr hop -> first candidate OPEN."""
         mock_ssh.side_effect = [
             (0, "\u2502 VMS:    172.16.3.4                \u2502\n", ""),
             _PROBE_443_CLOSED,
             (0, SELAB_IP_ADDR_OUTPUT, ""),
+            _multi_probe([("10.143.11.202", "OPEN"), ("10.143.11.61", "OPEN")]),
         ]
         internal, mgmt = discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
         assert internal == "172.16.3.4"
         assert mgmt == "10.143.11.202"
-        assert mock_ssh.call_count == 3
+        assert mock_ssh.call_count == 4
 
         first_call = mock_ssh.call_args_list[0]
         assert first_call[0][0] == "192.168.2.2"
@@ -235,17 +376,18 @@ class TestDiscoverVmsManagementIp:
 
     @patch("utils.vms_tunnel.run_ssh_command")
     def test_success_via_clush_fallback(self, mock_ssh):
-        """MOTD fails, clush succeeds, 443 closed -> ip-addr hop."""
+        """MOTD fails, clush succeeds, 443 closed, ip-addr -> probe."""
         mock_ssh.side_effect = [
             (1, "", "no such file"),
             (0, "172.16.3.4\n", ""),
             _PROBE_443_CLOSED,
             (0, SELAB_IP_ADDR_OUTPUT, ""),
+            _multi_probe([("10.143.11.202", "OPEN"), ("10.143.11.61", "OPEN")]),
         ]
         internal, mgmt = discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
         assert internal == "172.16.3.4"
         assert mgmt == "10.143.11.202"
-        assert mock_ssh.call_count == 4
+        assert mock_ssh.call_count == 5
 
     @patch("utils.vms_tunnel.run_ssh_command")
     def test_both_strategies_fail(self, mock_ssh):
@@ -270,15 +412,33 @@ class TestDiscoverVmsManagementIp:
             discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
 
     @patch("utils.vms_tunnel.run_ssh_command")
-    def test_no_routable_ip_in_output(self, mock_ssh):
-        # Inverted from pre-TP-1: payload now contains only loopback/CGNAT/docker
-        # so parse_management_ip legitimately returns None.
+    def test_no_candidates_in_output(self, mock_ssh):
+        # ip addr show contained only loopback / link-local / docker -- no
+        # candidate at all (CGNAT 100.64.44.2 IS a candidate now though, so
+        # we strip even that for this test).
+        only_uninteresting = (
+            "1: lo: ...\n    inet 127.0.0.1/8 scope host lo\n"
+            "2: docker0: ...\n    inet 172.17.0.1/16 scope global docker0\n"
+        )
         mock_ssh.side_effect = [
             (0, "\u2502 VMS:    172.16.3.4                \u2502\n", ""),
             _PROBE_443_CLOSED,
-            (0, LOOPBACK_AND_CGNAT_ONLY, ""),
+            (0, only_uninteresting, ""),
         ]
-        with pytest.raises(VMSDiscoveryError, match="Could not parse management IP"):
+        with pytest.raises(VMSDiscoveryError, match="No candidate management IP"):
+            discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
+
+    @patch("utils.vms_tunnel.run_ssh_command")
+    def test_no_candidate_reachable_on_443(self, mock_ssh):
+        # Candidates extracted but every probe says CLOSED -> error names
+        # the candidates and their probe results so the failure is debuggable.
+        mock_ssh.side_effect = [
+            (0, "\u2502 VMS:    172.16.3.4                \u2502\n", ""),
+            _PROBE_443_CLOSED,
+            (0, SELAB_IP_ADDR_OUTPUT, ""),
+            _multi_probe([("10.143.11.202", "CLOSED"), ("10.143.11.61", "CLOSED")]),
+        ]
+        with pytest.raises(VMSDiscoveryError, match="No candidate management IP responded on 443"):
             discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
 
     @patch("utils.vms_tunnel.run_ssh_command")
@@ -295,17 +455,50 @@ class TestDiscoverVmsManagementIp:
         assert mock_ssh.call_count == 2
 
     @patch("utils.vms_tunnel.run_ssh_command")
-    def test_443_short_circuit_falls_through_when_closed(self, mock_ssh):
-        """443 closed on internal IP -> fall through to ip-addr hop."""
+    def test_allen_institute_picks_em3_base_over_bond_m(self, mock_ssh):
+        """TP-2 regression test: 172.16.128.4 (bond0:m) is REFUSED, em3 base
+        100.64.44.2 is OPEN.  Discovery must return 100.64.44.2, not the
+        first-in-priority bond0:m as the pre-TP-2 alias rule would have."""
+        mock_ssh.side_effect = [
+            (0, "\u2502 VMS:    172.16.128.4              \u2502\n", ""),
+            _PROBE_443_CLOSED,  # 172.16.128.4 itself: closed
+            (0, ALLEN_INSTITUTE_IP_ADDR_OUTPUT, ""),
+            _multi_probe(
+                [
+                    ("192.168.3.3", "CLOSED"),  # em2 admin LAN, no service
+                    ("100.64.44.2", "OPEN"),  # em3 base, nginx VMS UI -- WIN
+                    # Probe loop short-circuits at first OPEN; remaining
+                    # candidates not exercised.
+                ]
+            ),
+        ]
+        internal, mgmt = discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
+        assert internal == "172.16.128.4"
+        assert mgmt == "100.64.44.2", "TP-2 regression: bond0:m must NOT be picked when 100.64.44.2 is reachable"
+
+    @patch("utils.vms_tunnel.run_ssh_command")
+    def test_falls_through_to_later_candidate_when_earlier_closed(self, mock_ssh):
+        """First two candidates closed, third OPEN -> third wins."""
         mock_ssh.side_effect = [
             (0, "\u2502 VMS:    172.16.3.4                \u2502\n", ""),
             _PROBE_443_CLOSED,
-            (0, MAMMOTH_IP_ADDR_OUTPUT, ""),
+            (
+                0,
+                "    inet 192.168.1.5/24 scope global em2\n"
+                "    inet 100.64.44.2/20 scope global em3\n"
+                "    inet 172.16.128.5/18 scope global bond0:m\n",
+                "",
+            ),
+            _multi_probe(
+                [
+                    ("192.168.1.5", "CLOSED"),
+                    ("100.64.44.2", "CLOSED"),
+                    ("172.16.128.5", "OPEN"),
+                ]
+            ),
         ]
         internal, mgmt = discover_vms_management_ip("192.168.2.2", "vastdata", "pw")
-        assert internal == "172.16.3.4"
-        assert mgmt == "172.16.128.4"  # `bond0:m` alias wins via `:m` priority
-        assert mock_ssh.call_count == 3
+        assert mgmt == "172.16.128.5"
 
 
 # ---------------------------------------------------------------------------
