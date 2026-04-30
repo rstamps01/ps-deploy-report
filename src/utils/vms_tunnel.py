@@ -48,6 +48,42 @@ class VMSDiscoveryError(Exception):
 
 _IP_RE = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
 
+# RFC1918 private ranges (10/8, 172.16/12, 192.168/16) anchored to `inet `
+# preamble so `inet6` lines and bare textual matches are skipped.  CGNAT
+# (100.64/10, RFC 6598) and link-local (169.254/16) are intentionally NOT
+# part of this set: they must never be picked as a management IP.
+_RFC1918_RE = re.compile(
+    r"\binet\s+("
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r")/\d+"
+)
+
+# Interface name prefixes whose addresses are never the cluster mgmt IP.
+# Matches both exact names (`lo`, `docker0`) and aliased forms (`docker0:e`).
+_EXCLUDE_IFACE_PREFIXES: Tuple[str, ...] = (
+    "lo",
+    "docker",
+    "br-",
+    "veth",
+    "tun",
+    "tap",
+    "tailscale",
+    "virbr",
+    "vnet",
+    "cni",
+    "flannel",
+)
+
+
+def _iface_excluded(iface: str) -> bool:
+    """True if *iface* belongs to an excluded class (loopback, container, vpn)."""
+    if not iface:
+        return False
+    base = iface.split(":", 1)[0]  # strip any `:alias` suffix
+    return any(base == p or base.startswith(p) for p in _EXCLUDE_IFACE_PREFIXES)
+
 
 def parse_find_vms_output(output: str) -> Optional[str]:
     """Extract VMS internal IP from ``find-vms`` command output.
@@ -70,34 +106,51 @@ def parse_find_vms_output(output: str) -> Optional[str]:
 
 
 def parse_management_ip(ip_addr_output: str) -> Optional[str]:
-    """Extract the primary management IP from ``ip addr show`` output.
+    """Extract the cluster management IP from ``ip addr show`` output.
 
-    Looks for ``inet 10.x.x.x/...`` lines with ``scope global`` that are
-    NOT marked ``secondary``.  Falls back to the first ``inet 10.x.x.x``
-    if no non-secondary match is found.
+    Selection priority (media-agnostic; works on Ethernet, Infiniband / IPoIB,
+    bonds, etc.):
 
-    Returns:
-        The management IP string (without CIDR mask), or ``None``.
+    1. RFC1918 ``scope global`` address whose interface name ends in ``:m``
+       (VAST mgmt VIP convention, e.g. ``bond0:m`` on IB clusters).
+    2. RFC1918 non-secondary ``scope global`` address on a non-excluded
+       interface (loopback, docker, bridge, veth, vpn devices excluded).
+    3. RFC1918 secondary ``scope global`` address on a non-excluded interface.
+
+    CGNAT (100.64/10), link-local (169.254/16), and IPv6 are intentionally
+    not considered.  Returns ``None`` when no candidate matches.
     """
     if not ip_addr_output:
         return None
 
-    primary = None
-    fallback = None
+    m_alias_pick: Optional[str] = None
+    primary_pick: Optional[str] = None
+    secondary_pick: Optional[str] = None
 
     for line in ip_addr_output.splitlines():
         stripped = line.strip()
-        match = re.match(r"inet\s+(10\.\d{1,3}\.\d{1,3}\.\d{1,3})/", stripped)
+        match = _RFC1918_RE.search(stripped)
         if not match:
             continue
-        ip = match.group(1)
-        if fallback is None:
-            fallback = ip
-        if "scope global" in stripped and "secondary" not in stripped:
-            primary = ip
-            break
+        if "scope global" not in stripped:
+            continue
 
-    return primary or fallback
+        tokens = stripped.split()
+        iface = tokens[-1] if tokens else ""
+        if _iface_excluded(iface):
+            continue
+
+        ip = match.group(1)
+        is_secondary = "secondary" in stripped
+
+        if iface.endswith(":m") and not is_secondary and m_alias_pick is None:
+            m_alias_pick = ip
+        elif not is_secondary and primary_pick is None:
+            primary_pick = ip
+        elif is_secondary and secondary_pick is None:
+            secondary_pick = ip
+
+    return m_alias_pick or primary_pick or secondary_pick
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +221,30 @@ def discover_vms_management_ip(
         raise VMSDiscoveryError(f"Could not discover VMS IP on {entry_host} " f"(motd and clush both failed): {err}")
     logger.info("VMS internal IP: %s", vms_internal_ip)
 
-    # Step 2: SSH hop to VMS internal IP, get management IP
-    ip_cmd = "ip addr show | grep 'inet 10\\.' | head -5"
+    # Step 1.5: 443 short-circuit.
+    # On many clusters (especially IPoIB) the VMS internal IP discovered via
+    # /etc/motd is itself the management VIP and already serves the VMS UI on
+    # TCP/443.  When that's the case, skip the second SSH hop entirely; this
+    # avoids the historical "no 10.x.x.x found" failure mode on clusters whose
+    # mgmt network lives in 172.16/12 or 192.168/16 (TP-1).
+    if _check_management_via_internal_ip(
+        entry_host,
+        ssh_user,
+        ssh_password,
+        vms_internal_ip,
+        timeout=timeout,
+    ):
+        logger.info(
+            "VMS internal IP %s already answers on 443; skipping ip-addr hop",
+            vms_internal_ip,
+        )
+        return vms_internal_ip, vms_internal_ip
+
+    # Step 2: SSH hop to VMS internal IP, get management IP from `ip addr`.
+    # Note: do NOT pre-filter with `grep 'inet 10\\.'` -- TP-1 fix.  The
+    # parser handles RFC1918 ranges itself and excludes loopback / docker /
+    # CGNAT / link-local interfaces by name and class.
+    ip_cmd = "ip addr show 2>/dev/null"
     rc, out, err = run_ssh_command(
         vms_internal_ip,
         ssh_user,
@@ -185,10 +260,43 @@ def discover_vms_management_ip(
 
     vms_mgmt_ip = parse_management_ip(out)
     if not vms_mgmt_ip:
-        raise VMSDiscoveryError(f"Could not parse management IP from ip addr output: {out!r}")
+        raise VMSDiscoveryError(
+            f"Could not parse management IP from VMS CNode {vms_internal_ip}. "
+            f"No RFC1918 address (10/8, 172.16/12, 192.168/16) was found on a "
+            f"non-excluded interface. Discovered ip-addr output:\n{out!r}"
+        )
     logger.info("VMS management IP: %s", vms_mgmt_ip)
 
     return vms_internal_ip, vms_mgmt_ip
+
+
+def _check_management_via_internal_ip(
+    entry_host: str,
+    ssh_user: str,
+    ssh_password: str,
+    internal_ip: str,
+    timeout: int = 30,
+) -> bool:
+    """Return True if *internal_ip* answers on TCP/443 from *entry_host*.
+
+    Uses bash's ``/dev/tcp`` pseudo-device so no extra package (nc, socat) is
+    required.  Wrapped in ``timeout 3`` so a hung connection cannot stall
+    discovery longer than the SSH command timeout.  A non-zero exit status
+    or any value other than ``OPEN`` in stdout means "not reachable".
+    """
+    probe = f"timeout 3 bash -c '</dev/tcp/{internal_ip}/443' 2>/dev/null " f"&& echo OPEN || echo CLOSED"
+    try:
+        rc, out, _err = run_ssh_command(
+            entry_host,
+            ssh_user,
+            ssh_password,
+            probe,
+            timeout=timeout,
+        )
+    except Exception as exc:  # pragma: no cover - SSH layer is mocked in tests
+        logger.debug("443 probe raised %s; falling through to ip-addr", exc)
+        return False
+    return rc == 0 and "OPEN" in (out or "")
 
 
 # ---------------------------------------------------------------------------
