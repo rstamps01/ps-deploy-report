@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, Dict
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -1773,6 +1774,134 @@ class TestOneShotStartHandoff(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         new_runner.seed_switch_credentials.assert_not_called()
+
+
+class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
+    """SR-1: when the Reporter tile runs in Tech-Port mode it builds a
+    VMS API tunnel at ``127.0.0.1:<port>`` and threads ``tunnel_address``
+    into ``api_handler``, but historically did NOT thread it into
+    ``vnetmap_creds`` (the dict handed to ``VnetmapWorkflow.set_credentials``).
+    Inside ``VnetmapWorkflow._get_switch_ips_from_api`` the missing key
+    causes a fallback to ``cluster_ip`` (a CNode tech port that does not
+    serve TCP/443), so ``/api/switches/`` returns Connection refused and
+    the workflow silently mis-classifies the cluster as InfiniBand.
+
+    Repro evidence: ``import/cluster202/output-logs-043026`` (Eth) +
+    the 02:05:21 line of the mammoth Tech-Port run on 2026-04-30
+    (``$ curl -k https://192.168.2.2/api/switches/``).
+
+    Fix: ``vnetmap_creds["tunnel_address"]`` must be set to the
+    ``VMSTunnel.local_bind_address`` whenever Tech-Port mode is on;
+    when Tech-Port mode is off the key must be absent (or None) so
+    downstream falls back to ``cluster_ip`` as before.
+    """
+
+    def setUp(self):
+        self.app = create_flask_app()
+
+    def _run_with_capture(self, *, tech_port: bool):
+        """Drive ``_run_report_job`` far enough to see the
+        ``vnetmap_creds`` dict, then bail before any real work happens.
+
+        Bail strategy: stub ``api_handler.get_all_data`` to return an
+        empty dict, which triggers the existing ``RuntimeError("Data
+        collection returned empty results")`` branch in
+        ``_run_report_job``.  The job records the error in
+        ``JOB_RESULT`` but our captured ``set_credentials`` call has
+        already happened.
+        """
+        from app import _run_report_job
+
+        captured: Dict[str, Any] = {}
+
+        class _FakeVMSTunnel:
+            local_bind_address = "127.0.0.1:51475"
+            vms_internal_ip = "172.16.128.9"
+            vms_management_ip = "100.64.44.2"
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def connect(self):
+                return None
+
+            def close(self):
+                return None
+
+        class _FakeVnetmapWorkflow:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def set_output_callback(self, _cb):
+                return None
+
+            def set_credentials(self, creds):
+                captured["vnetmap_creds"] = dict(creds)
+
+            def validate_prerequisites(self):
+                return False, "skipped by test"
+
+        fake_handler = MagicMock()
+        fake_handler.authenticate.return_value = True
+        fake_handler.get_all_data.return_value = {}
+        fake_handler.username = "support"
+        fake_handler._api_host = "127.0.0.1:51475" if tech_port else "10.0.0.1"
+
+        params: Dict[str, Any] = {
+            "cluster_ip": "10.0.0.1" if not tech_port else "192.168.2.2",
+            "auth_method": "password",
+            "username": "support",
+            "password": "test-password",
+            "node_user": "vastdata",
+            "node_password": "node-pw",
+            "switch_user": "cumulus",
+            "switch_password": "Vastdata1!",
+            "tech_port": tech_port,
+            "run_vnetmap": True,
+            "include_health_check": False,
+            "enable_port_mapping": False,
+            "output_dir": tempfile.mkdtemp(prefix="sr1_test_"),
+            "auth_method": "password",
+        }
+
+        with patch("utils.vms_tunnel.VMSTunnel", _FakeVMSTunnel), patch(
+            "api_handler.create_vast_api_handler", return_value=fake_handler
+        ), patch("app._preprobe_switch_passwords_for_job", return_value={}), patch(
+            "workflows.vnetmap_workflow.VnetmapWorkflow", _FakeVnetmapWorkflow
+        ):
+            _run_report_job(self.app, params)
+
+        return captured
+
+    def test_tech_port_threads_tunnel_address_into_vnetmap_creds(self):
+        captured = self._run_with_capture(tech_port=True)
+        self.assertIn(
+            "vnetmap_creds",
+            captured,
+            "VnetmapWorkflow.set_credentials was never called — test wiring broken",
+        )
+        creds = captured["vnetmap_creds"]
+        self.assertIn(
+            "tunnel_address",
+            creds,
+            "SR-1 regression: Tech-Port mode must thread tunnel_address into vnetmap_creds",
+        )
+        self.assertEqual(
+            creds["tunnel_address"],
+            "127.0.0.1:51475",
+            "tunnel_address must equal VMSTunnel.local_bind_address",
+        )
+        self.assertEqual(creds["cluster_ip"], "192.168.2.2")
+
+    def test_no_tech_port_omits_tunnel_address(self):
+        captured = self._run_with_capture(tech_port=False)
+        self.assertIn("vnetmap_creds", captured)
+        creds = captured["vnetmap_creds"]
+        self.assertFalse(
+            creds.get("tunnel_address"),
+            "Without Tech-Port mode tunnel_address must be absent or None "
+            "so VnetmapWorkflow falls back to cluster_ip",
+        )
 
 
 if __name__ == "__main__":
