@@ -64,6 +64,42 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
 
 
+def _format_mac_cell(mac: Optional[str], paragraph_style: Any, group_size: int = 7) -> Any:
+    """Wrap long MAC/GID values so they don't overflow narrow table columns.
+
+    SR-5: ReportLab Tables with ``WORDWRAP=CJK`` only break ASCII strings at
+    whitespace. IB MACs / GIDs (e.g. 20-byte
+    ``80:00:01:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:80``, 59 chars,
+    no whitespace) are a single token and overflow the cell, visually
+    obscuring neighboring columns in the Port Mapping section.
+
+    Strategy: Ethernet MACs (``<= group_size`` colon-separated bytes,
+    typically 6) pass through as plain ``str`` so the Table renders them
+    without Paragraph overhead. Longer MACs / GIDs are wrapped in a
+    ``Paragraph`` whose payload contains explicit ``<br/>`` separators every
+    ``group_size`` colon-groups so the cell wraps cleanly to 2-3 lines.
+
+    Args:
+        mac: Raw MAC / GID string (e.g. ``"00:11:22:33:44:55"`` or a 20-byte
+            IB GID). ``None`` and empty string return ``""``.
+        paragraph_style: ParagraphStyle to apply when wrapping.
+        group_size: Number of colon-separated bytes per line. Default 7
+            yields 3 cleanly-balanced lines (7+7+6) for a 20-byte IB GID.
+
+    Returns:
+        Either the input string unchanged (short / empty / no-colon inputs)
+        or a ``Paragraph`` whose XML contains the input split with ``<br/>``
+        separators every ``group_size`` colon-groups.
+    """
+    if not mac or ":" not in mac:
+        return mac or ""
+    parts = mac.split(":")
+    if len(parts) <= group_size:
+        return mac
+    chunks = [":".join(parts[i : i + group_size]) for i in range(0, len(parts), group_size)]
+    return Paragraph("<br/>".join(chunks), paragraph_style)
+
+
 @dataclass
 class ReportConfig:
     """Configuration for report generation."""
@@ -3953,6 +3989,22 @@ class VastReportBuilder:
         )
         content.append(Spacer(1, 8))
 
+        # SR-5: ParagraphStyle for the MAC cell so long IB GIDs wrap inside
+        # the column instead of overflowing into Interface / Net neighbors.
+        # Compact font matches the table's `compact=True` font sizing
+        # (BODY_SIZE - 2). LTR wrap respects the explicit <br/> separators
+        # inserted by `_format_mac_cell`.
+        mac_cell_style = ParagraphStyle(
+            "VnetmapMacCell",
+            parent=styles["Normal"],
+            fontName=self.brand_compliance.typography.BODY_FONT,
+            fontSize=self.brand_compliance.typography.BODY_SIZE - 2,
+            leading=(self.brand_compliance.typography.BODY_SIZE - 2) + 2,
+            alignment=TA_CENTER,
+            textColor=self.brand_compliance.colors.DARK_GRAY,
+            wordWrap="LTR",
+        )
+
         # --- Full Topology table ---
         # Proportional weights: Node(wide) | Switch IP | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
         full_headers = ["Node", "Switch IP", "Port", "Data IP", "Interface", "MAC", "Net"]
@@ -3966,7 +4018,7 @@ class VastReportBuilder:
                     e.get("port", ""),
                     e.get("node_ip", ""),
                     e.get("interface", ""),
-                    e.get("mac", "") or "",
+                    _format_mac_cell(e.get("mac", ""), mac_cell_style),
                     e.get("network", ""),
                 ]
             )
@@ -4006,7 +4058,7 @@ class VastReportBuilder:
                         e.get("port", ""),
                         e.get("node_ip", ""),
                         e.get("interface", ""),
-                        e.get("mac", "") or "",
+                        _format_mac_cell(e.get("mac", ""), mac_cell_style),
                         e.get("network", ""),
                     ]
                 )
