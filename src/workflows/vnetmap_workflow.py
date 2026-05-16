@@ -7,13 +7,23 @@ vnetmap Validation Workflow
 import json
 import re
 import textwrap
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import requests
+from urllib3.exceptions import InsecureRequestWarning
+
 from script_runner import ScriptRunner
 from utils.ssh_adapter import run_ssh_command
 from utils.logger import get_logger
+
+# SR-4: silence InsecureRequestWarning at module load so the new
+# net_type API probe (and the existing switch-list probe) don't spam
+# the operator log on each call.  VAST clusters use self-signed certs
+# by default and ``verify=False`` is the documented contract.
+warnings.filterwarnings("ignore", category=InsecureRequestWarning)
 
 logger = get_logger(__name__)
 
@@ -353,12 +363,6 @@ class VnetmapWorkflow:
         Returns:
             List of switch management IP addresses
         """
-        import requests
-        from urllib3.exceptions import InsecureRequestWarning
-        import warnings
-
-        warnings.filterwarnings("ignore", category=InsecureRequestWarning)
-
         api_host = self._credentials.get("tunnel_address") or self._credentials.get("cluster_ip")
         username = self._credentials.get("username", "support")
         password = self._credentials.get("password")
@@ -388,6 +392,119 @@ class VnetmapWorkflow:
         except Exception as e:
             logger.error(f"Failed to get switch IPs from API: {e}")
             return []
+
+    # ------------------------------------------------------------------
+    # SR-4: Authoritative cluster ``net_type`` resolution
+    # ------------------------------------------------------------------
+    #
+    # On InfiniBand clusters where the IB switches expose a management
+    # network, ``/api/switches/`` returns the IB management-net IPs and
+    # the legacy "switches present → ETH" heuristic mis-classifies the
+    # cluster as Ethernet.  The API itself reports the cluster's
+    # authoritative ``net_type`` via
+    # ``/api/v7/vms/1/network_settings/`` →
+    # ``data.boxes[*].hosts[*].vast_install_info.net_type`` — the same
+    # path ``api_handler.get_cluster_network_configuration`` uses.
+    #
+    # Resolution order in ``_resolve_network_type``:
+    #   1. Explicit ``net_type`` in ``_credentials`` (caller-supplied
+    #      hint; bypasses the API call entirely).
+    #   2. API probe of ``/api/v7/vms/1/network_settings/``.
+    #   3. Switches-list heuristic (legacy backward-compat fallback).
+
+    @staticmethod
+    def _normalize_net_type(value: Any) -> Optional[str]:
+        """Map any VAST API ``net_type`` spelling to ``"ETH"`` / ``"IB"`` / ``None``.
+
+        Recognised values (case-insensitive, whitespace-tolerant):
+
+        * ``"INFINIBAND"`` / ``"InfiniBand"`` / ``"ib"`` → ``"IB"``
+        * ``"ETHERNET"`` / ``"Ethernet"`` / ``"Eth"`` / ``"ETH"`` → ``"ETH"``
+        * Anything else (including ``""`` / ``None`` / ``"Unknown"``) → ``None``
+
+        ``None`` signals "the API didn't tell us" and pushes
+        ``_resolve_network_type`` to the next fallback.
+        """
+        if not value:
+            return None
+        s = str(value).strip().lower()
+        if not s:
+            return None
+        if "infiniband" in s or s == "ib":
+            return "IB"
+        if "ethernet" in s or s == "eth":
+            return "ETH"
+        return None
+
+    def _get_net_type_from_api(self) -> Optional[str]:
+        """Probe ``/api/v7/vms/1/network_settings/`` for the cluster ``net_type``.
+
+        Mirrors ``api_handler.get_cluster_network_configuration``'s
+        traversal: walks ``data.boxes[*].hosts[*].vast_install_info.net_type``
+        and returns the first non-empty value, normalized.  Any HTTP /
+        JSON / shape error returns ``None`` so the caller can fall
+        back to the switches-list heuristic without aborting.
+        """
+        api_host = self._credentials.get("tunnel_address") or self._credentials.get("cluster_ip")
+        if not api_host:
+            return None
+
+        username = self._credentials.get("username", "support")
+        password = self._credentials.get("password")
+        api_token = self._credentials.get("api_token")
+
+        url = f"https://{api_host}/api/v7/vms/1/network_settings/"
+
+        try:
+            # Intentional [B501]: VAST VMS uses self-signed certs.
+            if api_token:
+                headers = {"Authorization": f"Bearer {api_token}"}
+                response = requests.get(url, headers=headers, verify=False, timeout=15)  # nosec B501
+            else:
+                response = requests.get(url, auth=(username, password), verify=False, timeout=15)  # nosec B501
+            response.raise_for_status()
+            payload = response.json() or {}
+        except Exception as exc:
+            logger.debug("SR-4: net_type API probe failed (%s) — caller will fall back to heuristic", exc)
+            return None
+
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            return None
+        for box in data.get("boxes", []) or []:
+            for host in (box or {}).get("hosts", []) or []:
+                vast_install_info = (host or {}).get("vast_install_info", {}) or {}
+                normalized = self._normalize_net_type(vast_install_info.get("net_type"))
+                if normalized:
+                    return normalized
+        return None
+
+    def _resolve_network_type(self, switch_ips: List[str]) -> str:
+        """Pick the authoritative cluster ``net_type`` for vnetmap dispatch.
+
+        Args:
+            switch_ips: list of switch mgmt-IPs from
+                ``_get_switch_ips_from_api`` (may be empty).
+
+        Returns:
+            ``"ETH"`` or ``"IB"`` — never ``None``; the heuristic
+            fallback always produces a defined answer.
+        """
+        override = self._normalize_net_type(self._credentials.get("net_type"))
+        if override:
+            logger.info("SR-4: explicit net_type override = %s (skipping API probe)", override)
+            return override
+
+        api_result = self._get_net_type_from_api()
+        if api_result:
+            logger.info("SR-4: net_type from /api/v7/vms/1/network_settings/ = %s", api_result)
+            return api_result
+
+        # Legacy heuristic: switches in /api/switches/ → assume Ethernet,
+        # otherwise InfiniBand.  Pre-SR-4 default behaviour, preserved
+        # so existing Eth fleets that don't expose ``net_type`` keep
+        # working without configuration changes.
+        return "ETH" if switch_ips else "IB"
 
     def _step_generate_export_commands(self) -> Dict[str, Any]:
         host = self._credentials.get("cluster_ip")
@@ -465,20 +582,38 @@ class VnetmapWorkflow:
         self.emit("info", f"$ curl -k https://{api_host}/api/switches/")
         switch_ips = self._get_switch_ips_from_api()
 
+        # SR-4: resolve network_type via API ``net_type`` (authoritative)
+        # before falling back to the switches-list heuristic.  Fixes the
+        # IB-cluster-mis-classified-as-Eth case where ``/api/switches/``
+        # returns the IB switches' management-network IPs.
+        network_type = self._resolve_network_type(switch_ips)
+
         if switch_ips:
             self.emit("success", f"[API] Found {len(switch_ips)} switch(es): {', '.join(switch_ips)}")
-            mlx_ips = ",".join(switch_ips)
-            network_type = "ETH"  # Ethernet with switches
+        else:
+            self.emit("info", "[API] No switches returned by /api/switches/")
 
-            # Validate switch credentials for ETH mode
+        if network_type == "ETH":
+            mlx_ips = ",".join(switch_ips)
+            if not switch_ips:
+                self.emit("warn", "[API] net_type=ETH but no switches returned; vnetmap will run without -s")
+            # Validate switch credentials for ETH mode.
             if not switch_password:
                 self.emit("error", "Switch SSH Password is required for ETH networks.")
                 self.emit("error", "Please fill in the Switch Password field in Connection Settings.")
                 return {"success": False, "message": "Switch SSH Password is required for ETH networks"}
         else:
-            self.emit("warn", "[API] No switches found - assuming InfiniBand cluster")
             mlx_ips = ""
-            network_type = "IB"
+            if switch_ips:
+                # Common on IB clusters where switches expose a mgmt
+                # network — the API returns them in ``/api/switches/``
+                # but the cluster fabric is still IB.  The
+                # ``_resolve_network_type`` override (or API probe)
+                # forces IB mode here so vnetmap.py is invoked with
+                # ``-ib`` instead of ``-s <switches>``.
+                self.emit("info", "[API] net_type=IB — using InfiniBand mode despite switches in /api/switches/")
+            else:
+                self.emit("info", "[API] net_type=IB — using InfiniBand mode")
 
         # Step 5: Generate export commands
         self.emit("info", "")
