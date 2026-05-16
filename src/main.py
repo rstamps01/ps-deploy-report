@@ -760,7 +760,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.6")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.7")
 
     return parser
 
