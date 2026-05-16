@@ -7,6 +7,135 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.7] - 2026-05-15
+
+CNode Tech-Port discovery + IB cluster correctness pass. This release closes
+a stack of seven items uncovered while validating Tech-Port mode (operator
+connects the laptop to a CNode tech port at 192.168.2.2 and the app
+auto-discovers VMS, opens an SSH/443 tunnel, and runs the report pipeline
+against the cluster's true management IP). The stack covers VMS
+auto-discovery (TP-1, TP-2), VMS-tunnel routing (SR-1), IB cluster
+classification and topology (SR-3, SR-4), PDF report rendering for IB
+clusters (SR-5), and durable offline-replay verification infrastructure
+(`--from-json`). Live access to the mammoth IB cluster was permanently lost
+mid-cycle (2026-05-15); SR-3 and SR-4 verification was performed against
+saved `vnetmap_output_*.txt` / `vast_data_*.json` fixtures using the new
+`--from-json` rail. SR-2 (cosmetic Onyx pre-probe warning) deferred.
+
+### Added
+
+- **`--from-json` CLI flag (DEV-1 partial).** Permanent CLI surface for
+  regenerating PDF reports from a saved `vast_data_*.json` intermediate
+  without touching the API or Data Extractor layers. Closes the
+  offline-replay slice of DEV-1 ("Report from JSON") and provides durable
+  verification infrastructure that compensates for the permanent loss of
+  live mammoth IB cluster access. New `_run_from_json(json_path,
+  output_dir, logger)` helper validates the path → `json.load` → ensures
+  output dir exists → builds a deterministic
+  `vast_asbuilt_report_<cluster>_<timestamp>_replay.pdf` filename → calls
+  `VastReportBuilder.generate_pdf_report` → translates failure into
+  `return 1`. New `run_from_json()` argparse wrapper accepts
+  `--from-json <path>`, `--output`/`--output-dir`, `--config`/`-c`, and
+  `--verbose`/`-v`. `main()` routes `--from-json` to `run_from_json()`
+  before the existing `--gui`/`--cli` dispatchers. The full DEV-1
+  ("Report from JSON" UI tile) remains pending.
+
+### Fixed
+
+- **TP-1: VMS management-IP parsing widened to all RFC1918 + interface
+  filters + 443 short-circuit.** Pre-fix `parse_management_ip()` was
+  hard-coded to the `10.x.x.x` family with no interface-name filtering,
+  so IPoIB (172.16.x.x bond0:m) and CGNAT (100.64.x.x em3) clusters
+  either failed parsing or selected the wrong IP. The new logic widens
+  the regex to all RFC1918 ranges (10/8 + 172.16/12 + 192.168/16) plus
+  CGNAT 100.64/10, excludes `lo` / `bond` / `peer` interfaces from the
+  candidate sweep, prioritises `:m` aliases as canonical management IPs,
+  and short-circuits on the first IP that responds on TCP/443 within a
+  short timeout. 60/60 tests pass on `tests/test_vms_tunnel.py`; module
+  local coverage 88%.
+- **TP-2: empirical TCP/443 probing replaces the single-pick name
+  heuristic.** Pre-fix `parse_management_ip()` returned the first match
+  by interface-name priority; on a cluster where multiple candidates
+  parse but only one serves the API, the wrong IP was selected and
+  `Connection refused` followed. New
+  `parse_management_ip_candidates()` returns an ordered candidate list
+  (Eth base IPs first, IB base IPs next, `:m`/bond aliases last; CGNAT
+  100.64/10 included) and `_first_443_reachable()` probes them in order
+  until one responds on TCP/443. Live-validated end-to-end on both an
+  IB cluster (mammoth, `em3 100.64.44.2` wins over `bond0:m
+  172.16.128.4`) and an Eth cluster (`selab-var-202`,
+  `10.143.11.202` wins after `192.168.2.2` probes CLOSED).
+- **SR-1: `/api/switches/` direct-cluster-IP call no longer bypasses the
+  VMS tunnel on Tech-Port mode.** Pre-fix
+  `vnetmap_workflow._get_switch_ips_from_api()` fell back to the
+  user-entered cluster IP (a CNode tech-port IP) when `tunnel_address`
+  wasn't threaded into `_credentials`, so the call hit
+  `Connection refused` on TCP/443 and silently mis-classified the cluster
+  as InfiniBand → ran `vnetmap.py … -ib` → `ibnetdiscover` failed →
+  workflow fell back to whatever cached vnetmap existed locally.
+  `app.py::_run_report_job` now threads `tunnel_address` into
+  `vnetmap_creds` whenever the VMS tunnel is active, so all cluster-API
+  calls inside the workflow flow through the tunnel.
+- **SR-3: IB cluster GUIDs in vnetmap topology now resolve to switch
+  designations.** On IB clusters `vnetmap` writes a 16-byte GUID into
+  the topology's `switch_ip` column instead of an IP, and
+  `EnhancedPortMapper._build_switch_map` keys exclusively on the
+  API-supplied `mgmt_ip`, so every IB row hit the
+  `Unknown switch IP` warning branch and rendered as `SW?-<port>` in
+  the Port Mapping section. New `VNetMapParser._parse_ib_switch_headers`
+  extracts `guid` / `hostname` / `model` / `internal_subnet` from the
+  per-switch `Switch MF0;…` anchor lines. New
+  `EnhancedPortMapper._add_ib_guid_aliases` resolves each header
+  against `self.switches` by hostname (case-insensitive; tries `name`
+  / `hostname` / `host_name`) and adds the GUID as a same-record alias
+  key. End-to-end on the mammoth IB fixture: 40 rows, **0
+  "Unknown switch IP" warnings (was 40)**, all GUIDs resolved to
+  `SWA/SWB-P<n>`. Eth back-compat: `selab-var-202` fixture has 0 IB
+  headers, behaviour unchanged. 12 new tests (5 parser + 7 port-mapper);
+  397/397 SR-3 blast-radius regression.
+- **SR-4: vnetmap_workflow uses the API as authoritative source for
+  cluster network type.** Pre-fix the workflow assumed Ethernet
+  whenever `/api/switches/` returned IPs ("switches present → ETH"),
+  but on IB clusters with management-network switches the API returns
+  the IB switches' mgmt-net IPs and the heuristic misfired, sending
+  the wrong `vnetmap.py` mode and running `ibnetdiscover` on Ethernet
+  clusters or the reverse. New `_resolve_network_type` consults: (1)
+  explicit `_credentials["net_type"]` override, (2) authoritative
+  `/api/v7/vms/1/network_settings/` API probe (same path
+  `api_handler.get_cluster_network_configuration` walks), (3) legacy
+  switches-list heuristic. New `_normalize_net_type` maps any VAST API
+  spelling (`INFINIBAND`/`Ethernet`/`Eth`/etc.) to `"IB"`/`"ETH"`/`None`.
+  `_step_generate_export_commands` now emits
+  `[API] net_type=IB — using InfiniBand mode despite switches in /api/switches/`
+  so the operator can see the explicit decision. 14 new tests (5
+  normalization, 6 resolution, 3 API-probe shape); 176/176 workflows
+  regression.
+- **SR-5: IB MAC GIDs no longer overflow PDF Port Mapping table cells.**
+  IB MAC addresses are 20-byte port GIDs (~60 chars with colons) that
+  wouldn't wrap in fixed-width Port Mapping table columns and rendered
+  overlapping the adjacent Switch / Network columns. New module-level
+  `_format_mac_cell` helper splits MACs by colons in 7-byte chunks and
+  joins with `<br/>` inside a `Paragraph`, used by
+  `_create_vnetmap_topology_tables` for both Full Topology and
+  Per-switch tables. Eth MACs (17 chars) are unchanged; only IB GIDs
+  wrap. Operator manually verified output on the mammoth fixture
+  before this branch was committed.
+
+### Notes
+
+- **SR-2 (cosmetic "rejected candidate password" warning on Onyx
+  switches) deferred** to a future log-formatting pass. The Onyx SSH
+  pre-probe correctly identifies the working password but logs a
+  `[WARN]` line for each rejected candidate even on success runs;
+  cosmetic only, no functional or security impact. Tracked in
+  `docs/TODO-ROADMAP.md` under Tech-Port follow-ups.
+- **Mammoth IB cluster live access permanently lost on 2026-05-15.**
+  All SR-3 and SR-4 verification was performed against saved fixtures
+  (`output/scripts/vnetmap_output_192.168.2.2_*.txt`,
+  `import/.../vast_data_*.json`) using the new `--from-json` rail.
+  Future IB-cluster correctness work will rely on the same offline-replay
+  infrastructure until live IB access can be re-established.
+
 ## [1.5.6] - 2026-03-21
 
 Heterogeneous-fleet switch-SSH authentication parity pass. Three changes
