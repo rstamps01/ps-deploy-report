@@ -44,7 +44,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.6"
+APP_VERSION = "1.5.7"
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -2188,6 +2188,17 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     "password": params.get("password", ""),
                     "api_token": params.get("token", ""),
                 }
+                # SR-1: when Tech-Port mode is active, ``tunnel_address``
+                # points at the local VMS API tunnel (``127.0.0.1:<port>``)
+                # established above on line ~2107.  Without this thread,
+                # ``VnetmapWorkflow._get_switch_ips_from_api`` falls
+                # back to ``cluster_ip`` (a CNode tech port that does
+                # not serve TCP/443), so ``/api/switches/`` returns
+                # Connection refused and the workflow silently
+                # mis-classifies the cluster as InfiniBand.  See
+                # docs/issues/SR-1/01-summary.md for full repro.
+                if tunnel_address:
+                    vnetmap_creds["tunnel_address"] = tunnel_address
                 # RM-13: feed the resolved candidate list so
                 # ``vnetmap.py --multiple-passwords`` gets every published
                 # default when Autofill Password is active.

@@ -1,0 +1,22 @@
+{
+  "request": {
+    "url": "http://127.0.0.1:5173/api/discover",
+    "method": "POST",
+    "resourceType": "xhr",
+    "timestamp_ms": 1777495756151,
+    "timestamp_iso": "2026-04-29T20:49:16Z",
+    "payload_shape_note": "rptDiscoverSwitches() builds {cluster_ip, auth_method:'password', token:'', tech_port:true, node_user, node_password}. Body not captured by browser_network_requests; reconstructed from frontend/templates/reporter.html L1793-L1801."
+  },
+  "response": {
+    "statusCode": 500,
+    "body_note": "Body not captured by MCP. Per src/app.py /api/discover error handler, response is application/json with shape {error, message} where message contains the VMSDiscoveryError text. Confirmed in UI via 02-post-click-error.png: 'Error: Could not parse management IP from ip addr output: \\'\\''."
+  },
+  "preceding_requests_in_session": [
+    {"url": "http://127.0.0.1:5173/reporter", "method": "GET", "statusCode": 200},
+    {"url": "http://127.0.0.1:5173/profiles", "method": "GET", "statusCode": 200},
+    {"url": "http://127.0.0.1:5173/config/json", "method": "GET", "statusCode": 200},
+    {"url": "http://127.0.0.1:5173/advanced-ops/state-snapshot", "method": "GET", "statusCode": 200},
+    {"url": "http://127.0.0.1:5173/api/vnetmap-status?cluster_ip=192.168.2.2", "method": "GET", "statusCode": 200}
+  ],
+  "summary": "POST /api/discover -> 500 Internal Server Error. Server-side trace in 05-server-log.txt: Step 1 (motd parse) succeeded with VMS internal IP 172.16.128.4; Step 2 (ip addr -> parse_management_ip) returned None and raised VMSDiscoveryError. UI surfaced the exception text directly inside the Switch Placement Editor modal."
+}

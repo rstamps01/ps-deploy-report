@@ -437,5 +437,84 @@ class TestSpinePortTables(unittest.TestCase):
         self.assertNotIn("leaf-a", calls[0]["title"], "Leaf must not be promoted to a spine table")
 
 
+class TestSR5FormatMacCell(unittest.TestCase):
+    """SR-5: ``_format_mac_cell`` must wrap long IB GIDs into a Paragraph
+    so they don't overflow the Port Mapping MAC column, while leaving short
+    Ethernet MACs as plain strings (zero overhead).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph
+
+        cls.Paragraph = Paragraph
+        cls.style = ParagraphStyle("test_mac_cell", fontName="Helvetica", fontSize=8)
+
+    def _import_helper(self):
+        from report_builder import _format_mac_cell
+
+        return _format_mac_cell
+
+    def test_short_ethernet_mac_returns_plain_string(self):
+        """6-byte Ethernet MAC fits the column \u2014 no Paragraph wrapping needed."""
+        fn = self._import_helper()
+        result = fn("00:11:22:33:44:55", self.style)
+        self.assertEqual(result, "00:11:22:33:44:55")
+        self.assertNotIsInstance(result, self.Paragraph)
+
+    def test_empty_mac_returns_empty_string(self):
+        fn = self._import_helper()
+        self.assertEqual(fn("", self.style), "")
+
+    def test_none_mac_returns_empty_string(self):
+        fn = self._import_helper()
+        self.assertEqual(fn(None, self.style), "")
+
+    def test_non_mac_string_with_no_colons_returns_input(self):
+        fn = self._import_helper()
+        result = fn("not-a-mac", self.style)
+        self.assertEqual(result, "not-a-mac")
+        self.assertNotIsInstance(result, self.Paragraph)
+
+    def test_ib_gid_returns_paragraph_with_explicit_breaks(self):
+        """20-byte IB GID must be wrapped in a Paragraph with <br/> separators
+        so ReportLab can break it within the cell.
+        """
+        fn = self._import_helper()
+        ib_gid = "80:00:01:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:80"
+        result = fn(ib_gid, self.style)
+        self.assertIsInstance(result, self.Paragraph)
+        xml = getattr(result, "text", "") or result.getPlainText()
+        self.assertIn("<br/>", xml)
+
+    def test_ib_gid_splits_into_three_chunks_at_group_size_seven(self):
+        """20 bytes / group_size=7 \u2192 chunks of 7 + 7 + 6 bytes."""
+        fn = self._import_helper()
+        ib_gid = "80:00:01:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:80"
+        result = fn(ib_gid, self.style, group_size=7)
+        self.assertIsInstance(result, self.Paragraph)
+        xml = getattr(result, "text", "")
+        chunks = xml.split("<br/>")
+        self.assertEqual(len(chunks), 3, f"Expected 3 chunks, got {len(chunks)}: {chunks}")
+        self.assertEqual(chunks[0], "80:00:01:07:fe:80:00")
+        self.assertEqual(chunks[1], "00:00:00:00:00:a0:88")
+        self.assertEqual(chunks[2], "c2:03:00:57:36:80")
+
+    def test_seven_byte_mac_at_threshold_returns_string_not_paragraph(self):
+        """Boundary: exactly group_size bytes \u2192 still returns string (no wrap)."""
+        fn = self._import_helper()
+        seven_byte = "00:11:22:33:44:55:66"  # exactly 7 bytes
+        result = fn(seven_byte, self.style, group_size=7)
+        self.assertEqual(result, seven_byte)
+        self.assertNotIsInstance(result, self.Paragraph)
+
+    def test_eight_byte_mac_just_above_threshold_wraps(self):
+        fn = self._import_helper()
+        eight_byte = "00:11:22:33:44:55:66:77"
+        result = fn(eight_byte, self.style, group_size=7)
+        self.assertIsInstance(result, self.Paragraph)
+
+
 if __name__ == "__main__":
     unittest.main()

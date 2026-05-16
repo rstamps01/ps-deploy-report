@@ -1,0 +1,40 @@
+# Source: cluster `mammoth` (VAST OS 5.4.3 / build 12.13.18-1687799)
+# Captured: 2026-04-29 13:32:43 PT during the TP-1 assessment, Layer 4a probe.
+# Path: tech port 192.168.2.2 -> ssh-jump -> VMS CNode 172.16.128.4 -> `ip addr show`.
+# Fabric: Infiniband (IPoIB) -- ib* devices have mtu 2044, qdisc fq, qlen 256.
+# Best-effort reconstruction of the live payload, filtered to interface header lines
+# and every `inet` line (the only lines parse_management_ip cares about).
+# During live verification, refresh this file from a fresh `ip addr show` capture
+# if the cluster state has materially changed.
+
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    inet 127.0.0.1/8 scope host lo
+2: em1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+3: em2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    inet 192.168.3.3/24 brd 192.168.3.255 scope global em2
+4: em3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP group default qlen 1000
+    inet 100.64.44.2/20 scope global em3
+    inet 100.64.44.9/20 scope global secondary em3:e
+5: em4: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+6: em5: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
+7: ib0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 172.16.254.243/24 scope global ib0
+    inet 100.64.24.4/20 scope global ib0
+8: ib1: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 100.64.24.13/20 scope global ib1
+9: ib2: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 2044 qdisc fq state UP group default qlen 256
+    inet 172.16.0.4/18 brd 172.16.63.255 scope global ib2:a
+    inet 172.16.64.4/18 brd 172.16.127.255 scope global ib3:b
+    inet 172.16.128.4/18 brd 172.16.191.255 scope global bond0:m
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+
+# Notes:
+# - The management VIP `172.16.128.4/18 scope global bond0:m` is the target of TP-1.
+# - 100.64.x.x addresses on em3/ib0/ib1 are CGNAT (RFC 6598), not RFC1918, and must be excluded.
+# - 172.17.0.1/16 on docker0 is in 172.16/12 but must be excluded by interface name.
+# - 127.0.0.1/8 on lo must be excluded.
+# - Without TP-1 fix, parse_management_ip("ip addr | grep 'inet 10.'") returns None
+#   because no 10.x.x.x address exists anywhere on the VMS CNode.
+# - With TP-1 fix, parse_management_ip returns "172.16.128.4" via the `<iface>:m`
+#   selection priority rule, OR the step-2 short-circuit returns "172.16.128.4"
+#   directly because the internal IP already answers on TCP/443.

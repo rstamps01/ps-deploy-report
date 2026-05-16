@@ -113,6 +113,175 @@ class TestVnetmapWorkflow:
         assert ok is False
 
 
+class TestSR4NetTypeOverride:
+    """SR-4: vnetmap_workflow must trust the API's authoritative cluster
+    ``net_type`` (Ethernet vs InfiniBand) rather than the
+    "switches-present-in-API → ETH" heuristic.
+
+    Background: pre-SR-1, ``/api/switches/`` failed under Tech-Port mode
+    because it was called against a CNode IP that doesn't serve TCP/443.
+    Post-SR-1 the call succeeds, but on InfiniBand clusters
+    ``/api/switches/`` returns the IB switches' management-network IPs
+    (10.247.x.x), and the existing heuristic mis-classified those IB
+    clusters as Ethernet.  The fix introduces three new helpers on
+    ``VnetmapWorkflow`` and rewires
+    ``_step_generate_export_commands`` to use them:
+
+    * ``_normalize_net_type(value)`` — pure string-mapping helper that
+      collapses any VAST-API ``net_type`` spelling
+      (``"INFINIBAND"`` / ``"InfiniBand"`` / ``"ib"`` / ``"ETHERNET"`` /
+      ``"Eth"`` / etc.) to ``"IB"`` / ``"ETH"`` / ``None``.
+    * ``_get_net_type_from_api()`` — issues a GET against
+      ``/api/v7/vms/1/network_settings/`` and walks the same
+      ``data.boxes[].hosts[].vast_install_info.net_type`` shape that
+      ``api_handler.get_cluster_network_configuration`` uses.
+    * ``_resolve_network_type(switch_ips)`` — preferences are: explicit
+      override in ``_credentials["net_type"]`` first, API probe second,
+      switches-list heuristic last.
+    """
+
+    def _make_workflow(self, net_type_override=None):
+        workflow = WorkflowRegistry.get("vnetmap")
+        creds = {
+            "cluster_ip": "10.0.0.1",
+            "tunnel_address": "127.0.0.1:56789",
+            "username": "support",
+            "password": "secret",
+            "node_user": "vastdata",
+            "node_password": "nodepass",
+            "switch_user": "cumulus",
+            "switch_password": "Vastdata1!",
+        }
+        if net_type_override is not None:
+            creds["net_type"] = net_type_override
+        workflow.set_credentials(creds)
+        return workflow
+
+    # --- _normalize_net_type ---------------------------------------------
+
+    def test_normalize_recognises_infiniband_uppercase(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        assert VnetmapWorkflow._normalize_net_type("INFINIBAND") == "IB"
+
+    def test_normalize_recognises_infiniband_mixed_case(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        assert VnetmapWorkflow._normalize_net_type("InfiniBand") == "IB"
+
+    def test_normalize_recognises_short_ib_token(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        assert VnetmapWorkflow._normalize_net_type("ib") == "IB"
+        assert VnetmapWorkflow._normalize_net_type(" IB ") == "IB"
+
+    def test_normalize_recognises_ethernet_variants(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        assert VnetmapWorkflow._normalize_net_type("ETHERNET") == "ETH"
+        assert VnetmapWorkflow._normalize_net_type("Ethernet") == "ETH"
+        assert VnetmapWorkflow._normalize_net_type("Eth") == "ETH"
+        assert VnetmapWorkflow._normalize_net_type("ETH") == "ETH"
+
+    def test_normalize_returns_none_for_unknown(self):
+        from workflows.vnetmap_workflow import VnetmapWorkflow
+
+        assert VnetmapWorkflow._normalize_net_type("Unknown") is None
+        assert VnetmapWorkflow._normalize_net_type("") is None
+        assert VnetmapWorkflow._normalize_net_type(None) is None
+        assert VnetmapWorkflow._normalize_net_type("FooBar") is None
+
+    # --- _resolve_network_type -------------------------------------------
+
+    def test_credentials_override_ib_wins_over_switches_present(self):
+        """Authoritative override: even if /api/switches/ returns IPs
+        (mgmt-net switches on an IB cluster), the explicit ``IB``
+        override forces InfiniBand mode.  This is the SR-4 IB cluster
+        path that the current heuristic misses.
+        """
+        wf = self._make_workflow(net_type_override="INFINIBAND")
+        # Force the API probe to succeed but it should be skipped due
+        # to the explicit override.
+        with patch.object(wf, "_get_net_type_from_api") as api_probe:
+            assert wf._resolve_network_type(["10.247.2.135", "10.247.2.137"]) == "IB"
+            api_probe.assert_not_called()
+
+    def test_credentials_override_eth_wins_over_no_switches(self):
+        wf = self._make_workflow(net_type_override="Ethernet")
+        with patch.object(wf, "_get_net_type_from_api") as api_probe:
+            assert wf._resolve_network_type([]) == "ETH"
+            api_probe.assert_not_called()
+
+    def test_no_override_consults_api_first_then_heuristic(self):
+        """When there's no override, the API probe runs.  If the API
+        returns ``"IB"`` despite switches present, IB wins.
+        """
+        wf = self._make_workflow(net_type_override=None)
+        with patch.object(wf, "_get_net_type_from_api", return_value="IB") as api_probe:
+            assert wf._resolve_network_type(["10.247.2.135", "10.247.2.137"]) == "IB"
+            api_probe.assert_called_once()
+
+    def test_no_override_api_returns_eth(self):
+        wf = self._make_workflow(net_type_override=None)
+        with patch.object(wf, "_get_net_type_from_api", return_value="ETH"):
+            assert wf._resolve_network_type([]) == "ETH"
+
+    def test_no_override_api_returns_none_falls_back_to_heuristic_with_switches(self):
+        """API unreachable / silent → fall back to the existing
+        switches-list heuristic for backward compat."""
+        wf = self._make_workflow(net_type_override=None)
+        with patch.object(wf, "_get_net_type_from_api", return_value=None):
+            assert wf._resolve_network_type(["10.128.101.141"]) == "ETH"
+
+    def test_no_override_api_returns_none_falls_back_to_heuristic_without_switches(self):
+        wf = self._make_workflow(net_type_override=None)
+        with patch.object(wf, "_get_net_type_from_api", return_value=None):
+            assert wf._resolve_network_type([]) == "IB"
+
+    # --- _get_net_type_from_api ------------------------------------------
+
+    def test_api_probe_extracts_net_type_from_network_settings(self):
+        wf = self._make_workflow()
+        api_response = {
+            "data": {
+                "boxes": [
+                    {
+                        "hosts": [
+                            {"vast_install_info": {"net_type": "INFINIBAND"}},
+                            {"vast_install_info": {"net_type": "INFINIBAND"}},
+                        ]
+                    }
+                ]
+            }
+        }
+        with patch("workflows.vnetmap_workflow.requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = api_response
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+
+            assert wf._get_net_type_from_api() == "IB"
+            # Tunnel address must be used when present (SR-1 parity).
+            url = mock_get.call_args.args[0]
+            assert "127.0.0.1:56789" in url
+
+    def test_api_probe_returns_none_on_http_error(self):
+        wf = self._make_workflow()
+        with patch("workflows.vnetmap_workflow.requests.get", side_effect=Exception("boom")):
+            assert wf._get_net_type_from_api() is None
+
+    def test_api_probe_returns_none_when_response_has_no_net_type(self):
+        wf = self._make_workflow()
+        with patch("workflows.vnetmap_workflow.requests.get") as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {"data": {"boxes": []}}
+            mock_resp.raise_for_status.return_value = None
+            mock_get.return_value = mock_resp
+
+            assert wf._get_net_type_from_api() is None
+
+
 class TestVnetmapPasswordFallback:
     """Verify that the vnetmap workflow retries with alternate switch passwords
     when the primary credential returns an authentication failure."""

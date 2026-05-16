@@ -1662,6 +1662,12 @@ class VastDataExtractor:
                 self.logger.info("Using vnetmap output as port mapping source")
                 vnetmap_result = raw_data["port_mapping_vnetmap"]
                 topology = vnetmap_result.get("topology", [])
+                # SR-3: pass IB switch headers so EnhancedPortMapper can
+                # alias the GUIDs that ``vnetmap`` writes into IB
+                # topology rows' ``switch_ip`` column to the matching
+                # API mgmt_ip.  Empty list / missing key on Eth output
+                # — the alias step is a no-op there.
+                ib_switch_headers = vnetmap_result.get("ib_switch_headers", []) or []
 
                 enhanced_mapper = EnhancedPortMapper(
                     cboxes=cboxes,
@@ -1671,6 +1677,7 @@ class VastDataExtractor:
                     switches=switches,
                     eboxes=eboxes,
                     external_port_map=topology,
+                    ib_switch_headers=ib_switch_headers,
                 )
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(topology)
                 data_source = "vnetmap (VAST Network Map Tool)"
@@ -1760,6 +1767,10 @@ class VastDataExtractor:
                     dnodes=dnodes,
                     switches=switches,
                     eboxes=eboxes,
+                    # SR-3: same IB GUID alias plumbing as Path 1, so
+                    # static-fallback runs against captured IB
+                    # ``vnetmap_output.txt`` resolve GUIDs correctly.
+                    ib_switch_headers=vnetmap_data.get("ib_switch_headers", []) or [],
                 )
                 enhanced_data = enhanced_mapper.generate_enhanced_port_map(vnetmap_data["topology"])
                 data_source = "vnetmap file (static)"

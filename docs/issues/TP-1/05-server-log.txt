@@ -1,0 +1,9 @@
+
+2026-04-29 13:49:16 - utils.vms_tunnel - INFO - discover_vms_management_ip:138 - Discovering VMS via SSH to 192.168.2.2 ...
+2026-04-29 13:49:16 - utils.vms_tunnel - INFO - discover_vms_management_ip:169 - VMS internal IP: 172.16.128.4
+2026-04-29 13:49:16 - paramiko.transport - INFO - _log:1938 - Connected (version 2.0, client OpenSSH_8.0)
+2026-04-29 13:49:16 - paramiko.transport - INFO - _log:1938 - Authentication (password) successful!
+2026-04-29 13:49:16 - paramiko.transport - INFO - _log:1938 - Connected (version 2.0, client OpenSSH_8.0)
+2026-04-29 13:49:16 - paramiko.transport - INFO - _log:1938 - Authentication (password) successful!
+2026-04-29 13:49:16 - utils.vms_tunnel - INFO - close:324 - VMS API tunnel closed
+2026-04-29 13:49:16 - werkzeug - INFO - _log:97 - 127.0.0.1 - - [29/Apr/2026 13:49:16] "[35m[1mPOST /api/discover HTTP/1.1[0m" 500 -

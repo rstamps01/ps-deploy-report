@@ -20,6 +20,7 @@ Date: September 26, 2025
 
 import argparse
 import getpass
+import json
 import os
 import sys
 import threading
@@ -759,7 +760,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.6")
+    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.7")
 
     return parser
 
@@ -986,12 +987,165 @@ def _extract_port_from_argv() -> int:
     return parsed
 
 
+def _run_from_json(json_path: str, output_dir: str, logger: Any) -> int:
+    """Regenerate a PDF report from a saved processed-data JSON intermediate.
+
+    Skips the API + Data Extractor layers and feeds ``processed_data``
+    directly into :class:`report_builder.VastReportBuilder`.  This is
+    the durable offline-replay path used to:
+
+    * Regenerate PDFs after rendering-layer fixes (e.g. SR-5 column
+      wrap) without touching a live cluster.
+    * Iterate on report-builder changes against captured fixtures when
+      a cluster is unreachable or has been decommissioned.
+    * Produce CI-deterministic regression artifacts from
+      version-controlled JSON baselines (e.g. ``reports/MVP/...``).
+
+    The JSON file must be the same shape that
+    :meth:`data_extractor.VastDataExtractor.save_processed_data` writes
+    — typically ``vast_data_<cluster>_<timestamp>.json`` next to the
+    PDF in the live output directory.
+
+    Args:
+        json_path: Path to the source ``vast_data_*.json`` file.
+        output_dir: Directory to write the regenerated PDF into
+            (created if missing).
+        logger: Logger to record progress / errors against.
+
+    Returns:
+        Exit code: ``0`` on success, ``1`` on any failure.
+    """
+    json_file = Path(json_path)
+    if not json_file.exists():
+        logger.error("JSON file not found: %s", json_path)
+        return 1
+
+    try:
+        with open(json_file, "r", encoding="utf-8") as f:
+            processed_data = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.error("Failed to load JSON file %s: %s", json_path, exc)
+        return 1
+
+    if not isinstance(processed_data, dict):
+        logger.error(
+            "JSON root must be an object (dict), got %s in %s",
+            type(processed_data).__name__,
+            json_path,
+        )
+        return 1
+
+    output_path = Path(output_dir)
+    try:
+        output_path.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.error("Cannot create output directory %s: %s", output_dir, exc)
+        return 1
+
+    cluster_summary = processed_data.get("cluster_summary") or {}
+    cluster_name = cluster_summary.get("name") or "unknown"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # ``_replay`` suffix keeps offline regenerations distinguishable
+    # from live-collected reports in the same output directory.
+    pdf_filename = f"vast_asbuilt_report_{cluster_name}_{timestamp}_replay.pdf"
+    pdf_path = output_path / pdf_filename
+
+    try:
+        report_builder = create_report_builder()
+    except Exception as exc:
+        logger.error("Failed to create report builder: %s", exc)
+        return 1
+
+    logger.info("Replaying report from JSON: %s", json_path)
+    logger.info("Cluster: %s", cluster_name)
+    logger.info("Output: %s", pdf_path)
+
+    try:
+        ok = report_builder.generate_pdf_report(processed_data, str(pdf_path))
+    except Exception as exc:
+        logger.error("Failed to generate PDF: %s", exc)
+        return 1
+
+    if not ok:
+        logger.error("Report builder reported failure for %s", json_path)
+        return 1
+
+    logger.info("PDF report generated: %s", pdf_path)
+    return 0
+
+
+def run_from_json() -> int:
+    """Argparse wrapper for the ``--from-json`` offline replay flag.
+
+    Provides a self-contained CLI surface — separate from
+    :func:`run_cli` — because the replay path doesn't need any of the
+    cluster / SSH / port-mapping arguments and relaxing
+    ``--cluster``'s ``required=True`` constraint on the main parser
+    would weaken the live-collection contract.
+
+    Returns:
+        Exit code: ``0`` on success, ``1`` on any failure.
+    """
+    try:
+        parser = argparse.ArgumentParser(
+            description=(
+                "VAST As-Built Report Generator — offline JSON replay mode "
+                "(regenerate PDF from a saved vast_data_*.json intermediate)"
+            ),
+        )
+        parser.add_argument(
+            "--from-json",
+            dest="from_json",
+            required=True,
+            help="Path to a previously generated vast_data_*.json intermediate file",
+        )
+        parser.add_argument(
+            "--output",
+            "--output-dir",
+            dest="output_dir",
+            required=True,
+            help="Output directory for the regenerated PDF report",
+        )
+        parser.add_argument(
+            "--config",
+            "-c",
+            help="Path to configuration file (default: config/config.yaml)",
+        )
+        parser.add_argument(
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Enable verbose output",
+        )
+        args = parser.parse_args()
+
+        config = load_configuration(args.config)
+        log_level = "DEBUG" if args.verbose else "INFO"
+        if "logging" not in config:
+            config["logging"] = {}
+        config["logging"]["level"] = log_level
+
+        setup_logging(config)
+        logger = get_logger(__name__)
+
+        return _run_from_json(args.from_json, args.output_dir, logger)
+
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        return 1
+    except Exception as exc:
+        print(f"Fatal error: {exc}")
+        return 1
+
+
 def main() -> int:
     """
-    Main entry point — routes to GUI or CLI mode.
+    Main entry point — routes to GUI, CLI, or offline replay mode.
 
     Default (no args or --gui): launches the web UI.
     --cli: runs the original command-line workflow.
+    --from-json <path>: regenerate a PDF from a saved vast_data_*.json
+        intermediate (skips API + Data Extractor; partial DEV-1).
     --dev-mode: enables Developer Mode for advanced operations.
     --port <number>: override the default GUI port (5173).
     """
@@ -1003,6 +1157,11 @@ def main() -> int:
     # sys.argv, so an invocation like ``vast-reporter --port 8888``
     # still routes to ``run_gui`` by the default-GUI branch below.
     port = _extract_port_from_argv()
+
+    # Offline JSON replay: handled before --gui / --cli routing because
+    # it has its own argparse surface and never touches the live API.
+    if "--from-json" in sys.argv:
+        return run_from_json()
 
     if len(sys.argv) > 1 and sys.argv[1] == "--gui":
         sys.argv.pop(1)

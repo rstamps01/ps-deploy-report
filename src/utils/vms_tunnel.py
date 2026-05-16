@@ -28,8 +28,9 @@ import logging
 import re
 import select
 import socket
+import shlex
 import threading
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import paramiko  # type: ignore[import-untyped]
 
@@ -47,6 +48,55 @@ class VMSDiscoveryError(Exception):
 # ---------------------------------------------------------------------------
 
 _IP_RE = re.compile(r"\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b")
+
+# RFC1918 private ranges (10/8, 172.16/12, 192.168/16) anchored to `inet `
+# preamble so `inet6` lines and bare textual matches are skipped.  CGNAT
+# (100.64/10, RFC 6598) and link-local (169.254/16) are intentionally NOT
+# part of this set: they must never be picked as a management IP.
+_RFC1918_RE = re.compile(
+    r"\binet\s+("
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r")/\d+"
+)
+
+# TP-2: widened to also accept CGNAT 100.64/10 (RFC 6598).  On VAST IPoIB
+# clusters the customer-facing VMS UI is typically bound to a CGNAT address
+# on em3 (e.g. 100.64.44.2:443 served by nginx), so candidate enumeration
+# must include it.  Link-local 169.254/16 is still excluded (no API ever).
+_PRIVATE_RE = re.compile(
+    r"\binet\s+("
+    r"10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}"
+    r"|192\.168\.\d{1,3}\.\d{1,3}"
+    r"|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}"
+    r")/\d+"
+)
+
+# Interface name prefixes whose addresses are never the cluster mgmt IP.
+# Matches both exact names (`lo`, `docker0`) and aliased forms (`docker0:e`).
+_EXCLUDE_IFACE_PREFIXES: Tuple[str, ...] = (
+    "lo",
+    "docker",
+    "br-",
+    "veth",
+    "tun",
+    "tap",
+    "tailscale",
+    "virbr",
+    "vnet",
+    "cni",
+    "flannel",
+)
+
+
+def _iface_excluded(iface: str) -> bool:
+    """True if *iface* belongs to an excluded class (loopback, container, vpn)."""
+    if not iface:
+        return False
+    base = iface.split(":", 1)[0]  # strip any `:alias` suffix
+    return any(base == p or base.startswith(p) for p in _EXCLUDE_IFACE_PREFIXES)
 
 
 def parse_find_vms_output(output: str) -> Optional[str]:
@@ -70,34 +120,138 @@ def parse_find_vms_output(output: str) -> Optional[str]:
 
 
 def parse_management_ip(ip_addr_output: str) -> Optional[str]:
-    """Extract the primary management IP from ``ip addr show`` output.
+    """Extract the cluster management IP from ``ip addr show`` output.
 
-    Looks for ``inet 10.x.x.x/...`` lines with ``scope global`` that are
-    NOT marked ``secondary``.  Falls back to the first ``inet 10.x.x.x``
-    if no non-secondary match is found.
+    Selection priority (media-agnostic; works on Ethernet, Infiniband / IPoIB,
+    bonds, etc.):
 
-    Returns:
-        The management IP string (without CIDR mask), or ``None``.
+    1. RFC1918 ``scope global`` address whose interface name ends in ``:m``
+       (VAST mgmt VIP convention, e.g. ``bond0:m`` on IB clusters).
+    2. RFC1918 non-secondary ``scope global`` address on a non-excluded
+       interface (loopback, docker, bridge, veth, vpn devices excluded).
+    3. RFC1918 secondary ``scope global`` address on a non-excluded interface.
+
+    CGNAT (100.64/10), link-local (169.254/16), and IPv6 are intentionally
+    not considered.  Returns ``None`` when no candidate matches.
     """
     if not ip_addr_output:
         return None
 
-    primary = None
-    fallback = None
+    m_alias_pick: Optional[str] = None
+    primary_pick: Optional[str] = None
+    secondary_pick: Optional[str] = None
 
     for line in ip_addr_output.splitlines():
         stripped = line.strip()
-        match = re.match(r"inet\s+(10\.\d{1,3}\.\d{1,3}\.\d{1,3})/", stripped)
+        match = _RFC1918_RE.search(stripped)
         if not match:
             continue
-        ip = match.group(1)
-        if fallback is None:
-            fallback = ip
-        if "scope global" in stripped and "secondary" not in stripped:
-            primary = ip
-            break
+        if "scope global" not in stripped:
+            continue
 
-    return primary or fallback
+        tokens = stripped.split()
+        iface = tokens[-1] if tokens else ""
+        if _iface_excluded(iface):
+            continue
+
+        ip = match.group(1)
+        is_secondary = "secondary" in stripped
+
+        if iface.endswith(":m") and not is_secondary and m_alias_pick is None:
+            m_alias_pick = ip
+        elif not is_secondary and primary_pick is None:
+            primary_pick = ip
+        elif is_secondary and secondary_pick is None:
+            secondary_pick = ip
+
+    return m_alias_pick or primary_pick or secondary_pick
+
+
+# Interface-name prefixes treated as Ethernet (vs Infiniband) for ordering.
+_ETH_IFACE_PREFIXES: Tuple[str, ...] = ("em", "eno", "enp", "ens", "eth", "p")
+
+
+def _classify_iface(iface: str) -> Tuple[str, str]:
+    """Return ``(base, alias)`` for an iface name, splitting on ``:``.
+
+    ``"bond0:m"`` -> ``("bond0", "m")``; ``"em3"`` -> ``("em3", "")``.
+    """
+    base, _, alias = iface.partition(":")
+    return base, alias
+
+
+def parse_management_ip_candidates(ip_addr_output: Optional[str]) -> List[str]:
+    """Return candidate management IPs from ``ip addr show`` in probe order.
+
+    The intent is empirical: discovery should probe each candidate on TCP/443
+    and pick the first that actually serves the VMS API.  Without probing,
+    no parse heuristic can reliably distinguish (e.g.) the IPoIB-internal
+    ``bond0:m`` mgmt VIP from the customer-facing ``em3`` base IP.
+
+    Probe priority (highest first):
+      1. Plain Ethernet base addresses (``em*``, ``eno*``, ``enp*``, ``eth*``,
+         etc.) -- the typical customer mgmt LAN.
+      2. Plain Ethernet ``:e`` (external) aliases.
+      3. Plain Ethernet other-aliased / secondary addresses.
+      4. Infiniband device base addresses (``ib*``).
+      5. Infiniband ``:a`` / ``:b`` / non-``:m`` aliases.
+      6. Bond + ``:m`` aliases (last -- internal IPoIB mgmt VIP, only useful
+         when the cluster wires the customer API there too).
+
+    Excludes loopback, docker / bridge / veth / vpn devices and link-local
+    addresses.  Includes RFC1918 + CGNAT (RFC 6598).  Deduplicates.
+    """
+    if not ip_addr_output:
+        return []
+
+    eth_base: List[str] = []
+    eth_e: List[str] = []
+    eth_other: List[str] = []
+    ib_base: List[str] = []
+    ib_alias: List[str] = []
+    bond_m: List[str] = []
+
+    seen: set = set()
+
+    for line in ip_addr_output.splitlines():
+        stripped = line.strip()
+        match = _PRIVATE_RE.search(stripped)
+        if not match:
+            continue
+        if "scope global" not in stripped:
+            continue
+
+        tokens = stripped.split()
+        iface = tokens[-1] if tokens else ""
+        if _iface_excluded(iface):
+            continue
+
+        ip = match.group(1)
+        if ip in seen:
+            continue
+        seen.add(ip)
+
+        base, alias = _classify_iface(iface)
+        is_secondary = "secondary" in stripped
+        is_ib_or_bond = base.startswith("ib") or base.startswith("bond")
+
+        if alias == "m":
+            bond_m.append(ip)
+        elif is_ib_or_bond:
+            if alias:
+                ib_alias.append(ip)
+            else:
+                ib_base.append(ip)
+        else:
+            # Plain Ethernet family.
+            if alias == "e":
+                eth_e.append(ip)
+            elif alias or is_secondary:
+                eth_other.append(ip)
+            else:
+                eth_base.append(ip)
+
+    return eth_base + eth_e + eth_other + ib_base + ib_alias + bond_m
 
 
 # ---------------------------------------------------------------------------
@@ -168,8 +322,30 @@ def discover_vms_management_ip(
         raise VMSDiscoveryError(f"Could not discover VMS IP on {entry_host} " f"(motd and clush both failed): {err}")
     logger.info("VMS internal IP: %s", vms_internal_ip)
 
-    # Step 2: SSH hop to VMS internal IP, get management IP
-    ip_cmd = "ip addr show | grep 'inet 10\\.' | head -5"
+    # Step 1.5: 443 short-circuit.
+    # On many clusters (especially IPoIB) the VMS internal IP discovered via
+    # /etc/motd is itself the management VIP and already serves the VMS UI on
+    # TCP/443.  When that's the case, skip the second SSH hop entirely; this
+    # avoids the historical "no 10.x.x.x found" failure mode on clusters whose
+    # mgmt network lives in 172.16/12 or 192.168/16 (TP-1).
+    if _check_management_via_internal_ip(
+        entry_host,
+        ssh_user,
+        ssh_password,
+        vms_internal_ip,
+        timeout=timeout,
+    ):
+        logger.info(
+            "VMS internal IP %s already answers on 443; skipping ip-addr hop",
+            vms_internal_ip,
+        )
+        return vms_internal_ip, vms_internal_ip
+
+    # Step 2: SSH hop to VMS internal IP, get management IP from `ip addr`.
+    # Note: do NOT pre-filter with `grep 'inet 10\\.'` -- TP-1 fix.  The
+    # parser handles RFC1918 ranges itself and excludes loopback / docker /
+    # CGNAT / link-local interfaces by name and class.
+    ip_cmd = "ip addr show 2>/dev/null"
     rc, out, err = run_ssh_command(
         vms_internal_ip,
         ssh_user,
@@ -183,12 +359,127 @@ def discover_vms_management_ip(
     if rc != 0:
         raise VMSDiscoveryError(f"Failed to get management IP from VMS CNode {vms_internal_ip} (rc={rc}): {err}")
 
-    vms_mgmt_ip = parse_management_ip(out)
-    if not vms_mgmt_ip:
-        raise VMSDiscoveryError(f"Could not parse management IP from ip addr output: {out!r}")
-    logger.info("VMS management IP: %s", vms_mgmt_ip)
+    # TP-2: empirical candidate probing.  Pre-TP-2 we picked by interface
+    # alias convention (`:m` first), but on VAST IPoIB clusters the actual
+    # VMS UI lives on em3's CGNAT base IP (nginx) while bond0:m is an
+    # internal cluster-mgmt VIP that does NOT serve 443.  Enumerate every
+    # plausible candidate and TCP-probe each one from the tech port.
+    candidates = parse_management_ip_candidates(out)
+    if not candidates:
+        raise VMSDiscoveryError(
+            f"No candidate management IP found on VMS CNode {vms_internal_ip}. "
+            f"No RFC1918 / CGNAT address was present on a non-excluded "
+            f"interface. Discovered ip-addr output:\n{out!r}"
+        )
 
-    return vms_internal_ip, vms_mgmt_ip
+    probe_results = _first_443_reachable(entry_host, ssh_user, ssh_password, candidates, timeout=timeout)
+    for ip, status in probe_results:
+        if status == "OPEN":
+            logger.info("VMS management IP: %s (probe: %s)", ip, _format_probe_log(probe_results))
+            return vms_internal_ip, ip
+
+    raise VMSDiscoveryError(
+        f"No candidate management IP responded on 443 from {entry_host}. "
+        f"Probed: {_format_probe_log(probe_results)}. "
+        f"Hint: confirm the VMS service is running on the cluster and that "
+        f"the tech port can reach the management network on TCP/443."
+    )
+
+
+def _check_management_via_internal_ip(
+    entry_host: str,
+    ssh_user: str,
+    ssh_password: str,
+    internal_ip: str,
+    timeout: int = 30,
+) -> bool:
+    """Return True if *internal_ip* answers on TCP/443 from *entry_host*.
+
+    Uses bash's ``/dev/tcp`` pseudo-device so no extra package (nc, socat) is
+    required.  Wrapped in ``timeout 3`` so a hung connection cannot stall
+    discovery longer than the SSH command timeout.  A non-zero exit status
+    or any value other than ``OPEN`` in stdout means "not reachable".
+    """
+    probe = f"timeout 3 bash -c '</dev/tcp/{internal_ip}/443' 2>/dev/null " f"&& echo OPEN || echo CLOSED"
+    try:
+        rc, out, _err = run_ssh_command(
+            entry_host,
+            ssh_user,
+            ssh_password,
+            probe,
+            timeout=timeout,
+        )
+    except Exception as exc:  # pragma: no cover - SSH layer is mocked in tests
+        logger.debug("443 probe raised %s; falling through to ip-addr", exc)
+        return False
+    return rc == 0 and "OPEN" in (out or "")
+
+
+def _first_443_reachable(
+    entry_host: str,
+    ssh_user: str,
+    ssh_password: str,
+    candidates: List[str],
+    timeout: int = 30,
+) -> List[Tuple[str, str]]:
+    """Probe TCP/443 on each candidate from *entry_host* in a single SSH session.
+
+    Returns a list of ``(ip, status)`` tuples in the same order as the input
+    candidates, where ``status`` is ``"OPEN"``, ``"CLOSED"``, or ``"ERROR"``.
+    The shell loop short-circuits at the first OPEN to keep typical-case
+    latency low (one ~0.1s connect for the winner).
+
+    Implementation note: uses bash ``/dev/tcp`` and a per-candidate
+    ``timeout 2`` so a single hung TCP/443 cannot stall the whole probe.
+    """
+    if not candidates:
+        return []
+
+    quoted_ips = " ".join(shlex.quote(ip) for ip in candidates)
+    probe = (
+        "for ip in " + quoted_ips + "; do "
+        "if timeout 2 bash -c '</dev/tcp/'\"$ip\"'/443' 2>/dev/null; "
+        'then echo "$ip OPEN"; break; '
+        'else echo "$ip CLOSED"; fi; '
+        "done"
+    )
+    try:
+        rc, out, _err = run_ssh_command(
+            entry_host,
+            ssh_user,
+            ssh_password,
+            probe,
+            timeout=timeout,
+        )
+    except Exception as exc:  # pragma: no cover - SSH layer is mocked in tests
+        logger.debug("Multi-probe raised %s", exc)
+        return [(ip, "ERROR") for ip in candidates]
+
+    parsed: List[Tuple[str, str]] = []
+    if rc == 0 and out:
+        seen: set = set()
+        for line in out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] in candidates and parts[1] in ("OPEN", "CLOSED"):
+                if parts[0] in seen:
+                    continue
+                seen.add(parts[0])
+                parsed.append((parts[0], parts[1]))
+    # Fill in any candidate the loop short-circuited past, marking them
+    # UNTESTED so they don't masquerade as CLOSED in error messages.
+    parsed_ips = {ip for ip, _ in parsed}
+    for ip in candidates:
+        if ip not in parsed_ips:
+            parsed.append((ip, "UNTESTED"))
+    return parsed
+
+
+def _format_probe_log(results: List[Tuple[str, str]]) -> str:
+    """One-line readable summary of probe results for log/error messages."""
+    return ", ".join(f"{ip}={status}" for ip, status in results)
 
 
 # ---------------------------------------------------------------------------

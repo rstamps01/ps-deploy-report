@@ -25,6 +25,15 @@ class VNetMapParser:
         self.topology_data: list[Any] = []
         self.cross_connections: list[Any] = []
         self.lldp_neighbors: list[Dict[str, str]] = []
+        # SR-3: IB clusters store the switch identity in the topology's
+        # ``switch_ip`` column as a 16-byte GUID rather than an IP, and
+        # downstream consumers (EnhancedPortMapper) key on the API-
+        # supplied mgmt_ip.  ``_parse_ib_switch_headers`` extracts the
+        # GUID-to-hostname mapping from the per-switch ``Switch MF0;
+        # <hostname>:<model> - <guid> has {<subnet>}, ...`` anchor
+        # lines so the port-mapper can build a GUID alias against the
+        # API switch list.  Empty for Eth-only output.
+        self.ib_switch_headers: list[Dict[str, str]] = []
 
     def parse(self) -> Dict[str, Any]:
         """
@@ -49,12 +58,14 @@ class VNetMapParser:
             self._parse_topology_section(content)
             self._parse_cross_connections(content)
             self._parse_lldp_neighbors(content)
+            self._parse_ib_switch_headers(content)
 
             return {
                 "available": True,
                 "topology": self.topology_data,
                 "cross_connections": self.cross_connections,
                 "lldp_neighbors": self.lldp_neighbors,
+                "ib_switch_headers": self.ib_switch_headers,
                 "total_connections": len(self.topology_data),
             }
 
@@ -65,6 +76,7 @@ class VNetMapParser:
                 "topology": [],
                 "cross_connections": [],
                 "lldp_neighbors": [],
+                "ib_switch_headers": [],
             }
 
     def _parse_topology_section(self, content: str):
@@ -131,6 +143,64 @@ class VNetMapParser:
                         "network_labels": network_labels,
                     }
                 )
+
+    # SR-3: IB switch header anchor.  Example line from the mammoth
+    # cluster's ``vnetmap_output_192.168.2.2_*.txt``:
+    #
+    #     Switch MF0;vast-switch1-bot:MQM8700/U1 - 0xb83fd20300e856b8 has {'172.16.0'}, network {'B', 'A'}, ...
+    #
+    # Captured groups: 1=hostname, 2=model, 3=GUID (with 0x prefix),
+    # 4=internal-subnet expression (raw braced contents).  The Subnet
+    # Manager designator (``MF0;``) is allowed to vary so future SM
+    # naming changes don't silently disable the alias map.
+    _IB_SWITCH_HEADER_RE = re.compile(
+        r"^Switch\s+\S+;([^:\s]+):(\S+)\s*-\s*(0x[0-9a-fA-F]+)\s+has\s+\{([^}]*)\}",
+        re.MULTILINE,
+    )
+
+    def _parse_ib_switch_headers(self, content: str):
+        """Extract per-switch GUID/hostname/model headers from IB output.
+
+        IB clusters print one header line per switch in the post-topology
+        diagnostic section, and ``vnetmap`` itself often emits the same
+        anchor twice (before and after each per-switch detail block);
+        we de-duplicate by GUID so the resulting list has at most one
+        entry per physical switch.  Eth clusters never emit these
+        lines, so ``ib_switch_headers`` stays empty there — it's the
+        on/off signal EnhancedPortMapper uses to decide whether to
+        build a GUID alias map at all.
+        """
+        seen_guids: set[str] = set()
+
+        for match in self._IB_SWITCH_HEADER_RE.finditer(content):
+            hostname = match.group(1).strip()
+            model = match.group(2).strip()
+            guid = match.group(3).strip().lower()
+            subnet_expr = match.group(4)
+
+            if guid in seen_guids:
+                continue
+            seen_guids.add(guid)
+
+            # ``{'172.16.0'}`` or ``{'172.16.0', '172.16.64'}`` — first
+            # token is the canonical subnet for this switch.  Strip
+            # quotes/whitespace defensively; an unparseable shape
+            # leaves ``internal_subnet`` empty rather than aborting.
+            internal_subnet = ""
+            for token in subnet_expr.split(","):
+                cleaned = token.strip().strip("'\"")
+                if cleaned:
+                    internal_subnet = cleaned
+                    break
+
+            self.ib_switch_headers.append(
+                {
+                    "hostname": hostname,
+                    "model": model,
+                    "guid": guid,
+                    "internal_subnet": internal_subnet,
+                }
+            )
 
     def _parse_lldp_neighbors(self, content: str):
         """
