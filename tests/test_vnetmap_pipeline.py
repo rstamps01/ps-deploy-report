@@ -31,6 +31,28 @@ LLDP neighbors on 10.128.101.141:
 """
 
 
+SAMPLE_IB_VNETMAP_OUTPUT = """\
+Mapping nodes ['172.16.128.1', '172.16.128.2'] to IB Switches
+
+Full topology
+
+c-128-1                   0xb83fd20300e856b8     19   172.16.0.1      ib2          80:00:01:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:80 A
+c-128-1                   0xb83fd20300e85d18     19   172.16.64.1     ib3          80:00:09:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:81 B
+B2-CB2-U33-CN1            0xb83fd20300e856b8     25   172.16.0.5      ib1          80:00:10:4a:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:2c:b0 A
+B2-CB2-U33-CN1            0xb83fd20300e85d18     25   172.16.64.5     ib2          80:00:11:4a:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:2c:b1 B
+
+Switch MF0;vast-switch1-bot:MQM8700/U1 - 0xb83fd20300e856b8 has {'172.16.0'}, network {'B', 'A'},  should be only one be in either range 172.16.{0..63} or in range 172.16.{64..127}
+
+c-128-1                   19           172.16.0.1      ib2          80:00:01:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:80 A
+B2-CB2-U33-CN1            25           172.16.0.5      ib1          80:00:10:4a:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:2c:b0 A
+
+Switch MF0;vast-switch2-top:MQM8700/U1 - 0xb83fd20300e85d18 has {'172.16.64'}, network {'B', 'A'},  should be only one be in either range 172.16.{0..63} or in range 172.16.{64..127}
+
+c-128-1                   19           172.16.64.1     ib3          80:00:09:07:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:36:81 B
+B2-CB2-U33-CN1            25           172.16.64.5     ib2          80:00:11:4a:fe:80:00:00:00:00:00:00:a0:88:c2:03:00:57:2c:b1 B
+"""
+
+
 class TestVNetMapParser:
     def _write_and_parse(self, content: str):
         from vnetmap_parser import VNetMapParser
@@ -70,6 +92,78 @@ LLDP neighbors on 10.128.101.142:
         lldp = result.get("lldp_neighbors", [])
         unique_pairs = {(n["local_switch_ip"], n["local_port"], n["remote_switch_ip"], n["remote_port"]) for n in lldp}
         assert len(unique_pairs) == len(lldp), "LLDP entries should be deduplicated"
+
+
+# ---------------------------------------------------------------------------
+# SR-3: IB switch header parsing — GUID -> hostname/model/subnet mapping
+# ---------------------------------------------------------------------------
+
+
+class TestSR3IBSwitchHeaders:
+    """vnetmap_parser must expose ``ib_switch_headers`` so EnhancedPortMapper
+    can resolve the GUIDs that IB clusters store as ``switch_ip`` to the
+    corresponding API-reported switch ``mgmt_ip`` via hostname matching.
+
+    Without this metadata the port-mapper logs ``Unknown switch IP:
+    0xb83fd20300e856b8`` for every IB row and falls through to ``SW?-19``
+    designations + zero IPL ports.  See docs/issues/SR-3 for the full
+    repro and acceptance criteria.
+    """
+
+    def _write_and_parse(self, content: str):
+        from vnetmap_parser import VNetMapParser
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write(content)
+            f.flush()
+            parser = VNetMapParser(f.name)
+            return parser.parse()
+
+    def test_parse_returns_ib_switch_headers_key(self):
+        """Even on Eth-only output the key must exist (graceful contract)."""
+        result = self._write_and_parse(SAMPLE_VNETMAP_OUTPUT)
+        assert "ib_switch_headers" in result
+        assert isinstance(result["ib_switch_headers"], list)
+
+    def test_eth_cluster_has_no_ib_headers(self):
+        """Ethernet vnetmap output has no ``Switch MF0;...`` anchor lines."""
+        result = self._write_and_parse(SAMPLE_VNETMAP_OUTPUT)
+        assert result["ib_switch_headers"] == []
+
+    def test_ib_cluster_extracts_two_headers(self):
+        result = self._write_and_parse(SAMPLE_IB_VNETMAP_OUTPUT)
+        headers = result["ib_switch_headers"]
+        assert len(headers) == 2
+        guids = {h["guid"] for h in headers}
+        assert guids == {"0xb83fd20300e856b8", "0xb83fd20300e85d18"}
+
+    def test_ib_header_extracts_hostname_model_subnet_per_switch(self):
+        result = self._write_and_parse(SAMPLE_IB_VNETMAP_OUTPUT)
+        by_guid = {h["guid"]: h for h in result["ib_switch_headers"]}
+
+        bot = by_guid["0xb83fd20300e856b8"]
+        assert bot["hostname"] == "vast-switch1-bot"
+        assert bot["model"] == "MQM8700/U1"
+        assert bot["internal_subnet"] == "172.16.0"
+
+        top = by_guid["0xb83fd20300e85d18"]
+        assert top["hostname"] == "vast-switch2-top"
+        assert top["model"] == "MQM8700/U1"
+        assert top["internal_subnet"] == "172.16.64"
+
+    def test_ib_topology_still_uses_guid_as_switch_ip(self):
+        """Backward compat: ``switch_ip`` continues to carry the GUID
+        verbatim so existing downstream consumers (cross-connection
+        detection, LLDP, IPL inference) keep working.  SR-3's resolution
+        is purely additive — the alias map lives in EnhancedPortMapper,
+        not in the parser's primary topology shape.
+        """
+        result = self._write_and_parse(SAMPLE_IB_VNETMAP_OUTPUT)
+        topo = result["topology"]
+        assert len(topo) >= 4
+        switch_ips = {row["switch_ip"] for row in topo}
+        assert "0xb83fd20300e856b8" in switch_ips
+        assert "0xb83fd20300e85d18" in switch_ips
 
 
 # ---------------------------------------------------------------------------

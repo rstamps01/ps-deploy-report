@@ -8,7 +8,7 @@ Implements the port mapping designation system:
 
 import logging
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ class EnhancedPortMapper:
         switches: List[Dict[str, Any]],
         external_port_map: List[Dict[str, Any]] = None,
         eboxes: List[Dict[str, Any]] = None,
+        ib_switch_headers: Optional[List[Dict[str, str]]] = None,
     ):
         """
         Initialize enhanced port mapper.
@@ -53,6 +54,20 @@ class EnhancedPortMapper:
             switches: List of switch hardware data
             external_port_map: Optional pre-collected port map data with node IPs
             eboxes: List of EBox hardware data (for EBox-only clusters)
+            ib_switch_headers: SR-3 — optional list of
+                ``{"guid", "hostname", "model", "internal_subnet"}``
+                dicts produced by ``VNetMapParser._parse_ib_switch_headers``.
+                On IB clusters ``vnetmap`` writes a 16-byte GUID into
+                the topology's ``switch_ip`` column instead of an IP,
+                so without these headers ``generate_switch_designation``
+                falls through to ``Unknown switch IP`` for every row
+                and produces ``SW?-<port>`` designations.  When
+                supplied, ``_build_switch_map`` uses each header's
+                ``hostname`` to find the matching API switch (by
+                ``name``/``hostname``/``host_name``) and adds the GUID
+                as an alias key pointing at the same record as the
+                canonical ``mgmt_ip`` entry.  Empty / None on Eth
+                clusters — the alias step is a no-op there.
         """
         self.cboxes = cboxes
         self.dboxes = dboxes
@@ -61,6 +76,7 @@ class EnhancedPortMapper:
         self.switches = switches
         self.external_port_map = external_port_map or []
         self.eboxes = eboxes or []
+        self.ib_switch_headers = ib_switch_headers or []
 
         # Detect if this is an EBox-only cluster
         self.is_ebox_cluster = bool(self.eboxes)
@@ -285,6 +301,87 @@ class EnhancedPortMapper:
             len(sorted_leaves),
             len(sorted_spines),
         )
+
+        # SR-3: IB GUID -> mgmt_ip alias.  IB clusters store the switch
+        # identity in topology rows as a 16-byte GUID rather than an
+        # IP, but the API-supplied switch records key on mgmt_ip.
+        # Without aliasing, every row's switch designation logs
+        # ``Unknown switch IP: 0x...`` and the report renders ``SW?-<port>``.
+        # ``ib_switch_headers`` (parsed by ``VNetMapParser``) pairs
+        # each GUID with its hostname; we walk the API ``switches`` to
+        # locate the matching record and add the GUID as a same-record
+        # alias so subsequent ``switch_ip`` lookups succeed regardless
+        # of which value the topology row carried.
+        if self.ib_switch_headers:
+            self._add_ib_guid_aliases()
+
+    def _add_ib_guid_aliases(self) -> None:
+        """Add GUID alias keys to ``switch_map`` for IB clusters.
+
+        Each header is matched against ``self.switches`` by trying the
+        ``name``, ``hostname``, and ``host_name`` fields in order
+        (different VAST API versions populate different fields).  When
+        a match is found and the matching switch's mgmt_ip already
+        exists in ``switch_map`` (i.e. it was a leaf or spine in the
+        primary build), the GUID is added as a key pointing at the
+        same dict object — so ``switch_map[GUID]["designation"]``
+        returns the correct ``SWA-P19`` etc.
+
+        Hostname comparison is case-insensitive.  Headers without a
+        matching API switch are logged at debug and skipped; this
+        keeps SR-3 graceful — unknown GUIDs still flow through to the
+        existing ``Unknown switch IP`` warning rather than being
+        silently aliased to an arbitrary record.
+        """
+        host_to_mgmt: Dict[str, str] = {}
+        for sw in self.switches:
+            mgmt_ip = sw.get("mgmt_ip")
+            if not mgmt_ip:
+                continue
+            for field in ("name", "hostname", "host_name"):
+                candidate = sw.get(field)
+                if candidate:
+                    host_to_mgmt[str(candidate).strip().lower()] = mgmt_ip
+
+        aliased = 0
+        for header in self.ib_switch_headers:
+            guid = (header.get("guid") or "").strip().lower()
+            hostname = (header.get("hostname") or "").strip().lower()
+            if not guid or not hostname:
+                continue
+            mgmt_ip = host_to_mgmt.get(hostname)
+            if not mgmt_ip:
+                logger.debug(
+                    "SR-3: no API switch matches IB header hostname %r (guid=%s); "
+                    "GUID will fall through to 'Unknown switch IP' branch",
+                    header.get("hostname"),
+                    guid,
+                )
+                continue
+            if mgmt_ip not in self.switch_map:
+                logger.debug(
+                    "SR-3: hostname %r mapped to %s but %s is not in switch_map yet "
+                    "(unexpected — switches list out of sync with port_map)",
+                    header.get("hostname"),
+                    mgmt_ip,
+                    mgmt_ip,
+                )
+                continue
+            self.switch_map[guid] = self.switch_map[mgmt_ip]
+            aliased += 1
+            logger.debug(
+                "SR-3: aliased IB GUID %s -> %s (%s)",
+                guid,
+                mgmt_ip,
+                self.switch_map[mgmt_ip].get("designation", "?"),
+            )
+
+        if aliased:
+            logger.info(
+                "SR-3: added %d IB GUID alias%s to switch_map (resolves 'Unknown switch IP' on IB clusters)",
+                aliased,
+                "es" if aliased != 1 else "",
+            )
 
     def generate_node_designation(self, node_ip: str, network: str, hostname: str = None) -> Tuple[str, str]:
         """
