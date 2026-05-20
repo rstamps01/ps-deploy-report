@@ -606,15 +606,20 @@ class RackCentricDiagramGenerator:
     ) -> Dict[str, Any]:
         """Compute exit_x, dasharray, opacity for one device->switch edge (NET-2B).
 
-        Routing rules (v1.5.8):
+        Routing rules (v1.5.8 + follow-up):
 
         - Same-rack edges exit the OUTER side of the device (away from
           the inter-rack gutter): left edge for left-rack devices, right
-          edge for right-rack devices. Solid line, opacity 0.85.
+          edge for right-rack devices. Solid line, opacity 0.65 (lowered
+          from the v1.5.8 baseline 0.85 so dense fans under a switch
+          read as translucent strands).
         - Cross-rack edges exit the INNER side of the device (toward
           the inter-rack gutter): right edge for left-rack devices,
-          left edge for right-rack devices. Dashed line ``stroke-dasharray='6,4'``,
-          opacity 0.55.
+          left edge for right-rack devices. Dotted line
+          ``stroke-dasharray='1,3'`` (changed from the v1.5.8 baseline
+          dashed ``6,4`` so cross-rack edges read as visually
+          secondary), opacity 0.40 (lowered from 0.55 so the cross-rack
+          fan does not compete with same-rack edges where it overlaps).
 
         ``device_rack_column`` is ``"left"`` for the leftmost rack on the
         page and ``"right"`` for any other rack (the diagram constrains
@@ -632,9 +637,9 @@ class RackCentricDiagramGenerator:
         is_left = device_rack_column == "left"
         if is_cross_rack:
             exit_x = dev_x + dev_w if is_left else dev_x
-            return {"exit_x": exit_x, "dasharray": "6,4", "opacity": 0.55}
+            return {"exit_x": exit_x, "dasharray": "1,3", "opacity": 0.40}
         exit_x = dev_x if is_left else dev_x + dev_w
-        return {"exit_x": exit_x, "dasharray": None, "opacity": 0.85}
+        return {"exit_x": exit_x, "dasharray": None, "opacity": 0.65}
 
     @staticmethod
     def _classify_edge(
@@ -1211,6 +1216,14 @@ class RackCentricDiagramGenerator:
         # than the deprecated Network A/B classifier.
         subnet_color_map: Dict[str, str] = self._assign_subnet_colors(_all_switches, port_map)
 
+        # v1.5.8 follow-up: collect every (device, rack, geometry) tuple during
+        # the per-rack loop so we can run a SECOND draw pass after all rack
+        # frames, switches, and devices are on the canvas. The second pass
+        # draws only cross-rack edges, ensuring they land on top of every
+        # rack frame fill and are clearly visible (the v1.5.8 baseline drew
+        # them mid-loop and they were obscured by the next rack's frame).
+        pending_cross_rack: List[Dict[str, Any]] = []
+
         for ri, rack in enumerate(racks):
             rx = rack_x_start + ri * (rack_w + RACK_GAP)
             ry = content_y
@@ -1336,6 +1349,9 @@ class RackCentricDiagramGenerator:
                     is_miscabled=cb_is_miscabled,
                 )
 
+                # Pass 1: draw only SAME-RACK edges during the per-rack loop
+                # so they appear above this rack's frame but below the
+                # cross-rack pass that runs after every rack is drawn.
                 self._draw_device_connections(
                     dwg,
                     cb,
@@ -1353,6 +1369,19 @@ class RackCentricDiagramGenerator:
                     device_rack_column=("left" if ri == 0 else "right"),
                     gutter_mid_x=gutter_mid_x,
                     subnet_color_map=subnet_color_map,
+                    edge_filter="same_rack",
+                )
+                # Stash device geometry for the post-loop cross-rack pass.
+                pending_cross_rack.append(
+                    {
+                        "device": cb,
+                        "dev_x": dev_x,
+                        "dev_y": dev_y,
+                        "device_index": ci,
+                        "rack_index": ri,
+                        "rack_switches": rack_switches,
+                        "sep_y": sep_y,
+                    }
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -1394,6 +1423,7 @@ class RackCentricDiagramGenerator:
                 )
 
                 total_cboxes = len(rack["cboxes"])
+                # Pass 1: same-rack only; cross-rack deferred to post-loop pass.
                 self._draw_device_connections(
                     dwg,
                     bd,
@@ -1411,6 +1441,18 @@ class RackCentricDiagramGenerator:
                     device_rack_column=("left" if ri == 0 else "right"),
                     gutter_mid_x=gutter_mid_x,
                     subnet_color_map=subnet_color_map,
+                    edge_filter="same_rack",
+                )
+                pending_cross_rack.append(
+                    {
+                        "device": bd,
+                        "dev_x": dev_x,
+                        "dev_y": dev_y,
+                        "device_index": total_cboxes + di,
+                        "rack_index": ri,
+                        "rack_switches": rack_switches,
+                        "sep_y": sep_y,
+                    }
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -1443,6 +1485,31 @@ class RackCentricDiagramGenerator:
                             stroke_dasharray="4,2",
                         )
                     )
+
+        # ----- Pass 2: cross-rack edges (drawn AFTER every rack frame,
+        # switch box, and device box so they sit on top and stay visible
+        # regardless of which rack column they traverse). -----
+        for entry in pending_cross_rack:
+            ri_e = entry["rack_index"]
+            self._draw_device_connections(
+                dwg,
+                entry["device"],
+                entry["dev_x"],
+                entry["dev_y"],
+                DEVICE_W,
+                DEVICE_H,
+                switch_centers,
+                entry["rack_switches"],
+                port_map,
+                entry["sep_y"],
+                device_index=entry["device_index"],
+                current_rack_switch_ips=rack_switch_ips_by_index[ri_e],
+                all_switch_ips=all_switch_ips,
+                device_rack_column=("left" if ri_e == 0 else "right"),
+                gutter_mid_x=gutter_mid_x,
+                subnet_color_map=subnet_color_map,
+                edge_filter="cross_rack",
+            )
 
         # ----- Legend -----
         legend_y = content_y + rack_h + 10
@@ -1660,6 +1727,7 @@ class RackCentricDiagramGenerator:
         device_rack_column: str = "left",
         gutter_mid_x: Optional[float] = None,
         subnet_color_map: Optional[Dict[str, str]] = None,
+        edge_filter: str = "all",
     ) -> None:
         """Draw device->switch connections as v1.5.8 mockup-style bezier swoops.
 
@@ -1685,6 +1753,14 @@ class RackCentricDiagramGenerator:
         accepted for API compatibility but is no longer used: the bezier
         swoop's ``cp1`` extends naturally outward from the exit side, so
         no gutter waypoint is needed.
+
+        ``edge_filter`` controls which classification(s) are emitted:
+        ``"all"`` (default) draws both kinds; ``"same_rack"`` and
+        ``"cross_rack"`` draw only that classification. The two-pass
+        renderer in ``_render_page`` uses the filtered modes so
+        cross-rack edges land on top of every rack frame, switch box,
+        and device — fixing the v1.5.8 issue where right-rack
+        cross-rack lines were obscured by the right rack's frame fill.
         """
         if not isinstance(device, dict):
             return
@@ -1748,6 +1824,8 @@ class RackCentricDiagramGenerator:
                 all_switch_ips=all_switch_ips,
             )
             if classification == "orphan":
+                continue
+            if edge_filter != "all" and classification != edge_filter:
                 continue
 
             if not self._is_drawable_interface(interface, conn):

@@ -536,7 +536,7 @@ class TestNET2BEdgeRouting:
 
          - Same-rack edges: solid, exit OUTER side of device.
            (Left rack: left edge. Right rack: right edge.)
-         - Cross-rack edges: dashed (``6,4``, opacity 0.55), exit
+         - Cross-rack edges: dotted (``1,3``, opacity 0.40), exit
            INNER side toward the inter-rack gutter.
            (Left rack: right edge. Right rack: left edge.)
 
@@ -575,17 +575,26 @@ class TestNET2BEdgeRouting:
         plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
         assert plan["dasharray"] in (None, ""), "Same-rack edges must be SOLID (no dasharray)"
 
-    def test_cross_rack_edge_is_dashed(self):
+    def test_cross_rack_edge_is_dotted(self):
+        """v1.5.8 follow-up: cross-rack edges use a DOTTED pattern (``1,3``)
+        instead of the dashed pattern (``6,4``) so they read as clearly
+        secondary to same-rack edges in dense diagrams."""
         plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=0, dev_w=10)
-        assert plan["dasharray"] == "6,4", "Cross-rack edges must use stroke-dasharray='6,4' per design"
+        assert (
+            plan["dasharray"] == "1,3"
+        ), "Cross-rack edges must use stroke-dasharray='1,3' (dotted) per v1.5.8 follow-up"
 
     def test_cross_rack_edge_uses_lower_opacity(self):
+        """v1.5.8 follow-up: more transparent (0.40) so dense fans don't
+        visually clutter same-rack edges they overlap."""
         plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=0, dev_w=10)
-        assert plan["opacity"] == 0.55, "Cross-rack edges use opacity 0.55 per design"
+        assert plan["opacity"] == 0.40, "Cross-rack edges use opacity 0.40 per v1.5.8 follow-up"
 
-    def test_same_rack_edge_uses_full_opacity(self):
+    def test_same_rack_edge_uses_translucent_opacity(self):
+        """v1.5.8 follow-up: same-rack opacity reduced from 0.85 to 0.65
+        so overlapping fans under a switch are easier to read."""
         plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
-        assert plan["opacity"] == 0.85, "Same-rack edges retain opacity 0.85 (matches v1.5.7 same-rack)"
+        assert plan["opacity"] == 0.65, "Same-rack edges use opacity 0.65 per v1.5.8 follow-up"
 
     def test_classify_edge_same_rack(self):
         result = self._classifier()(
@@ -1143,3 +1152,158 @@ class TestNET2BBezierSwoopRouting:
         )
         pts = self._parse_path(d)
         assert set(pts.keys()) == {"start", "cp1", "cp2", "end"}
+
+
+class TestNET2BEdgeFilterTwoPass:
+    """v1.5.8 follow-up: ``_draw_device_connections`` must accept an
+    ``edge_filter`` parameter so the renderer can do a two-pass draw
+    (same-rack first per rack, then cross-rack last on top of all rack
+    frames).
+
+    Without this, cross-rack lines drawn during the FIRST rack's
+    iteration get visually clipped/obscured by the SECOND rack's frame
+    fill, which is drawn AFTER them. The fix is a draw-order change in
+    ``_render_page`` that uses the filter to defer cross-rack edges.
+
+    These tests target the pure helper signature; the renderer wiring
+    is exercised by the existing rendering smoke tests.
+    """
+
+    def _make_dwg(self):
+        """Recording stub: collects every ``add(...)`` call as ``(kind, attribs)``."""
+
+        class _Stub:
+            def __init__(self):
+                self.added = []
+
+            def add(self, obj):
+                kind = type(obj).__name__
+                attribs = getattr(obj, "attribs", {})
+                self.added.append((kind, dict(attribs)))
+
+            def path(self, **kwargs):
+                class _P:
+                    pass
+
+                p = _P()
+                p.attribs = kwargs
+                return p
+
+            def text(self, *args, **kwargs):
+                class _T:
+                    pass
+
+                t = _T()
+                t.attribs = kwargs
+                return t
+
+        return _Stub()
+
+    def _gen(self):
+        from network_diagram_v2 import RackCentricDiagramGenerator
+
+        return RackCentricDiagramGenerator()
+
+    def _common_args(self):
+        return {
+            "switch_centers": {"10.0.0.1": (200.0, 100.0), "10.0.0.2": (600.0, 100.0)},
+            "_rack_switches": [{"mgmt_ip": "10.0.0.1"}],
+            "port_map": [
+                {
+                    "node_ip": "10.1.0.5",
+                    "switch_ip": "10.0.0.1",
+                    "interface": "f0",
+                    "network": "data_a",
+                },
+                {
+                    "node_ip": "10.1.0.5",
+                    "switch_ip": "10.0.0.2",
+                    "interface": "f1",
+                    "network": "data_b",
+                },
+            ],
+            "bus_y_base": 200.0,
+            "device_index": 0,
+            "current_rack_switch_ips": {"10.0.0.1"},
+            "all_switch_ips": {"10.0.0.1", "10.0.0.2"},
+            "device_rack_column": "left",
+            "gutter_mid_x": 400.0,
+            "subnet_color_map": {"10.0.0.1": "#0F9D58", "10.0.0.2": "#4285F4"},
+        }
+
+    def test_edge_filter_same_rack_only_draws_same_rack_edges(self):
+        """With ``edge_filter='same_rack'``, only the same-rack edge to
+        switch 10.0.0.1 should be drawn (1 path); the cross-rack edge to
+        10.0.0.2 must be skipped."""
+        gen = self._gen()
+        dwg = self._make_dwg()
+        device = {"name": "node1", "ip": "10.1.0.5"}
+        gen._draw_device_connections(
+            dwg,
+            device,
+            dev_x=100.0,
+            dev_y=300.0,
+            dev_w=80.0,
+            dev_h=20.0,
+            edge_filter="same_rack",
+            **self._common_args(),
+        )
+        paths = [a for a in dwg.added if a[0] == "_P"]
+        assert len(paths) == 1, f"Expected 1 same-rack path, got {len(paths)}"
+
+    def test_edge_filter_cross_rack_only_draws_cross_rack_edges(self):
+        """With ``edge_filter='cross_rack'``, only the cross-rack edge to
+        switch 10.0.0.2 should be drawn (1 path)."""
+        gen = self._gen()
+        dwg = self._make_dwg()
+        device = {"name": "node1", "ip": "10.1.0.5"}
+        gen._draw_device_connections(
+            dwg,
+            device,
+            dev_x=100.0,
+            dev_y=300.0,
+            dev_w=80.0,
+            dev_h=20.0,
+            edge_filter="cross_rack",
+            **self._common_args(),
+        )
+        paths = [a for a in dwg.added if a[0] == "_P"]
+        assert len(paths) == 1, f"Expected 1 cross-rack path, got {len(paths)}"
+
+    def test_edge_filter_all_draws_both_kinds_default_behavior(self):
+        """Default ``edge_filter='all'`` (or omitted) draws both same-rack
+        and cross-rack edges, preserving v1.5.8 baseline behavior for
+        callers that haven't opted into the two-pass draw."""
+        gen = self._gen()
+        dwg = self._make_dwg()
+        device = {"name": "node1", "ip": "10.1.0.5"}
+        gen._draw_device_connections(
+            dwg,
+            device,
+            dev_x=100.0,
+            dev_y=300.0,
+            dev_w=80.0,
+            dev_h=20.0,
+            edge_filter="all",
+            **self._common_args(),
+        )
+        paths = [a for a in dwg.added if a[0] == "_P"]
+        assert len(paths) == 2, f"Expected 2 paths (same+cross), got {len(paths)}"
+
+    def test_edge_filter_default_is_all(self):
+        """Calling without an ``edge_filter`` kwarg behaves like
+        ``edge_filter='all'`` so legacy callers keep working."""
+        gen = self._gen()
+        dwg = self._make_dwg()
+        device = {"name": "node1", "ip": "10.1.0.5"}
+        gen._draw_device_connections(
+            dwg,
+            device,
+            dev_x=100.0,
+            dev_y=300.0,
+            dev_w=80.0,
+            dev_h=20.0,
+            **self._common_args(),
+        )
+        paths = [a for a in dwg.added if a[0] == "_P"]
+        assert len(paths) == 2, f"Default should draw all edges, got {len(paths)}"
