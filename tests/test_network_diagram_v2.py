@@ -514,3 +514,114 @@ class TestNET2AManualSwitchPlacement:
         assert not any(
             s.get("hostname") == "sw2" for s in rack_by_name["R1"]["switches"]
         ), "sw2 must NOT appear in R1 (the v1.5.7 bug)"
+
+
+class TestNET2BEdgeRouting:
+    """NET-2B: outer/inner exit-side rule + cross-rack edge rendering.
+
+    The v1.5.7 bug had two sub-failures in ``_draw_device_connections``:
+
+    1. **Cross-rack edges silently dropped.** When a device's port_map row
+       referenced a switch in a *different* rack on the same page, the
+       per-rack accumulating ``switch_centers`` dict didn't yet contain
+       that switch (asymmetric drop for the first rack iteration), so
+       lines 1254 ``if sw_ip not in switch_centers: continue`` skipped
+       the row entirely.
+
+    2. **Deprecated A/B exit-side rule.** Lines 1269-1276 forced left-edge
+       exit for Network A and right-edge exit for Network B regardless
+       of the device's rack column, producing crossed lines whenever the
+       SWA/SWB labels disagreed with rack position. The v1.5.8 rule
+       routes by rack-column relationship instead:
+
+         - Same-rack edges: solid, exit OUTER side of device.
+           (Left rack: left edge. Right rack: right edge.)
+         - Cross-rack edges: dashed (``6,4``, opacity 0.55), exit
+           INNER side toward the inter-rack gutter.
+           (Left rack: right edge. Right rack: left edge.)
+
+    Fix surface:
+      - ``_plan_device_edge(...)`` — pure helper returning ``exit_x``,
+        ``dasharray``, ``opacity`` for one edge given ``is_cross_rack``
+        and the device's rack column ("left" or "right").
+      - ``_classify_edge(...)`` — pure helper classifying a switch IP
+        as ``"same_rack" | "cross_rack" | "orphan"`` so the renderer
+        can never silently drop a switch that exists on the page.
+    """
+
+    def _planner(self):
+        return RackCentricDiagramGenerator._plan_device_edge
+
+    def _classifier(self):
+        return RackCentricDiagramGenerator._classify_edge
+
+    def test_same_rack_left_device_exits_outer_left_edge(self):
+        plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=100.0, dev_w=80.0)
+        assert plan["exit_x"] == 100.0, "Left-rack same-rack edge must exit the LEFT edge (outer)"
+
+    def test_same_rack_right_device_exits_outer_right_edge(self):
+        plan = self._planner()(is_cross_rack=False, device_rack_column="right", dev_x=100.0, dev_w=80.0)
+        assert plan["exit_x"] == 180.0, "Right-rack same-rack edge must exit the RIGHT edge (outer)"
+
+    def test_cross_rack_left_device_exits_inner_right_edge(self):
+        plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=100.0, dev_w=80.0)
+        assert plan["exit_x"] == 180.0, "Left-rack cross-rack edge must exit the RIGHT edge (inner, toward gutter)"
+
+    def test_cross_rack_right_device_exits_inner_left_edge(self):
+        plan = self._planner()(is_cross_rack=True, device_rack_column="right", dev_x=100.0, dev_w=80.0)
+        assert plan["exit_x"] == 100.0, "Right-rack cross-rack edge must exit the LEFT edge (inner, toward gutter)"
+
+    def test_same_rack_edge_is_solid(self):
+        plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
+        assert plan["dasharray"] in (None, ""), "Same-rack edges must be SOLID (no dasharray)"
+
+    def test_cross_rack_edge_is_dashed(self):
+        plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=0, dev_w=10)
+        assert plan["dasharray"] == "6,4", "Cross-rack edges must use stroke-dasharray='6,4' per design"
+
+    def test_cross_rack_edge_uses_lower_opacity(self):
+        plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=0, dev_w=10)
+        assert plan["opacity"] == 0.55, "Cross-rack edges use opacity 0.55 per design"
+
+    def test_same_rack_edge_uses_full_opacity(self):
+        plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
+        assert plan["opacity"] == 0.85, "Same-rack edges retain opacity 0.85 (matches v1.5.7 same-rack)"
+
+    def test_classify_edge_same_rack(self):
+        result = self._classifier()(
+            sw_ip="10.0.0.1",
+            current_rack_switch_ips={"10.0.0.1", "10.0.0.2"},
+            all_switch_ips={"10.0.0.1", "10.0.0.2", "10.0.0.3"},
+        )
+        assert result == "same_rack"
+
+    def test_classify_edge_cross_rack_must_not_be_dropped(self):
+        """v1.5.7 bug: cross-rack switches were dropped because they weren't
+        in the current rack's ``switch_centers`` yet. The classifier MUST
+        return 'cross_rack' so the renderer keeps the edge instead of
+        silently skipping it.
+        """
+        result = self._classifier()(
+            sw_ip="10.0.0.3",
+            current_rack_switch_ips={"10.0.0.1", "10.0.0.2"},
+            all_switch_ips={"10.0.0.1", "10.0.0.2", "10.0.0.3"},
+        )
+        assert result == "cross_rack", "Cross-rack switches must NOT be silently dropped (v1.5.7 bug)"
+
+    def test_classify_edge_orphan_when_not_on_page(self):
+        """Switch IP not present in any rack on this page is genuinely orphan."""
+        result = self._classifier()(
+            sw_ip="10.0.0.99",
+            current_rack_switch_ips={"10.0.0.1"},
+            all_switch_ips={"10.0.0.1", "10.0.0.2"},
+        )
+        assert result == "orphan"
+
+    def test_classify_edge_empty_inputs(self):
+        """Defensive: empty sets return 'orphan'."""
+        result = self._classifier()(
+            sw_ip="10.0.0.1",
+            current_rack_switch_ips=set(),
+            all_switch_ips=set(),
+        )
+        assert result == "orphan"

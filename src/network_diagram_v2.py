@@ -583,6 +583,73 @@ class RackCentricDiagramGenerator:
         return rack_map
 
     @staticmethod
+    def _plan_device_edge(
+        *,
+        is_cross_rack: bool,
+        device_rack_column: str,
+        dev_x: float,
+        dev_w: float,
+    ) -> Dict[str, Any]:
+        """Compute exit_x, dasharray, opacity for one device->switch edge (NET-2B).
+
+        Routing rules (v1.5.8):
+
+        - Same-rack edges exit the OUTER side of the device (away from
+          the inter-rack gutter): left edge for left-rack devices, right
+          edge for right-rack devices. Solid line, opacity 0.85.
+        - Cross-rack edges exit the INNER side of the device (toward
+          the inter-rack gutter): right edge for left-rack devices,
+          left edge for right-rack devices. Dashed line ``stroke-dasharray='6,4'``,
+          opacity 0.55.
+
+        ``device_rack_column`` is ``"left"`` for the leftmost rack on the
+        page and ``"right"`` for any other rack (the diagram constrains
+        ``MAX_RACKS_PER_PAGE = 2``, so the binary distinction is exact).
+
+        Args:
+            is_cross_rack: True if the switch is in a different rack than the device.
+            device_rack_column: ``"left"`` or ``"right"``.
+            dev_x: Device box left coordinate.
+            dev_w: Device box width.
+
+        Returns:
+            Dict with keys ``exit_x`` (float), ``dasharray`` (str | None), ``opacity`` (float).
+        """
+        is_left = device_rack_column == "left"
+        if is_cross_rack:
+            exit_x = dev_x + dev_w if is_left else dev_x
+            return {"exit_x": exit_x, "dasharray": "6,4", "opacity": 0.55}
+        exit_x = dev_x if is_left else dev_x + dev_w
+        return {"exit_x": exit_x, "dasharray": None, "opacity": 0.85}
+
+    @staticmethod
+    def _classify_edge(
+        *,
+        sw_ip: str,
+        current_rack_switch_ips: set,
+        all_switch_ips: set,
+    ) -> str:
+        """Classify a port_map edge by switch position relative to the device's rack.
+
+        Returns one of:
+
+        - ``"same_rack"`` — switch lives in the same rack as the device.
+        - ``"cross_rack"`` — switch lives in a different rack on the same page.
+        - ``"orphan"``     — switch isn't present in any rack on this page.
+
+        NET-2B v1.5.7 bug: cross-rack edges were dropped because the
+        renderer treated any switch missing from the per-rack
+        ``switch_centers`` accumulator as orphan. The classifier must
+        treat cross-rack and orphan as distinct so the renderer only
+        skips genuine orphans.
+        """
+        if sw_ip in current_rack_switch_ips:
+            return "same_rack"
+        if sw_ip in all_switch_ips:
+            return "cross_rack"
+        return "orphan"
+
+    @staticmethod
     def _extract_manual_switch_to_rack(
         manual_switch_placements: Optional[Any],
     ) -> Dict[str, str]:
@@ -805,7 +872,37 @@ class RackCentricDiagramGenerator:
         # ----- Rack columns -----
         rack_x_start = (total_w - (num_racks * rack_w + (num_racks - 1) * RACK_GAP)) / 2
 
+        # NET-2B pre-pass: compute switch_centers for ALL racks BEFORE drawing
+        # any device->switch edges so cross-rack lookups resolve. The v1.5.7
+        # bug populated switch_centers as it iterated, which silently dropped
+        # cross-rack edges from the first rack (those switches weren't in
+        # the dict yet when the first rack's devices were being rendered).
         switch_centers: Dict[str, Tuple[float, float]] = {}
+        rack_switch_ips_by_index: List[set] = []
+        sw_pair_w_pre = min(SWITCH_W, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
+        for ri_pre, rack_pre in enumerate(racks):
+            rx_pre = rack_x_start + ri_pre * (rack_w + RACK_GAP)
+            sw_y_pre = content_y + RACK_PAD_TOP
+            rack_ips: set = set()
+            for si_pre, sw_pre in enumerate(rack_pre.get("switches", [])[:2]):
+                if not isinstance(sw_pre, dict):
+                    continue
+                sx_pre = rx_pre + RACK_PAD_X + si_pre * (sw_pair_w_pre + SWITCH_GAP)
+                mgmt_ip_pre = sw_pre.get("mgmt_ip", "")
+                if mgmt_ip_pre:
+                    switch_centers[mgmt_ip_pre] = (sx_pre + sw_pair_w_pre / 2, sw_y_pre + SWITCH_H)
+                    rack_ips.add(mgmt_ip_pre)
+            rack_switch_ips_by_index.append(rack_ips)
+        all_switch_ips: set = set(switch_centers.keys())
+
+        # NET-2B: compute the inter-rack gutter midpoint for cross-rack
+        # waypoint routing. With MAX_RACKS_PER_PAGE = 2 this is just the
+        # midpoint between rack 0's right edge and rack 1's left edge.
+        gutter_mid_x: Optional[float] = None
+        if num_racks >= 2:
+            left_rx = rack_x_start
+            right_rx = rack_x_start + (rack_w + RACK_GAP)
+            gutter_mid_x = (left_rx + rack_w + right_rx) / 2
 
         for ri, rack in enumerate(racks):
             rx = rack_x_start + ri * (rack_w + RACK_GAP)
@@ -942,6 +1039,10 @@ class RackCentricDiagramGenerator:
                     port_map,
                     sep_y,
                     device_index=ci,
+                    current_rack_switch_ips=rack_switch_ips_by_index[ri],
+                    all_switch_ips=all_switch_ips,
+                    device_rack_column=("left" if ri == 0 else "right"),
+                    gutter_mid_x=gutter_mid_x,
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -993,6 +1094,10 @@ class RackCentricDiagramGenerator:
                     port_map,
                     sep_y,
                     device_index=total_cboxes + di,
+                    current_rack_switch_ips=rack_switch_ips_by_index[ri],
+                    all_switch_ips=all_switch_ips,
+                    device_rack_column=("left" if ri == 0 else "right"),
+                    gutter_mid_x=gutter_mid_x,
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -1196,13 +1301,29 @@ class RackCentricDiagramGenerator:
         port_map: List[Dict[str, Any]],
         bus_y_base: float,
         device_index: int = 0,
+        current_rack_switch_ips: Optional[set] = None,
+        all_switch_ips: Optional[set] = None,
+        device_rack_column: str = "left",
+        gutter_mid_x: Optional[float] = None,
     ) -> None:
-        """Draw orthogonal connections from a device to its rack-local switches.
+        """Draw orthogonal connections from a device to its rack-local AND
+        cross-rack switches.
 
-        Lines exit from the left (Network A) or right (Network B) side of the
-        device box at mid-height, route through vertical channels in the rack
-        padding, then connect to the corresponding switch via a horizontal bus
-        segment.  ``device_index`` staggers bus heights to prevent overlap.
+        NET-2B routing rules:
+
+        - Same-rack edges exit the OUTER side of the device, route up the
+          rack-internal channel (left edge for left rack, right edge for
+          right rack), and reach the switch as before.
+        - Cross-rack edges exit the INNER side of the device toward the
+          inter-rack gutter, route through the gutter midpoint, and reach
+          the switch in the other rack column. They are rendered with
+          ``stroke-dasharray='6,4'`` and opacity 0.55 to visually distinguish
+          them from same-rack edges.
+
+        ``current_rack_switch_ips`` and ``all_switch_ips`` are used by
+        ``_classify_edge`` to determine same-rack vs cross-rack vs orphan.
+        Only true orphans are skipped — cross-rack edges are now rendered
+        instead of silently dropped (the v1.5.7 bug).
         """
         if not isinstance(device, dict):
             return
@@ -1222,10 +1343,18 @@ class RackCentricDiagramGenerator:
         if not dev_ips and not dev_name and not dev_hostname:
             return
 
+        # Defaults preserve v1.5.7 behavior when called without NET-2B context
+        # (e.g. legacy callers); _classify_edge degenerates to "same_rack" if
+        # current_rack_switch_ips covers every switch.
+        if all_switch_ips is None:
+            all_switch_ips = set(switch_centers.keys())
+        if current_rack_switch_ips is None:
+            current_rack_switch_ips = set(switch_centers.keys())
+
         rx = dev_x - RACK_PAD_X
-        rack_w = dev_w + 2 * RACK_PAD_X
-        chan_a = rx + 6
-        chan_b = rx + rack_w - 6
+        rack_w_local = dev_w + 2 * RACK_PAD_X
+        chan_outer_left = rx + 6
+        chan_outer_right = rx + rack_w_local - 6
 
         BUS_STAGGER = 3
         drawn: set = set()
@@ -1251,7 +1380,12 @@ class RackCentricDiagramGenerator:
             if not (ip_match or name_match):
                 continue
 
-            if sw_ip not in switch_centers:
+            classification = self._classify_edge(
+                sw_ip=sw_ip,
+                current_rack_switch_ips=current_rack_switch_ips,
+                all_switch_ips=all_switch_ips,
+            )
+            if classification == "orphan":
                 continue
 
             if not self._is_drawable_interface(interface, conn):
@@ -1266,16 +1400,31 @@ class RackCentricDiagramGenerator:
 
             mid = bus_y_base - 2 - device_index * BUS_STAGGER
 
-            if network == "A":
-                exit_x = dev_x
-                chan_x = chan_a
-                color = COLOR_NETWORK_A
-            else:
-                exit_x = dev_x + dev_w
-                chan_x = chan_b
-                color = COLOR_NETWORK_B
+            is_cross_rack = classification == "cross_rack"
+            edge_plan = self._plan_device_edge(
+                is_cross_rack=is_cross_rack,
+                device_rack_column=device_rack_column,
+                dev_x=dev_x,
+                dev_w=dev_w,
+            )
+            exit_x = edge_plan["exit_x"]
+            dasharray = edge_plan["dasharray"]
+            opacity = edge_plan["opacity"]
+
+            # Color: keep the v1.5.7 A/B classifier for now (NET-3 will
+            # replace this with subnet-based coloring in a follow-up).
+            color = COLOR_NETWORK_A if network == "A" else COLOR_NETWORK_B
 
             exit_y = dev_y + dev_h / 2
+
+            if is_cross_rack and gutter_mid_x is not None:
+                # Cross-rack: route through the inter-rack gutter so the
+                # line clearly traverses the page rather than passing
+                # through the device's own rack channel.
+                chan_x = gutter_mid_x
+            else:
+                # Same-rack: route up the OUTER channel of the rack.
+                chan_x = chan_outer_left if device_rack_column == "left" else chan_outer_right
 
             waypoints: List[Tuple[float, float]] = [
                 (exit_x, exit_y),
@@ -1286,20 +1435,23 @@ class RackCentricDiagramGenerator:
             ]
 
             path_d = _rounded_polyline(waypoints)
-            dwg.add(
-                dwg.path(
-                    d=path_d,
-                    fill="none",
-                    stroke=color,
-                    stroke_width=2.0,
-                    opacity=0.85,
-                )
-            )
+            path_kwargs: Dict[str, Any] = {
+                "d": path_d,
+                "fill": "none",
+                "stroke": color,
+                "stroke_width": 2.0,
+                "opacity": opacity,
+            }
+            if dasharray:
+                path_kwargs["stroke_dasharray"] = dasharray
+            dwg.add(dwg.path(**path_kwargs))
 
             if self.show_port_labels:
                 port_name = conn.get("port", "")
                 if port_name:
-                    label_x = exit_x + (6 if network == "A" else -6)
+                    # Anchor the label on the side away from the device so
+                    # it doesn't overlap the box edge.
+                    label_x = exit_x + (6 if exit_x == dev_x else -6)
                     label_y = exit_y - 4
                     dwg.add(
                         dwg.text(
