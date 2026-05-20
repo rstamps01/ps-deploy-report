@@ -765,6 +765,109 @@ class RackCentricDiagramGenerator:
         return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
 
     @staticmethod
+    def _switch_subnet_set(sw_ip: str, port_map: List[Dict[str, Any]]) -> set:
+        """Return the set of distinct /24 prefixes among nodes connected to ``sw_ip``.
+
+        NET-4: a switch with ``len(subnet_set) > 1`` is mis-cabled — it
+        services nodes from multiple subnets, which usually indicates a
+        physical patching error.
+        """
+        if not sw_ip or not port_map:
+            return set()
+        result: set = set()
+        for conn in port_map:
+            if conn.get("switch_ip") != sw_ip:
+                continue
+            subnet = RackCentricDiagramGenerator._ipv4_subnet_24(conn.get("node_ip", ""))
+            if subnet:
+                result.add(subnet)
+        return result
+
+    @staticmethod
+    def _detect_miscabled_switches(
+        switches: List[Dict[str, Any]],
+        port_map: List[Dict[str, Any]],
+    ) -> Dict[str, set]:
+        """Return ``{mgmt_ip -> off_subnet_set}`` for switches with > 1 subnet.
+
+        NET-4: ``off_subnet_set`` excludes the switch's canonical
+        (most-common) subnet. Each entry in the off-subnet set indicates a
+        group of mis-cabled connections to investigate.
+        """
+        result: Dict[str, set] = {}
+        for sw in switches:
+            mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
+            if not mgmt_ip:
+                continue
+            subnets = RackCentricDiagramGenerator._switch_subnet_set(mgmt_ip, port_map)
+            if len(subnets) <= 1:
+                continue
+            canonical = RackCentricDiagramGenerator._compute_switch_subnet(mgmt_ip, port_map)
+            off_subnets = subnets - ({canonical} if canonical else set())
+            if off_subnets:
+                result[mgmt_ip] = off_subnets
+        return result
+
+    @staticmethod
+    def _detect_miscabled_node_ips(
+        sw_ip: str,
+        port_map: List[Dict[str, Any]],
+    ) -> set:
+        """Return the node IPs whose subnet differs from the switch's canonical subnet.
+
+        NET-4: each returned node IP is an offending mis-cabled connection.
+        The renderer flags the corresponding device box with a red dashed
+        outline and a warning glyph.
+        """
+        canonical = RackCentricDiagramGenerator._compute_switch_subnet(sw_ip, port_map)
+        if canonical is None:
+            return set()
+        offenders: set = set()
+        for conn in port_map:
+            if conn.get("switch_ip") != sw_ip:
+                continue
+            node_ip = conn.get("node_ip", "")
+            subnet = RackCentricDiagramGenerator._ipv4_subnet_24(node_ip)
+            if subnet and subnet != canonical:
+                offenders.add(node_ip)
+        return offenders
+
+    @staticmethod
+    def _device_has_miscabled_ip(
+        device: Any,
+        miscabled_node_ips: set,
+    ) -> bool:
+        """Return True if any of the device's IPs is in ``miscabled_node_ips`` (NET-4)."""
+        if not isinstance(device, dict) or not miscabled_node_ips:
+            return False
+        for field in ("mgmt_ip", "ipmi_ip", "ip"):
+            ip = device.get(field)
+            if ip and ip in miscabled_node_ips:
+                return True
+        for dip in device.get("data_ips", []):
+            if dip in miscabled_node_ips:
+                return True
+        for aip in device.get("_all_ips", []):
+            if aip in miscabled_node_ips:
+                return True
+        return False
+
+    @staticmethod
+    def _build_validation_banner(miscabling: Dict[str, set]) -> Tuple[str, str]:
+        """Return ``(banner_text, banner_color)`` for the cabling validation banner.
+
+        NET-4:
+        - When ``miscabling`` is empty, return the green PASS banner.
+        - Otherwise return the red FAIL banner with a count of mis-cabled
+          connections (sum of off_subnet set sizes across all switches).
+        """
+        if not miscabling:
+            return ("Cabling validation: PASS", SUBNET_COLOR_PALETTE[0])  # green
+        count = sum(len(off_subnets) for off_subnets in miscabling.values())
+        word = "connection" if count == 1 else "connections"
+        return (f"Cabling validation: {count} mis-cabled {word} detected", "#EA4335")  # red
+
+    @staticmethod
     def _extract_manual_switch_to_rack(
         manual_switch_placements: Optional[Any],
     ) -> Dict[str, str]:
@@ -899,7 +1002,10 @@ class RackCentricDiagramGenerator:
             2 * MARGIN + num_racks * rack_w + (num_racks - 1) * RACK_GAP,
             PORTRAIT_W,
         )
-        total_h = MARGIN + TITLE_H + spine_section + rack_h + LEGEND_H + MARGIN
+        # NET-4: reserve a row above the diagram for the cabling validation
+        # banner. Always rendered (PASS in green or FAIL in red); 24 px tall.
+        BANNER_H = 24
+        total_h = MARGIN + TITLE_H + BANNER_H + spine_section + rack_h + LEGEND_H + MARGIN
 
         dwg = svgwrite.Drawing(size=(f"{total_w}px", f"{total_h}px"))
         dwg.attribs["xmlns"] = "http://www.w3.org/2000/svg"
@@ -932,7 +1038,42 @@ class RackCentricDiagramGenerator:
             )
         )
 
-        content_y = MARGIN + TITLE_H
+        # NET-4: detect mis-cabled switches and render the cabling validation
+        # banner. Always present so the operator can confirm a clean cluster
+        # at a glance; switches to red FAIL when off-subnet edges are seen.
+        miscabling = self._detect_miscabled_switches(_all_switches, port_map)
+        miscabled_node_ips: set = set()
+        for sw_ip in miscabling:
+            miscabled_node_ips.update(self._detect_miscabled_node_ips(sw_ip, port_map))
+        banner_text, banner_color = self._build_validation_banner(miscabling)
+        banner_y = MARGIN + TITLE_H
+        banner_tint = self._color_tint(banner_color)
+        bw_banner = min(360.0, total_w - 2 * MARGIN)
+        bx_banner = (total_w - bw_banner) / 2
+        dwg.add(
+            dwg.rect(
+                insert=(bx_banner, banner_y),
+                size=(bw_banner, BANNER_H - 4),
+                rx=10,
+                ry=10,
+                fill=banner_tint,
+                stroke=banner_color,
+                stroke_width=1.5,
+            )
+        )
+        dwg.add(
+            dwg.text(
+                banner_text,
+                insert=(total_w / 2, banner_y + (BANNER_H - 4) / 2 + 4),
+                text_anchor="middle",
+                font_size="10px",
+                font_family="Helvetica, Arial, sans-serif",
+                font_weight="bold",
+                fill=banner_color,
+            )
+        )
+
+        content_y = MARGIN + TITLE_H + BANNER_H
 
         # Spine tier
         spine_positions: Dict[str, Tuple[float, float]] = {}
@@ -1135,6 +1276,7 @@ class RackCentricDiagramGenerator:
             dev_x = rx + RACK_PAD_X
             for ci, cb in enumerate(rack["cboxes"]):
                 cb_name = cb.get("name", f"CB{ci+1}") if isinstance(cb, dict) else f"CB{ci+1}"
+                cb_is_miscabled = self._device_has_miscabled_ip(cb, miscabled_node_ips)
                 self._draw_device_node(
                     dwg,
                     dev_x,
@@ -1145,6 +1287,7 @@ class RackCentricDiagramGenerator:
                     self._fill("grad_cbox"),
                     COLOR_DEVICE_STROKE,
                     icon="server",
+                    is_miscabled=cb_is_miscabled,
                 )
 
                 self._draw_device_connections(
@@ -1190,6 +1333,7 @@ class RackCentricDiagramGenerator:
                     else f"{rack['bottom_label']}{di+1}"
                 )
                 grad = self._fill("grad_cbox") if rack["bottom_label"] == "EB" else self._fill("grad_dbox")
+                bd_is_miscabled = self._device_has_miscabled_ip(bd, miscabled_node_ips)
                 self._draw_device_node(
                     dwg,
                     dev_x,
@@ -1200,6 +1344,7 @@ class RackCentricDiagramGenerator:
                     grad,
                     COLOR_DEVICE_STROKE,
                     icon="storage",
+                    is_miscabled=bd_is_miscabled,
                 )
 
                 total_cboxes = len(rack["cboxes"])
@@ -1322,8 +1467,15 @@ class RackCentricDiagramGenerator:
         fill: str,
         stroke: str,
         icon: Optional[str] = None,
+        is_miscabled: bool = False,
     ) -> None:
-        """Draw a device rectangle with optional icon and label."""
+        """Draw a device rectangle with optional icon and label.
+
+        NET-4: when ``is_miscabled`` is True, an extra red dashed outline
+        is drawn around the device box and a small "!" glyph is appended
+        to the right side of the label so the operator can quickly spot
+        offending nodes.
+        """
         dwg.add(
             dwg.rect(
                 insert=(x, y),
@@ -1335,6 +1487,32 @@ class RackCentricDiagramGenerator:
                 stroke_width=1,
             )
         )
+
+        if is_miscabled:
+            # NET-4: red dashed outline + warning glyph on offending nodes
+            dwg.add(
+                dwg.rect(
+                    insert=(x - 1, y - 1),
+                    size=(w + 2, h + 2),
+                    rx=5,
+                    ry=5,
+                    fill="none",
+                    stroke="#EA4335",
+                    stroke_width=1.5,
+                    stroke_dasharray="3,2",
+                )
+            )
+            dwg.add(
+                dwg.text(
+                    "!",
+                    insert=(x + w - 8, y + h / 2 + 4),
+                    text_anchor="middle",
+                    font_size="11px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    font_weight="bold",
+                    fill="#EA4335",
+                )
+            )
 
         # Icon (small, left side)
         if icon and self.device_icon_mode == "flat":

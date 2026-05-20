@@ -826,3 +826,192 @@ class TestNET3PaletteConstants:
         from network_diagram_v2 import COLOR_IPL
 
         assert COLOR_IPL == "#7B1FA2"
+
+
+class TestNET4MiscablingDetection:
+    """NET-4: detect and surface mis-cabled nodes.
+
+    A switch is **mis-cabled** when it services nodes from more than one
+    /24 subnet (per ``port_map``). The most-common subnet is the switch's
+    canonical subnet; nodes on other subnets are the offending mis-cabled
+    nodes.
+
+    Per the v1.5.8 design (``docs/issues/NET-2/00-design.md``):
+
+    - Each mis-cabled node box gets a red dashed outline + warning glyph.
+    - The banner above the diagram switches from
+      ``"Cabling validation: PASS"`` (green) to
+      ``"Cabling validation: N mis-cabled connection(s) detected"`` (red).
+
+    Fix surface (pure helpers, easy to unit-test):
+      - ``_switch_subnet_set(sw_ip, port_map)`` -> ``Set[str]`` of /24 prefixes.
+      - ``_detect_miscabled_switches(switches, port_map)`` ->
+        ``{mgmt_ip -> off_subnet_set}`` for switches with > 1 subnet.
+      - ``_detect_miscabled_node_ips(sw_ip, port_map)`` -> ``Set[str]``
+        of node IPs whose subnet differs from the switch's canonical subnet.
+      - ``_build_validation_banner(miscabling)`` ->
+        ``(text, color)`` tuple for banner rendering.
+    """
+
+    def _subnet_set(self):
+        return RackCentricDiagramGenerator._switch_subnet_set
+
+    def _detect_switches(self):
+        return RackCentricDiagramGenerator._detect_miscabled_switches
+
+    def _detect_node_ips(self):
+        return RackCentricDiagramGenerator._detect_miscabled_node_ips
+
+    def _banner(self):
+        return RackCentricDiagramGenerator._build_validation_banner
+
+    @staticmethod
+    def _conn(node_ip: str, switch_ip: str) -> Dict[str, Any]:
+        return {
+            "node_ip": node_ip,
+            "switch_ip": switch_ip,
+            "network": "A",
+            "interface": "f0",
+            "node_hostname": "",
+            "hostname": "",
+            "port": "Eth1/1",
+            "node_designation": "CN1",
+        }
+
+    # ------------------------------------------------------------------
+    # _switch_subnet_set
+    # ------------------------------------------------------------------
+    def test_subnet_set_returns_single_subnet_for_clean_switch(self):
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.0.3", "10.0.0.153"),
+        ]
+        assert self._subnet_set()("10.0.0.153", port_map) == {"172.16.0"}
+
+    def test_subnet_set_returns_multiple_subnets_for_miscabled_switch(self):
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),  # mis-cabled
+        ]
+        assert self._subnet_set()("10.0.0.153", port_map) == {"172.16.0", "172.16.64"}
+
+    def test_subnet_set_unknown_switch_returns_empty(self):
+        port_map = [self._conn("172.16.0.1", "10.0.0.153")]
+        assert self._subnet_set()("10.0.0.99", port_map) == set()
+
+    def test_subnet_set_excludes_invalid_node_ips(self):
+        port_map = [
+            self._conn("not-an-ip", "10.0.0.153"),
+            self._conn("172.16.0.1", "10.0.0.153"),
+        ]
+        assert self._subnet_set()("10.0.0.153", port_map) == {"172.16.0"}
+
+    # ------------------------------------------------------------------
+    # _detect_miscabled_switches
+    # ------------------------------------------------------------------
+    def test_detect_switches_no_miscabling_returns_empty_dict(self):
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.154"),
+        ]
+        assert self._detect_switches()([sw1, sw2], port_map) == {}
+
+    def test_detect_switches_flags_one_miscabled_switch(self):
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),
+        ]
+        result = self._detect_switches()([sw1], port_map)
+        assert "10.0.0.153" in result, "Mis-cabled switch must appear in the result"
+
+    def test_detect_switches_returns_off_subnet_set_excluding_canonical(self):
+        """The off_subnet_set returned for a mis-cabled switch must EXCLUDE
+        the switch's canonical (most-common) subnet — those are the "wrong"
+        subnets the operator needs to investigate.
+        """
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.0.3", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),
+        ]
+        result = self._detect_switches()([sw1], port_map)
+        assert result["10.0.0.153"] == {"172.16.64"}, (
+            "off_subnet_set must contain only the non-canonical subnets " "(canonical 172.16.0 must be excluded)"
+        )
+
+    def test_detect_switches_flags_multiple_miscabled_switches(self):
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),  # mis-cabled
+            self._conn("10.5.5.1", "10.0.0.154"),
+            self._conn("172.16.0.2", "10.0.0.154"),  # mis-cabled
+        ]
+        result = self._detect_switches()([sw1, sw2], port_map)
+        assert set(result.keys()) == {"10.0.0.153", "10.0.0.154"}
+
+    # ------------------------------------------------------------------
+    # _detect_miscabled_node_ips
+    # ------------------------------------------------------------------
+    def test_detect_node_ips_clean_switch_returns_empty(self):
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+        ]
+        assert self._detect_node_ips()("10.0.0.153", port_map) == set()
+
+    def test_detect_node_ips_returns_offending_node_ips(self):
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.0.3", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),  # offender
+            self._conn("10.5.5.1", "10.0.0.153"),  # offender
+        ]
+        result = self._detect_node_ips()("10.0.0.153", port_map)
+        assert result == {"172.16.64.1", "10.5.5.1"}, "Must return all node IPs not in the canonical subnet"
+
+    def test_detect_node_ips_unknown_switch_returns_empty(self):
+        port_map = [self._conn("172.16.0.1", "10.0.0.153")]
+        assert self._detect_node_ips()("10.0.0.99", port_map) == set()
+
+    # ------------------------------------------------------------------
+    # _build_validation_banner
+    # ------------------------------------------------------------------
+    def test_banner_no_miscabling_returns_pass_text(self):
+        text, _ = self._banner()({})
+        assert "PASS" in text, "Clean cluster banner must contain 'PASS'"
+
+    def test_banner_no_miscabling_uses_green(self):
+        _, color = self._banner()({})
+        assert color == "#0F9D58", "PASS banner must use the green palette color"
+
+    def test_banner_miscabling_returns_fail_text_with_count(self):
+        text, _ = self._banner()({"10.0.0.153": {"172.16.64"}})
+        assert "1" in text, "FAIL banner must include the count of mis-cabled connections"
+        assert "PASS" not in text
+
+    def test_banner_miscabling_uses_red(self):
+        _, color = self._banner()({"10.0.0.153": {"172.16.64"}})
+        assert color == "#EA4335", "FAIL banner must use the design-mandated red"
+
+    def test_banner_count_is_total_off_subnets_across_switches(self):
+        """Count is the sum of off_subnet sizes across all mis-cabled switches.
+
+        Two switches each carrying one off-subnet => 2 mis-cabled connections.
+        """
+        miscabling = {
+            "10.0.0.153": {"172.16.64"},
+            "10.0.0.154": {"10.5.5"},
+        }
+        text, _ = self._banner()(miscabling)
+        assert "2" in text
