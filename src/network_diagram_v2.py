@@ -50,8 +50,22 @@ except (ImportError, OSError):
 # ---------------------------------------------------------------------------
 # Color palette (B7)
 # ---------------------------------------------------------------------------
-COLOR_NETWORK_A = "#0F9D58"  # teal-green
-COLOR_NETWORK_B = "#4285F4"  # deep blue
+# NET-3: subnet-based edge coloring replaces the deprecated Network A/B
+# classifier. Edges are colored by the switch's serviced /24 subnet:
+# the lowest-mgmt-IP switch's subnet gets palette[0] (design-mandated green),
+# the next gets palette[1] (design-mandated blue), additional subnets cycle
+# through the rest of the palette. Switches sharing a subnet share a color.
+SUBNET_COLOR_PALETTE: List[str] = [
+    "#0F9D58",  # teal-green (design-mandated for first subnet)
+    "#4285F4",  # deep blue  (design-mandated for second subnet)
+    "#FF6F00",  # amber/orange
+    "#00838F",  # dark teal
+    "#AB47BC",  # mauve (intentionally distinct from IPL purple)
+]
+# Backward-compatible aliases — kept so existing test/code references resolve.
+# Prefer SUBNET_COLOR_PALETTE for new code.
+COLOR_NETWORK_A = SUBNET_COLOR_PALETTE[0]
+COLOR_NETWORK_B = SUBNET_COLOR_PALETTE[1]
 COLOR_IPL = "#7B1FA2"  # purple
 COLOR_SPINE_FABRIC = "#757575"  # gray
 COLOR_DEVICE_STROKE = "#2F2042"
@@ -650,6 +664,107 @@ class RackCentricDiagramGenerator:
         return "orphan"
 
     @staticmethod
+    def _ipv4_subnet_24(ip: str) -> Optional[str]:
+        """Return the /24 prefix as ``"a.b.c"`` for a valid IPv4, else ``None``.
+
+        NET-3: helper used to bucket node IPs into /24 subnets so the
+        renderer can color edges by the switch's serviced subnet.
+        """
+        if not ip or not isinstance(ip, str):
+            return None
+        parts = ip.strip().split(".")
+        if len(parts) != 4:
+            return None
+        try:
+            octets = [int(p) for p in parts]
+        except ValueError:
+            return None
+        if not all(0 <= o <= 255 for o in octets):
+            return None
+        return f"{octets[0]}.{octets[1]}.{octets[2]}"
+
+    @staticmethod
+    def _compute_switch_subnet(
+        sw_ip: str,
+        port_map: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        """Return the most common /24 prefix among nodes connected to ``sw_ip``.
+
+        NET-3: a switch's "subnet" is defined as the most frequent /24 prefix
+        of the ``node_ip`` values in ``port_map`` rows where
+        ``switch_ip == sw_ip``. Invalid node_ips are ignored. Returns
+        ``None`` if the switch has no valid evidence in the port map.
+
+        The mis-cabling case (NET-4): when a switch services nodes from
+        multiple /24 subnets, the most-common subnet is its canonical
+        subnet; the off-subnet rows are flagged separately.
+        """
+        if not sw_ip or not port_map:
+            return None
+        counts: Dict[str, int] = defaultdict(int)
+        for conn in port_map:
+            if conn.get("switch_ip") != sw_ip:
+                continue
+            subnet = RackCentricDiagramGenerator._ipv4_subnet_24(conn.get("node_ip", ""))
+            if subnet:
+                counts[subnet] += 1
+        if not counts:
+            return None
+        # Determinism: tie-break by lexicographic subnet order to keep output stable.
+        return max(counts.items(), key=lambda kv: (kv[1], -hash(kv[0]) if False else kv[0]))[0]
+
+    @staticmethod
+    def _assign_subnet_colors(
+        switches: List[Dict[str, Any]],
+        port_map: List[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        """Map each switch's mgmt_ip to its NET-3 subnet color.
+
+        Switches sharing a /24 subnet share the same color. Subnets are
+        colored in order of the lowest mgmt_ip serving them: first subnet
+        gets ``SUBNET_COLOR_PALETTE[0]`` (green), second gets ``[1]`` (blue),
+        and so on, cycling through the palette for additional subnets.
+
+        Switches without subnet evidence (no matching port_map rows) are
+        omitted from the result; the renderer falls back to a default
+        color in that case.
+        """
+        if not switches:
+            return {}
+
+        # 1) compute subnet per switch (mgmt_ip -> subnet)
+        sw_subnet: Dict[str, str] = {}
+        for sw in switches:
+            mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
+            if not mgmt_ip:
+                continue
+            subnet = RackCentricDiagramGenerator._compute_switch_subnet(mgmt_ip, port_map)
+            if subnet:
+                sw_subnet[mgmt_ip] = subnet
+
+        if not sw_subnet:
+            return {}
+
+        # 2) order subnets by the lowest mgmt_ip serving each one.
+        # mgmt_ip strings sort lexicographically — fine for the IPv4 dotted form
+        # produced by VAST API since IPv4 strings of equal-length octets sort
+        # in the same order numerically.
+        subnet_to_min_ip: Dict[str, str] = {}
+        for ip, subnet in sw_subnet.items():
+            if subnet not in subnet_to_min_ip or ip < subnet_to_min_ip[subnet]:
+                subnet_to_min_ip[subnet] = ip
+        ordered_subnets = sorted(subnet_to_min_ip.keys(), key=lambda s: subnet_to_min_ip[s])
+
+        # 3) assign palette colors (cycling)
+        subnet_to_color: Dict[str, str] = {}
+        palette_n = len(SUBNET_COLOR_PALETTE)
+        for idx, subnet in enumerate(ordered_subnets):
+            subnet_to_color[subnet] = SUBNET_COLOR_PALETTE[idx % palette_n]
+
+        # 4) project back to switch_ip -> color
+        return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
+
+    @staticmethod
     def _extract_manual_switch_to_rack(
         manual_switch_placements: Optional[Any],
     ) -> Dict[str, str]:
@@ -904,6 +1019,11 @@ class RackCentricDiagramGenerator:
             right_rx = rack_x_start + (rack_w + RACK_GAP)
             gutter_mid_x = (left_rx + rack_w + right_rx) / 2
 
+        # NET-3: assign a subnet color to each switch. Edges to/from a switch
+        # use this color so the diagram visually groups by /24 subnet rather
+        # than the deprecated Network A/B classifier.
+        subnet_color_map: Dict[str, str] = self._assign_subnet_colors(_all_switches, port_map)
+
         for ri, rack in enumerate(racks):
             rx = rack_x_start + ri * (rack_w + RACK_GAP)
             ry = content_y
@@ -1043,6 +1163,7 @@ class RackCentricDiagramGenerator:
                     all_switch_ips=all_switch_ips,
                     device_rack_column=("left" if ri == 0 else "right"),
                     gutter_mid_x=gutter_mid_x,
+                    subnet_color_map=subnet_color_map,
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -1098,6 +1219,7 @@ class RackCentricDiagramGenerator:
                     all_switch_ips=all_switch_ips,
                     device_rack_column=("left" if ri == 0 else "right"),
                     gutter_mid_x=gutter_mid_x,
+                    subnet_color_map=subnet_color_map,
                 )
 
                 dev_y += DEVICE_H + DEVICE_GAP
@@ -1133,7 +1255,15 @@ class RackCentricDiagramGenerator:
 
         # ----- Legend -----
         legend_y = content_y + rack_h + 10
-        self._draw_legend(dwg, total_w, legend_y)
+        self._draw_legend(
+            dwg,
+            total_w,
+            legend_y,
+            switches=_all_switches,
+            subnet_color_map=subnet_color_map,
+            port_map=port_map,
+            has_spine=has_spine,
+        )
 
         # ----- Page number -----
         if total_pages > 1:
@@ -1305,6 +1435,7 @@ class RackCentricDiagramGenerator:
         all_switch_ips: Optional[set] = None,
         device_rack_column: str = "left",
         gutter_mid_x: Optional[float] = None,
+        subnet_color_map: Optional[Dict[str, str]] = None,
     ) -> None:
         """Draw orthogonal connections from a device to its rack-local AND
         cross-rack switches.
@@ -1411,9 +1542,15 @@ class RackCentricDiagramGenerator:
             dasharray = edge_plan["dasharray"]
             opacity = edge_plan["opacity"]
 
-            # Color: keep the v1.5.7 A/B classifier for now (NET-3 will
-            # replace this with subnet-based coloring in a follow-up).
-            color = COLOR_NETWORK_A if network == "A" else COLOR_NETWORK_B
+            # NET-3: color by the switch's serviced /24 subnet (deprecates
+            # the v1.5.7 Network A/B classifier). Fall back to palette[0] if
+            # the switch has no subnet evidence yet — defensive only; the
+            # renderer normally has full port_map evidence at this point.
+            if subnet_color_map and sw_ip in subnet_color_map:
+                color = subnet_color_map[sw_ip]
+            else:
+                color = SUBNET_COLOR_PALETTE[0]
+            _ = network  # explicitly unused — kept in port_map for legacy data
 
             exit_y = dev_y + dev_h / 2
 
@@ -1484,25 +1621,82 @@ class RackCentricDiagramGenerator:
 
         return False
 
-    def _draw_legend(self, dwg: Any, total_w: float, y: float) -> None:
-        tint_map = {
-            COLOR_NETWORK_A: "#e6f4ea",
-            COLOR_NETWORK_B: "#e3f2fd",
-            COLOR_IPL: "#f3e5f5",
-            COLOR_SPINE_FABRIC: "#f5f5f5",
+    @staticmethod
+    def _color_tint(color: str) -> str:
+        """Return a light tint for a legend pill background, given a stroke color.
+
+        Mapping is hand-tuned for the design palette + IPL/spine; falls back
+        to white when the color is not in the map (defensive — keeps the pill
+        readable but visually distinct).
+        """
+        tints = {
+            "#0F9D58": "#e6f4ea",  # green
+            "#4285F4": "#e3f2fd",  # blue
+            "#FF6F00": "#fff3e0",  # amber
+            "#00838F": "#e0f2f1",  # teal
+            "#AB47BC": "#f3e5f5",  # mauve
+            COLOR_IPL: "#f3e5f5",  # purple
+            COLOR_SPINE_FABRIC: "#f5f5f5",  # gray
         }
-        items = [
-            (COLOR_NETWORK_A, "Network A"),
-            (COLOR_NETWORK_B, "Network B"),
-            (COLOR_IPL, "IPL/MLAG"),
-            (COLOR_SPINE_FABRIC, "Spine"),
-        ]
+        return tints.get(color, "white")
+
+    def _draw_legend(
+        self,
+        dwg: Any,
+        total_w: float,
+        y: float,
+        switches: Optional[List[Dict[str, Any]]] = None,
+        subnet_color_map: Optional[Dict[str, str]] = None,
+        port_map: Optional[List[Dict[str, Any]]] = None,
+        has_spine: bool = False,
+    ) -> None:
+        """Render the bottom legend.
+
+        NET-3: emits one pill per distinct subnet color in use, labeled with
+        the /24 subnet prefix (e.g. ``"172.16.0/24"``). The deprecated
+        Network A / Network B labels are removed. IPL/MLAG and Spine pills
+        are appended only when relevant. Falls back to a generic
+        ``Same-rack``/``Cross-rack`` legend when subnet evidence is absent
+        (defensive — preserves a useful legend on minimal-data clusters).
+        """
+        switches = switches or []
+        subnet_color_map = subnet_color_map or {}
+        port_map = port_map or []
+
+        # Build (color, label) items in stable order. Subnets first (ordered
+        # by their lowest mgmt_ip, matching _assign_subnet_colors), then IPL
+        # if any switches exist, then Spine if present.
+        seen_colors: set = set()
+        items: List[Tuple[str, str]] = []
+        for sw in sorted(switches, key=lambda s: s.get("mgmt_ip", "") if isinstance(s, dict) else ""):
+            mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
+            color = subnet_color_map.get(mgmt_ip)
+            if not color or color in seen_colors:
+                continue
+            subnet = self._compute_switch_subnet(mgmt_ip, port_map)
+            label = f"{subnet}/24" if subnet else "Subnet"
+            items.append((color, label))
+            seen_colors.add(color)
+
+        if not items:
+            # Fallback for clusters with no subnet evidence: show the
+            # same-rack/cross-rack distinction instead.
+            items = [
+                (SUBNET_COLOR_PALETTE[0], "Same-rack"),
+                (SUBNET_COLOR_PALETTE[1], "Cross-rack"),
+            ]
+
+        if switches:
+            items.append((COLOR_IPL, "IPL/MLAG"))
+        if has_spine:
+            items.append((COLOR_SPINE_FABRIC, "Spine"))
+
         spacing = 126
         start_x = (total_w - len(items) * spacing) / 2
         for i, (color, label) in enumerate(items):
             x = start_x + i * spacing
             bw, bh = 110, 22
-            tint = tint_map.get(color, "white")
+            tint = self._color_tint(color)
             dwg.add(
                 dwg.rect(
                     insert=(x, y),

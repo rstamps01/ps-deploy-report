@@ -625,3 +625,204 @@ class TestNET2BEdgeRouting:
             all_switch_ips=set(),
         )
         assert result == "orphan"
+
+
+class TestNET3SubnetColoring:
+    """NET-3: color edges by the switch's serviced /24 subnet, replacing the
+    deprecated Network A / Network B classifier.
+
+    Per the v1.5.8 design (``docs/issues/NET-2/00-design.md``):
+
+    - Each switch's color is determined by the most common /24 prefix of the
+      ``node_ip``'s in port_map rows where ``switch_ip == switch.mgmt_ip``.
+    - The lowest-mgmt-IP switch's subnet gets ``#0F9D58`` (green), the next
+      gets ``#4285F4`` (blue), additional subnets cycle through a fixed
+      palette.
+    - Two switches sharing the same /24 (e.g. an IPL pair both servicing
+      ``172.16.0.x``) MUST share a color.
+    - IPL/MLAG retains ``#7B1FA2`` (purple) — unchanged.
+
+    Fix surface (pure helpers, easy to unit-test):
+      - ``_ipv4_subnet_24(ip)`` -> ``"a.b.c"`` or ``None``
+      - ``_compute_switch_subnet(sw_ip, port_map)`` -> majority /24 or ``None``
+      - ``_assign_subnet_colors(switches, port_map)`` -> ``{sw_mgmt_ip -> color}``
+      - ``SUBNET_COLOR_PALETTE`` module constant whose first two entries are
+        the design-mandated green and blue.
+    """
+
+    def _subnet_24(self):
+        return RackCentricDiagramGenerator._ipv4_subnet_24
+
+    def _compute(self):
+        return RackCentricDiagramGenerator._compute_switch_subnet
+
+    def _assign(self):
+        return RackCentricDiagramGenerator._assign_subnet_colors
+
+    @staticmethod
+    def _conn(node_ip: str, switch_ip: str) -> Dict[str, Any]:
+        return {
+            "node_ip": node_ip,
+            "switch_ip": switch_ip,
+            "network": "A",
+            "interface": "f0",
+            "node_hostname": "",
+            "hostname": "",
+            "port": "Eth1/1",
+            "node_designation": "CN1",
+        }
+
+    # ------------------------------------------------------------------
+    # _ipv4_subnet_24
+    # ------------------------------------------------------------------
+    def test_ipv4_subnet_24_extracts_first_three_octets(self):
+        assert self._subnet_24()("172.16.0.42") == "172.16.0"
+
+    def test_ipv4_subnet_24_handles_high_octets(self):
+        assert self._subnet_24()("192.168.255.99") == "192.168.255"
+
+    def test_ipv4_subnet_24_returns_none_for_empty(self):
+        assert self._subnet_24()("") is None
+
+    def test_ipv4_subnet_24_returns_none_for_non_ipv4(self):
+        assert self._subnet_24()("not-an-ip") is None
+
+    def test_ipv4_subnet_24_returns_none_for_too_few_octets(self):
+        assert self._subnet_24()("172.16") is None
+
+    def test_ipv4_subnet_24_returns_none_for_out_of_range_octet(self):
+        assert self._subnet_24()("172.16.300.1") is None
+
+    # ------------------------------------------------------------------
+    # _compute_switch_subnet
+    # ------------------------------------------------------------------
+    def test_compute_switch_subnet_returns_majority_subnet(self):
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.0.3", "10.0.0.153"),
+        ]
+        assert self._compute()("10.0.0.153", port_map) == "172.16.0"
+
+    def test_compute_switch_subnet_returns_most_common_when_mixed(self):
+        """NET-4 mis-cabling case: when a switch services nodes from multiple
+        subnets, the *most common* one is the switch's subnet.
+        """
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.153"),
+            self._conn("172.16.0.3", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.153"),  # mis-cabled
+        ]
+        assert self._compute()("10.0.0.153", port_map) == "172.16.0"
+
+    def test_compute_switch_subnet_returns_none_for_unknown_switch(self):
+        port_map = [self._conn("172.16.0.1", "10.0.0.153")]
+        assert self._compute()("10.0.0.99", port_map) is None
+
+    def test_compute_switch_subnet_returns_none_for_empty_port_map(self):
+        assert self._compute()("10.0.0.153", []) is None
+
+    def test_compute_switch_subnet_ignores_invalid_node_ips(self):
+        port_map = [
+            self._conn("not-an-ip", "10.0.0.153"),
+            self._conn("172.16.0.1", "10.0.0.153"),
+        ]
+        assert self._compute()("10.0.0.153", port_map) == "172.16.0"
+
+    # ------------------------------------------------------------------
+    # _assign_subnet_colors
+    # ------------------------------------------------------------------
+    def test_assign_subnet_colors_lowest_mgmt_ip_subnet_gets_green(self):
+        sw_low = _make_switch("sw1", "10.0.0.153")
+        sw_high = _make_switch("sw2", "10.0.0.154")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.154"),
+        ]
+        colors = self._assign()([sw_high, sw_low], port_map)
+        assert colors["10.0.0.153"] == "#0F9D58", "Lowest-mgmt-IP switch's subnet must get green"
+
+    def test_assign_subnet_colors_second_subnet_gets_blue(self):
+        sw_a = _make_switch("sw1", "10.0.0.153")
+        sw_b = _make_switch("sw2", "10.0.0.154")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.64.1", "10.0.0.154"),
+        ]
+        colors = self._assign()([sw_a, sw_b], port_map)
+        assert colors["10.0.0.154"] == "#4285F4", "Second subnet must get design-mandated blue"
+
+    def test_assign_subnet_colors_switches_sharing_subnet_share_color(self):
+        """An IPL pair where both switches service ``172.16.0.x`` must share
+        a single subnet color (green) — they're not two distinct subnets.
+        """
+        sw_a = _make_switch("sw1", "10.0.0.153")
+        sw_b = _make_switch("sw2", "10.0.0.154")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.153"),
+            self._conn("172.16.0.2", "10.0.0.154"),
+        ]
+        colors = self._assign()([sw_a, sw_b], port_map)
+        assert colors["10.0.0.153"] == colors["10.0.0.154"], "Switches sharing /24 must share color"
+        assert colors["10.0.0.153"] == "#0F9D58"
+
+    def test_assign_subnet_colors_palette_cycles_for_extra_subnets(self):
+        """Three distinct subnets => palette[0], palette[1], palette[2]."""
+        sw1 = _make_switch("sw1", "10.0.0.151")
+        sw2 = _make_switch("sw2", "10.0.0.152")
+        sw3 = _make_switch("sw3", "10.0.0.153")
+        port_map = [
+            self._conn("172.16.0.1", "10.0.0.151"),
+            self._conn("172.16.64.1", "10.0.0.152"),
+            self._conn("10.5.5.1", "10.0.0.153"),
+        ]
+        colors = self._assign()([sw1, sw2, sw3], port_map)
+        # First 3 palette entries — distinct
+        assert colors["10.0.0.151"] != colors["10.0.0.152"]
+        assert colors["10.0.0.152"] != colors["10.0.0.153"]
+        assert colors["10.0.0.151"] != colors["10.0.0.153"]
+
+    def test_assign_subnet_colors_empty_switches_returns_empty(self):
+        assert self._assign()([], []) == {}
+
+    def test_assign_subnet_colors_switch_with_no_subnet_evidence_omitted(self):
+        """A switch whose mgmt_ip has zero port_map rows must NOT crash; it
+        is simply omitted from the color map (caller falls back to default).
+        """
+        sw = _make_switch("sw1", "10.0.0.153")
+        colors = self._assign()([sw], [])
+        assert "10.0.0.153" not in colors
+
+
+class TestNET3PaletteConstants:
+    """NET-3: ``SUBNET_COLOR_PALETTE`` is the new module-level palette and
+    its first two entries MUST match the design-mandated green and blue.
+    ``COLOR_IPL`` (purple) MUST remain unchanged.
+    """
+
+    def test_subnet_palette_starts_with_green(self):
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        assert SUBNET_COLOR_PALETTE[0] == "#0F9D58", "First palette entry must be design-mandated green"
+
+    def test_subnet_palette_second_is_blue(self):
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        assert SUBNET_COLOR_PALETTE[1] == "#4285F4", "Second palette entry must be design-mandated blue"
+
+    def test_subnet_palette_has_at_least_three_entries(self):
+        """At least three colors so a 3-subnet cluster doesn't immediately wrap."""
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        assert len(SUBNET_COLOR_PALETTE) >= 3
+
+    def test_subnet_palette_does_not_collide_with_ipl(self):
+        from network_diagram_v2 import COLOR_IPL, SUBNET_COLOR_PALETTE
+
+        assert COLOR_IPL not in SUBNET_COLOR_PALETTE, "Palette must not include the IPL purple"
+
+    def test_ipl_color_unchanged(self):
+        from network_diagram_v2 import COLOR_IPL
+
+        assert COLOR_IPL == "#7B1FA2"
