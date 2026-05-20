@@ -143,6 +143,68 @@ def _rewrite_doc_links_in_html(html: str) -> str:
     return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
 
 
+def _merge_report_overrides(base_config: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep-merge Results-tab Regenerate-PDF form overrides into the
+    YAML-loaded base config.
+
+    The v1.5.8 Results-tab regenerator used a shallow ``update()`` that
+    replaced ``report.template`` with the form's empty ``template: {}``,
+    wiping out YAML's ``template.margin_top: 0.5`` etc. and falling
+    back to ``ReportConfig`` defaults of 1.0" margins — which produced
+    visibly wider borders in the regenerated PDF than in the original.
+
+    This helper deep-merges nested ``template`` and ``pdf`` blocks so:
+
+    - Empty / partial overrides preserve YAML's nested keys (e.g. an
+      empty ``template: {}`` leaves ``margin_*`` and ``page_size``
+      intact).
+    - Explicit override values still take precedence (e.g. an explicit
+      ``template.margin_top: 0.75`` replaces YAML's ``0.5``).
+    - The flat ``organization`` override and the wholesale ``sections``
+      override (where the form is the canonical source) replace
+      YAML's values directly.
+    - The caller's ``base_config`` is NOT mutated; the function
+      returns a deep copy so subsequent merges from the same source
+      stay deterministic.
+
+    Args:
+        base_config: Parsed YAML config dict (typically the result of
+            ``_load_yaml(app.config['CONFIG_PATH'])``).
+        overrides: Form payload with optional keys ``organization``,
+            ``template``, ``pdf``, ``sections``.
+
+    Returns:
+        New config dict with overrides deep-merged in.
+    """
+    import copy
+
+    merged = copy.deepcopy(base_config) if base_config else {}
+    if not overrides:
+        return merged
+
+    report = merged.setdefault("report", {})
+
+    if "organization" in overrides and overrides["organization"] is not None:
+        report["organization"] = overrides["organization"]
+
+    if "template" in overrides and isinstance(overrides["template"], dict):
+        tmpl = report.setdefault("template", {})
+        for k, v in overrides["template"].items():
+            if v is not None:
+                tmpl[k] = v
+
+    if "pdf" in overrides and isinstance(overrides["pdf"], dict):
+        pdf = report.setdefault("pdf", {})
+        for k, v in overrides["pdf"].items():
+            if v is not None:
+                pdf[k] = v
+
+    if "sections" in overrides and isinstance(overrides["sections"], dict):
+        merged.setdefault("data_collection", {})["sections"] = overrides["sections"]
+
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Flask application factory
 # ---------------------------------------------------------------------------
@@ -1243,18 +1305,12 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"error": f"Failed to load JSON: {exc}"}), 400
 
         base_config = _load_yaml(app.config["CONFIG_PATH"])
-        if overrides:
-            base_config.setdefault("report", {}).update(
-                {k: v for k, v in overrides.items() if k in ("organization", "template", "pdf")}
-            )
-            if "template" in overrides:
-                base_config["report"].setdefault("template", {}).update(overrides["template"])
-            if "pdf" in overrides:
-                base_config["report"].setdefault("pdf", {}).update(overrides["pdf"])
-            if "sections" in overrides:
-                base_config.setdefault("data_collection", {})["sections"] = overrides["sections"]
+        # Deep-merge so empty/partial form overrides do NOT wipe out
+        # YAML keys (e.g. template.margin_top). See _merge_report_overrides
+        # for the full v1.5.8 follow-up rationale.
+        merged_config = _merge_report_overrides(base_config, overrides)
 
-        report_config = ReportConfig.from_yaml(base_config)
+        report_config = ReportConfig.from_yaml(merged_config)
         builder = create_report_builder(
             config=report_config,
             library_path=app.config.get("LIBRARY_PATH"),

@@ -1904,5 +1904,131 @@ class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
         )
 
 
+class TestTuneReportOverrideMerge(unittest.TestCase):
+    """v1.5.8 follow-up: ``/config/advanced/tune-report`` (Results-tab
+    Regenerate PDF) used to do a SHALLOW ``update()`` that replaced
+    ``report.template`` with the form's empty ``template: {}``, which
+    wiped out YAML's ``template.margin_top: 0.5`` etc. and fell back to
+    ``ReportConfig`` defaults of 1.0" margins. That is why regenerated
+    reports had wider borders than the originals.
+
+    Fix surface (pure helper, easy to unit-test):
+
+    - ``_merge_report_overrides(base_config: dict, overrides: dict)
+      -> dict`` — DEEP-merges ``overrides`` into ``base_config`` so an
+      empty (or partial) ``template``/``pdf`` override does not blow
+      away keys the YAML provided. Replaces the buggy shallow-update
+      block in the route handler.
+    """
+
+    def _merger(self):
+        from app import _merge_report_overrides
+
+        return _merge_report_overrides
+
+    def _yaml_like_config(self):
+        return {
+            "report": {
+                "organization": "VAST Professional Services",
+                "template": {
+                    "page_size": "A4",
+                    "margin_top": 0.5,
+                    "margin_bottom": 0.5,
+                    "margin_left": 0.5,
+                    "margin_right": 0.5,
+                },
+                "pdf": {
+                    "font_size": 10,
+                    "include_toc": True,
+                    "include_page_numbers": True,
+                },
+            },
+            "data_collection": {
+                "sections": {"executive_summary": True, "hardware_inventory": True},
+            },
+        }
+
+    def test_empty_overrides_preserves_yaml_margins(self):
+        """Form sends no template inputs -> overrides['template'] is {}.
+        YAML margins must NOT be wiped."""
+        base = self._yaml_like_config()
+        overrides = {
+            "organization": "VAST Professional Services",
+            "template": {},
+            "pdf": {},
+            "sections": {"executive_summary": True},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_bottom"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_left"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_right"], 0.5)
+        self.assertEqual(merged["report"]["template"]["page_size"], "A4")
+
+    def test_partial_template_override_merges_with_yaml(self):
+        """Override sets a single template key (e.g. organization
+        toggle) -> other YAML template keys must be preserved."""
+        base = self._yaml_like_config()
+        overrides = {
+            "template": {"page_size": "letter"},
+            "pdf": {},
+            "sections": {},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["page_size"], "letter")
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5, "YAML margin_top must survive partial merge")
+
+    def test_partial_pdf_override_merges_with_yaml(self):
+        """Override sets pdf.include_toc -> other pdf keys (font_size)
+        from YAML must survive."""
+        base = self._yaml_like_config()
+        overrides = {"template": {}, "pdf": {"include_toc": False}, "sections": {}}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["pdf"]["include_toc"], False)
+        self.assertEqual(merged["report"]["pdf"]["font_size"], 10, "YAML pdf.font_size must survive partial merge")
+
+    def test_organization_override_replaces_yaml(self):
+        """A flat organization override replaces YAML's value."""
+        base = self._yaml_like_config()
+        overrides = {"organization": "Acme Inc.", "template": {}, "pdf": {}, "sections": {}}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["organization"], "Acme Inc.")
+
+    def test_sections_override_replaces_yaml(self):
+        """Form sends complete sections state -> replace YAML's sections
+        wholesale (form is the canonical source for section toggles)."""
+        base = self._yaml_like_config()
+        overrides = {
+            "template": {},
+            "pdf": {},
+            "sections": {"executive_summary": False, "hardware_inventory": False},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["data_collection"]["sections"]["executive_summary"], False)
+        self.assertEqual(merged["data_collection"]["sections"]["hardware_inventory"], False)
+
+    def test_missing_overrides_do_not_drop_yaml_keys(self):
+        """If the form omits a key entirely (not even an empty dict),
+        the YAML value must be untouched."""
+        base = self._yaml_like_config()
+        overrides = {}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5)
+        self.assertEqual(merged["report"]["organization"], "VAST Professional Services")
+
+    def test_does_not_mutate_caller_base_config(self):
+        """Helper must return a NEW dict; caller's base_config stays
+        intact so subsequent merges from the same source are deterministic."""
+        base = self._yaml_like_config()
+        original_margin = base["report"]["template"]["margin_top"]
+        overrides = {"template": {"margin_top": 1.0}, "pdf": {}, "sections": {}}
+        self._merger()(base, overrides)
+        self.assertEqual(
+            base["report"]["template"]["margin_top"],
+            original_margin,
+            "Helper must not mutate base_config in place",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
