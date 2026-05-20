@@ -337,3 +337,180 @@ class TestConfigToggle:
     def test_device_icons_default_flat(self):
         gen = RackCentricDiagramGenerator()
         assert gen.device_icon_mode == "flat"
+
+
+class TestNET2AManualSwitchPlacement:
+    """NET-2A: ``manual_switch_placements`` (operator-specified switch->rack
+    assignments from the Discovery UI) MUST override topology voting in the
+    logical network diagram.
+
+    The v1.5.7 bug: ``_assign_switches_to_racks`` used pure topology voting
+    (port_map node->rack majority) and fell back to the first rack key when
+    no votes existed. When the operator manually placed sw1 in R1 and sw2 in
+    R2, the rack diagram honored those assignments but the logical diagram
+    ignored them — both switches landed in the same rack (typically R1).
+
+    Fix surface:
+      - ``_extract_manual_switch_to_rack(placements)`` — pure helper that
+        builds a ``{switch_name -> rack_name}`` map from the Discovery UI's
+        ``manual_switch_placements`` list.
+      - ``_assign_switches_to_racks(..., manual_switch_to_rack=...)`` —
+        consults the manual map first; topology voting only for unmapped
+        switches.
+    """
+
+    @staticmethod
+    def _placements(*pairs):
+        """Build manual_switch_placements list from (switch_name, rack_name) pairs."""
+        return [
+            {
+                "switch_name": name,
+                "rack_name": rack,
+                "u_position": 35,
+                "height_u": 2,
+                "model": "msn4600c",
+            }
+            for name, rack in pairs
+        ]
+
+    def test_extract_manual_switch_to_rack_builds_name_keyed_map(self):
+        """Helper produces {switch_name -> rack_name} from a list of placements."""
+        fn = RackCentricDiagramGenerator._extract_manual_switch_to_rack
+        placements = self._placements(("sw1", "R1"), ("sw2", "R2"))
+        result = fn(placements)
+        assert result == {"sw1": "R1", "sw2": "R2"}
+
+    def test_extract_manual_switch_to_rack_handles_none_and_empty(self):
+        """Helper returns an empty dict for None or [] (defensive)."""
+        fn = RackCentricDiagramGenerator._extract_manual_switch_to_rack
+        assert fn(None) == {}
+        assert fn([]) == {}
+
+    def test_extract_manual_switch_to_rack_skips_entries_missing_fields(self):
+        """Entries without switch_name or rack_name are skipped, not errored."""
+        fn = RackCentricDiagramGenerator._extract_manual_switch_to_rack
+        placements = [
+            {"switch_name": "sw1", "rack_name": "R1"},
+            {"switch_name": "sw2"},  # missing rack_name
+            {"rack_name": "R3"},  # missing switch_name
+            {"switch_name": "", "rack_name": "R4"},  # empty switch_name
+        ]
+        result = fn(placements)
+        assert result == {"sw1": "R1"}
+
+    def test_manual_assignment_overrides_topology_when_evidence_only_in_one_rack(self):
+        """v1.5.7 bug: port_map only ties switches to R1's nodes, but operator
+        wants sw2 placed in R2. Manual map MUST win.
+        """
+        gen = RackCentricDiagramGenerator()
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        cb_r1 = _make_cbox("cb-r1", "R1", "10.0.0.1")
+        cb_r2 = _make_cbox("cb-r2", "R2", "10.0.0.2")
+        port_map = [
+            _make_port_map_entry("10.0.0.1", "10.0.0.153", network="A", hostname="cb-r1"),
+            _make_port_map_entry("10.0.0.1", "10.0.0.154", network="B", hostname="cb-r1"),
+        ]
+        rack_map = {
+            "R1": {"cboxes": [cb_r1], "bottom": [], "switches": []},
+            "R2": {"cboxes": [cb_r2], "bottom": [], "switches": []},
+        }
+        manual_map = {"sw1": "R1", "sw2": "R2"}
+
+        result = gen._assign_switches_to_racks(
+            [sw1, sw2],
+            port_map,
+            rack_map,
+            manual_switch_to_rack=manual_map,
+        )
+
+        assert result[id(sw1)] == "R1", "sw1 manual assignment to R1 must win"
+        assert result[id(sw2)] == "R2", (
+            "sw2 manual assignment to R2 must override topology voting "
+            "(port_map only contained evidence for R1's nodes)"
+        )
+
+    def test_manual_assignment_overrides_when_no_topology_evidence(self):
+        """Empty port_map: without manual map both switches fall to first
+        rack key (the broken v1.5.7 fallback). Manual map MUST split them.
+        """
+        gen = RackCentricDiagramGenerator()
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        rack_map = {
+            "R1": {"cboxes": [_make_cbox("cb-r1", "R1")], "bottom": [], "switches": []},
+            "R2": {"cboxes": [_make_cbox("cb-r2", "R2")], "bottom": [], "switches": []},
+        }
+        manual_map = {"sw1": "R1", "sw2": "R2"}
+
+        result = gen._assign_switches_to_racks(
+            [sw1, sw2],
+            [],  # no port_map evidence
+            rack_map,
+            manual_switch_to_rack=manual_map,
+        )
+
+        assert result[id(sw1)] == "R1"
+        assert result[id(sw2)] == "R2"
+
+    def test_partial_manual_assignment_falls_back_to_topology(self):
+        """Switches without a manual entry MUST still use topology voting."""
+        gen = RackCentricDiagramGenerator()
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        sw3 = _make_switch("sw3", "10.0.0.155")
+        cb_r1 = _make_cbox("cb-r1", "R1", "10.0.0.1")
+        cb_r2 = _make_cbox("cb-r2", "R2", "10.0.0.2")
+        port_map = [
+            # sw3 has clear topology evidence for R2
+            _make_port_map_entry("10.0.0.2", "10.0.0.155", network="A", hostname="cb-r2"),
+            _make_port_map_entry("10.0.0.2", "10.0.0.155", network="A", hostname="cb-r2"),
+        ]
+        rack_map = {
+            "R1": {"cboxes": [cb_r1], "bottom": [], "switches": []},
+            "R2": {"cboxes": [cb_r2], "bottom": [], "switches": []},
+        }
+        manual_map = {"sw1": "R1", "sw2": "R2"}  # sw3 is NOT in the map
+
+        result = gen._assign_switches_to_racks(
+            [sw1, sw2, sw3],
+            port_map,
+            rack_map,
+            manual_switch_to_rack=manual_map,
+        )
+
+        assert result[id(sw1)] == "R1"
+        assert result[id(sw2)] == "R2"
+        assert result[id(sw3)] == "R2", "sw3 (no manual entry) should fall back to topology voting -> R2"
+
+    def test_build_rack_groups_propagates_manual_switch_placements(self):
+        """End-to-end: ``_build_rack_groups`` accepts manual_switch_placements
+        and the resulting rack assignments honor them.
+        """
+        gen = RackCentricDiagramGenerator()
+        sw1 = _make_switch("sw1", "10.0.0.153")
+        sw2 = _make_switch("sw2", "10.0.0.154")
+        cboxes = [_make_cbox("cb-r1", "R1", "10.0.0.1"), _make_cbox("cb-r2", "R2", "10.0.0.2")]
+        placements = self._placements(("sw1", "R1"), ("sw2", "R2"))
+
+        racks = gen._build_rack_groups(
+            cboxes,
+            [],
+            [sw1, sw2],
+            [],  # empty port_map
+            None,  # device manual_placements
+            "DB",
+            manual_switch_placements=placements,
+        )
+
+        rack_by_name = {r["rack_name"]: r for r in racks}
+        assert "R1" in rack_by_name and "R2" in rack_by_name
+        assert any(
+            s.get("hostname") == "sw1" for s in rack_by_name["R1"]["switches"]
+        ), "sw1 must land in R1 per manual placement"
+        assert any(
+            s.get("hostname") == "sw2" for s in rack_by_name["R2"]["switches"]
+        ), "sw2 must land in R2 per manual placement"
+        assert not any(
+            s.get("hostname") == "sw2" for s in rack_by_name["R1"]["switches"]
+        ), "sw2 must NOT appear in R1 (the v1.5.7 bug)"

@@ -295,6 +295,7 @@ class RackCentricDiagramGenerator:
         hardware_data: Dict[str, Any],
         output_dir: str,
         manual_placements: Optional[Dict[str, Any]] = None,
+        manual_switch_placements: Optional[Any] = None,
     ) -> List[str]:
         """Generate one or more PNG diagram files.
 
@@ -379,6 +380,7 @@ class RackCentricDiagramGenerator:
             port_map,
             manual_placements,
             bottom_label,
+            manual_switch_placements=manual_switch_placements,
         )
         if not racks:
             logger.warning("No rack groups could be formed — falling back to single rack")
@@ -427,8 +429,14 @@ class RackCentricDiagramGenerator:
         port_map: List[Dict[str, Any]],
         manual_placements: Optional[Dict[str, Any]],
         bottom_label: str,
+        manual_switch_placements: Optional[Any] = None,
     ) -> List[Dict[str, Any]]:
-        """Group devices into racks using API rack_name, falling back to profile."""
+        """Group devices into racks using API rack_name, falling back to profile.
+
+        NET-2A: ``manual_switch_placements`` (operator-specified switch->rack
+        assignments from the Discovery UI) flows through to
+        ``_assign_switches_to_racks`` and overrides topology voting.
+        """
         rack_map: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: {"cboxes": [], "bottom": [], "switches": []})
 
         # --- API rack_name ---
@@ -444,8 +452,21 @@ class RackCentricDiagramGenerator:
         if all_default and manual_placements:
             rack_map = self._apply_manual_placements(cboxes, bottom_devices, manual_placements)
 
-        # --- Assign switches to racks by topology ---
-        switch_rack = self._assign_switches_to_racks(switches, port_map, rack_map)
+        # NET-2A: ensure racks named in manual_switch_placements exist on the
+        # rack map even when no devices were grouped into them yet (otherwise
+        # topology voting would discard the manual assignment).
+        manual_switch_to_rack = self._extract_manual_switch_to_rack(manual_switch_placements)
+        for rn in manual_switch_to_rack.values():
+            if rn not in rack_map:
+                rack_map[rn] = {"cboxes": [], "bottom": [], "switches": []}
+
+        # --- Assign switches to racks (manual placements first, then topology) ---
+        switch_rack = self._assign_switches_to_racks(
+            switches,
+            port_map,
+            rack_map,
+            manual_switch_to_rack=manual_switch_to_rack,
+        )
         for sw in switches:
             rn = switch_rack.get(id(sw), "Default")
             rack_map[rn]["switches"].append(sw)
@@ -561,13 +582,56 @@ class RackCentricDiagramGenerator:
 
         return rack_map
 
+    @staticmethod
+    def _extract_manual_switch_to_rack(
+        manual_switch_placements: Optional[Any],
+    ) -> Dict[str, str]:
+        """Build a ``{switch_name -> rack_name}`` map from Discovery UI placements.
+
+        The Discovery UI (frontend/templates/reporter.html) emits
+        ``manual_switch_placements`` as a list of entries with at least
+        ``switch_name`` and ``rack_name``. This helper normalizes that payload
+        into a name-keyed dict the diagram can consult during rack assignment.
+
+        Entries missing ``switch_name`` or ``rack_name`` (or with empty values)
+        are silently skipped — the caller falls back to topology voting for
+        any switch not covered by the map.
+        """
+        if not manual_switch_placements:
+            return {}
+        entries = (
+            manual_switch_placements
+            if isinstance(manual_switch_placements, list)
+            else list(manual_switch_placements.values()) if isinstance(manual_switch_placements, dict) else []
+        )
+        result: Dict[str, str] = {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("switch_name")
+            rack = entry.get("rack_name")
+            if name and rack:
+                result[name] = rack
+        return result
+
     def _assign_switches_to_racks(
         self,
         switches: List[Dict[str, Any]],
         port_map: List[Dict[str, Any]],
         rack_map: Dict[str, Dict[str, list]],
+        manual_switch_to_rack: Optional[Dict[str, str]] = None,
     ) -> Dict[int, str]:
-        """Determine which rack each switch belongs to based on topology."""
+        """Determine which rack each switch belongs to.
+
+        NET-2A: ``manual_switch_to_rack`` (operator-specified switch->rack
+        assignments from the Discovery UI) wins over topology voting. Any
+        switch matched by ``hostname`` or ``name`` against the manual map is
+        placed in its assigned rack regardless of port_map evidence; switches
+        not covered by the map fall back to the original topology voting
+        behavior.
+        """
+        manual_map = manual_switch_to_rack or {}
+
         ip_to_rack: Dict[str, str] = {}
         hostname_to_rack: Dict[str, str] = {}
         for rn, data in rack_map.items():
@@ -596,12 +660,17 @@ class RackCentricDiagramGenerator:
 
         result: Dict[int, str] = {}
         for sw in switches:
-            mgmt_ip = sw.get("mgmt_ip", "")
-            votes = switch_rack_votes.get(mgmt_ip, {})
-            if votes:
-                best_rack = max(votes, key=votes.get)  # type: ignore[arg-type]
+            sw_name = sw.get("hostname") or sw.get("name") or ""
+            manual_rack = manual_map.get(sw_name)
+            if manual_rack and manual_rack in rack_map:
+                best_rack = manual_rack
             else:
-                best_rack = list(rack_map.keys())[0] if rack_map else "Default"
+                mgmt_ip = sw.get("mgmt_ip", "")
+                votes = switch_rack_votes.get(mgmt_ip, {})
+                if votes:
+                    best_rack = max(votes, key=votes.get)  # type: ignore[arg-type]
+                else:
+                    best_rack = list(rack_map.keys())[0] if rack_map else "Default"
             result[id(sw)] = best_rack
             sw["_assigned_rack"] = best_rack
 

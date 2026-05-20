@@ -3812,6 +3812,7 @@ class VastReportBuilder:
                     port_mapping_data=port_mapping_data,
                     hardware_data=hardware_data,
                     output_dir=str(diagrams_dir),
+                    manual_switch_placements=data.get("manual_switch_placements"),
                 )
                 self.logger.info("Detailed diagram generated %d page(s)", len(generated_paths))
             except Exception as e:
