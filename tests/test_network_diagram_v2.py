@@ -1307,3 +1307,90 @@ class TestNET2BEdgeFilterTwoPass:
         )
         paths = [a for a in dwg.added if a[0] == "_P"]
         assert len(paths) == 2, f"Default should draw all edges, got {len(paths)}"
+
+
+class TestInterRackIPL:
+    """v1.5.8 follow-up: render IPL/MLAG between paired switches even when
+    the two switches live in DIFFERENT racks.
+
+    The v1.5.8 baseline only drew an IPL line when both paired switches
+    appeared in the SAME ``rack_switches`` list (i.e. both leaf switches
+    in one rack). Real-world clusters often have a single switch per
+    rack with the IPL crossing the inter-rack gutter; in that topology
+    the v1.5.8 baseline produced no IPL line at all.
+
+    Fix surface (pure helpers, easy to unit-test):
+
+    - ``_collect_inter_rack_ipl_pairs(ipl_conns, switch_centers,
+      switch_rack_idx)`` — returns the de-duplicated list of
+      ``(switch1_ip, switch2_ip)`` pairs that should be rendered as a
+      cross-rack IPL line. Pairs are filtered to:
+
+        * Both endpoints present in ``switch_centers`` (otherwise the
+          line cannot be drawn).
+        * Switches in DIFFERENT racks per ``switch_rack_idx`` (same-rack
+          pairs are still drawn by the per-rack loop, so emitting them
+          again would double-draw the line).
+        * Each undirected pair is yielded only once even if the source
+          data lists ``(A, B)`` and ``(B, A)``.
+    """
+
+    def _collector(self):
+        from network_diagram_v2 import RackCentricDiagramGenerator
+
+        return RackCentricDiagramGenerator._collect_inter_rack_ipl_pairs
+
+    def test_returns_pair_when_switches_in_different_racks(self):
+        ipl_conns = [{"switch1_ip": "10.0.0.8", "switch2_ip": "10.0.0.9", "connection_type": "IPL"}]
+        switch_centers = {"10.0.0.8": (600.0, 100.0), "10.0.0.9": (200.0, 100.0)}
+        switch_rack_idx = {"10.0.0.8": 1, "10.0.0.9": 0}
+        pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
+        assert len(pairs) == 1
+        assert set(pairs[0]) == {"10.0.0.8", "10.0.0.9"}
+
+    def test_skips_pairs_in_same_rack(self):
+        """Same-rack IPL pairs are drawn by the per-rack loop, so the
+        cross-rack collector must NOT return them (would double-draw)."""
+        ipl_conns = [{"switch1_ip": "10.0.0.8", "switch2_ip": "10.0.0.9"}]
+        switch_centers = {"10.0.0.8": (200.0, 100.0), "10.0.0.9": (300.0, 100.0)}
+        switch_rack_idx = {"10.0.0.8": 0, "10.0.0.9": 0}
+        pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
+        assert pairs == []
+
+    def test_skips_pairs_with_missing_switch_centers(self):
+        """If either endpoint isn't on the page (no center coordinate),
+        the line cannot be drawn — collector must drop the pair."""
+        ipl_conns = [{"switch1_ip": "10.0.0.8", "switch2_ip": "10.0.0.99"}]
+        switch_centers = {"10.0.0.8": (200.0, 100.0)}  # 10.0.0.99 not present
+        switch_rack_idx = {"10.0.0.8": 0, "10.0.0.99": 1}
+        pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
+        assert pairs == []
+
+    def test_dedupes_undirected_pairs(self):
+        """If ipl_conns lists both (A, B) and (B, A), collector must
+        emit a single undirected pair, not two."""
+        ipl_conns = [
+            {"switch1_ip": "10.0.0.8", "switch2_ip": "10.0.0.9"},
+            {"switch1_ip": "10.0.0.9", "switch2_ip": "10.0.0.8"},
+        ]
+        switch_centers = {"10.0.0.8": (600.0, 100.0), "10.0.0.9": (200.0, 100.0)}
+        switch_rack_idx = {"10.0.0.8": 1, "10.0.0.9": 0}
+        pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
+        assert len(pairs) == 1
+
+    def test_empty_inputs_return_empty_list(self):
+        assert self._collector()([], {}, {}) == []
+        assert self._collector()(None, {}, {}) == []  # Defensive: None ipl_conns
+
+    def test_handles_missing_switch_ip_fields_gracefully(self):
+        """Defensive: ipl_conns entries without switch1_ip/switch2_ip
+        must not raise, just be skipped."""
+        ipl_conns = [
+            {"connection_type": "IPL"},  # missing both IPs
+            {"switch1_ip": "10.0.0.8"},  # missing switch2_ip
+            {"switch1_ip": "10.0.0.8", "switch2_ip": "10.0.0.9"},  # valid
+        ]
+        switch_centers = {"10.0.0.8": (600.0, 100.0), "10.0.0.9": (200.0, 100.0)}
+        switch_rack_idx = {"10.0.0.8": 1, "10.0.0.9": 0}
+        pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
+        assert len(pairs) == 1

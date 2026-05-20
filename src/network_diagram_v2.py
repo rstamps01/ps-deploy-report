@@ -771,6 +771,66 @@ class RackCentricDiagramGenerator:
         return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
 
     @staticmethod
+    def _collect_inter_rack_ipl_pairs(
+        ipl_conns: Optional[List[Dict[str, Any]]],
+        switch_centers: Dict[str, Tuple[float, float]],
+        switch_rack_idx: Dict[str, int],
+    ) -> List[Tuple[str, str]]:
+        """Return de-duplicated cross-rack IPL/MLAG pairs to draw.
+
+        The v1.5.8 baseline drew the IPL line only inside the per-rack
+        loop, which silently dropped the line whenever the paired
+        switches lived in different racks (e.g. clusters with one
+        switch per rack and the IPL crossing the inter-rack gutter).
+        This helper picks out exactly those cross-rack pairs so
+        ``_render_page`` can render them in a post-loop pass.
+
+        Filtering rules:
+
+        - Both endpoints must be present in ``switch_centers`` —
+          otherwise the line cannot be drawn (defensive).
+        - Switches must live in DIFFERENT racks per
+          ``switch_rack_idx`` — same-rack pairs are still drawn by the
+          per-rack loop, so emitting them again would double-draw.
+        - Each undirected pair is yielded only once even if
+          ``ipl_conns`` lists ``(A, B)`` and ``(B, A)``.
+
+        Args:
+            ipl_conns: Raw ``port_mapping_data['ipl_connections']``
+                list. ``None`` is tolerated (returns ``[]``).
+            switch_centers: Map of ``switch_ip -> (cx, sw_bot_y)``.
+            switch_rack_idx: Map of ``switch_ip -> rack_index``.
+
+        Returns:
+            List of ``(switch1_ip, switch2_ip)`` tuples, each pair
+            unique. Order within a pair is not normalized; callers
+            should treat pairs as unordered.
+        """
+        if not ipl_conns:
+            return []
+        seen: set = set()
+        out: List[Tuple[str, str]] = []
+        for ipl in ipl_conns:
+            if not isinstance(ipl, dict):
+                continue
+            ip1 = ipl.get("switch1_ip", "")
+            ip2 = ipl.get("switch2_ip", "")
+            if not ip1 or not ip2:
+                continue
+            if ip1 not in switch_centers or ip2 not in switch_centers:
+                continue
+            r1 = switch_rack_idx.get(ip1)
+            r2 = switch_rack_idx.get(ip2)
+            if r1 is None or r2 is None or r1 == r2:
+                continue
+            key = tuple(sorted([ip1, ip2]))
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append((ip1, ip2))
+        return out
+
+    @staticmethod
     def _bezier_swoop_path(
         exit_x: float,
         exit_y: float,
@@ -1187,6 +1247,7 @@ class RackCentricDiagramGenerator:
         # the dict yet when the first rack's devices were being rendered).
         switch_centers: Dict[str, Tuple[float, float]] = {}
         rack_switch_ips_by_index: List[set] = []
+        switch_rack_idx: Dict[str, int] = {}
         sw_pair_w_pre = min(SWITCH_W, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
         for ri_pre, rack_pre in enumerate(racks):
             rx_pre = rack_x_start + ri_pre * (rack_w + RACK_GAP)
@@ -1200,6 +1261,7 @@ class RackCentricDiagramGenerator:
                 if mgmt_ip_pre:
                     switch_centers[mgmt_ip_pre] = (sx_pre + sw_pair_w_pre / 2, sw_y_pre + SWITCH_H)
                     rack_ips.add(mgmt_ip_pre)
+                    switch_rack_idx[mgmt_ip_pre] = ri_pre
             rack_switch_ips_by_index.append(rack_ips)
         all_switch_ips: set = set(switch_centers.keys())
 
@@ -1486,6 +1548,55 @@ class RackCentricDiagramGenerator:
                             stroke_dasharray="4,2",
                         )
                     )
+
+        # ----- Inter-rack IPL/MLAG (v1.5.8 follow-up) ----------------
+        # The per-rack loop above only draws an IPL line when both
+        # paired switches live in the SAME rack. For clusters with one
+        # switch per rack (and the IPL crossing the gutter), we render
+        # the line here in a post-loop pass so the IPL appears on top
+        # of every rack frame and switch box.
+        sw_y_ipl = content_y + RACK_PAD_TOP
+        ipl_y_global = sw_y_ipl + SWITCH_H / 2
+        for ip1, ip2 in self._collect_inter_rack_ipl_pairs(ipl_conns, switch_centers, switch_rack_idx):
+            c1 = switch_centers[ip1]
+            c2 = switch_centers[ip2]
+            # Order endpoints left-to-right so the line endpoints sit
+            # against the correct switch edges regardless of which
+            # rack came first in the data.
+            if c1[0] > c2[0]:
+                c1, c2 = c2, c1
+            dwg.add(
+                dwg.line(
+                    start=(c1[0] + sw_pair_w_pre / 2 + 2, ipl_y_global),
+                    end=(c2[0] - sw_pair_w_pre / 2 - 2, ipl_y_global),
+                    stroke=COLOR_IPL,
+                    stroke_width=2,
+                )
+            )
+            mid_ipl_x = (c1[0] + c2[0]) / 2
+            bw, bh = 28, 14
+            dwg.add(
+                dwg.rect(
+                    insert=(mid_ipl_x - bw / 2, ipl_y_global - bh / 2),
+                    size=(bw, bh),
+                    rx=7,
+                    ry=7,
+                    fill="white",
+                    stroke=COLOR_IPL,
+                    stroke_width=1,
+                )
+            )
+            dwg.add(
+                dwg.text(
+                    "IPL",
+                    insert=(mid_ipl_x, ipl_y_global + 4),
+                    text_anchor="middle",
+                    font_size="8px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    font_weight="bold",
+                    fill=COLOR_IPL,
+                )
+            )
 
         # ----- Pass 2: cross-rack edges (drawn AFTER every rack frame,
         # switch box, and device box so they sit on top and stay visible
