@@ -765,6 +765,52 @@ class RackCentricDiagramGenerator:
         return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
 
     @staticmethod
+    def _bezier_swoop_path(
+        exit_x: float,
+        exit_y: float,
+        landing_x: float,
+        sw_bot_y: float,
+        *,
+        exit_extends_right: bool,
+        horizontal_offset: float = 50.0,
+        drop_offset: float = 70.0,
+    ) -> str:
+        """Build the SVG ``d`` attribute for a v1.5.8 mockup-style edge.
+
+        Each edge is a single cubic bezier that:
+
+        1. Exits the device horizontally (``cp1`` extends OUTWARD from the
+           device's exit side by ``horizontal_offset``, producing a short
+           horizontal "tail" that visually echoes a port stub).
+        2. Sweeps smoothly toward the switch.
+        3. Approaches the switch vertically (``cp2`` is positioned BELOW
+           the switch's bottom edge by ``drop_offset`` so the curve drops
+           in cleanly at ``landing_x``).
+        4. Ends exactly on the switch's bottom edge at
+           ``(landing_x, sw_bot_y)``.
+
+        See ``docs/issues/NET-2/mockup-target.svg`` for the design source.
+
+        Args:
+            exit_x: x of the device's exit point (left edge or right edge).
+            exit_y: y of the device's exit point (mid-height).
+            landing_x: x where the line lands on the switch's bottom edge.
+            sw_bot_y: y of the switch's bottom edge.
+            exit_extends_right: True if the exit is on the device's right
+                side (cp1 extends rightward); False for left exits (cp1
+                extends leftward).
+            horizontal_offset: pixels cp1 extends outward from the device.
+            drop_offset: pixels cp2 sits below the switch's bottom edge.
+
+        Returns:
+            SVG path ``d`` string of the form
+            ``"M sx,sy C cp1x,cp1y cp2x,cp2y ex,ey"``.
+        """
+        cp1_x = exit_x + (horizontal_offset if exit_extends_right else -horizontal_offset)
+        cp2_y = sw_bot_y + drop_offset
+        return f"M {exit_x},{exit_y} " f"C {cp1_x},{exit_y} " f"{landing_x},{cp2_y} " f"{landing_x},{sw_bot_y}"
+
+    @staticmethod
     def _switch_subnet_set(sw_ip: str, port_map: List[Dict[str, Any]]) -> set:
         """Return the set of distinct /24 prefixes among nodes connected to ``sw_ip``.
 
@@ -1615,24 +1661,30 @@ class RackCentricDiagramGenerator:
         gutter_mid_x: Optional[float] = None,
         subnet_color_map: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Draw orthogonal connections from a device to its rack-local AND
-        cross-rack switches.
+        """Draw device->switch connections as v1.5.8 mockup-style bezier swoops.
 
-        NET-2B routing rules:
+        Each edge is a single cubic bezier built by ``_bezier_swoop_path``:
+        it exits the device's exit side horizontally, sweeps toward the
+        switch, and lands vertically on the switch's bottom edge at a
+        per-device ``landing_x`` (staggered by ``device_index`` so the
+        lines fan out under the switch instead of overlapping).
 
-        - Same-rack edges exit the OUTER side of the device, route up the
-          rack-internal channel (left edge for left rack, right edge for
-          right rack), and reach the switch as before.
+        NET-2B routing classification still applies:
+
+        - Same-rack edges exit the OUTER side of the device (left edge for
+          left-rack devices, right edge for right-rack devices). They are
+          drawn solid with opacity 0.85.
         - Cross-rack edges exit the INNER side of the device toward the
-          inter-rack gutter, route through the gutter midpoint, and reach
-          the switch in the other rack column. They are rendered with
-          ``stroke-dasharray='6,4'`` and opacity 0.55 to visually distinguish
-          them from same-rack edges.
+          inter-rack gutter. They are drawn dashed (``stroke-dasharray='6,4'``)
+          with opacity 0.55.
 
         ``current_rack_switch_ips`` and ``all_switch_ips`` are used by
         ``_classify_edge`` to determine same-rack vs cross-rack vs orphan.
-        Only true orphans are skipped — cross-rack edges are now rendered
-        instead of silently dropped (the v1.5.7 bug).
+        Only true orphans are skipped — cross-rack edges are rendered
+        instead of silently dropped (the v1.5.7 bug). ``gutter_mid_x`` is
+        accepted for API compatibility but is no longer used: the bezier
+        swoop's ``cp1`` extends naturally outward from the exit side, so
+        no gutter waypoint is needed.
         """
         if not isinstance(device, dict):
             return
@@ -1660,12 +1712,13 @@ class RackCentricDiagramGenerator:
         if current_rack_switch_ips is None:
             current_rack_switch_ips = set(switch_centers.keys())
 
-        rx = dev_x - RACK_PAD_X
-        rack_w_local = dev_w + 2 * RACK_PAD_X
-        chan_outer_left = rx + 6
-        chan_outer_right = rx + rack_w_local - 6
+        # Bezier landing fan: each edge lands at a unique x under the switch's
+        # bottom edge, staggered by device_index. Centered around the switch
+        # center so the fan visually balances under the switch box.
+        LANDING_STAGGER = 5.0
+        LANDING_FAN_CENTER_INDEX = 4.5  # roughly centers a 10-device rack
+        _ = bus_y_base  # kept in signature for API compat with prior orthogonal path
 
-        BUS_STAGGER = 3
         drawn: set = set()
 
         for conn in port_map:
@@ -1707,8 +1760,6 @@ class RackCentricDiagramGenerator:
 
             sw_cx, sw_bot = switch_centers[sw_ip]
 
-            mid = bus_y_base - 2 - device_index * BUS_STAGGER
-
             is_cross_rack = classification == "cross_rack"
             edge_plan = self._plan_device_edge(
                 is_cross_rack=is_cross_rack,
@@ -1719,6 +1770,7 @@ class RackCentricDiagramGenerator:
             exit_x = edge_plan["exit_x"]
             dasharray = edge_plan["dasharray"]
             opacity = edge_plan["opacity"]
+            exit_extends_right = exit_x > dev_x + dev_w / 2
 
             # NET-3: color by the switch's serviced /24 subnet (deprecates
             # the v1.5.7 Network A/B classifier). Fall back to palette[0] if
@@ -1729,27 +1781,18 @@ class RackCentricDiagramGenerator:
             else:
                 color = SUBNET_COLOR_PALETTE[0]
             _ = network  # explicitly unused — kept in port_map for legacy data
+            _ = gutter_mid_x  # no longer needed: bezier swoop replaces gutter routing
 
             exit_y = dev_y + dev_h / 2
+            landing_x = sw_cx + (device_index - LANDING_FAN_CENTER_INDEX) * LANDING_STAGGER
 
-            if is_cross_rack and gutter_mid_x is not None:
-                # Cross-rack: route through the inter-rack gutter so the
-                # line clearly traverses the page rather than passing
-                # through the device's own rack channel.
-                chan_x = gutter_mid_x
-            else:
-                # Same-rack: route up the OUTER channel of the rack.
-                chan_x = chan_outer_left if device_rack_column == "left" else chan_outer_right
-
-            waypoints: List[Tuple[float, float]] = [
-                (exit_x, exit_y),
-                (chan_x, exit_y),
-                (chan_x, mid),
-                (sw_cx, mid),
-                (sw_cx, sw_bot),
-            ]
-
-            path_d = _rounded_polyline(waypoints)
+            path_d = self._bezier_swoop_path(
+                exit_x=exit_x,
+                exit_y=exit_y,
+                landing_x=landing_x,
+                sw_bot_y=sw_bot,
+                exit_extends_right=exit_extends_right,
+            )
             path_kwargs: Dict[str, Any] = {
                 "d": path_d,
                 "fill": "none",

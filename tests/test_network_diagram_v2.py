@@ -14,7 +14,7 @@ Covers:
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -1015,3 +1015,131 @@ class TestNET4MiscablingDetection:
         }
         text, _ = self._banner()(miscabling)
         assert "2" in text
+
+
+class TestNET2BBezierSwoopRouting:
+    """NET-2B v1.5.8 visual refresh: device->switch edges use mockup-style
+    bezier swoops instead of orthogonal waypoints.
+
+    Per ``docs/issues/NET-2/mockup-target.svg``, each switch->device line is
+    a single cubic bezier:
+
+      ``M (exit_x, exit_y) C (cp1_x, exit_y) (landing_x, sw_bot+drop) (landing_x, sw_bot)``
+
+    where:
+
+    - ``cp1`` extends OUTWARD from the device's exit side by
+      ``horizontal_offset`` so the curve has a horizontal "tail" near the
+      device (echoing a port stub).
+    - ``cp2`` is positioned BELOW the switch's bottom edge by
+      ``drop_offset`` so the curve approaches the switch vertically.
+    - The endpoint sits exactly on the switch's bottom edge at ``landing_x``.
+
+    Fix surface (pure helper, easy to unit-test):
+      - ``_bezier_swoop_path(...)`` builds the SVG ``d`` string.
+    """
+
+    def _builder(self):
+        return RackCentricDiagramGenerator._bezier_swoop_path
+
+    def _parse_path(self, d: str) -> Dict[str, Tuple[float, float]]:
+        """Parse the four control points from a single 'M ... C ... ...' path."""
+        # Format: "M sx,sy C cp1x,cp1y cp2x,cp2y ex,ey"
+        parts = d.replace(",", " ").split()
+        # parts: ['M', 'sx', 'sy', 'C', 'cp1x', 'cp1y', 'cp2x', 'cp2y', 'ex', 'ey']
+        assert parts[0] == "M" and parts[3] == "C", f"unexpected path: {d}"
+        return {
+            "start": (float(parts[1]), float(parts[2])),
+            "cp1": (float(parts[4]), float(parts[5])),
+            "cp2": (float(parts[6]), float(parts[7])),
+            "end": (float(parts[8]), float(parts[9])),
+        }
+
+    def test_path_starts_at_exit_point(self):
+        d = self._builder()(
+            exit_x=65.0,
+            exit_y=348.0,
+            landing_x=179.0,
+            sw_bot_y=321.0,
+            exit_extends_right=False,
+        )
+        pts = self._parse_path(d)
+        assert pts["start"] == (65.0, 348.0)
+
+    def test_path_ends_at_landing_x_and_sw_bot(self):
+        d = self._builder()(
+            exit_x=65.0,
+            exit_y=348.0,
+            landing_x=179.0,
+            sw_bot_y=321.0,
+            exit_extends_right=False,
+        )
+        pts = self._parse_path(d)
+        assert pts["end"] == (179.0, 321.0), "Path must end exactly at the switch's bottom edge"
+
+    def test_left_side_exit_pulls_cp1_leftward(self):
+        d = self._builder()(
+            exit_x=65.0,
+            exit_y=348.0,
+            landing_x=179.0,
+            sw_bot_y=321.0,
+            exit_extends_right=False,
+            horizontal_offset=50.0,
+        )
+        pts = self._parse_path(d)
+        assert pts["cp1"][0] < pts["start"][0], "Left exit must pull cp1 LEFTWARD (outward)"
+        assert pts["cp1"][1] == pts["start"][1], "cp1 must be at the same y as the exit (horizontal tail)"
+        assert pts["cp1"][0] == 65.0 - 50.0
+
+    def test_right_side_exit_pulls_cp1_rightward(self):
+        d = self._builder()(
+            exit_x=345.0,
+            exit_y=348.0,
+            landing_x=569.0,
+            sw_bot_y=321.0,
+            exit_extends_right=True,
+            horizontal_offset=50.0,
+        )
+        pts = self._parse_path(d)
+        assert pts["cp1"][0] > pts["start"][0], "Right exit must pull cp1 RIGHTWARD (outward)"
+        assert pts["cp1"][1] == pts["start"][1]
+        assert pts["cp1"][0] == 345.0 + 50.0
+
+    def test_cp2_sits_below_switch_by_drop_offset(self):
+        d = self._builder()(
+            exit_x=65.0,
+            exit_y=348.0,
+            landing_x=179.0,
+            sw_bot_y=321.0,
+            exit_extends_right=False,
+            drop_offset=70.0,
+        )
+        pts = self._parse_path(d)
+        assert pts["cp2"][0] == 179.0, "cp2.x must equal landing_x for vertical approach"
+        assert pts["cp2"][1] == 321.0 + 70.0, "cp2.y must be drop_offset below the switch's bottom"
+
+    def test_offsets_are_configurable(self):
+        d = self._builder()(
+            exit_x=100.0,
+            exit_y=200.0,
+            landing_x=300.0,
+            sw_bot_y=180.0,
+            exit_extends_right=True,
+            horizontal_offset=25.0,
+            drop_offset=40.0,
+        )
+        pts = self._parse_path(d)
+        assert pts["cp1"] == (125.0, 200.0)
+        assert pts["cp2"] == (300.0, 220.0)
+
+    def test_path_format_is_valid_svg_cubic_bezier(self):
+        """The returned d-string must parse as ``M ... C ...`` with 4 points."""
+        d = self._builder()(
+            exit_x=0.0,
+            exit_y=0.0,
+            landing_x=100.0,
+            sw_bot_y=50.0,
+            exit_extends_right=False,
+        )
+        pts = self._parse_path(d)
+        assert set(pts.keys()) == {"start", "cp1", "cp2", "end"}
