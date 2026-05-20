@@ -510,6 +510,51 @@ class VastReportBuilder:
             return {b.get("name") or str(b.get("id", i)): b for i, b in enumerate(boxes)}
         return {}
 
+    @staticmethod
+    def _manual_switch_bottom_u(top_u: int, height_u: int) -> int:
+        """Convert Discovery UI top-U placement to rack diagram bottom-U (RPT-6).
+
+        The Discovery UI (frontend/templates/reporter.html) stores ``u_position``
+        as the TOP of the device occupied (highest U). For example, a 2U switch
+        placed at U35 in the UI means it spans U34-U35 with ``u_position=35``.
+        The rack diagram renderer (src/rack_diagram.py
+        ``_create_device_representation``) treats the same value as the
+        BOTTOM of the device (lowest U occupied, extending upward).
+
+        For 1U devices, top equals bottom — no conversion needed.
+        For 2U+ devices, ``bottom = top - (height_u - 1)``.
+
+        Args:
+            top_u: U-position from the Discovery UI (top of the device).
+            height_u: Device height in rack units (1 for 1U, 2 for 2U, etc).
+
+        Returns:
+            The lowest U the device occupies (the rack diagram convention).
+            Heights of 0 or negative are treated as 1U for safety.
+        """
+        if height_u <= 1:
+            return top_u
+        return top_u - (height_u - 1)
+
+    @staticmethod
+    def _build_diagram_switch_entry(placement: Dict[str, Any]) -> Dict[str, Any]:
+        """Build a rack diagram switch dict from a manual_switch_placement (RPT-6).
+
+        Bridges the Discovery UI top-U convention into the rack diagram
+        bottom-U convention by applying ``_manual_switch_bottom_u``. The
+        returned dict is consumed by ``RackDiagram.generate_rack_diagram``,
+        which parses ``rack_unit`` as a single bottom-U value.
+        """
+        top_u = int(placement.get("u_position", 0))
+        height_u = int(placement.get("height_u") or 1)
+        bottom_u = VastReportBuilder._manual_switch_bottom_u(top_u, height_u)
+        return {
+            "id": placement.get("name", placement.get("switch_name", "Unknown")),
+            "model": placement.get("model", "switch"),
+            "state": placement.get("state", "ACTIVE"),
+            "rack_unit": f"U{bottom_u}",
+        }
+
     def _ensure_hardware_inventory(self, data: Dict[str, Any]) -> None:
         """If hardware_inventory is missing or empty but raw 'hardware' exists, build it."""
         hi = data.get("hardware_inventory") or {}
@@ -2600,16 +2645,7 @@ class VastReportBuilder:
                                     f"(available: {list(racks_data.keys())}). Skipping these switches."
                                 )
                                 continue
-                        sw_list = []
-                        for p in placements:
-                            sw_list.append(
-                                {
-                                    "id": p.get("name", "Unknown"),
-                                    "model": p.get("model", "switch"),
-                                    "state": p.get("state", "ACTIVE"),
-                                    "rack_unit": f"U{p['u_position']}",
-                                }
-                            )
+                        sw_list = [self._build_diagram_switch_entry(p) for p in placements]
                         racks_data[target_rn]["switches"] = sw_list
                         assigned_any = True
                         self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{target_rn}'")

@@ -516,5 +516,111 @@ class TestSR5FormatMacCell(unittest.TestCase):
         self.assertIsInstance(result, self.Paragraph)
 
 
+class TestRPT6ManualSwitchUPosition(unittest.TestCase):
+    """RPT-6: convert Discovery UI top-U convention to rack diagram bottom-U.
+
+    The Discovery UI (frontend/templates/reporter.html) stores ``u_position``
+    as the TOP of the device occupied (highest U). Example: a 2U switch at
+    U35 means span U34-U35, ``u_position=35``. The rack diagram renderer
+    (src/rack_diagram.py ``_create_device_representation``) treats the same
+    value as the BOTTOM of the device. Without conversion, 2U+ manual switch
+    placements render one U too high in the rack diagram.
+
+    Fix: ``_manual_switch_bottom_u(top_u, height_u)`` returns the lowest U
+    occupied. For 1U devices top == bottom; for 2U+ bottom = top - (h - 1).
+    """
+
+    def _helper(self):
+        return VastReportBuilder._manual_switch_bottom_u
+
+    def test_1u_switch_returns_top_unchanged(self):
+        """1U at U35: top equals bottom, no conversion needed."""
+        self.assertEqual(self._helper()(35, 1), 35)
+
+    def test_2u_switch_returns_top_minus_one(self):
+        """2U at U35: spans U34-U35, bottom is U34."""
+        self.assertEqual(self._helper()(35, 2), 34)
+
+    def test_4u_switch_returns_top_minus_three(self):
+        """4U at U33: spans U30-U33, bottom is U30."""
+        self.assertEqual(self._helper()(33, 4), 30)
+
+    def test_2u_switch_at_top_of_42u_rack(self):
+        """2U at U42 (top of 42U rack): spans U41-U42, bottom is U41."""
+        self.assertEqual(self._helper()(42, 2), 41)
+
+    def test_height_zero_treated_as_1u(self):
+        """Defensive: height=0 should not corrupt the position."""
+        self.assertEqual(self._helper()(10, 0), 10)
+
+
+class TestRPT6ManualSwitchBridge(unittest.TestCase):
+    """RPT-6: ``_build_diagram_switch_entry`` is the bridge between
+    ``manual_switch_placements`` (top-U convention) and the rack diagram
+    renderer (bottom-U convention). The bridge MUST apply the U conversion
+    so manual 2U+ switches render at the operator-intended position.
+    """
+
+    def _builder(self):
+        return VastReportBuilder._build_diagram_switch_entry
+
+    def test_1u_manual_placement_produces_top_u_unchanged(self):
+        """1U switch: bridge emits rack_unit equal to the operator's input."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "height_u": 1,
+            "model": "msn4600c_1u_variant",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["rack_unit"], "U35")
+
+    def test_2u_manual_placement_emits_bottom_u(self):
+        """2U switch at top-U=35: bridge MUST emit rack_unit='U34' (the bottom)."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "height_u": 2,
+            "model": "msn4600c",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(
+            entry["rack_unit"],
+            "U34",
+            "RPT-6: 2U switch at top-U=35 must produce rack_unit='U34' "
+            "(bottom-U), not 'U35' (top-U). The Discovery UI top-U "
+            "convention is one slot higher than the rack diagram bottom-U "
+            "convention; without conversion 2U switches render one U too high.",
+        )
+
+    def test_height_u_missing_defaults_to_1u(self):
+        """When the placement omits height_u, treat as 1U (top == bottom)."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "model": "switch",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["rack_unit"], "U35")
+
+    def test_bridge_preserves_id_model_state(self):
+        """Bridge must preserve id (switch name), model, state for the diagram."""
+        placement = {
+            "switch_name": "sw1",
+            "name": "sw1",
+            "u_position": 35,
+            "height_u": 2,
+            "model": "msn4600c",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["id"], "sw1")
+        self.assertEqual(entry["model"], "msn4600c")
+        self.assertEqual(entry["state"], "ACTIVE")
+
+
 if __name__ == "__main__":
     unittest.main()
