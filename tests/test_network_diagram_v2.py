@@ -536,7 +536,7 @@ class TestNET2BEdgeRouting:
 
          - Same-rack edges: solid, exit OUTER side of device.
            (Left rack: left edge. Right rack: right edge.)
-         - Cross-rack edges: dotted (``1,3``, opacity 0.40), exit
+         - Cross-rack edges: dashed (``6,4``, opacity 0.40), exit
            INNER side toward the inter-rack gutter.
            (Left rack: right edge. Right rack: left edge.)
 
@@ -575,14 +575,14 @@ class TestNET2BEdgeRouting:
         plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
         assert plan["dasharray"] in (None, ""), "Same-rack edges must be SOLID (no dasharray)"
 
-    def test_cross_rack_edge_is_dotted(self):
-        """v1.5.8 follow-up: cross-rack edges use a DOTTED pattern (``1,3``)
-        instead of the dashed pattern (``6,4``) so they read as clearly
-        secondary to same-rack edges in dense diagrams."""
+    def test_cross_rack_edge_is_dashed(self):
+        """v1.5.8 follow-up: cross-rack edges use a DASHED pattern (``6,4``)
+        for clear visibility across the inter-rack gutter while still
+        reading as visually secondary to solid same-rack edges. (An
+        earlier dotted ``1,3`` variant was too subtle on dense diagrams.)
+        """
         plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=0, dev_w=10)
-        assert (
-            plan["dasharray"] == "1,3"
-        ), "Cross-rack edges must use stroke-dasharray='1,3' (dotted) per v1.5.8 follow-up"
+        assert plan["dasharray"] == "6,4", "Cross-rack edges must use stroke-dasharray='6,4' (dashed) for visibility"
 
     def test_cross_rack_edge_uses_lower_opacity(self):
         """v1.5.8 follow-up: more transparent (0.40) so dense fans don't

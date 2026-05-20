@@ -615,11 +615,12 @@ class RackCentricDiagramGenerator:
           read as translucent strands).
         - Cross-rack edges exit the INNER side of the device (toward
           the inter-rack gutter): right edge for left-rack devices,
-          left edge for right-rack devices. Dotted line
-          ``stroke-dasharray='1,3'`` (changed from the v1.5.8 baseline
-          dashed ``6,4`` so cross-rack edges read as visually
-          secondary), opacity 0.40 (lowered from 0.55 so the cross-rack
-          fan does not compete with same-rack edges where it overlaps).
+          left edge for right-rack devices. Dashed line
+          ``stroke-dasharray='6,4'`` (an earlier dotted ``1,3``
+          variant was too subtle on dense diagrams; dashes give
+          clearer visibility across the gutter), opacity 0.40
+          (lowered from 0.55 so the cross-rack fan does not compete
+          with same-rack edges where it overlaps).
 
         ``device_rack_column`` is ``"left"`` for the leftmost rack on the
         page and ``"right"`` for any other rack (the diagram constrains
@@ -637,7 +638,7 @@ class RackCentricDiagramGenerator:
         is_left = device_rack_column == "left"
         if is_cross_rack:
             exit_x = dev_x + dev_w if is_left else dev_x
-            return {"exit_x": exit_x, "dasharray": "1,3", "opacity": 0.40}
+            return {"exit_x": exit_x, "dasharray": "6,4", "opacity": 0.40}
         exit_x = dev_x if is_left else dev_x + dev_w
         return {"exit_x": exit_x, "dasharray": None, "opacity": 0.65}
 
