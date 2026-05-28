@@ -223,6 +223,18 @@ jobs:
             exit 1
           fi
 
+      - name: Detect pre-release tag
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == *-beta* || "$TAG" == *-rc* || "$TAG" == *-alpha* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract release notes
         id: notes
         run: |
@@ -238,6 +250,8 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ steps.prerelease.outputs.make_latest }}
           body_path: ${{ steps.notes.outputs.body_path }}
           files: |
             VAST-Reporter-*.dmg
