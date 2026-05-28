@@ -173,6 +173,7 @@ class VastReportGenerator:
 
             # Tech Port tunnel setup
             tunnel_address = None
+            tunnel_host = None
             if getattr(args, "tech_port", False):
                 from utils.vms_tunnel import VMSTunnel
 
@@ -182,6 +183,7 @@ class VastReportGenerator:
                 self._tunnel = VMSTunnel(args.cluster_ip, node_user, node_password)
                 self._tunnel.connect()
                 tunnel_address = self._tunnel.local_bind_address
+                tunnel_host = self._tunnel.vms_management_ip
                 self.logger.info(
                     "VMS discovered: internal=%s, management=%s, tunnel=%s",
                     self._tunnel.vms_internal_ip,
@@ -197,6 +199,7 @@ class VastReportGenerator:
                 token=token,
                 config=self.config,
                 tunnel_address=tunnel_address,
+                tunnel_host=tunnel_host,
             )
             if self.api_handler is None:
                 self.logger.error("Failed to create API handler")

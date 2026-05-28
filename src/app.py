@@ -1459,6 +1459,12 @@ def _register_routes(app: Flask) -> None:
             username = data.get("username")
             password = data.get("password")
 
+        # Auto-fill VAST default VMS credentials when use_default_creds is
+        # active and the form didn't supply explicit username/password.
+        if data.get("use_default_creds") and not username and not password and not token:
+            username = "support"
+            password = "654321"
+
         tunnel = None
         try:
             config = _load_yaml(app.config["CONFIG_PATH"])
@@ -1467,6 +1473,7 @@ def _register_routes(app: Flask) -> None:
             config["api"]["max_retries"] = 0
 
             tunnel_address = None
+            tunnel_host = None
             if data.get("tech_port"):
                 from utils.vms_tunnel import VMSTunnel
 
@@ -1477,6 +1484,7 @@ def _register_routes(app: Flask) -> None:
                 )
                 tunnel.connect()
                 tunnel_address = tunnel.local_bind_address
+                tunnel_host = tunnel.vms_management_ip
 
             handler = create_vast_api_handler(
                 cluster_ip=cluster_ip,
@@ -1485,6 +1493,7 @@ def _register_routes(app: Flask) -> None:
                 token=token,
                 config=config,
                 tunnel_address=tunnel_address,
+                tunnel_host=tunnel_host,
             )
             if not handler.authenticate():
                 return jsonify({"error": "Authentication failed"}), 401
@@ -2150,6 +2159,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Tech Port tunnel (auto-discover VMS and forward API traffic)
         tunnel_address = None
+        tunnel_host = None
         if params.get("tech_port"):
             from utils.vms_tunnel import VMSTunnel
 
@@ -2161,6 +2171,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             )
             tunnel.connect()
             tunnel_address = tunnel.local_bind_address
+            tunnel_host = tunnel.vms_management_ip
             job_logger.info(
                 "VMS discovered: internal=%s, management=%s, tunnel=%s",
                 tunnel.vms_internal_ip,
@@ -2176,6 +2187,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             token=token,
             config=config,
             tunnel_address=tunnel_address,
+            tunnel_host=tunnel_host,
         )
         data_extractor = create_data_extractor(config)
         report_config = ReportConfig.from_yaml(config)

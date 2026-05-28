@@ -192,6 +192,7 @@ class VastApiHandler:
         token: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         tunnel_address: Optional[str] = None,
+        tunnel_host: Optional[str] = None,
     ):
         """
         Initialize the VAST API handler.
@@ -206,10 +207,15 @@ class VastApiHandler:
                 (e.g. ``127.0.0.1:54321``).  When provided, all API requests
                 are routed through this address instead of *cluster_ip*.
                 *cluster_ip* is preserved for metadata / reporting.
+            tunnel_host (str, optional): VMS management IP to use as the HTTP
+                ``Host`` header when tunnelling.  Required for VAST clusters
+                where nginx uses virtual-host routing: without a correct Host
+                the S3 gateway intercepts the request.
         """
         self.logger = get_logger(__name__)
         self.cluster_ip = cluster_ip
         self._api_host = tunnel_address or cluster_ip
+        self._tunnel_host = tunnel_host
         self.username = username
         self.password = password
         self.token = token
@@ -275,13 +281,14 @@ class VastApiHandler:
         session.mount("https://", adapter)
 
         # Set default headers
-        session.headers.update(
-            {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "VAST-As-Built-Report-Generator/1.0",
-            }
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "VAST-As-Built-Report-Generator/1.0",
+        }
+        if self._tunnel_host:
+            headers["Host"] = self._tunnel_host
+        session.headers.update(headers)
 
         # Configure SSL verification
         session.verify = self.verify_ssl
@@ -2656,6 +2663,7 @@ def create_vast_api_handler(
     token: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
     tunnel_address: Optional[str] = None,
+    tunnel_host: Optional[str] = None,
 ) -> VastApiHandler:
     """
     Create and return a configured VastApiHandler instance.
@@ -2668,11 +2676,12 @@ def create_vast_api_handler(
         config (Dict[str, Any], optional): Configuration dictionary
         tunnel_address (str, optional): Local tunnel endpoint (``host:port``)
             when using Tech Port mode
+        tunnel_host (str, optional): VMS management IP for the HTTP Host header
 
     Returns:
         VastApiHandler: Configured API handler instance
     """
-    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address)
+    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address, tunnel_host)
 
 
 if __name__ == "__main__":
