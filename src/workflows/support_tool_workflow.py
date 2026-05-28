@@ -479,11 +479,21 @@ class SupportToolWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
+        vms_internal_ip = self._credentials.get("vms_internal_ip")
+
+        # Step 3 runs inside the VMS container. In Tech Port mode the output
+        # lives on the VMS host, not on the CNode tech port. Route SSH to the
+        # VMS via jump host when vms_internal_ip is set.
+        jump_kwargs: Dict[str, Any] = {}
+        target_host = host
+        if vms_internal_ip:
+            target_host = vms_internal_ip
+            jump_kwargs = {"jump_host": host, "jump_user": user, "jump_password": password}
 
         self.emit("info", "Creating archive of support tools output...")
 
         # Get hostname for archive name
-        rc, hostname, _ = run_ssh_command(host, user, password, "hostname", timeout=10)
+        rc, hostname, _ = run_ssh_command(target_host, user, password, "hostname", timeout=10, **jump_kwargs)
         hostname = hostname.strip() if rc == 0 else "cnode"
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -508,7 +518,7 @@ class SupportToolWorkflow:
         output_dir = None
         for dir_path in possible_dirs:
             check_cmd = f"test -d {dir_path} && echo 'exists'"
-            rc, stdout, _ = run_ssh_command(host, user, password, check_cmd, timeout=10)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, check_cmd, timeout=10, **jump_kwargs)
             if "exists" in stdout:
                 output_dir = dir_path
                 self.emit("info", f"Found output directory: {output_dir}")
@@ -518,7 +528,7 @@ class SupportToolWorkflow:
         if not output_dir:
             self.emit("info", "Searching for support tool output...")
             find_cmd = "find /vast/data /tmp /userdata -maxdepth 2 -type d -name '*support*' 2>/dev/null | head -5"
-            rc, stdout, _ = run_ssh_command(host, user, password, find_cmd, timeout=30)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, find_cmd, timeout=30, **jump_kwargs)
 
             if stdout.strip():
                 for line in stdout.strip().split("\n"):
@@ -534,7 +544,7 @@ class SupportToolWorkflow:
 
             # List what's in /vast/data
             list_cmd = "ls -la /vast/data/ 2>/dev/null | head -20"
-            rc, stdout, _ = run_ssh_command(host, user, password, list_cmd, timeout=10)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, list_cmd, timeout=10, **jump_kwargs)
             if stdout:
                 self.emit("info", "/vast/data/ contents:")
                 for line in stdout.strip().split("\n"):
@@ -546,11 +556,14 @@ class SupportToolWorkflow:
         tar_cmd = f"sudo tar cvfz {archive_path} {output_dir}/"
 
         self.emit("info", "")
-        self.emit("info", f"$ ssh {user}@{host}")
+        if vms_internal_ip:
+            self.emit("info", f"$ ssh {user}@{host} → ssh {user}@{vms_internal_ip}")
+        else:
+            self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {tar_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, tar_cmd, timeout=120)
+        rc, stdout, stderr = run_ssh_command(target_host, user, password, tar_cmd, timeout=120, **jump_kwargs)
 
         # Show files being archived (filter out tar noise)
         file_count = 0
@@ -570,7 +583,7 @@ class SupportToolWorkflow:
 
         # Verify archive exists and get size
         verify_cmd = f"ls -lh {archive_path}"
-        rc, stdout, _ = run_ssh_command(host, user, password, verify_cmd, timeout=10)
+        rc, stdout, _ = run_ssh_command(target_host, user, password, verify_cmd, timeout=10, **jump_kwargs)
 
         if rc == 0 and stdout:
             self.emit("info", "")
@@ -584,6 +597,7 @@ class SupportToolWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
+        vms_internal_ip = self._credentials.get("vms_internal_ip")
 
         archive_name = self._step_data.get("archive_name", "support_tool_logs.tgz")
         archive_path = self._step_data.get("archive_path", f"/userdata/{archive_name}")
@@ -594,29 +608,53 @@ class SupportToolWorkflow:
         local_dir = self._script_runner.get_local_dir()
         local_path = local_dir / archive_name
 
-        self.emit("info", f"Source: {user}@{host}:{archive_path}")
+        # In Tech Port mode the archive lives on the VMS host, not the CNode.
+        # SCP through a jump channel to reach it.
+        scp_target = vms_internal_ip or host
+        self.emit("info", f"Source: {user}@{scp_target}:{archive_path}")
         self.emit("info", f"Target: {local_path}")
         self.emit("info", "")
 
-        # Use SCP to download
         import paramiko
         from scp import SCPClient
 
         try:
-            # Create SSH client
-            ssh = paramiko.SSHClient()
-            # Intentional [B507]: CNode SCP target; AutoAddPolicy is required for first-contact
-            # post-install archive downloads where host keys are not yet known.
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
-            ssh.connect(host, username=user, password=password, timeout=30)
+            if vms_internal_ip:
+                self.emit("info", f"Tech Port mode: SCP via {host} → {vms_internal_ip}")
+                # SSH to CNode first, then open a channel to the VMS
+                jump_ssh = paramiko.SSHClient()
+                jump_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
+                jump_ssh.connect(host, username=user, password=password, timeout=30)
+                jump_transport = jump_ssh.get_transport()
+
+                # Open direct-tcpip channel to VMS port 22 through CNode
+                vms_channel = jump_transport.open_channel("direct-tcpip", (vms_internal_ip, 22), ("127.0.0.1", 0))
+                ssh = paramiko.SSHClient()
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
+                ssh.connect(
+                    vms_internal_ip,
+                    username=user,
+                    password=password,
+                    sock=vms_channel,
+                    timeout=30,
+                )
+            else:
+                jump_ssh = None
+                ssh = paramiko.SSHClient()
+                # Intentional [B507]: CNode SCP target; AutoAddPolicy is required for first-contact
+                # post-install archive downloads where host keys are not yet known.
+                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
+                ssh.connect(host, username=user, password=password, timeout=30)
 
             # SCP download
-            self.emit("info", f"$ scp {user}@{host}:{archive_path} {local_path}")
+            self.emit("info", f"$ scp {user}@{scp_target}:{archive_path} {local_path}")
 
             with SCPClient(ssh.get_transport()) as scp:
                 scp.get(archive_path, str(local_path))
 
             ssh.close()
+            if jump_ssh:
+                jump_ssh.close()
 
             # Verify download
             if local_path.exists():
