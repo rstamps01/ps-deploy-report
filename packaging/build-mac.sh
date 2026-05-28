@@ -56,7 +56,13 @@ fi
 # 5. Create DMG (if create-dmg is installed)
 if command -v create-dmg &> /dev/null; then
     VERSION=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' "$PROJECT_ROOT/src/app.py" | head -1) || VERSION="1.4.0"
-    DMG_NAME="VAST-Reporter-v${VERSION}-mac.dmg"
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        ARCH_SUFFIX="x64"
+    else
+        ARCH_SUFFIX="arm64"
+    fi
+    DMG_NAME="VAST-Reporter-v${VERSION}-mac-${ARCH_SUFFIX}.dmg"
     echo "Creating DMG: $DMG_NAME"
     create-dmg \
         --volname "VAST Reporter" \

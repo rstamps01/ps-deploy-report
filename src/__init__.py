@@ -9,7 +9,7 @@ Target VAST Version: 5.3
 API Version: 7
 """
 
-__version__ = "1.5.7"
+__version__ = "1.5.8"
 __author__ = "VAST Data Professional Services"
 __email__ = ""
 __description__ = "VAST Data As-Built Report Generator"

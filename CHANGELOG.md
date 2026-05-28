@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.8] - 2026-05-28
+
+Network diagram visualization overhaul + Tech-Port tunnel reliability fix.
+This release delivers a complete refresh of the logical network diagram
+rendering engine (NET-2A through NET-5) with subnet-aware coloring,
+mis-cabling detection, bezier-curve link routing, and cross-rack IPL
+visibility. Also fixes a critical Tech-Port authentication failure where
+the S3 gateway intercepted API requests due to virtual-host routing on
+the management VIP.
+
+### Added
+
+- **NET-3: Subnet-based edge coloring + legend.** Device-to-switch
+  connections are now colored by subnet (Network A = green, Network B =
+  blue) with a rendered legend identifying each subnet and its color.
+- **NET-4: Mis-cabling detection + validation banner.** When a device
+  connects to the wrong subnet's switch (e.g., Network A port cabled to
+  Network B switch), the affected edge is highlighted in red/orange and a
+  validation banner is rendered at the top of the diagram listing all
+  detected mis-cabling issues.
+- **Intel macOS build support.** Release workflow now builds separate
+  .dmg artifacts for Apple Silicon (arm64) and Intel (x86_64) using
+  `macos-latest` and `macos-15-intel` runners respectively.
+
+### Fixed
+
+- **Tech-Port tunnel S3 gateway interception.** The VMS API tunnel
+  previously forwarded traffic from the tech-port CNode directly to the
+  management VIP:443. On clusters where nginx uses virtual-host routing,
+  this caused the S3 gateway to intercept all requests
+  (`CredentialsNotSupported` XML error). The tunnel now uses a two-hop
+  SSH chain (tech port → VMS internal IP → `localhost:443` on VMS),
+  reaching the management REST API directly on loopback. Also sets the
+  HTTP `Host` header to the management IP as a defensive fallback.
+- **RPT-6: Rack diagram U-position alignment.** Rack diagram device
+  placement now matches the Discovery UI U-position convention (bottom-up
+  numbering).
+- **NET-2A: Manual switch placements honored.** The logical network
+  diagram now respects `manual_switch_placements` from saved profiles
+  instead of always using auto-placement.
+- **NET-2B: Cross-rack edge rendering.** Cross-rack connections now
+  render correctly with outer/inner exit-side rules and dashed styling
+  for visual differentiation from same-rack connections.
+- **NET-5: Inter-rack IPL/MLAG connections.** IPL/MLAG connections
+  between paired switches in different racks are now drawn, fixing a
+  regression where they disappeared after the bezier routing refactor.
+- **RPT-7: Regenerated report margins.** Reports regenerated from the
+  Results tab now preserve YAML-defined margins via deep-merge logic
+  instead of overwriting them with default `ReportConfig` values.
+- **Default VMS credentials.** Auto-fill credentials updated to
+  `support`/`654321` (correct VMS default) when `use_default_creds` is
+  active.
+
+### Changed
+
+- **Bezier swoop link routing.** Device-to-switch connections now use
+  smooth cubic bezier curves ("swooping" style) matching the approved
+  mockup, replacing the previous orthogonal polyline routing.
+- **Cross-rack edge styling.** Inter-rack connections use dashed lines
+  (`stroke-dasharray: 6,4`) at reduced opacity (0.40) and are drawn in a
+  separate Z-order pass on top of rack elements for visibility.
+
 ## [1.5.7] - 2026-05-15
 
 CNode Tech-Port discovery + IB cluster correctness pass. This release closes
