@@ -88,6 +88,330 @@ class TestRackGrouping:
         assert racks[0]["rack_name"] == "Default"
 
 
+class TestNodeRackFromBoxId:
+    """Node rack placement must come from the engineer-assigned hardware
+    inventory: each CNode/DNode inherits its rack from its parent box via
+    ``cbox_id``/``dbox_id`` -> box ``id`` -> box ``rack_name``.
+
+    Regression: cnodes/dnodes carry ``rack_id=None``, so the old
+    ``_enrich_devices`` fallback grabbed ``boxes[0].rack_name`` for every
+    node and collapsed the whole cluster into one rack.
+    """
+
+    def _enrich(self):
+        return RackCentricDiagramGenerator._enrich_devices
+
+    def test_cnode_inherits_rack_from_parent_cbox(self):
+        cboxes = [
+            {"id": 1, "rack_name": "RackP01C01"},
+            {"id": 2, "rack_name": "RackP01C02"},
+        ]
+        cnodes = [
+            {"hostname": "h-c1", "cbox_id": 1, "rack_id": None, "rack_name": None},
+            {"hostname": "h-c2", "cbox_id": 2, "rack_id": None, "rack_name": None},
+        ]
+        enriched = self._enrich()(cnodes, cboxes, "CB", "cbox_id")
+        by_host = {d["hostname"]: d for d in enriched}
+        assert by_host["h-c1"]["rack_name"] == "RackP01C01"
+        assert by_host["h-c2"]["rack_name"] == "RackP01C02"
+
+    def test_dnode_inherits_rack_from_parent_dbox(self):
+        dboxes = [
+            {"id": 3, "rack_name": "RackP01C01"},
+            {"id": 4, "rack_name": "RackP01C02"},
+        ]
+        dnodes = [
+            {"hostname": "h-d1", "dbox_id": 4, "rack_id": None, "rack_name": None},
+            {"hostname": "h-d2", "dbox_id": 3, "rack_id": None, "rack_name": None},
+        ]
+        enriched = self._enrich()(dnodes, dboxes, "DB", "dbox_id")
+        by_host = {d["hostname"]: d for d in enriched}
+        assert by_host["h-d1"]["rack_name"] == "RackP01C02"
+        assert by_host["h-d2"]["rack_name"] == "RackP01C01"
+
+    def test_nodes_split_across_racks_not_collapsed(self):
+        """The whole point: nodes must NOT all land in one rack."""
+        cboxes = [{"id": i, "rack_name": ("RackP01C01" if i <= 2 else "RackP01C02")} for i in range(1, 5)]
+        cnodes = [{"hostname": f"c{i}", "cbox_id": i, "rack_id": None} for i in range(1, 5)]
+        enriched = self._enrich()(cnodes, cboxes, "CB", "cbox_id")
+        racks = {d["rack_name"] for d in enriched}
+        assert racks == {"RackP01C01", "RackP01C02"}
+
+    def test_unknown_box_id_falls_back_gracefully(self):
+        """A node whose box id has no matching box must not crash; it falls
+        back to its own rack_name or 'Default' rather than a wrong rack."""
+        cboxes = [{"id": 1, "rack_name": "RackP01C01"}]
+        cnodes = [{"hostname": "orphan", "cbox_id": 99, "rack_id": None}]
+        enriched = self._enrich()(cnodes, cboxes, "CB", "cbox_id")
+        assert enriched[0]["rack_name"] in ("Default", "RackP01C01")
+
+    def test_backwards_compatible_without_box_id_field(self):
+        """Legacy callers that pass no box_id_field still get a rack_name."""
+        cboxes = [{"id": 1, "rack_name": "RackP01C01", "rack_id": 1}]
+        cnodes = [{"hostname": "c1", "rack_id": 1}]
+        enriched = self._enrich()(cnodes, cboxes, "CB")
+        assert enriched[0]["rack_name"] == "RackP01C01"
+
+
+class TestDrawableInterfaceIB:
+    """IB clusters use ibN interfaces (ib0/ib1/...); these must be drawable
+    or no IB node->switch edge ever renders."""
+
+    def _fn(self):
+        return RackCentricDiagramGenerator._is_drawable_interface
+
+    def test_ib_interfaces_drawable(self):
+        assert self._fn()("ib0", {}) is True
+        assert self._fn()("ib1", {}) is True
+        assert self._fn()("ib2", {"node_designation": "DB1-DN2-L"}) is True
+
+    def test_existing_fn_interfaces_still_drawable(self):
+        assert self._fn()("f0", {}) is True
+        assert self._fn()("f3", {}) is True
+
+    def test_bond_interface_not_drawable(self):
+        assert self._fn()("bond0", {}) is False
+
+
+class TestHostnameNodeKey:
+    """Rack-prefix-independent node identity for IB edge joins."""
+
+    def _key(self):
+        return RackCentricDiagramGenerator._hostname_node_key
+
+    def test_strips_rack_prefix_to_box_suffix(self):
+        assert self._key()("RackP01C01-CB6-U22-CN1") == "cb6-u22-cn1"
+        assert self._key()("RackP01C02-CB6-U22-CN1") == "cb6-u22-cn1"
+
+    def test_dnode_suffix(self):
+        assert self._key()("RackP01C02-DB1-U3-DN2") == "db1-u3-dn2"
+
+    def test_ebox_suffix(self):
+        assert self._key()("SITE-EB2-U10-CN3") == "eb2-u10-cn3"
+
+    def test_cross_rack_hostnames_share_key(self):
+        """The whole point: the suffix collides across racks, so callers
+        must disambiguate by same-rack switch."""
+        assert self._key()("RackP01C01-CB6-U22-CN1") == self._key()("RackP01C02-CB6-U22-CN1")
+
+    def test_no_box_token_returns_lowered_hostname(self):
+        assert self._key()("plain-host") == "plain-host"
+
+    def test_empty(self):
+        assert self._key()("") == ""
+        assert self._key()(None) == ""
+
+
+class TestLeafSpineISL:
+    """Leaf/spine topology rendering: no leaf-leaf IPL; inferred leaf->spine
+    ISL mesh; legend shows ISL instead of IPL/MLAG."""
+
+    def _render(self, spines, ipl_conns):
+        import svgwrite
+        from network_diagram_v2 import COLOR_SPINE_FABRIC  # noqa: F401
+
+        gen = RackCentricDiagramGenerator(config={"mode": "detailed"})
+        racks = [
+            {
+                "rack_name": "RackP01C01",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [{"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.13"}],
+                "bottom_label": "DN",
+            },
+            {
+                "rack_name": "RackP01C02",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [{"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.15"}],
+                "bottom_label": "DN",
+            },
+        ]
+        all_switches = [
+            {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.13"},
+            {"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.15"},
+        ] + spines
+        return gen._render_page(svgwrite, racks, spines, ipl_conns, [], all_switches)
+
+    def test_spine_topology_draws_isl_and_suppresses_ipl(self):
+        from network_diagram_v2 import COLOR_SPINE_FABRIC
+
+        spines = [
+            {"hostname": "SW-SP-01", "mgmt_ip": "10.0.0.11", "_assigned_rack": "RackP01C01"},
+            {"hostname": "SW-SP-02", "mgmt_ip": "10.0.0.12", "_assigned_rack": "RackP01C02"},
+        ]
+        ipl_conns = [{"switch1_ip": "10.0.0.13", "switch2_ip": "10.0.0.15", "connection_type": "ipl"}]
+        svg = self._render(spines, ipl_conns)
+        assert COLOR_SPINE_FABRIC in svg  # ISL lines drawn in spine-fabric color
+        assert "ISL (Leaf-Spine)" in svg  # legend shows ISL
+        assert "IPL/MLAG" not in svg  # no leaf-leaf IPL legend in leaf/spine
+
+    def test_non_spine_topology_keeps_ipl(self):
+        ipl_conns = [{"switch1_ip": "10.0.0.13", "switch2_ip": "10.0.0.15", "connection_type": "ipl"}]
+        svg = self._render([], ipl_conns)
+        assert "IPL/MLAG" in svg  # legend keeps IPL for non-leaf/spine
+        assert "ISL (Leaf-Spine)" not in svg
+
+
+class TestLegendSizing:
+    """The bottom legend must never clip the leftmost pill.
+
+    Regression: the v1.5.8 legend used fixed ``spacing=126`` and centered on
+    ``len(items) * spacing``. On a narrow 2-rack page (total_w ~614) a 5-item
+    legend (4 subnets + ISL) produced ``start_x = -8`` and the green pill was
+    cut off on the left edge of the diagram.
+    """
+
+    def _gen(self):
+        return RackCentricDiagramGenerator(config={"mode": "detailed"})
+
+    def test_pill_width_grows_with_label_and_has_floor(self):
+        gen = self._gen()
+        short = gen._legend_pill_width("IPL")
+        long = gen._legend_pill_width("ISL (Leaf-Spine)")
+        assert long > short
+        assert short >= 96  # floor so short labels still read as pills
+
+    def test_content_width_sums_pills_and_gaps(self):
+        gen = self._gen()
+        items = [("#0F9D58", "172.16.0/24"), ("#4285F4", "172.16.64/24")]
+        expected = gen._legend_pill_width(items[0][1]) + gen._legend_pill_width(items[1][1]) + 14
+        assert gen._legend_content_width(items) == expected
+
+    def test_compute_items_subnets_plus_isl_for_spine(self):
+        gen = self._gen()
+        switches = [
+            {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.1"},
+            {"hostname": "SW-LF-02", "mgmt_ip": "10.0.0.2"},
+        ]
+        port_map = [
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.5"},
+            {"switch_ip": "10.0.0.2", "node_ip": "172.16.64.5"},
+        ]
+        color_map = gen._assign_subnet_colors(switches, port_map)
+        items = gen._compute_legend_items(switches, color_map, port_map, has_spine=True)
+        labels = [lbl for _, lbl in items]
+        assert "ISL (Leaf-Spine)" in labels
+        assert "IPL/MLAG" not in labels
+
+    def test_five_item_legend_not_clipped_on_narrow_page(self):
+        """End-to-end: a 4-subnet + spine cluster renders all 5 pills with the
+        first pill's x >= MARGIN (no negative start_x / left clip)."""
+        import re as _re
+        import svgwrite
+        from network_diagram_v2 import MARGIN
+
+        gen = self._gen()
+        switches = [
+            {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.1"},
+            {"hostname": "SW-LF-02", "mgmt_ip": "10.0.0.2"},
+            {"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.3"},
+            {"hostname": "SW-LF-04", "mgmt_ip": "10.0.0.4"},
+        ]
+        spines = [
+            {"hostname": "SW-SP-01", "mgmt_ip": "10.0.0.11", "_assigned_rack": "RackP01C01"},
+            {"hostname": "SW-SP-02", "mgmt_ip": "10.0.0.12", "_assigned_rack": "RackP01C02"},
+        ]
+        racks = [
+            {
+                "rack_name": "RackP01C01",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [switches[0], switches[1]],
+                "bottom_label": "DN",
+            },
+            {
+                "rack_name": "RackP01C02",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [switches[2], switches[3]],
+                "bottom_label": "DN",
+            },
+        ]
+        port_map = [
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.5"},
+            {"switch_ip": "10.0.0.2", "node_ip": "172.16.64.5"},
+            {"switch_ip": "10.0.0.3", "node_ip": "172.16.1.5"},
+            {"switch_ip": "10.0.0.4", "node_ip": "172.16.65.5"},
+        ]
+        all_switches = switches + spines
+        svg = gen._render_page(svgwrite, racks, spines, [], port_map, all_switches)
+
+        color_map = gen._assign_subnet_colors(all_switches, port_map)
+        items = gen._compute_legend_items(all_switches, color_map, port_map, has_spine=True)
+        assert len(items) == 5  # 4 subnets + ISL
+
+        # Canvas must be wide enough to hold the legend with margins.
+        m = _re.search(r'width="([0-9.]+)px"', svg)
+        assert m is not None
+        total_w = float(m.group(1))
+        assert total_w >= gen._legend_content_width(items) + 2 * MARGIN
+
+        # The leftmost legend pill must start at x >= MARGIN (not clipped).
+        start_x = max(float(MARGIN), (total_w - gen._legend_content_width(items)) / 2)
+        assert start_x >= MARGIN
+
+
+class TestSwitchRoleClassification:
+    """Leaf vs spine must be decided by switch naming (SW-LF-* / SW-SP-*)
+    from switch discovery, NOT by port-map membership. The port-map only
+    covers vnetmap-reached switches, so membership-based classification
+    misplaces real leaf switches that were not captured.
+    """
+
+    def _classify(self):
+        return RackCentricDiagramGenerator._classify_switch_role
+
+    def test_sw_sp_is_spine(self):
+        assert self._classify()({"hostname": "SW-SP-01"}) == "spine"
+        assert self._classify()({"hostname": "SW-SP-02"}) == "spine"
+
+    def test_sw_lf_is_leaf(self):
+        assert self._classify()({"hostname": "SW-LF-01"}) == "leaf"
+        assert self._classify()({"hostname": "SW-LF-04"}) == "leaf"
+
+    def test_site_prefixed_leaf_is_leaf(self):
+        assert self._classify()({"hostname": "LAX-01-SW-LF-02"}) == "leaf"
+
+    def test_uses_name_when_hostname_absent(self):
+        assert self._classify()({"name": "SW-SP-01"}) == "spine"
+
+    def test_unknown_defaults_to_leaf(self):
+        assert self._classify()({"hostname": "some-switch"}) == "leaf"
+        assert self._classify()({}) == "leaf"
+
+    def test_all_leaf_switches_placed_in_racks_by_role(self):
+        """All four LF switches (incl. the two vnetmap did NOT capture)
+        must be placed in their manual-placement racks, not dumped into a
+        spine tier."""
+        gen = RackCentricDiagramGenerator()
+        switches = [
+            {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.13"},
+            {"hostname": "LAX-01-SW-LF-02", "mgmt_ip": "10.0.0.14"},
+            {"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.15"},
+            {"hostname": "SW-LF-04", "mgmt_ip": "10.0.0.16"},
+        ]
+        manual = [
+            {"switch_name": "SW-LF-01", "rack_name": "RackP01C01"},
+            {"switch_name": "LAX-01-SW-LF-02", "rack_name": "RackP01C01"},
+            {"switch_name": "SW-LF-03", "rack_name": "RackP01C02"},
+            {"switch_name": "SW-LF-04", "rack_name": "RackP01C02"},
+        ]
+        cboxes = [
+            {"id": 1, "rack_name": "RackP01C01"},
+            {"id": 2, "rack_name": "RackP01C02"},
+        ]
+        racks = gen._build_rack_groups(cboxes, [], switches, [], None, "DB", manual_switch_placements=manual)
+        placed = {}
+        for r in racks:
+            for sw in r["switches"]:
+                placed[sw.get("hostname")] = r["rack_name"]
+        assert placed.get("SW-LF-01") == "RackP01C01"
+        assert placed.get("LAX-01-SW-LF-02") == "RackP01C01"
+        assert placed.get("SW-LF-03") == "RackP01C02"
+        assert placed.get("SW-LF-04") == "RackP01C02"
+
+
 class TestSortSwitchesByNetwork:
     """Ordering of rack-local switches so SWA=left=NetA and SWB=right=NetB.
 
@@ -534,8 +858,10 @@ class TestNET2BEdgeRouting:
        SWA/SWB labels disagreed with rack position. The v1.5.8 rule
        routes by rack-column relationship instead:
 
-         - Same-rack edges: solid, exit OUTER side of device.
-           (Left rack: left edge. Right rack: right edge.)
+         - Same-rack edges: solid, exit the RIGHT edge of the device
+           for BOTH rack columns (consistent right-side routing — the
+           left rack's fan swoops into the widened inter-rack gutter and
+           back up to its own switches, matching the right rack's look).
          - Cross-rack edges: dashed (``6,4``, opacity 0.40), exit
            INNER side toward the inter-rack gutter.
            (Left rack: right edge. Right rack: left edge.)
@@ -555,13 +881,15 @@ class TestNET2BEdgeRouting:
     def _classifier(self):
         return RackCentricDiagramGenerator._classify_edge
 
-    def test_same_rack_left_device_exits_outer_left_edge(self):
+    def test_same_rack_left_device_exits_right_edge(self):
+        # Consistent right-side routing: the left rack now ALSO exits the
+        # right edge (was the left edge under the old outer-side rule).
         plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=100.0, dev_w=80.0)
-        assert plan["exit_x"] == 100.0, "Left-rack same-rack edge must exit the LEFT edge (outer)"
+        assert plan["exit_x"] == 180.0, "Left-rack same-rack edge must exit the RIGHT edge (consistent routing)"
 
-    def test_same_rack_right_device_exits_outer_right_edge(self):
+    def test_same_rack_right_device_exits_right_edge(self):
         plan = self._planner()(is_cross_rack=False, device_rack_column="right", dev_x=100.0, dev_w=80.0)
-        assert plan["exit_x"] == 180.0, "Right-rack same-rack edge must exit the RIGHT edge (outer)"
+        assert plan["exit_x"] == 180.0, "Right-rack same-rack edge must exit the RIGHT edge"
 
     def test_cross_rack_left_device_exits_inner_right_edge(self):
         plan = self._planner()(is_cross_rack=True, device_rack_column="left", dev_x=100.0, dev_w=80.0)
@@ -570,6 +898,51 @@ class TestNET2BEdgeRouting:
     def test_cross_rack_right_device_exits_inner_left_edge(self):
         plan = self._planner()(is_cross_rack=True, device_rack_column="right", dev_x=100.0, dev_w=80.0)
         assert plan["exit_x"] == 100.0, "Right-rack cross-rack edge must exit the LEFT edge (inner, toward gutter)"
+
+    def test_rack_gap_clears_left_rack_right_side_fan(self):
+        """The inter-rack gap must be wide enough that the left rack's
+        right-side fan (which bulges ``SWOOP_HORIZONTAL_OFFSET`` px into the
+        gutter) cannot overlap the right rack."""
+        from network_diagram_v2 import RACK_GAP, SWOOP_HORIZONTAL_OFFSET
+
+        assert RACK_GAP > SWOOP_HORIZONTAL_OFFSET, (
+            "RACK_GAP must exceed the swoop horizontal offset so the left "
+            "rack's right-side connection fan does not overlap the right rack"
+        )
+
+    def test_canvas_reserves_clearance_for_right_fan(self):
+        """The rendered canvas must reserve at least SWOOP_HORIZONTAL_OFFSET
+        of horizontal padding beyond the rightmost rack so the right rack's
+        right-side fan is not clipped at the diagram border."""
+        import re as _re
+        import svgwrite
+        from network_diagram_v2 import (
+            DEVICE_W,
+            RACK_PAD_X,
+            RACK_GAP,
+            SWOOP_HORIZONTAL_OFFSET,
+        )
+
+        gen = RackCentricDiagramGenerator(config={"mode": "detailed"})
+        switches = [
+            {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.1"},
+            {"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.3"},
+        ]
+        racks = [
+            {"rack_name": "RackP01C01", "cboxes": [], "bottom_devices": [], "switches": [switches[0]]},
+            {"rack_name": "RackP01C02", "cboxes": [], "bottom_devices": [], "switches": [switches[1]]},
+        ]
+        svg = gen._render_page(svgwrite, racks, [], [], [], switches)
+        total_w = float(_re.search(r'width="([0-9.]+)px"', svg).group(1))
+
+        rack_w = DEVICE_W + 2 * RACK_PAD_X
+        rack_span = 2 * rack_w + RACK_GAP
+        # Racks are centered, so each side margin is (total_w - rack_span)/2.
+        side_margin = (total_w - rack_span) / 2
+        assert side_margin >= SWOOP_HORIZONTAL_OFFSET, (
+            f"side margin {side_margin} must be >= swoop offset {SWOOP_HORIZONTAL_OFFSET} "
+            "so the right rack's fan is not clipped"
+        )
 
     def test_same_rack_edge_is_solid(self):
         plan = self._planner()(is_cross_rack=False, device_rack_column="left", dev_x=0, dev_w=10)
@@ -1394,3 +1767,97 @@ class TestInterRackIPL:
         switch_rack_idx = {"10.0.0.8": 1, "10.0.0.9": 0}
         pairs = self._collector()(ipl_conns, switch_centers, switch_rack_idx)
         assert len(pairs) == 1
+
+
+class TestIBSwitchGuidAlias:
+    """SR-3 / IB follow-up: InfiniBand vnetmap output stores the switch
+    identity in the port_map ``switch_ip`` column as a 16-byte GUID
+    (e.g. ``0xa088c203007860bc``), while the rest of the renderer keys
+    switches by their API ``mgmt_ip``. Without an alias, every IB
+    device->switch edge is classified ``orphan`` (the GUID is never in
+    ``switch_centers``) and silently dropped.
+
+    ``_build_switch_ip_alias(port_map, switches)`` resolves each distinct
+    ``switch_ip`` in the port map to a switch ``mgmt_ip`` using the
+    ``switch_hostname`` carried on every port_map row joined to the API
+    switch list. Rows whose ``switch_ip`` is already an API mgmt_ip
+    resolve to themselves (identity) so Ethernet clusters are unaffected.
+    """
+
+    def _alias(self):
+        return RackCentricDiagramGenerator._build_switch_ip_alias
+
+    def test_guid_resolves_to_mgmt_ip_via_switch_hostname(self):
+        switches = [
+            _make_switch("SW-LF-03", "10.208.59.15"),
+            _make_switch("SW-LF-04", "10.208.59.16"),
+        ]
+        port_map = [
+            {
+                "node_ip": "172.16.1.1",
+                "switch_ip": "0xa088c203007860bc",
+                "switch_hostname": "SW-LF-03",
+                "switch_designation": "SWE-P21",
+                "network": "A",
+                "interface": "ib0",
+            },
+            {
+                "node_ip": "172.16.65.1",
+                "switch_ip": "0xa088c203007861dc",
+                "switch_hostname": "SW-LF-04",
+                "switch_designation": "SWF-P21",
+                "network": "B",
+                "interface": "ib1",
+            },
+        ]
+        alias = self._alias()(port_map, switches)
+        assert alias["0xa088c203007860bc"] == "10.208.59.15"
+        assert alias["0xa088c203007861dc"] == "10.208.59.16"
+
+    def test_mgmt_ip_switch_ip_resolves_to_itself_identity(self):
+        """Ethernet clusters already key the port_map switch_ip on the
+        API mgmt_ip; the alias must be the identity so they're unaffected."""
+        switches = [_make_switch("sw1", "10.0.0.8")]
+        port_map = [{"node_ip": "10.0.0.50", "switch_ip": "10.0.0.8", "switch_hostname": "sw1", "interface": "f0"}]
+        alias = self._alias()(port_map, switches)
+        assert alias["10.0.0.8"] == "10.0.0.8"
+
+    def test_unresolvable_guid_is_omitted(self):
+        """A GUID whose switch_hostname has no API match is left out of
+        the alias (caller keeps the original value, edge degrades to orphan)."""
+        switches = [_make_switch("SW-LF-03", "10.208.59.15")]
+        port_map = [
+            {"node_ip": "172.16.1.1", "switch_ip": "0xdeadbeef", "switch_hostname": "SW-UNKNOWN", "interface": "ib0"}
+        ]
+        alias = self._alias()(port_map, switches)
+        assert "0xdeadbeef" not in alias
+
+    def test_empty_inputs_return_empty(self):
+        assert self._alias()([], []) == {}
+        assert self._alias()(None, None) == {}
+
+    def test_generate_resolves_ib_subnet_color_after_alias(self):
+        """End-to-end: with GUID switch_ip + switch_hostname, the alias
+        normalization must let NET-3 subnet coloring resolve the switch
+        (previously zero rows matched because GUID != mgmt_ip)."""
+        switches = [_make_switch("SW-LF-03", "10.208.59.15")]
+        port_map = [
+            {
+                "node_ip": "172.16.1.1",
+                "switch_ip": "0xa088c203007860bc",
+                "switch_hostname": "SW-LF-03",
+                "network": "A",
+                "interface": "ib0",
+            },
+            {
+                "node_ip": "172.16.1.3",
+                "switch_ip": "0xa088c203007860bc",
+                "switch_hostname": "SW-LF-03",
+                "network": "A",
+                "interface": "ib0",
+            },
+        ]
+        alias = self._alias()(port_map, switches)
+        normalized = [{**c, "switch_ip": alias.get(c["switch_ip"], c["switch_ip"])} for c in port_map]
+        colors = RackCentricDiagramGenerator._assign_subnet_colors(switches, normalized)
+        assert colors.get("10.208.59.15")  # switch now has a subnet color

@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -90,10 +91,29 @@ SWITCH_GAP = 24
 RACK_PAD_X = 16
 RACK_PAD_TOP = 40  # space for rack header text
 RACK_PAD_BOTTOM = 12
-RACK_GAP = 30  # horizontal gap between rack columns
+# Horizontal distance the bezier swoop's first control point extends out
+# from a device's exit side (must match _bezier_swoop_path's default). The
+# inter-rack gap is derived from it so the left rack's right-side fan, which
+# bulges this far into the gutter, never overlaps the right rack.
+SWOOP_HORIZONTAL_OFFSET = 50.0
+# Horizontal gap between rack columns. Sized to clear the left rack's
+# right-side connection fan (swoop offset + clearance) so both racks can
+# route connections off their RIGHT edge without the left fan touching the
+# right rack.
+RACK_GAP = int(SWOOP_HORIZONTAL_OFFSET) + 30  # 80
 SPINE_ROW_H = 60
 SPINE_GAP = 40  # gap between spine tier and racks
 LEGEND_H = 36
+# Legend pill metrics. Pills are sized to their label so long labels
+# (e.g. "ISL (Leaf-Spine)") are not clipped, and the row is centered and
+# clamped to the margin so the leftmost pill is never cut off (the canvas
+# width in _render_page is also widened to hold the whole row).
+LEGEND_PILL_H = 22
+LEGEND_PILL_GAP = 14  # horizontal gap between adjacent pills
+LEGEND_PILL_MIN_W = 96  # floor so short labels still read as pills
+LEGEND_TEXT_X = 32  # label x-offset within a pill (after the color swatch line)
+LEGEND_PILL_PAD_R = 12  # right padding after the label text
+LEGEND_CHAR_W = 5.4  # approx px per char for 9px bold Helvetica
 TITLE_H = 36
 MARGIN = 30
 BEND_R = 6  # radius for rounded corners on connections
@@ -258,15 +278,31 @@ class RackCentricDiagramGenerator:
         nodes: List[Dict[str, Any]],
         boxes: List[Dict[str, Any]],
         prefix: str,
+        box_id_field: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Merge node data (IPs, hostname) with box data (rack_name).
 
         Nodes (cnodes/dnodes) carry network addresses that match port_map
-        entries; boxes (cboxes/dboxes) carry rack placement info.  This
-        method produces a unified device list suitable for rendering.
+        entries; boxes (cboxes/dboxes) carry the engineer-assigned rack
+        placement.  This method produces a unified device list suitable
+        for rendering.
+
+        Rack assignment is driven by the hardware inventory: when
+        ``box_id_field`` (``"cbox_id"`` / ``"dbox_id"``) is supplied, each
+        node inherits ``rack_name`` from its parent box via
+        ``node[box_id_field] -> box["id"] -> box["rack_name"]``.  This is
+        the authoritative reference — nodes themselves carry
+        ``rack_id=None``, so the legacy sibling/``boxes[0]`` fallback
+        collapsed every node into a single rack.  The fallback is retained
+        only for nodes that already carry a rack or cannot be matched to a
+        parent box.
         """
+        box_by_id: Dict[Any, Dict[str, Any]] = {}
         box_by_rack_id: Dict[Any, List[Dict[str, Any]]] = {}
         for bx in boxes:
+            bid = bx.get("id")
+            if bid is not None:
+                box_by_id[bid] = bx
             rid = bx.get("rack_id")
             if rid is not None:
                 box_by_rack_id.setdefault(rid, []).append(bx)
@@ -275,16 +311,27 @@ class RackCentricDiagramGenerator:
         for idx, node in enumerate(nodes):
             dev: Dict[str, Any] = dict(node)
             dev.setdefault("name", node.get("hostname", node.get("name", f"{prefix}{idx + 1}")))
-            dev.setdefault("rack_name", "")
 
-            # Try to inherit rack_name from a sibling box in the same rack
-            if not dev.get("rack_name"):
-                rack_id = node.get("rack_id")
-                sibling_boxes = box_by_rack_id.get(rack_id, boxes)
+            # Primary: inherit rack from the parent box via cbox_id/dbox_id.
+            rack_name = ""
+            if box_id_field:
+                parent_box = box_by_id.get(node.get(box_id_field))
+                if parent_box and parent_box.get("rack_name"):
+                    rack_name = parent_box["rack_name"]
+
+            # Secondary: a rack the node already carries.
+            if not rack_name:
+                rack_name = node.get("rack_name") or ""
+
+            # Last resort: sibling box in the same rack_id, else "Default".
+            if not rack_name:
+                sibling_boxes = box_by_rack_id.get(node.get("rack_id"))
                 if sibling_boxes:
-                    dev["rack_name"] = sibling_boxes[0].get("rack_name", "Default")
+                    rack_name = sibling_boxes[0].get("rack_name", "Default")
                 else:
-                    dev["rack_name"] = "Default"
+                    rack_name = "Default"
+
+            dev["rack_name"] = rack_name
 
             # Gather all known IPs for connection matching
             ips: list = []
@@ -299,6 +346,50 @@ class RackCentricDiagramGenerator:
             enriched.append(dev)
 
         return enriched
+
+    @staticmethod
+    def _classify_switch_role(switch: Any) -> str:
+        """Return ``"spine"`` or ``"leaf"`` from a switch's name.
+
+        Leaf/spine fabrics name switches with ``-LF-`` (leaf) and ``-SP-``
+        (spine) segments, e.g. ``SW-LF-01``, ``LAX-01-SW-LF-02``,
+        ``SW-SP-01``.  Role is taken from switch discovery naming rather
+        than port-map membership: vnetmap only reaches some switches, so a
+        membership test would misclassify real leaf switches it could not
+        capture.  Anything that matches neither pattern defaults to
+        ``"leaf"`` so non-leaf/spine clusters keep their historical
+        single-tier behavior.
+        """
+        if not isinstance(switch, dict):
+            return "leaf"
+        name = (switch.get("hostname") or switch.get("name") or "").upper()
+        if "-SP-" in name or "SW-SP" in name or "SPINE" in name:
+            return "spine"
+        if "-LF-" in name or "SW-LF" in name or "LEAF" in name:
+            return "leaf"
+        return "leaf"
+
+    @staticmethod
+    def _hostname_node_key(hostname: Optional[str]) -> str:
+        """Return a rack-prefix-independent node identity key from a hostname.
+
+        Hardware inventory hostnames carry the engineer-assigned rack
+        prefix (``RackP01C01-CB6-U22-CN1``), while IB vnetmap ``port_map``
+        hostnames may carry a different/placeholder prefix
+        (``RackP01C02-CB6-U22-CN1``) and IB data IPs that are absent from
+        the API inventory.  The stable identity is the box/node suffix
+        (``CB6-U22-CN1``), so we anchor on the first box token
+        (``C``/``D``/``E`` + ``B`` + digit) and return everything from
+        there, lowercased.  Returns ``""`` when no hostname is given.
+
+        Note: this suffix is NOT unique across racks (both racks reuse
+        ``CB6-U22-CN1``), so callers must only treat a suffix-only match
+        as authoritative when other context (same-rack switch) disambiguates.
+        """
+        if not hostname:
+            return ""
+        match = re.search(r"[cde]b\d.*$", hostname, re.IGNORECASE)
+        return (match.group(0) if match else hostname).lower()
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -328,6 +419,34 @@ class RackCentricDiagramGenerator:
         ipl_conns = port_mapping_data.get("ipl_connections", [])
         switches = hardware_data.get("switches", [])
 
+        # IB clusters store the switch identity as a GUID in the port_map's
+        # ``switch_ip`` column, but the renderer keys switches by mgmt_ip.
+        # Normalize GUID -> mgmt_ip up front (on copies) so leaf/spine
+        # classification, switch_centers lookup, edge classification, and
+        # NET-3 subnet coloring all resolve. Identity for Ethernet clusters.
+        switch_ip_alias = self._build_switch_ip_alias(port_map, switches)
+        if switch_ip_alias:
+            port_map = [
+                {**conn, "switch_ip": switch_ip_alias.get(conn.get("switch_ip"), conn.get("switch_ip"))}
+                for conn in port_map
+                if isinstance(conn, dict)
+            ]
+            normalized_ipl: List[Dict[str, Any]] = []
+            for ipl in ipl_conns or []:
+                if not isinstance(ipl, dict):
+                    continue
+                new_ipl = dict(ipl)
+                for field in ("switch1_ip", "switch2_ip"):
+                    val = new_ipl.get(field)
+                    if val in switch_ip_alias:
+                        new_ipl[field] = switch_ip_alias[val]
+                normalized_ipl.append(new_ipl)
+            ipl_conns = normalized_ipl
+            logger.info(
+                "Normalized %d port_map switch GUID(s) to mgmt_ip for rendering",
+                len(switch_ip_alias),
+            )
+
         # Prefer cnodes/dnodes (which carry IPs matching port_map) over cboxes/dboxes
         cnodes = hardware_data.get("cnodes", [])
         dnodes = hardware_data.get("dnodes", [])
@@ -347,33 +466,37 @@ class RackCentricDiagramGenerator:
             eboxes = list(eboxes.values())
 
         # Use cnodes as top devices if available (they have IPs); fall back to cboxes
-        top_devices = self._enrich_devices(cnodes, cboxes, "CB") if cnodes else cboxes
+        top_devices = self._enrich_devices(cnodes, cboxes, "CB", "cbox_id") if cnodes else cboxes
         # Use dnodes or eboxes as bottom devices
         if eboxes:
             bottom_devices = eboxes
             bottom_label = "EB"
         elif dnodes:
-            bottom_devices = self._enrich_devices(dnodes, dboxes, "DB")
+            bottom_devices = self._enrich_devices(dnodes, dboxes, "DB", "dbox_id")
             bottom_label = "DN"
         else:
             bottom_devices = dboxes
             bottom_label = "DB"
 
-        # ----- classify switches: leaf (in port_map) vs upstream -----
+        # ----- classify switches by role (naming), not port_map membership -----
+        # Leaf/spine fabrics: SW-LF-* are leaves (placed in their assigned
+        # racks), SW-SP-* are spines (rendered above their rack). Using
+        # port_map membership here would dump leaf switches that vnetmap
+        # could not reach into the spine tier.
         port_map_switch_ips = {c.get("switch_ip") for c in port_map if c.get("switch_ip")}
-        leaf_switches = [sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips]
-        upstream_switches = [sw for sw in switches if sw.get("mgmt_ip") not in port_map_switch_ips]
+        spine_switches = [sw for sw in switches if self._classify_switch_role(sw) == "spine"]
+        leaf_switches = [sw for sw in switches if self._classify_switch_role(sw) != "spine"]
 
         if not leaf_switches:
             leaf_switches = switches
-            upstream_switches = []
+            spine_switches = []
 
         logger.info(
-            "Switch classification: %d leaf (%s), %d upstream (%s)",
+            "Switch classification: %d leaf (%s), %d spine (%s)",
             len(leaf_switches),
             ", ".join(sw.get("hostname", "?") for sw in leaf_switches),
-            len(upstream_switches),
-            ", ".join(sw.get("hostname", "?") for sw in upstream_switches),
+            len(spine_switches),
+            ", ".join(sw.get("hostname", "?") for sw in spine_switches),
         )
         logger.info(
             "Devices: %d top (CNodes/CBoxes), %d bottom (DNodes/DBoxes)",
@@ -400,8 +523,15 @@ class RackCentricDiagramGenerator:
             logger.warning("No rack groups could be formed — falling back to single rack")
             racks = [self._default_rack(top_devices, bottom_devices, leaf_switches, bottom_label)]
 
-        # Upstream switches shown in the spine/upstream tier
-        spine_switches = upstream_switches
+        # Resolve each spine's rack from switch discovery so the renderer can
+        # center it above the rack where it is installed (SW-SP-01 -> C01,
+        # SW-SP-02 -> C02). Spines do not flow through _assign_switches_to_racks
+        # (that handles rack-local leaves), so annotate them here.
+        manual_switch_to_rack = self._extract_manual_switch_to_rack(manual_switch_placements)
+        for sp in spine_switches:
+            if isinstance(sp, dict):
+                sp_name = sp.get("hostname") or sp.get("name") or ""
+                sp["_assigned_rack"] = manual_switch_to_rack.get(sp_name, "")
 
         # ----- paginate -----
         pages: List[List[Dict[str, Any]]] = []
@@ -608,11 +738,14 @@ class RackCentricDiagramGenerator:
 
         Routing rules (v1.5.8 + follow-up):
 
-        - Same-rack edges exit the OUTER side of the device (away from
-          the inter-rack gutter): left edge for left-rack devices, right
-          edge for right-rack devices. Solid line, opacity 0.65 (lowered
-          from the v1.5.8 baseline 0.85 so dense fans under a switch
-          read as translucent strands).
+        - Same-rack edges exit the RIGHT edge of the device for BOTH rack
+          columns (consistent right-side routing). The left rack's fan
+          swoops into the widened inter-rack gutter and curves back up to
+          its own switches, matching the right rack's look. Solid line,
+          opacity 0.65 (lowered from the v1.5.8 baseline 0.85 so dense
+          fans under a switch read as translucent strands). RACK_GAP is
+          sized (> SWOOP_HORIZONTAL_OFFSET) so this fan never overlaps the
+          right rack.
         - Cross-rack edges exit the INNER side of the device (toward
           the inter-rack gutter): right edge for left-rack devices,
           left edge for right-rack devices. Dashed line
@@ -639,7 +772,9 @@ class RackCentricDiagramGenerator:
         if is_cross_rack:
             exit_x = dev_x + dev_w if is_left else dev_x
             return {"exit_x": exit_x, "dasharray": "6,4", "opacity": 0.40}
-        exit_x = dev_x if is_left else dev_x + dev_w
+        # Consistent right-side routing: same-rack edges always exit the
+        # device's RIGHT edge regardless of rack column.
+        exit_x = dev_x + dev_w
         return {"exit_x": exit_x, "dasharray": None, "opacity": 0.65}
 
     @staticmethod
@@ -771,6 +906,73 @@ class RackCentricDiagramGenerator:
         return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
 
     @staticmethod
+    def _build_switch_ip_alias(
+        port_map: Optional[List[Dict[str, Any]]],
+        switches: Optional[List[Dict[str, Any]]],
+    ) -> Dict[str, str]:
+        """Map each port_map ``switch_ip`` to the API switch ``mgmt_ip``.
+
+        InfiniBand vnetmap output stores the switch identity in the
+        port_map ``switch_ip`` column as a 16-byte GUID (e.g.
+        ``0xa088c203007860bc``), while every other part of the renderer —
+        ``switch_centers``, ``_classify_edge``, leaf/spine classification,
+        and NET-3 subnet coloring — keys switches by their API-supplied
+        ``mgmt_ip``.  Without translation, every IB device->switch edge is
+        classified ``orphan`` (the GUID is never in ``switch_centers``)
+        and silently dropped.
+
+        Each port_map row also carries ``switch_hostname``, so we resolve
+        GUID -> hostname -> mgmt_ip against the API switch list.  Rows
+        whose ``switch_ip`` is already an API mgmt_ip resolve to
+        themselves (identity), so Ethernet clusters are unaffected.
+        Unresolvable identifiers are omitted (caller keeps the original
+        value; the edge degrades to ``orphan`` rather than crashing).
+
+        Args:
+            port_map: ``port_mapping_data['port_map']`` rows. ``None``
+                tolerated (returns ``{}``).
+            switches: API switch list with ``hostname``/``mgmt_ip``.
+
+        Returns:
+            Dict mapping ``switch_ip`` (as seen in the port map) to a
+            resolved ``mgmt_ip``.
+        """
+        if not port_map:
+            return {}
+
+        host_to_mgmt: Dict[str, str] = {}
+        mgmt_ips: set = set()
+        for sw in switches or []:
+            if not isinstance(sw, dict):
+                continue
+            mgmt = sw.get("mgmt_ip")
+            if not mgmt:
+                continue
+            mgmt_ips.add(mgmt)
+            host = sw.get("hostname")
+            if host:
+                host_to_mgmt[host] = mgmt
+
+        alias: Dict[str, str] = {}
+        for conn in port_map:
+            if not isinstance(conn, dict):
+                continue
+            sw_ip = conn.get("switch_ip")
+            if not sw_ip or sw_ip in alias:
+                continue
+            # Ethernet: switch_ip already equals an API mgmt_ip -> identity
+            if sw_ip in mgmt_ips:
+                alias[sw_ip] = sw_ip
+                continue
+            # InfiniBand: resolve GUID via switch_hostname -> mgmt_ip
+            host = conn.get("switch_hostname")
+            mgmt = host_to_mgmt.get(host) if host else None
+            if mgmt:
+                alias[sw_ip] = mgmt
+
+        return alias
+
+    @staticmethod
     def _collect_inter_rack_ipl_pairs(
         ipl_conns: Optional[List[Dict[str, Any]]],
         switch_centers: Dict[str, Tuple[float, float]],
@@ -838,7 +1040,7 @@ class RackCentricDiagramGenerator:
         sw_bot_y: float,
         *,
         exit_extends_right: bool,
-        horizontal_offset: float = 50.0,
+        horizontal_offset: float = SWOOP_HORIZONTAL_OFFSET,
         drop_offset: float = 70.0,
     ) -> str:
         """Build the SVG ``d`` attribute for a v1.5.8 mockup-style edge.
@@ -1110,8 +1312,28 @@ class RackCentricDiagramGenerator:
         has_spine = len(spines) > 0
         spine_section = SPINE_ROW_H + SPINE_GAP if has_spine else 0
 
+        # NET-3: assign a subnet color to each switch (computed up front so it
+        # can size the legend). Edges use this color to group by /24 subnet.
+        subnet_color_map: Dict[str, str] = self._assign_subnet_colors(_all_switches, port_map)
+
+        # Compute legend items up front so the canvas is wide enough to hold
+        # the whole legend row — otherwise a narrow 2-rack page clips the
+        # leftmost pill (start_x went negative under the old fixed spacing).
+        legend_items = self._compute_legend_items(
+            switches=_all_switches,
+            subnet_color_map=subnet_color_map,
+            port_map=port_map,
+            has_spine=has_spine,
+        )
+        legend_w = self._legend_content_width(legend_items)
+
+        # Right-side routing makes the rightmost rack's connection fan bulge
+        # SWOOP_HORIZONTAL_OFFSET past its right edge. Pad both sides (racks
+        # are centered) by at least that much so no far-right line is clipped.
+        edge_pad = max(float(MARGIN), SWOOP_HORIZONTAL_OFFSET + 10)
         total_w = max(
-            2 * MARGIN + num_racks * rack_w + (num_racks - 1) * RACK_GAP,
+            2 * edge_pad + num_racks * rack_w + (num_racks - 1) * RACK_GAP,
+            2 * MARGIN + legend_w,
             PORTRAIT_W,
         )
         # NET-4: reserve a row above the diagram for the cabling validation
@@ -1187,6 +1409,18 @@ class RackCentricDiagramGenerator:
 
         content_y = MARGIN + TITLE_H + BANNER_H
 
+        # Rack column geometry (computed up front so spines can be centered
+        # above the rack where each is installed).
+        rack_x_start = (total_w - (num_racks * rack_w + (num_racks - 1) * RACK_GAP)) / 2
+        rack_name_to_index: Dict[str, int] = {}
+        for ri_name, rack_name_entry in enumerate(racks):
+            rn = rack_name_entry.get("rack_name")
+            if rn and rn not in rack_name_to_index:
+                rack_name_to_index[rn] = ri_name
+
+        def _rack_center_x(rack_index: int) -> float:
+            return rack_x_start + rack_index * (rack_w + RACK_GAP) + rack_w / 2
+
         # Spine tier
         spine_positions: Dict[str, Tuple[float, float]] = {}
         if has_spine:
@@ -1202,9 +1436,22 @@ class RackCentricDiagramGenerator:
                 )
             )
 
-            sx_start = (total_w - len(spines) * (SWITCH_W + 40)) / 2
+            # Center each spine above its assigned rack (SW-SP-01 -> C01,
+            # SW-SP-02 -> C02). Spines whose rack is unknown fall back to an
+            # evenly distributed centered row. Track per-rack counts so two
+            # spines in the same rack don't overlap.
+            fallback_start = (total_w - len(spines) * (SWITCH_W + 40)) / 2
+            per_rack_count: Dict[int, int] = {}
             for i, sp in enumerate(spines):
-                sx = sx_start + i * (SWITCH_W + 40)
+                assigned_rack = sp.get("_assigned_rack", "") if isinstance(sp, dict) else ""
+                rack_index = rack_name_to_index.get(assigned_rack)
+                if rack_index is not None:
+                    nth = per_rack_count.get(rack_index, 0)
+                    per_rack_count[rack_index] = nth + 1
+                    # Offset multiple spines in the same rack side by side.
+                    sx = _rack_center_x(rack_index) - SWITCH_W / 2 + (nth - 0) * (SWITCH_W + 12)
+                else:
+                    sx = fallback_start + i * (SWITCH_W + 40)
                 sy = content_y + 10
                 hostname = sp.get("hostname", f"Spine-{i+1}")
                 self._draw_switch_node(
@@ -1220,25 +1467,9 @@ class RackCentricDiagramGenerator:
                 )
                 spine_positions[sp.get("mgmt_ip", f"spine_{i}")] = (sx + SWITCH_W / 2, sy + SWITCH_H)
 
-            if len(spines) >= 2:
-                ips = list(spine_positions.keys())
-                p1 = spine_positions[ips[0]]
-                p2 = spine_positions[ips[-1]]
-                mid_y_fab = p1[1] - SWITCH_H / 2
-                dwg.add(
-                    dwg.line(
-                        start=(p1[0] + SWITCH_W / 2 + 4, mid_y_fab),
-                        end=(p2[0] - SWITCH_W / 2 - 4, mid_y_fab),
-                        stroke=COLOR_SPINE_FABRIC,
-                        stroke_width=1.5,
-                        stroke_dasharray="6,3",
-                    )
-                )
-
             content_y += SPINE_ROW_H + SPINE_GAP
 
         # ----- Rack columns -----
-        rack_x_start = (total_w - (num_racks * rack_w + (num_racks - 1) * RACK_GAP)) / 2
 
         # NET-2B pre-pass: compute switch_centers for ALL racks BEFORE drawing
         # any device->switch edges so cross-rack lookups resolve. The v1.5.7
@@ -1273,11 +1504,6 @@ class RackCentricDiagramGenerator:
             left_rx = rack_x_start
             right_rx = rack_x_start + (rack_w + RACK_GAP)
             gutter_mid_x = (left_rx + rack_w + right_rx) / 2
-
-        # NET-3: assign a subnet color to each switch. Edges to/from a switch
-        # use this color so the diagram visually groups by /24 subnet rather
-        # than the deprecated Network A/B classifier.
-        subnet_color_map: Dict[str, str] = self._assign_subnet_colors(_all_switches, port_map)
 
         # v1.5.8 follow-up: collect every (device, rack, geometry) tuple during
         # the per-rack loop so we can run a SECOND draw pass after all rack
@@ -1338,8 +1564,10 @@ class RackCentricDiagramGenerator:
                 mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
                 switch_centers[mgmt_ip] = (sx + sw_pair_w / 2, sw_y + SWITCH_H)
 
-            # IPL between paired switches
-            if len(rack_switches) >= 2:
+            # IPL between paired leaf switches — only for non-leaf/spine
+            # topologies. Leaf/spine fabrics have NO leaf-leaf IPL; each
+            # leaf instead uplinks to every spine via ISLs (drawn below).
+            if not has_spine and len(rack_switches) >= 2:
                 sw0 = rack_switches[0]
                 sw1 = rack_switches[1]
                 ip0 = sw0.get("mgmt_ip", "") if isinstance(sw0, dict) else ""
@@ -1520,34 +1748,32 @@ class RackCentricDiagramGenerator:
 
                 dev_y += DEVICE_H + DEVICE_GAP
 
-            # LLDP-confirmed spine uplinks from leaf switches
-            if has_spine and rack_switches and ipl_conns:
-                spine_ips = set(spine_positions.keys())
-                for ipl in ipl_conns:
-                    ip1 = ipl.get("switch1_ip", "")
-                    ip2 = ipl.get("switch2_ip", "")
-                    # Identify spine-to-leaf pairs confirmed by LLDP
-                    leaf_ip = spine_ip = None
-                    if ip1 in spine_ips and ip2 in switch_centers:
-                        spine_ip, leaf_ip = ip1, ip2
-                    elif ip2 in spine_ips and ip1 in switch_centers:
-                        spine_ip, leaf_ip = ip2, ip1
-                    if not (spine_ip and leaf_ip):
+            # Leaf -> spine ISLs. Leaf/spine fabrics run multiple ISLs from
+            # each leaf to each spine (no leaf-leaf IPL). vnetmap does not
+            # capture inter-switch links, so we render an inferred full mesh:
+            # every leaf in this rack connects to every spine. Drawn in the
+            # spine-fabric gray, dashed, to distinguish from node edges.
+            if has_spine and rack_switches and spine_positions:
+                for sw in rack_switches[:2]:
+                    if not isinstance(sw, dict):
+                        continue
+                    leaf_ip = sw.get("mgmt_ip", "")
+                    if leaf_ip not in switch_centers:
                         continue
                     sw_cx, sw_bot = switch_centers[leaf_ip]
                     sw_top_y = sw_bot - SWITCH_H
-                    sp_cx, sp_bot = spine_positions[spine_ip]
-                    mid_y_up = content_y - SPINE_GAP / 2
-                    path_d = _ortho_path(sw_cx, sw_top_y, sp_cx, sp_bot, mid_y=mid_y_up)
-                    dwg.add(
-                        dwg.path(
-                            d=path_d,
-                            fill="none",
-                            stroke=COLOR_SPINE_FABRIC,
-                            stroke_width=1.2,
-                            stroke_dasharray="4,2",
+                    for sp_cx, sp_bot in spine_positions.values():
+                        mid_y_up = content_y - SPINE_GAP / 2
+                        path_d = _ortho_path(sw_cx, sw_top_y, sp_cx, sp_bot, mid_y=mid_y_up)
+                        dwg.add(
+                            dwg.path(
+                                d=path_d,
+                                fill="none",
+                                stroke=COLOR_SPINE_FABRIC,
+                                stroke_width=1.2,
+                                stroke_dasharray="4,2",
+                            )
                         )
-                    )
 
         # ----- Inter-rack IPL/MLAG (v1.5.8 follow-up) ----------------
         # The per-rack loop above only draws an IPL line when both
@@ -1557,7 +1783,10 @@ class RackCentricDiagramGenerator:
         # of every rack frame and switch box.
         sw_y_ipl = content_y + RACK_PAD_TOP
         ipl_y_global = sw_y_ipl + SWITCH_H / 2
-        for ip1, ip2 in self._collect_inter_rack_ipl_pairs(ipl_conns, switch_centers, switch_rack_idx):
+        inter_rack_ipl_pairs = (
+            [] if has_spine else self._collect_inter_rack_ipl_pairs(ipl_conns, switch_centers, switch_rack_idx)
+        )
+        for ip1, ip2 in inter_rack_ipl_pairs:
             c1 = switch_centers[ip1]
             c2 = switch_centers[ip2]
             # Order endpoints left-to-right so the line endpoints sit
@@ -1633,6 +1862,7 @@ class RackCentricDiagramGenerator:
             subnet_color_map=subnet_color_map,
             port_map=port_map,
             has_spine=has_spine,
+            items=legend_items,
         )
 
         # ----- Page number -----
@@ -1888,6 +2118,7 @@ class RackCentricDiagramGenerator:
             dev_ips.add(aip)
         dev_name = device.get("name", "")
         dev_hostname = device.get("hostname", "")
+        dev_node_key = self._hostname_node_key(dev_hostname) or self._hostname_node_key(dev_name)
 
         if not dev_ips and not dev_name and not dev_hostname:
             return
@@ -1926,8 +2157,15 @@ class RackCentricDiagramGenerator:
                 and conn_hostname
                 and (dev_name == conn_hostname or dev_name in conn_hostname or conn_hostname in dev_name)
             )
+            # IB fallback: match on the rack-prefix-independent box/node
+            # suffix (CB6-U22-CN1). The suffix is reused across racks, so a
+            # suffix-only match is honored ONLY for a same-rack switch
+            # (handled below) — this also reflects that vnetmap reaches only
+            # the leaf switches it could SSH to.
+            conn_node_key = self._hostname_node_key(conn_hostname)
+            suffix_match = bool(dev_node_key and conn_node_key and dev_node_key == conn_node_key)
 
-            if not (ip_match or name_match):
+            if not (ip_match or name_match or suffix_match):
                 continue
 
             classification = self._classify_edge(
@@ -1936,6 +2174,10 @@ class RackCentricDiagramGenerator:
                 all_switch_ips=all_switch_ips,
             )
             if classification == "orphan":
+                continue
+            # A suffix-only match (no IP/full-name evidence) is ambiguous
+            # across racks, so only trust it for a same-rack switch.
+            if suffix_match and not (ip_match or name_match) and classification != "same_rack":
                 continue
             if edge_filter != "all" and classification != edge_filter:
                 continue
@@ -2022,6 +2264,11 @@ class RackCentricDiagramGenerator:
         if any(f in interface for f in ("f0", "f1", "f2", "f3")):
             return True
 
+        # InfiniBand interfaces (ib0, ib1, ...) — IB clusters carry node
+        # connectivity on ibN rather than the fN/ensN Ethernet names.
+        if re.match(r"^ib\d", interface):
+            return True
+
         # DNode interfaces that don't follow the fN convention
         node_des = conn.get("node_designation", "")
         is_dnode = "DN" in node_des or "dnode" in conn.get("node_type", "")
@@ -2051,32 +2298,28 @@ class RackCentricDiagramGenerator:
         }
         return tints.get(color, "white")
 
-    def _draw_legend(
+    def _compute_legend_items(
         self,
-        dwg: Any,
-        total_w: float,
-        y: float,
         switches: Optional[List[Dict[str, Any]]] = None,
         subnet_color_map: Optional[Dict[str, str]] = None,
         port_map: Optional[List[Dict[str, Any]]] = None,
         has_spine: bool = False,
-    ) -> None:
-        """Render the bottom legend.
+    ) -> List[Tuple[str, str]]:
+        """Build the ordered ``(color, label)`` legend items.
 
-        NET-3: emits one pill per distinct subnet color in use, labeled with
-        the /24 subnet prefix (e.g. ``"172.16.0/24"``). The deprecated
-        Network A / Network B labels are removed. IPL/MLAG and Spine pills
-        are appended only when relevant. Falls back to a generic
-        ``Same-rack``/``Cross-rack`` legend when subnet evidence is absent
-        (defensive — preserves a useful legend on minimal-data clusters).
+        NET-3: one pill per distinct subnet color in use, labeled with the
+        /24 prefix (e.g. ``"172.16.0/24"``). IPL/MLAG and Spine pills are
+        appended only when relevant. Falls back to a generic
+        ``Same-rack``/``Cross-rack`` legend when subnet evidence is absent.
+
+        Extracted from ``_draw_legend`` so ``_render_page`` can size the
+        canvas to the legend's natural width up front (preventing the
+        leftmost pill from being clipped).
         """
         switches = switches or []
         subnet_color_map = subnet_color_map or {}
         port_map = port_map or []
 
-        # Build (color, label) items in stable order. Subnets first (ordered
-        # by their lowest mgmt_ip, matching _assign_subnet_colors), then IPL
-        # if any switches exist, then Spine if present.
         seen_colors: set = set()
         items: List[Tuple[str, str]] = []
         for sw in sorted(switches, key=lambda s: s.get("mgmt_ip", "") if isinstance(s, dict) else ""):
@@ -2090,23 +2333,62 @@ class RackCentricDiagramGenerator:
             seen_colors.add(color)
 
         if not items:
-            # Fallback for clusters with no subnet evidence: show the
-            # same-rack/cross-rack distinction instead.
             items = [
                 (SUBNET_COLOR_PALETTE[0], "Same-rack"),
                 (SUBNET_COLOR_PALETTE[1], "Cross-rack"),
             ]
 
-        if switches:
-            items.append((COLOR_IPL, "IPL/MLAG"))
+        # Leaf/spine fabrics have no leaf-leaf IPL — show the ISL legend
+        # instead. Only show IPL/MLAG for non-spine topologies.
         if has_spine:
-            items.append((COLOR_SPINE_FABRIC, "Spine"))
+            items.append((COLOR_SPINE_FABRIC, "ISL (Leaf-Spine)"))
+        elif switches:
+            items.append((COLOR_IPL, "IPL/MLAG"))
+        return items
 
-        spacing = 126
-        start_x = (total_w - len(items) * spacing) / 2
-        for i, (color, label) in enumerate(items):
-            x = start_x + i * spacing
-            bw, bh = 110, 22
+    @staticmethod
+    def _legend_pill_width(label: str) -> float:
+        """Width of one legend pill, sized to its label so it is not clipped."""
+        text_w = len(label) * LEGEND_CHAR_W
+        return max(float(LEGEND_PILL_MIN_W), LEGEND_TEXT_X + text_w + LEGEND_PILL_PAD_R)
+
+    @classmethod
+    def _legend_content_width(cls, items: List[Tuple[str, str]]) -> float:
+        """Total horizontal extent of the legend row (pills + inter-pill gaps)."""
+        if not items:
+            return 0.0
+        widths = [cls._legend_pill_width(label) for _, label in items]
+        return sum(widths) + LEGEND_PILL_GAP * (len(items) - 1)
+
+    def _draw_legend(
+        self,
+        dwg: Any,
+        total_w: float,
+        y: float,
+        switches: Optional[List[Dict[str, Any]]] = None,
+        subnet_color_map: Optional[Dict[str, str]] = None,
+        port_map: Optional[List[Dict[str, Any]]] = None,
+        has_spine: bool = False,
+        items: Optional[List[Tuple[str, str]]] = None,
+    ) -> None:
+        """Render the bottom legend.
+
+        Pills are sized to their labels and the row is centered within
+        ``total_w``, with the start clamped to ``MARGIN`` so the leftmost
+        pill is never clipped (the v1.5.8 fixed-spacing layout produced a
+        negative start_x on narrow 2-rack pages, cutting off the first
+        pill). ``items`` may be precomputed by the caller to keep canvas
+        sizing and rendering in sync; otherwise it is derived here.
+        """
+        if items is None:
+            items = self._compute_legend_items(switches, subnet_color_map, port_map, has_spine)
+
+        content_w = self._legend_content_width(items)
+        start_x = max(float(MARGIN), (total_w - content_w) / 2)
+        bh = LEGEND_PILL_H
+        x = start_x
+        for color, label in items:
+            bw = self._legend_pill_width(label)
             tint = self._color_tint(color)
             dwg.add(
                 dwg.rect(
@@ -2130,13 +2412,14 @@ class RackCentricDiagramGenerator:
             dwg.add(
                 dwg.text(
                     label,
-                    insert=(x + 32, y + bh / 2 + 4),
+                    insert=(x + LEGEND_TEXT_X, y + bh / 2 + 4),
                     font_size="9px",
                     font_family="Helvetica, Arial, sans-serif",
                     font_weight="bold",
                     fill=color,
                 )
             )
+            x += bw + LEGEND_PILL_GAP
 
     # ------------------------------------------------------------------
     # SVG to PNG conversion

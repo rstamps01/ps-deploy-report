@@ -3846,26 +3846,9 @@ class VastReportBuilder:
 
         # Generate network diagram dynamically
         try:
-            # Add color legend
-            legend_style = ParagraphStyle(
-                "Diagram_Legend",
-                parent=styles["Normal"],
-                fontSize=self.config.font_size - 1,
-                textColor=colors.HexColor("#666666"),
-                alignment=TA_CENTER,
-                spaceAfter=12,
-            )
-            content.append(
-                Paragraph(
-                    "<font color='#0F9D58'><b>■</b> Green</font> = Network A | "
-                    "<font color='#4285F4'><b>■</b> Blue</font> = Network B | "
-                    "<font color='#7B1FA2'><b>■</b> Purple</font> = IPL/MLAG | "
-                    "<font color='#757575'><b>■</b> Gray</font> = Spine",
-                    legend_style,
-                )
-            )
-            content.append(Spacer(1, 12))
-
+            # NET-3: the redundant text color key was removed — the rendered
+            # diagram carries its own subnet-pill legend at the bottom, which
+            # is authoritative (per-/24 subnet) and avoids a stale duplicate.
             if generated_paths:
                 from PIL import Image as PILImage
 
@@ -4288,196 +4271,13 @@ class VastReportBuilder:
         if port_mapping_data.get("data_source", "").startswith("vnetmap"):
             content.extend(self._create_vnetmap_topology_tables(port_map, switches, styles))
 
-        # Group ports by switch
-        ports_by_switch: dict[str, Any] = {}
-        for entry in port_map:
-            switch_ip = entry["switch_ip"]
-            if switch_ip not in ports_by_switch:
-                ports_by_switch[switch_ip] = []
-            ports_by_switch[switch_ip].append(entry)
-
-        # Sort ports within each switch by port number
-        for switch_ip in ports_by_switch:
-            ports_by_switch[switch_ip].sort(
-                key=lambda x: (
-                    int("".join(filter(str.isdigit, x["port"]))) if any(c.isdigit() for c in x["port"]) else 0
-                )
-            )
-
-        # Only number switches that actually appear in the port map (leaf switches)
+        # The legacy per-leaf-switch "Switch N Port-to-Device Mapping"
+        # tables were removed: the vnetmap Topology Detail tables above are
+        # now the authoritative per-connection view. We retain the leaf
+        # switch IP set so the spine tables below can distinguish spines
+        # from leaves, and the shared table header for those tables.
         port_map_switch_ips = {e["switch_ip"] for e in port_map if e.get("switch_ip")}
-        leaf_switches = [sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips]
-        if not leaf_switches:
-            leaf_switches = list(switches)
-        leaf_switches.sort(key=lambda s: s.get("mgmt_ip", ""))
-
-        switch_ip_to_number = {}
-        switch_port_speed_lookup: dict[str, dict[str, str]] = {}
-        for idx, switch in enumerate(leaf_switches, start=1):
-            mgmt_ip = switch.get("mgmt_ip")
-            switch_ip_to_number[mgmt_ip] = idx
-            speed_map: dict[str, str] = {}
-            for port_info in switch.get("ports", []):
-                port_name = port_info.get("name", "")
-                port_speed = port_info.get("speed", "")
-                if port_name and port_speed:
-                    speed_map[port_name] = port_speed
-                    if port_name.startswith("Eth") and "/" in port_name:
-                        parts = port_name.split("/")
-                        if len(parts) == 2:
-                            speed_map[f"swp{parts[1]}"] = port_speed
-                        elif len(parts) == 3:
-                            speed_map[f"swp{parts[1]}/{parts[2]}"] = port_speed
-                            parent_key = f"Eth{parts[0]}/{parts[1]}"
-                            if parent_key not in speed_map:
-                                speed_map[parent_key] = port_speed
-            if mgmt_ip:
-                switch_port_speed_lookup[mgmt_ip] = speed_map
-
-        # Sort switches by switch number (Switch 1 before Switch 2)
-        sorted_switch_ips = sorted(ports_by_switch.keys(), key=lambda ip: switch_ip_to_number.get(ip, 999))
-
-        # Create port map table for each switch (in order: Switch 1, Switch 2, etc.)
-        for switch_ip in sorted_switch_ips:
-            connections = ports_by_switch[switch_ip]
-            switch_num = switch_ip_to_number.get(switch_ip, "?")
-
-            # Build table data - filter to show only primary physical connections
-            table_data = []
-            headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
-
-            # Track which ports we've already added to avoid duplicates
-            # Key: (switch_designation, node_designation, network)
-            seen_connections = set()
-
-            for conn in connections:
-                # Smart filtering: show one primary interface per network per node
-                # CNodes: f0 = Net A (primary), f1 = Net B (primary), f2/f3 = bonded
-                # DNodes: f0 = Net A (primary), f2/f3 = Net B (primary - different than CNodes!)
-
-                interface = conn.get("interface", "")
-                network = conn.get("network", "?")
-                node_designation = conn.get("node_designation", "Unknown")
-
-                # Determine if this is a DNode or CNode
-                is_dnode = "DN" in node_designation
-                is_cnode = "CN" in node_designation
-                is_unknown = "UNKNOWN" in node_designation.upper()
-
-                # Primary interface logic (simplified):
-                # Show physical interfaces (f0, f1, f2, f3) - these are the primary physical ports
-                # Skip bonded/virtual interfaces (bonds, VLANs, etc.)
-                #
-                # Network assignment (A or B) is already correctly determined
-                # by which switch the connection is on, so we don't need to
-                # make assumptions about which interface goes to which network.
-
-                is_primary = False
-                if "f0" in interface or "f1" in interface or "f2" in interface or "f3" in interface:
-                    # This is a primary physical interface
-                    is_primary = True
-
-                # Skip non-primary interfaces (bonds, VLANs, etc.)
-                if not is_primary:
-                    continue
-
-                # Use enhanced switch designation (e.g., SWA-P20)
-                port_display = conn.get("switch_designation", conn["port"])
-
-                # Use node designation (already have it from above)
-                node_display = node_designation
-
-                # Create unique key for this connection
-                conn_key = (port_display, node_designation, network)
-
-                # Skip if we've already added this connection
-                if conn_key in seen_connections:
-                    continue
-                seen_connections.add(conn_key)
-
-                port_name_raw = conn.get("port", "")
-                speed = (
-                    switch_port_speed_lookup.get(switch_ip, {}).get(
-                        port_name_raw,
-                        switch_port_speed_lookup.get(switch_ip, {}).get(conn.get("original_port", ""), ""),
-                    )
-                    or "Unknown"
-                )
-
-                # Use notes from port map entry
-                # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
-                is_ebox_entry = conn.get("ebox_id") is not None or conn.get("ebox_node_type") is not None
-
-                if is_ebox_entry:
-                    # EBox clusters: notes contain the CNode/DNode name
-                    notes_str = conn.get("notes", "")
-                    if not notes_str:
-                        # Fallback for EBox entries without notes
-                        notes_str = conn.get("node_name", "")
-                else:
-                    # Standard CBox/DBox clusters: show "Primary" for all active connections
-                    notes_str = "Primary"
-
-                table_data.append([port_display, node_display, network, speed, notes_str])
-
-            # Add IPL / spine-uplink rows to this switch's table.  Each
-            # entry in ``ipl_connections`` is either:
-            #
-            #   * IPL (leaf<->leaf, ``connection_type == "ipl"``)
-            #   * spine uplink (leaf<->spine, ``connection_type == "spine_uplink"``)
-            #   * spine fabric (spine<->spine, rendered only under spine tables)
-            #
-            # We want every row whose endpoint is the leaf currently being
-            # rendered to show up in that leaf's table, with the peer-side
-            # designation on the right.
-            ipl_connections = port_mapping_data.get("ipl_connections", [])
-            for ipl_conn in ipl_connections:
-                conn_type = (ipl_conn.get("connection_type") or "ipl").lower()
-                if conn_type == "spine_fabric":
-                    continue  # spine<->spine links belong in the spine table
-                ip1 = ipl_conn.get("switch1_ip", "")
-                ip2 = ipl_conn.get("switch2_ip", "")
-
-                local_side, remote_side = None, None
-                if ip1 == switch_ip:
-                    local_side = ipl_conn.get("switch_designation", "")
-                    remote_side = ipl_conn.get("node_designation", "")
-                elif ip2 == switch_ip:
-                    # Flip the pair so the "local" column always shows this leaf.
-                    local_side = ipl_conn.get("node_designation", "")
-                    remote_side = ipl_conn.get("switch_designation", "")
-                else:
-                    # Legacy rows without switch IPs rely on switch_num heuristic.
-                    if conn_type != "ipl" or (ip1 and ip2):
-                        continue
-                    if switch_num == 1:
-                        local_side = ipl_conn.get("switch_designation", "") or "SWA"
-                        remote_side = ipl_conn.get("node_designation", "") or "SWB"
-                    elif switch_num == 2:
-                        local_side = ipl_conn.get("node_designation", "") or "SWB"
-                        remote_side = ipl_conn.get("switch_designation", "") or "SWA"
-                    else:
-                        continue
-
-                default_note = "Spine uplink" if conn_type == "spine_uplink" else "IPL"
-                ipl_note = ipl_conn.get("notes") or default_note
-                network_label = "Uplink" if conn_type == "spine_uplink" else "A/B"
-
-                table_data.append(
-                    [
-                        local_side or "",
-                        remote_side or "",
-                        network_label,
-                        "",
-                        ipl_note,
-                    ]
-                )
-
-            # Create table
-            table_title = f"Switch {switch_num} Port-to-Device Mapping"
-            table_elements = self.brand_compliance.create_vast_table(table_data, table_title, headers)
-            content.extend(table_elements)
-            content.append(Spacer(1, 12))
+        headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
 
         # --- Spine switch tables (if any spine_uplink / spine_fabric entries exist) ---
         content.extend(

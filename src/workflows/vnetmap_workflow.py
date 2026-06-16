@@ -274,17 +274,47 @@ class VnetmapWorkflow:
         """
         Convert ClusterShell IP format to bash brace expansion format.
 
-        Example: 10.143.11.[1-4] -> 10.143.11.{1..4}
+        Example: ``10.143.11.[1-4]`` -> ``10.143.11.{1..4}``
+
+        Multi-subnet clusters resolve to a comma-separated list with more
+        than one bracket range (e.g.
+        ``172.16.128.[1-10],172.16.129.[1-10]``). Every range must be
+        converted independently. A previous implementation anchored the
+        regex to the end of the whole string, so only the trailing range
+        was converted and the leading range(s) were left as literal
+        ``[1-10]``. bash never expands the bracket form, so vnetmap SSHed
+        to the literal host string and silently dropped that entire half
+        of the cluster from the fabric map.
+
+        The output is consumed by ``echo <result> | sed 's/ /,/g'`` (see
+        ``_step_generate_export_commands``), which relies on bash brace
+        expansion. Two *adjacent* brace groups separated by a comma expand
+        as a Cartesian PRODUCT
+        (``a.{1..2},b.{1..2}`` -> ``a.1,b.1 a.1,b.2 a.2,b.1 a.2,b.2``),
+        which explodes the node list (e.g. 60 ports -> 2000). To get the
+        UNION instead, multiple groups are wrapped in an outer brace
+        (``{a.{1..2},b.{1..2}}`` -> ``a.1 a.2 b.1 b.2``). A single group
+        must NOT be wrapped (``{a.{1..2}}`` does not expand correctly).
         """
-        # Match pattern like xxx.xxx.xxx.[x-x]
-        match = re.search(r"^(.+)\[(\d+)-(\d+)\]$", clustershell_format.strip())
-        if match:
-            prefix = match.group(1)
-            start = match.group(2)
-            end = match.group(3)
-            return f"{prefix}{{{start}..{end}}}"
-        # If no range pattern, return as-is (single IP)
-        return clustershell_format.strip()
+        if not clustershell_format or not clustershell_format.strip():
+            return ""
+
+        # Convert each comma-separated element independently, converting
+        # every bracket range it contains. ``re.sub`` handles one or more
+        # ranges per element; non-range elements (single IPs) pass through.
+        converted = []
+        for element in clustershell_format.split(","):
+            element = element.strip()
+            if not element:
+                continue
+            converted.append(re.sub(r"\[(\d+)-(\d+)\]", r"{\1..\2}", element))
+
+        if not converted:
+            return ""
+        if len(converted) == 1:
+            return converted[0]
+        # 2+ groups: wrap so bash expands the union, not the Cartesian product.
+        return "{" + ",".join(converted) + "}"
 
     def _parse_local_cfg(self, cfg_content: str) -> Tuple[Optional[str], Optional[str]]:
         """

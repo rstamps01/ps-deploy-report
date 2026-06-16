@@ -1086,6 +1086,81 @@ class TestVnetmapParsing:
     def test_convert_ip_format_empty(self):
         assert self.workflow._convert_ip_format("") == ""
 
+    def test_convert_ip_format_multi_subnet_comma_list(self):
+        """Multi-subnet clusters resolve to a comma-separated pattern with
+        more than one bracket range. Each range must be converted; the
+        LAX-01 bug left the first range as a literal ``[1-10]`` (only the
+        trailing range was converted), so vnetmap SSHed to the literal
+        host string and never mapped that half of the cluster.
+
+        The result is wrapped in an outer brace so bash expands the UNION
+        of the two groups, not the Cartesian product."""
+        assert (
+            self.workflow._convert_ip_format("172.16.128.[1-10],172.16.129.[1-10]")
+            == "{172.16.128.{1..10},172.16.129.{1..10}}"
+        )
+
+    def test_convert_ip_format_multi_subnet_dnode_range(self):
+        assert (
+            self.workflow._convert_ip_format("172.16.128.[100-119],172.16.129.[100-119]")
+            == "{172.16.128.{100..119},172.16.129.{100..119}}"
+        )
+
+    def test_convert_ip_format_mixed_single_and_range(self):
+        assert self.workflow._convert_ip_format("10.0.0.5,10.0.1.[1-4]") == "{10.0.0.5,10.0.1.{1..4}}"
+
+    def test_convert_ip_format_three_ranges(self):
+        assert (
+            self.workflow._convert_ip_format("10.0.0.[1-2],10.0.1.[3-4],10.0.2.[5-6]")
+            == "{10.0.0.{1..2},10.0.1.{3..4},10.0.2.{5..6}}"
+        )
+
+    def test_convert_ip_format_tolerates_whitespace_around_commas(self):
+        assert self.workflow._convert_ip_format("10.0.0.[1-2], 10.0.1.[3-4]") == "{10.0.0.{1..2},10.0.1.{3..4}}"
+
+    def test_convert_ip_format_single_group_not_wrapped(self):
+        """A single group must NOT be wrapped — ``{a.{1..4}}`` does not
+        expand correctly in bash."""
+        assert self.workflow._convert_ip_format("10.0.0.[1-4]") == "10.0.0.{1..4}"
+
+    @pytest.mark.parametrize(
+        "pattern,expected_ips",
+        [
+            ("10.0.0.[1-4]", ["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"]),
+            (
+                "172.16.128.[1-3],172.16.129.[1-3]",
+                [
+                    "172.16.128.1",
+                    "172.16.128.2",
+                    "172.16.128.3",
+                    "172.16.129.1",
+                    "172.16.129.2",
+                    "172.16.129.3",
+                ],
+            ),
+            ("10.0.0.5,10.0.1.[1-2]", ["10.0.0.5", "10.0.1.1", "10.0.1.2"]),
+        ],
+    )
+    def test_convert_ip_format_bash_expands_to_union_no_cartesian(self, pattern, expected_ips):
+        """End-to-end guard against the Cartesian-product regression: feed
+        the converted pattern through the exact ``echo <x> | sed 's/ /,/g'``
+        the workflow uses and assert the expanded IP list is the de-duped
+        union (not the N*M product that produced 2000 ports)."""
+        import subprocess
+
+        converted = self.workflow._convert_ip_format(pattern)
+        out = subprocess.run(
+            f"echo {converted} | sed 's/ /,/g'",
+            shell=True,
+            capture_output=True,
+            text=True,
+            executable="/bin/bash",
+        ).stdout.strip()
+        ips = out.split(",")
+        # No duplicates (Cartesian product repeats IPs), correct membership.
+        assert ips == expected_ips
+        assert len(ips) == len(set(ips))
+
     def test_parse_local_cfg_groups(self):
         cfg = "cnodes: 10.0.0.[1-4]\ndnodes: 10.0.1.[1-8]\n"
         cnodes, dnodes = self.workflow._parse_local_cfg(cfg)
