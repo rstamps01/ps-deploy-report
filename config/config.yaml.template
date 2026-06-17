@@ -77,6 +77,13 @@ output:
   # Default output directory (relative to project root)
   default_directory: "./reports"
 
+  # QP-2: segment every generated artifact under a per-cluster directory tree
+  # keyed by cluster identity (clusters/<name>__<PSNT-or-GUID>/...).  Because
+  # all clusters are reached over the same tech-port IP (192.168.2.2), a flat
+  # shared layout intermingles artifacts between clusters.  Set to false to
+  # restore the legacy flat layout (byte-for-byte).
+  segment_by_cluster: true
+
   # File naming convention
   # Available variables: {timestamp}, {cluster_name}, {date}
   pdf_filename: "vast_report_{cluster_name}_{timestamp}.pdf"
@@ -251,3 +258,41 @@ security:
   # Data sanitization
   sanitize_logs: true
   mask_sensitive_data: true
+
+# Auto-shutdown (Web UI)
+# QP-3 (3): the local web server exits automatically a short time after the
+# operator closes the browser, so a forgotten background process does not
+# linger.  The page sends a heartbeat every ``heartbeat_interval_seconds``;
+# the server shuts down after ``grace_seconds`` of silence, but NEVER while a
+# report/health/one-shot/advanced-ops job is running.  Set enabled: false to
+# keep the server running until the operator clicks Exit (or Ctrl+C).
+auto_shutdown:
+  enabled: true
+  grace_seconds: 20
+  heartbeat_interval_seconds: 5
+
+# Usage metrics (Web UI)
+# QP-3 (4): OPT-IN, anonymous, LOCAL-ONLY usage metrics that power a local
+# "time saved" ROI surface on the dashboard.  Recording is OFF until the
+# operator opts in (via the dashboard toggle, which persists to
+# ``<data_dir>/telemetry/telemetry.json``).  Only an anonymous random install
+# id + coarse event counts are stored — never a hostname, username, cluster
+# IP/name/PSNT, or credentials.  Nothing is transmitted anywhere in this
+# release; see docs/development/TELEMETRY.md for the future receiver spec.
+telemetry:
+  # Default opt-in state for fresh installs.  Operators can still toggle this
+  # at runtime from the dashboard; the runtime choice takes precedence.
+  enabled: false
+
+# In-app updates (Web UI)
+# QP-3 (2): the app can check GitHub Releases for a newer version and show an
+# in-app "update available" banner with a download link.  This release only
+# NOTIFIES (phase 2a) — it never auto-downloads or relaunches.  Set
+# enabled: false to disable the check entirely.
+updates:
+  enabled: true
+  # Check the latest stable release by default.  Set include_prereleases: true
+  # to also surface beta/RC builds (useful when running a pre-release build).
+  include_prereleases: false
+  # Check once shortly after launch.  The result is cached in-process.
+  check_on_startup: true

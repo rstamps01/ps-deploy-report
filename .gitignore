@@ -209,6 +209,16 @@ output/tools/
 output/health/
 src/output/
 
+# QP-2 per-cluster artifact segmentation (generated; mirrors the legacy
+# reports/ + output/ layout under a per-cluster root). Dev mode resolves
+# get_data_dir() to the project root, so live runs create this here.
+clusters/
+
+# QP-3 (4) local usage metrics (anonymous, opt-in). Dev mode resolves
+# get_data_dir() to the project root, so consent state + the event log
+# land here.
+telemetry/
+
 # Operations logs (may contain reproduced shell commands with credentials)
 logs/operations/
 

@@ -69,6 +69,11 @@ class AdvancedOpsManager:
         self._cancel_event = threading.Event()
         self._output_buffer: List[Dict[str, Any]] = []
         self._output_callbacks: List[Callable[[str, str, Optional[str]], None]] = []
+        # QP-2: per-workflow-run cache of the resolved per-cluster scripts dir
+        # so a lightweight identity fetch happens once, not per step.
+        self._cluster_key: Optional[str] = None
+        self._cluster_scripts_dir: Optional[Any] = None
+        self._cluster_scripts_ip: Optional[str] = None
 
         # Register built-in workflows
         self._register_builtin_workflows()
@@ -296,10 +301,96 @@ class AdvancedOpsManager:
             )
             self._cancel_event.clear()
             self._output_buffer.clear()
+            # Reset the QP-2 per-cluster cache so a new run re-resolves identity.
+            self._cluster_key = None
+            self._cluster_scripts_dir = None
+            self._cluster_scripts_ip = None
 
         logger.info(f"Started workflow: {workflow_id}")
         self._emit_output("info", f"Starting workflow: {workflow['name']}")
         return True
+
+    def _load_segmentation_config(self) -> Optional[Dict[str, Any]]:
+        """Load config.yaml for the ``output.segment_by_cluster`` gate (best-effort)."""
+        try:
+            import yaml
+            from pathlib import Path
+
+            default = Path(__file__).parent.parent / "config" / "config.yaml"
+            if default.exists():
+                with open(default, encoding="utf-8") as f:
+                    return yaml.safe_load(f) or {}
+        except Exception:  # noqa: BLE001 - missing/invalid config defaults to enabled
+            pass
+        return None
+
+    def _resolve_cluster_scripts_dir(self, credentials: Dict[str, Any]) -> Optional[Any]:
+        """Resolve (and cache) the per-cluster scripts dir for the current run (QP-2).
+
+        Uses a lightweight authenticated cluster-info fetch to obtain the
+        PSNT/GUID identity so Advanced Ops artifacts land under the same
+        ``clusters/<key>/output/scripts`` tree the report/one-shot paths use.
+        Returns ``None`` when segmentation is disabled or identity cannot be
+        resolved, in which case the workflow keeps its legacy flat output dir.
+        """
+        from utils.cluster_paths import (
+            cluster_paths,
+            resolve_cluster_key,
+            segment_enabled,
+            write_cluster_marker,
+        )
+
+        cluster_ip = (credentials.get("cluster_ip") or "").strip()
+        if self._cluster_scripts_dir is not None and self._cluster_scripts_ip == cluster_ip:
+            return self._cluster_scripts_dir
+
+        config = self._load_segmentation_config()
+        if not segment_enabled(config):
+            return None
+
+        name = psnt = guid = version = None
+        try:
+            from api_handler import create_vast_api_handler
+
+            api = create_vast_api_handler(
+                cluster_ip=cluster_ip,
+                username=credentials.get("username"),
+                password=credentials.get("password"),
+                token=credentials.get("api_token"),
+                config={"api": {"verify_ssl": False}},
+            )
+            api.authenticate()
+            info = api.get_cluster_info()
+            api.close()
+            if info is not None:
+                name = getattr(info, "name", None)
+                guid = getattr(info, "guid", None)
+                psnt = getattr(info, "psnt", None)
+                version = getattr(info, "version", None)
+        except Exception as exc:  # noqa: BLE001 - identity is best-effort
+            self._emit_output("warn", f"QP-2 identity fetch failed ({exc}); using provisional key")
+
+        name = None if name in (None, "", "Unknown") else name
+        guid = None if guid in (None, "", "Unknown") else guid
+        psnt = None if psnt in (None, "", "Unknown") else psnt
+
+        try:
+            from utils import get_data_dir
+
+            key = resolve_cluster_key(name=name, psnt=psnt, guid=guid, cluster_ip=cluster_ip)
+            cp = cluster_paths(get_data_dir(), key)
+            cp.ensure_all()
+            write_cluster_marker(
+                cp.root,
+                {"name": name, "psnt": psnt, "guid": guid, "cluster_ip": cluster_ip, "version": version},
+            )
+            self._cluster_key = key
+            self._cluster_scripts_dir = cp.scripts
+            self._cluster_scripts_ip = cluster_ip
+            return cp.scripts
+        except Exception as exc:  # noqa: BLE001 - never block the step
+            self._emit_output("warn", f"QP-2 path setup failed ({exc}); using flat dir")
+            return None
 
     def run_step(self, step_id: int, credentials: Dict[str, Any]) -> StepResult:
         """Run a specific step of the current workflow."""
@@ -339,6 +430,11 @@ class AdvancedOpsManager:
                     # Configure the workflow with output callback
                     if hasattr(wf_instance, "set_output_callback"):
                         wf_instance.set_output_callback(self._emit_output)
+                    # QP-2: redirect script output into the per-cluster scripts
+                    # dir so Advanced Ops artifacts segment by cluster too.
+                    scripts_dir = self._resolve_cluster_scripts_dir(credentials)
+                    if scripts_dir is not None and hasattr(wf_instance, "set_output_dir"):
+                        wf_instance.set_output_dir(scripts_dir)
                     if hasattr(wf_instance, "set_credentials"):
                         wf_instance.set_credentials(credentials)
 
@@ -442,6 +538,9 @@ class AdvancedOpsManager:
             self._current_state = None
             self._cancel_event.clear()
             self._output_buffer.clear()
+            self._cluster_key = None
+            self._cluster_scripts_dir = None
+            self._cluster_scripts_ip = None
 
     def _complete_workflow(self, error: Optional[str] = None) -> None:
         """Mark the workflow as completed."""

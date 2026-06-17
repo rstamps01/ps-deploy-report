@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import requests as _requests_lib
 
+from tool_manager import TOOL_FRESHNESS_WARN_DAYS
 from utils.logger import get_logger
 from utils.switch_password_candidates import (
     BUILTIN_AUTOFILL_SWITCH_PASSWORDS as _SHARED_BUILTIN_AUTOFILL_SWITCH_PASSWORDS,
@@ -38,7 +39,6 @@ SSH_NODE_OPS = frozenset({"vnetmap", "support_tool", "vperfsanity", "log_bundle"
 # empty, forcing the workflow back onto the legacy single-password
 # candidate sweep even when the operator has correct credentials.
 SSH_SWITCH_OPS = frozenset({"switch_config", "vnetmap"})
-TOOL_FRESHNESS_WARN_DAYS = 10
 
 # Config override for validation API calls: disable SSL verify, short timeout, single retry
 _VALIDATION_API_CONFIG: Dict[str, Any] = {
@@ -189,6 +189,12 @@ class OneShotRunner:
         # different switches carry different default passwords.
         self._switch_password_by_ip: Dict[str, str] = {}
         self._switch_user_by_ip: Dict[str, str] = {}
+        # QP-2: resolved once at job start (before operations) so every phase
+        # writes under the same ``clusters/<key>/`` tree.  ``None`` means
+        # segmentation is disabled (legacy flat layout).
+        self._cluster_key: Optional[str] = None
+        self._cluster_paths: Optional[Any] = None
+        self._resolved_cluster_version: Optional[str] = None
 
     _SUPPORT_CREDS = {"username": "support", "password": "654321"}
     _ADMIN_CREDS = {"username": "admin", "password": "123456"}
@@ -1074,6 +1080,11 @@ class OneShotRunner:
                     # workflow will simply fall back to the legacy sweep.
                     self._emit("warn", f"Pre-execution switch probe failed: {probe_exc}")
 
+            # QP-2: resolve the per-cluster key + paths up front so Phase 1
+            # operation artifacts land under clusters/<key>/ instead of the
+            # flat dir (the report phase that knows the PSNT runs later).
+            self._resolve_cluster_identity_early()
+
             # Phase 1: Selected Operations
             self._run_operations()
 
@@ -1089,24 +1100,7 @@ class OneShotRunner:
                 self._state.phase = "completed"
                 self._state.completed_at = datetime.now().isoformat()
 
-            # Save operation log to disk
-            try:
-                from utils.ops_log_manager import OpsLogManager
-                from advanced_ops import get_advanced_ops_manager
-
-                mgr = get_advanced_ops_manager()
-                log_manager = OpsLogManager()
-                log_manager.ensure_capacity(emit_fn=self._emit)
-                session_id = (
-                    self._state.started_at.replace(":", "").replace("-", "").replace("T", "_")[:15]
-                    if self._state.started_at
-                    else "unknown"
-                )
-                cluster_ip = self._credentials.get("cluster_ip", "unknown")
-                log_manager.save_session_log(mgr._output_buffer[:], session_id, cluster_ip)
-                self._emit("info", "Operation log saved to disk.")
-            except Exception as log_exc:
-                self._emit("warn", f"Failed to save operation log: {log_exc}")
+            self._persist_ops_log()
 
             self._emit("success", "=" * 65)
             self._emit("success", "ONE-SHOT EXECUTION COMPLETED SUCCESSFULLY")
@@ -1115,24 +1109,7 @@ class OneShotRunner:
             return {"status": "completed", "bundle_path": self._state.bundle_path}
 
         except _OneShotCancelled:
-            # Save operation log to disk on cancellation
-            try:
-                from utils.ops_log_manager import OpsLogManager
-                from advanced_ops import get_advanced_ops_manager
-
-                mgr = get_advanced_ops_manager()
-                log_manager = OpsLogManager()
-                log_manager.ensure_capacity(emit_fn=self._emit)
-                session_id = (
-                    self._state.started_at.replace(":", "").replace("-", "").replace("T", "_")[:15]
-                    if self._state.started_at
-                    else "unknown"
-                )
-                cluster_ip = self._credentials.get("cluster_ip", "unknown")
-                log_manager.save_session_log(mgr._output_buffer[:], session_id, cluster_ip)
-                self._emit("info", "Operation log saved to disk.")
-            except Exception as log_exc:
-                self._emit("warn", f"Failed to save operation log: {log_exc}")
+            self._persist_ops_log()
             return {"status": "cancelled"}
         except Exception as exc:
             logger.exception("One-shot execution failed")
@@ -1142,24 +1119,7 @@ class OneShotRunner:
                 self._state.error = str(exc)
                 self._state.completed_at = datetime.now().isoformat()
             self._emit("error", f"One-shot execution failed: {exc}")
-            # Save operation log to disk on error
-            try:
-                from utils.ops_log_manager import OpsLogManager
-                from advanced_ops import get_advanced_ops_manager
-
-                mgr = get_advanced_ops_manager()
-                log_manager = OpsLogManager()
-                log_manager.ensure_capacity(emit_fn=self._emit)
-                session_id = (
-                    self._state.started_at.replace(":", "").replace("-", "").replace("T", "_")[:15]
-                    if self._state.started_at
-                    else "unknown"
-                )
-                cluster_ip = self._credentials.get("cluster_ip", "unknown")
-                log_manager.save_session_log(mgr._output_buffer[:], session_id, cluster_ip)
-                self._emit("info", "Operation log saved to disk.")
-            except Exception as log_exc:
-                self._emit("warn", f"Failed to save operation log: {log_exc}")
+            self._persist_ops_log()
             return {"status": "error", "error": str(exc)}
         finally:
             self._teardown_tunnel()
@@ -1329,6 +1289,90 @@ class OneShotRunner:
         "network_config": "network_config",
     }
 
+    def _resolve_cluster_identity_early(self) -> None:
+        """Resolve the per-cluster key + paths once, before operations run (QP-2).
+
+        Operations (Phase 1) execute before the report phase authenticates and
+        collects full cluster data, so the PSNT/GUID identity is unknown when
+        workflows write their script output.  This performs a lightweight
+        authenticated cluster-info fetch up front so every phase shares one
+        stable ``clusters/<key>/`` tree.
+
+        Resilient by design: any failure (auth, network, missing identity)
+        falls back to a provisional IP/name-based key so the run still
+        segments coherently; the report phase later refreshes the marker with
+        the full identity without moving anything already written.
+
+        No-op (and no ``clusters/`` dir) when ``output.segment_by_cluster`` is
+        disabled.
+        """
+        from utils.cluster_paths import (
+            cluster_paths,
+            resolve_cluster_key,
+            segment_enabled,
+            write_cluster_marker,
+        )
+
+        config = self._load_config()
+        if not segment_enabled(config):
+            return
+
+        cluster_ip = self._credentials.get("cluster_ip", "")
+        name = psnt = guid = version = None
+        try:
+            from api_handler import create_vast_api_handler
+
+            api_cfg = dict(config)
+            api_cfg.setdefault("api", {})["verify_ssl"] = False
+            api_creds = self._get_api_creds("report")
+            api = create_vast_api_handler(
+                cluster_ip=cluster_ip,
+                username=api_creds["username"],
+                password=api_creds["password"],
+                token=self._credentials.get("api_token"),
+                config=api_cfg,
+                tunnel_address=self._tunnel_address,
+            )
+            api.authenticate()
+            info = api.get_cluster_info()
+            api.close()
+            if info is not None:
+                name = getattr(info, "name", None)
+                guid = getattr(info, "guid", None)
+                psnt = getattr(info, "psnt", None)
+                version = getattr(info, "version", None)
+        except Exception as exc:  # noqa: BLE001 - identity is best-effort
+            self._emit("warn", f"QP-2 early identity fetch failed ({exc}); using provisional key")
+
+        # Drop API placeholders so they never become part of the folder key.
+        name = None if name in (None, "", "Unknown") else name
+        guid = None if guid in (None, "", "Unknown") else guid
+        psnt = None if psnt in (None, "", "Unknown") else psnt
+
+        try:
+            from utils import get_data_dir
+
+            key = resolve_cluster_key(name=name, psnt=psnt, guid=guid, cluster_ip=cluster_ip)
+            cp = cluster_paths(get_data_dir(), key)
+            cp.ensure_all()
+            self._cluster_key = key
+            self._cluster_paths = cp
+            self._resolved_cluster_version = version
+            write_cluster_marker(
+                cp.root,
+                {
+                    "name": name,
+                    "psnt": psnt,
+                    "guid": guid,
+                    "cluster_ip": cluster_ip,
+                    "version": version,
+                },
+            )
+            self._emit("info", f"QP-2 segmentation active: artifacts under {cp.root}")
+        except Exception as exc:  # noqa: BLE001 - never block the run
+            self._emit("warn", f"QP-2 path setup failed ({exc}); operations use the flat dir")
+            self._cluster_paths = None
+
     def _run_operations(self) -> None:
         self._check_cancel()
 
@@ -1365,6 +1409,11 @@ class OneShotRunner:
 
             if hasattr(wf_instance, "set_output_callback"):
                 wf_instance.set_output_callback(self._output_callback or (lambda *a: None))
+            # QP-2: redirect this workflow's local script output into the
+            # per-cluster scripts dir so its artifacts are segmented and the
+            # bundler/report can find them under clusters/<key>/output/scripts.
+            if self._cluster_paths is not None and hasattr(wf_instance, "set_output_dir"):
+                wf_instance.set_output_dir(self._cluster_paths.scripts)
             if hasattr(wf_instance, "set_credentials"):
                 wf_instance.set_credentials(self._get_workflow_credentials(op_id))
 
@@ -1544,7 +1593,9 @@ class OneShotRunner:
             # populate the Port Mapping section identically.
             use_vnetmap = False
             self._check_cancel()
-            vnetmap_file = self._find_latest_vnetmap_output(self._credentials.get("cluster_ip", ""))
+            vnetmap_file = self._find_latest_vnetmap_output(
+                self._credentials.get("cluster_ip", ""), cluster_key=self._cluster_key
+            )
             if vnetmap_file:
                 try:
                     from vnetmap_parser import VNetMapParser
@@ -1665,16 +1716,49 @@ class OneShotRunner:
                 return
 
             self._check_cancel()
-            report_config = ReportConfig.from_yaml(config)
-            report_builder = create_report_builder(config=report_config)
 
-            output_dir = get_data_dir() / "reports"
-            output_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             cluster_name = processed.get("cluster_summary", {}).get("name", "unknown")
             self._resolved_cluster_name = cluster_name
 
             processed["cluster_ip"] = self._credentials.get("cluster_ip", "")
+
+            # QP-2: segment artifacts under clusters/<key>/ once identity is known.
+            from utils.cluster_output import build_marker_identity, cluster_paths_if_enabled
+            from utils.cluster_paths import write_cluster_marker
+
+            segment = False
+            # Prefer the key resolved up front (Phase 0) so the report lands in
+            # the same folder operation artifacts were written to.  Only
+            # resolve here if early resolution was skipped/failed.
+            cp = self._cluster_paths
+            if cp is None:
+                cp = cluster_paths_if_enabled(config, processed)
+                if cp is not None:
+                    cp.ensure_all()
+            if cp is not None:
+                output_dir = cp.reports
+                segment = True
+                self._cluster_key = cp.key
+                self._cluster_paths = cp
+                # Refresh the marker with the full identity now that PSNT/GUID
+                # are known; write_cluster_marker merges, so the provisional
+                # fields written in Phase 0 are enriched, not moved.
+                write_cluster_marker(
+                    cp.root,
+                    build_marker_identity(
+                        processed,
+                        cluster_ip=self._credentials.get("cluster_ip", ""),
+                        version=self._resolved_cluster_version,
+                    ),
+                )
+                self._emit("info", f"QP-2 segmentation active: writing under {cp.root}")
+            else:
+                output_dir = get_data_dir() / "reports"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+            report_config = ReportConfig.from_yaml(config)
+            report_builder = create_report_builder(config=report_config, segment_by_cluster=segment)
 
             if self._credentials.get("switch_placement") == "manual" and self._credentials.get("manual_placements"):
                 processed["manual_switch_placements"] = self._credentials["manual_placements"]
@@ -1795,27 +1879,70 @@ class OneShotRunner:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _find_latest_vnetmap_output(self, cluster_ip: str) -> Optional[Path]:
+    def _persist_ops_log(self) -> None:
+        """Write the one-shot operation log to disk (cluster-scoped under QP-2).
+
+        When segmentation resolved a cluster key during the report phase, the
+        log lands under ``clusters/<key>/logs/operations``; otherwise the legacy
+        flat ``logs/operations`` directory is used.  Best-effort and non-fatal.
+        """
+        try:
+            from utils.ops_log_manager import OpsLogManager
+            from advanced_ops import get_advanced_ops_manager
+
+            mgr = get_advanced_ops_manager()
+            log_dir = None
+            cluster_key = getattr(self, "_cluster_key", None)
+            if cluster_key:
+                from utils import get_data_dir
+                from utils.cluster_paths import cluster_paths
+
+                log_dir = cluster_paths(get_data_dir(), cluster_key).ops_logs
+            log_manager = OpsLogManager(log_dir=log_dir)
+            log_manager.ensure_capacity(emit_fn=self._emit)
+            session_id = (
+                self._state.started_at.replace(":", "").replace("-", "").replace("T", "_")[:15]
+                if self._state.started_at
+                else "unknown"
+            )
+            cluster_ip = self._credentials.get("cluster_ip", "unknown")
+            log_manager.save_session_log(mgr._output_buffer[:], session_id, cluster_ip)
+            self._emit("info", "Operation log saved to disk.")
+        except Exception as log_exc:
+            self._emit("warn", f"Failed to save operation log: {log_exc}")
+
+    def _find_latest_vnetmap_output(self, cluster_ip: str, cluster_key: Optional[str] = None) -> Optional[Path]:
         """Return the most recent vnetmap output file for ``cluster_ip``.
 
-        Scans ``output/scripts/`` for ``vnetmap_output_{cluster_ip}_*.txt``
-        and returns the newest match.  Scoped strictly by cluster IP to
-        prevent cross-cluster contamination of port-mapping topology.
-        Returns ``None`` if the directory is missing or no match exists.
+        With QP-2 segmentation, searches the per-cluster
+        ``clusters/<key>/output/scripts`` dir first (when ``cluster_key`` is
+        given), then the legacy flat ``output/scripts``.  Scoped strictly by
+        cluster IP to prevent cross-cluster contamination of port-mapping
+        topology.  Returns ``None`` when no match exists.
         """
         if not cluster_ip:
             return None
         try:
             from utils import get_data_dir
 
-            scripts_dir = get_data_dir() / "output" / "scripts"
-            if not scripts_dir.is_dir():
-                return None
-            matches = sorted(
-                scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"),
-                reverse=True,
-            )
-            return Path(matches[0]) if matches else None
+            data_dir = get_data_dir()
+            search_dirs: List[Path] = []
+            if cluster_key:
+                from utils.cluster_paths import cluster_paths
+
+                search_dirs.append(cluster_paths(data_dir, cluster_key).scripts)
+            search_dirs.append(data_dir / "output" / "scripts")
+
+            for scripts_dir in search_dirs:
+                if not scripts_dir.is_dir():
+                    continue
+                matches = sorted(
+                    scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"),
+                    reverse=True,
+                )
+                if matches:
+                    return Path(matches[0])
+            return None
         except Exception as exc:  # noqa: BLE001 - purely advisory lookup
             logger.warning("vnetmap output lookup failed: %s", exc)
             return None

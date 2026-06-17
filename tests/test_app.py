@@ -16,7 +16,15 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from app import create_flask_app, _list_reports, _read_config, _write_config, APP_VERSION
+from app import (
+    create_flask_app,
+    _list_reports,
+    _read_config,
+    _write_config,
+    APP_VERSION,
+    evaluate_auto_shutdown,
+    _any_job_running,
+)
 
 
 class TestFlaskAppFactory(unittest.TestCase):
@@ -1216,6 +1224,97 @@ class TestAdvancedOpsToolRoutes(unittest.TestCase):
         self.assertEqual(body["updated"], 3)
         mock_tm.update_all_tools.assert_called_once()
 
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_status_returns_summary(self, mock_tm_cls):
+        mock_tm = MagicMock()
+        mock_tm.get_tools_status.return_value = {
+            "tools": [],
+            "total": 4,
+            "cached": 0,
+            "missing": 4,
+            "stale": 0,
+            "needs_attention": True,
+            "warn_days": 10,
+        }
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.get("/api/tools/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["needs_attention"])
+        self.assertEqual(body["total"], 4)
+        self.assertEqual(body["warn_days"], 10)
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_update_runs_and_returns_status(self, mock_tm_cls, mock_get_mgr):
+        mock_get_mgr.return_value = MagicMock()
+        mock_tm = MagicMock()
+        mock_tm.update_all_tools.return_value = {"success": True, "updated": 4, "failed": 0, "tools": {}}
+        mock_tm.get_tools_status.return_value = {"needs_attention": False, "missing": 0, "stale": 0}
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.post("/api/tools/update")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["updated"], 4)
+        self.assertIn("status", body)
+        self.assertFalse(body["status"]["needs_attention"])
+        mock_tm.update_all_tools.assert_called_once()
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_update_mirrors_output_to_sse_log(self, mock_tm_cls, mock_get_mgr):
+        """Regression: nav 'Update Tools' progress must reach the SSE log queue
+        so it shows in the 'Output Results' console (not only Advanced Ops)."""
+        import logging
+
+        from utils.logger import enable_sse_logging, get_sse_queue
+
+        # GUI launch calls setup_logging() which sets the root level to INFO;
+        # mirror that here so INFO-level tool progress is not filtered out.
+        logging.getLogger().setLevel(logging.INFO)
+        enable_sse_logging()
+        log_queue = get_sse_queue()
+        while not log_queue.empty():
+            log_queue.get_nowait()
+
+        mock_get_mgr.return_value = MagicMock()
+
+        def make_tm(output_callback=None):
+            tm = MagicMock()
+
+            def _update():
+                # Simulate ToolManager emitting progress via the callback.
+                output_callback("info", "Updating Deployment Tools", None)
+                return {"success": True, "updated": 4, "failed": 0, "tools": {}}
+
+            tm.update_all_tools.side_effect = _update
+            tm.get_tools_status.return_value = {"needs_attention": False}
+            return tm
+
+        mock_tm_cls.side_effect = make_tm
+
+        resp = self.client.post("/api/tools/update")
+        self.assertEqual(resp.status_code, 200)
+
+        messages = []
+        while not log_queue.empty():
+            messages.append(log_queue.get_nowait().get("message", ""))
+        self.assertTrue(
+            any("Updating Deployment Tools" in m for m in messages),
+            "tool update progress should be mirrored to the SSE log queue",
+        )
+
+    def test_api_tools_status_not_dev_gated(self):
+        """Nav indicator must work on non-developer installs too."""
+        app = create_flask_app(config={"DEVELOPER_MODE": False})
+        client = app.test_client()
+        with patch("tool_manager.ToolManager") as mock_tm_cls:
+            mock_tm = MagicMock()
+            mock_tm.get_tools_status.return_value = {"needs_attention": False, "total": 4}
+            mock_tm_cls.return_value = mock_tm
+            resp = client.get("/api/tools/status")
+        self.assertEqual(resp.status_code, 200)
+
     @patch("result_bundler.get_result_bundler")
     def test_bundle_list_empty(self, mock_get_bundler):
         mock_bundler = MagicMock()
@@ -2028,6 +2127,150 @@ class TestTuneReportOverrideMerge(unittest.TestCase):
             original_margin,
             "Helper must not mutate base_config in place",
         )
+
+
+class TestAutoShutdownPolicy(unittest.TestCase):
+    """QP-3 (3): pure auto-shutdown decision policy."""
+
+    def _kwargs(self, **over):
+        base = dict(
+            enabled=True,
+            ever_seen=True,
+            last_heartbeat=100.0,
+            now=130.0,
+            grace_seconds=20.0,
+            job_running=False,
+        )
+        base.update(over)
+        return base
+
+    def test_disabled_never_shuts_down(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(enabled=False)))
+
+    def test_never_seen_browser_stays_up(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(ever_seen=False, last_heartbeat=None)))
+
+    def test_within_grace_stays_up(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(now=110.0)))
+
+    def test_stale_and_idle_shuts_down(self):
+        self.assertTrue(evaluate_auto_shutdown(**self._kwargs(now=125.0)))
+
+    def test_exact_grace_boundary_shuts_down(self):
+        self.assertTrue(evaluate_auto_shutdown(**self._kwargs(now=120.0)))
+
+    def test_job_running_defers_shutdown(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(now=200.0, job_running=True)))
+
+
+class TestHeartbeatRoute(unittest.TestCase):
+    """QP-3 (3): heartbeat route updates liveness state."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_heartbeat_marks_browser_seen_and_returns_ok(self):
+        self.assertFalse(self.app.config["BROWSER_SEEN"])
+        resp = self.client.post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["status"], "ok")
+        self.assertTrue(body["auto_shutdown"])
+        self.assertTrue(self.app.config["BROWSER_SEEN"])
+        self.assertIsNotNone(self.app.config["LAST_HEARTBEAT"])
+
+    def test_heartbeat_not_dev_gated(self):
+        # No --dev-mode: heartbeat must still work on every page.
+        self.assertFalse(self.app.config.get("DEVELOPER_MODE", False))
+        resp = self.client.post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_heartbeat_reports_disabled_when_turned_off(self):
+        app = create_flask_app(config={"auto_shutdown": {"enabled": False}})
+        resp = app.test_client().post("/api/heartbeat")
+        self.assertFalse(resp.get_json()["auto_shutdown"])
+
+
+class TestAnyJobRunning(unittest.TestCase):
+    """QP-3 (3): job-running guard for the watchdog."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+
+    def test_idle_when_no_jobs(self):
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertFalse(_any_job_running(self.app))
+
+    def test_report_job_blocks(self):
+        self.app.config["JOB_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_health_job_blocks(self):
+        self.app.config["HEALTH_JOB_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_oneshot_job_blocks(self):
+        self.app.config["ONESHOT_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_advanced_ops_running_blocks(self):
+        mgr = MagicMock()
+        mgr.is_running.return_value = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=mgr):
+            self.assertTrue(_any_job_running(self.app))
+
+
+class TestUpdateStatusRoute(unittest.TestCase):
+    """QP-3 item 2: in-app update-check route (notify only)."""
+
+    def test_update_status_reports_available(self):
+        app = create_flask_app(config={"updates": {"enabled": True, "include_prereleases": False}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            mock_status.return_value = {
+                "update_available": True,
+                "current_version": "1.5.8-beta",
+                "latest_version": "1.6.0",
+                "latest_url": "http://x/1.6.0",
+                "channel": "stable",
+                "error": None,
+            }
+            resp = client.get("/api/update/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["update_available"])
+        self.assertEqual(body["latest_version"], "1.6.0")
+        self.assertTrue(body["enabled"])
+
+    def test_update_status_disabled_skips_check(self):
+        app = create_flask_app(config={"updates": {"enabled": False}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            resp = client.get("/api/update/status")
+            mock_status.assert_not_called()
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["enabled"])
+        self.assertFalse(body["update_available"])
+
+    def test_update_status_not_dev_gated(self):
+        app = create_flask_app(config={"DEVELOPER_MODE": False, "updates": {"enabled": True}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            mock_status.return_value = {
+                "update_available": False,
+                "current_version": "1.5.8-beta",
+                "latest_version": None,
+                "latest_url": None,
+                "channel": "stable",
+                "error": None,
+            }
+            resp = client.get("/api/update/status")
+        self.assertEqual(resp.status_code, 200)
 
 
 if __name__ == "__main__":

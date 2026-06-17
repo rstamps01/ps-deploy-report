@@ -46,6 +46,10 @@ from data_extractor import create_data_extractor  # noqa: E402
 from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
+# Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
+APP_VERSION = "1.5.8-beta"
+__version__ = APP_VERSION
+
 
 class VastReportGenerator:
     """
@@ -554,7 +558,14 @@ class VastReportGenerator:
                 return False
             self.logger.info("Generating reports...")
 
-            # Ensure output directory exists
+            # Ensure output directory exists.
+            #
+            # QP-2: per-cluster segmentation applies to the app-managed data
+            # directory flows (web/one-shot/advanced-ops), NOT to an explicit
+            # CLI ``--output-dir``. When the operator names an output directory
+            # on the command line we honor it verbatim — nesting artifacts under
+            # ``clusters/<key>/`` there would be surprising and breaks the
+            # documented offline-replay/output contract.
             output_dir = Path(args.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -763,7 +774,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version="VAST As-Built Report Generator 1.5.8-beta")
+    parser.add_argument("--version", action="version", version=f"VAST As-Built Report Generator {APP_VERSION}")
 
     return parser
 
@@ -926,6 +937,19 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
+    # QP-3 (3): auto-shutdown watchdog.  Started here (not in
+    # create_flask_app) so it only runs for the real GUI server and never
+    # for test/headless app instances.  Exits the server once the browser
+    # closes and the app goes idle past the grace window.
+    if flask_app.config.get("AUTO_SHUTDOWN", {}).get("enabled", True):
+        from app import _auto_shutdown_watchdog
+
+        threading.Thread(
+            target=_auto_shutdown_watchdog,
+            args=(flask_app, server),
+            daemon=True,
+        ).start()
+
     if not _wait_for_server(host, bound_port):
         print("ERROR: Flask server failed to start.")
         return 1
@@ -990,7 +1014,7 @@ def _extract_port_from_argv() -> int:
     return parsed
 
 
-def _run_from_json(json_path: str, output_dir: str, logger: Any) -> int:
+def _run_from_json(json_path: str, output_dir: str, logger: Any, config: Optional[Dict[str, Any]] = None) -> int:
     """Regenerate a PDF report from a saved processed-data JSON intermediate.
 
     Skips the API + Data Extractor layers and feeds ``processed_data``
@@ -1047,6 +1071,11 @@ def _run_from_json(json_path: str, output_dir: str, logger: Any) -> int:
 
     cluster_summary = processed_data.get("cluster_summary") or {}
     cluster_name = cluster_summary.get("name") or "unknown"
+
+    # QP-2: per-cluster segmentation applies to the app-managed data directory
+    # flows, NOT to an explicit CLI ``--output-dir``. Offline replay writes the
+    # regenerated PDF directly into the operator-named directory (honored
+    # verbatim), so CI/temp output locations stay predictable.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # ``_replay`` suffix keeps offline regenerations distinguishable
     # from live-collected reports in the same output directory.
@@ -1131,7 +1160,7 @@ def run_from_json() -> int:
         setup_logging(config)
         logger = get_logger(__name__)
 
-        return _run_from_json(args.from_json, args.output_dir, logger)
+        return _run_from_json(args.from_json, args.output_dir, logger, config=config)
 
     except KeyboardInterrupt:
         print("\nOperation cancelled by user")

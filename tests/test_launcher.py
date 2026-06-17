@@ -92,7 +92,9 @@ class TestRunGuiFunction(unittest.TestCase):
             run_gui(port=9999)
 
         mock_make_server.assert_called_once_with("127.0.0.1", 9999, mock_app, threaded=True)
-        mock_thread.start.assert_called_once()
+        # Two daemon threads start: the werkzeug server and the QP-3 (3)
+        # auto-shutdown watchdog (enabled by default).
+        self.assertEqual(mock_thread.start.call_count, 2)
         mock_server.shutdown.assert_called_once()
 
 

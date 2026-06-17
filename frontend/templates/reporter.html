@@ -2036,7 +2036,7 @@ var _validationInFlight = false;
 var _oneShotOutputCursor = 0;
 
 function startReporterLogStream() {
-    stopReporterLogStream();
+    if (reporterLogStream) return;  // ambient stream already listening
     reporterLogStream = new EventSource('/stream/logs');
     reporterLogStream.onmessage = function(e) {
         if (e.data.startsWith(':')) return;
@@ -2053,7 +2053,9 @@ function startReporterLogStream() {
     };
 }
 function stopReporterLogStream() {
-    if (reporterLogStream) { reporterLogStream.close(); reporterLogStream = null; }
+    // Keep the ambient log stream open between runs so global actions such as
+    // "Update Tools" remain visible in Output Results. Intentionally a no-op;
+    // the browser closes the EventSource automatically on page unload.
 }
 
 async function runReporterChecklist() {
@@ -2855,6 +2857,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     outputPane = new OutputPaneCtor('outputPane');
     rptRing = new VastProgress('reporterProgress');
     osRing = new VastProgress('oneShotProgressVast');
+    // Open an ambient log stream so global actions (e.g. nav "Update Tools")
+    // surface in Output Results even when no report/health run is active.
+    startReporterLogStream();
     await loadWorkflows();
     await fetchProfiles();
     toggleDefaultCredentials();

@@ -235,6 +235,49 @@
     </div>
 </div>
 
+<!-- ── Usage & Privacy (local ROI, opt-in) ─────────────────── -->
+<div class="card" id="usageCard" style="margin-bottom:2rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/></svg>
+            <h2 style="font-size:1.15rem;margin:0;color:var(--text-primary);">Usage &amp; Privacy</h2>
+        </div>
+        <label class="usage-toggle" title="Opt in or out of local usage metrics">
+            <input type="checkbox" id="usageConsent">
+            <span id="usageConsentLabel">Usage metrics off</span>
+        </label>
+    </div>
+    <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 0;">
+        Opt-in, anonymous, and <strong>local-only</strong> — nothing leaves this machine.
+        Estimates the time this tool has saved you. No hostnames, cluster identity, or credentials are recorded.
+    </p>
+    <div id="usageStats" class="usage-stats" style="margin-top:12px;display:none;">
+        <div class="usage-stat">
+            <div class="usage-stat-value" id="usageHours">0</div>
+            <div class="usage-stat-label">Est. hours saved</div>
+        </div>
+        <div class="usage-stat">
+            <div class="usage-stat-value" id="usageEvents">0</div>
+            <div class="usage-stat-label">Operations tracked</div>
+        </div>
+        <div class="usage-stat">
+            <div class="usage-stat-value" id="usageSince">—</div>
+            <div class="usage-stat-label">Since</div>
+        </div>
+    </div>
+    <p id="usageOffNote" style="font-size:0.8rem;color:var(--text-secondary);margin:12px 0 0;font-style:italic;">
+        Turn on usage metrics to see your local time-saved summary.
+    </p>
+</div>
+<style>
+.usage-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.85rem;color:var(--text-secondary);user-select:none;}
+.usage-toggle input{width:16px;height:16px;cursor:pointer;}
+.usage-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.usage-stat{background:var(--bg-elevated);border:1px solid var(--border);border-radius:8px;padding:12px;text-align:center;}
+.usage-stat-value{font-size:1.5rem;font-weight:700;color:var(--accent);}
+.usage-stat-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-top:4px;}
+</style>
+
 <!-- ── Before You Begin ──────────────────────────────────── -->
 <h2 style="font-size:1.15rem;margin-bottom:0.6rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
@@ -483,6 +526,47 @@
 
     poll();
     setInterval(poll, 15000);
+
+    /* ── Usage & Privacy (local ROI, opt-in) ── */
+    var usageConsent = document.getElementById('usageConsent');
+    var usageConsentLabel = document.getElementById('usageConsentLabel');
+    var usageStats = document.getElementById('usageStats');
+    var usageOffNote = document.getElementById('usageOffNote');
+
+    function renderUsage(data) {
+        if (!usageConsent) return;
+        usageConsent.checked = !!data.enabled;
+        usageConsentLabel.textContent = data.enabled ? 'Usage metrics on' : 'Usage metrics off';
+        if (data.enabled) {
+            usageStats.style.display = 'grid';
+            usageOffNote.style.display = 'none';
+            document.getElementById('usageHours').textContent = (data.estimated_hours_saved || 0);
+            document.getElementById('usageEvents').textContent = (data.total_events || 0);
+            var since = data.first_event ? String(data.first_event).slice(0, 10) : '—';
+            document.getElementById('usageSince').textContent = since;
+        } else {
+            usageStats.style.display = 'none';
+            usageOffNote.style.display = 'block';
+        }
+    }
+
+    if (usageConsent) {
+        fetch('/api/telemetry/status')
+            .then(function(r) { return r.json(); })
+            .then(renderUsage)
+            .catch(function() {});
+
+        usageConsent.addEventListener('change', function() {
+            fetch('/api/telemetry/consent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: usageConsent.checked })
+            })
+                .then(function(r) { return r.json(); })
+                .then(renderUsage)
+                .catch(function() {});
+        });
+    }
 })();
 </script>
 {% endblock %}

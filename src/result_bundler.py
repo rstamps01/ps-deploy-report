@@ -16,6 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from utils.cluster_paths import cluster_paths, iter_cluster_roots, read_cluster_marker
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -157,6 +158,51 @@ class ResultBundler:
             pass
         return None
 
+    @staticmethod
+    def _find_cluster_root(
+        data_dir: Path,
+        cluster_ip: Optional[str],
+        *,
+        name: Optional[str] = None,
+        psnt: Optional[str] = None,
+        guid: Optional[str] = None,
+    ) -> Optional[Path]:
+        """Return the per-cluster root for the requested cluster, or ``None``.
+
+        Matching keys on marker IDENTITY in precedence order
+        ``psnt -> guid -> name`` so two distinct per-cluster folders that share
+        the tech-port ``cluster_ip`` (``192.168.2.2``) are never collapsed.
+
+        ``cluster_ip`` is only used as a last resort, and only when it uniquely
+        identifies a single folder (a real, per-cluster management IP). A shared
+        tech-port IP matches many folders, so it is intentionally ignored for
+        disambiguation — the caller then falls back to legacy-flat collection
+        rather than picking an arbitrary folder.
+
+        Returns ``None`` when no ``clusters/`` dir exists or nothing matches.
+        """
+        roots = iter_cluster_roots(data_dir)
+        if not roots:
+            return None
+        markers = [(root, read_cluster_marker(root)) for root in roots]
+
+        def _norm(value: Any) -> str:
+            return str(value).strip() if value not in (None, "") else ""
+
+        for field, wanted in (("psnt", psnt), ("guid", guid), ("name", name)):
+            target = _norm(wanted)
+            if not target:
+                continue
+            hits = [root for root, marker in markers if _norm(marker.get(field)) == target]
+            if hits:
+                return hits[0]
+
+        if cluster_ip:
+            ip_hits = [root for root, marker in markers if marker.get("cluster_ip") == cluster_ip]
+            if len(ip_hits) == 1:
+                return ip_hits[0]
+        return None
+
     # ------------------------------------------------------------------
     # Cluster-identity helpers  (delegates to result_scanner functions)
     # ------------------------------------------------------------------
@@ -292,21 +338,50 @@ class ResultBundler:
         if since is not None:
             self.emit("info", f"Only including results produced at or after {since.isoformat(timespec='seconds')}")
 
-        if results_dir is None:
-            from utils import get_data_dir
+        from utils import get_data_dir
 
-            results_dir = get_data_dir() / "output"
+        if results_dir is None:
+            data_dir = get_data_dir()
+            results_dir = data_dir / "output"
+        else:
+            data_dir = Path(results_dir).parent
+
+        # QP-2: folder-scoped first. Resolve the per-cluster folder by marker
+        # IDENTITY (psnt/guid/name from metadata), NOT by the tech-port
+        # cluster_ip, so cluster "alpha" never picks up cluster "bravo"'s files
+        # when both markers carry the shared 192.168.2.2. Within the folder,
+        # files are already cluster-scoped, so match by latest (match_ip=None) —
+        # embedded tech-port IPs would otherwise fail to match. Fall back to
+        # legacy-flat matching only when no per-cluster folder is identified
+        # (pure-legacy install, or an IP that can't be disambiguated).
+        seg_root = self._find_cluster_root(
+            data_dir,
+            cluster_ip,
+            name=(self._metadata.get("cluster_name") or None),
+            psnt=(self._metadata.get("psnt") or None),
+            guid=(self._metadata.get("guid") or None),
+        )
+        if seg_root is not None:
+            cp = cluster_paths(data_dir, seg_root.name)
+            results_dir = cp.output
+            reports_dir = cp.reports
+            match_ip: Optional[str] = None
+            self.emit("info", f"Using per-cluster folder for {cluster_ip or 'cluster'}: {seg_root.name}")
+        else:
+            reports_dir = get_data_dir() / "reports"
+            match_ip = cluster_ip
+
         collected: Dict[str, Path] = {}
         stale: Dict[str, Path] = {}
 
         def _record(category: str, candidates: List[Path], match_fn) -> None:
-            hit = self._pick_latest(candidates, cluster_ip, match_fn, since=since)
+            hit = self._pick_latest(candidates, match_ip, match_fn, since=since)
             if hit:
                 collected[category] = hit
                 self.emit("success", f"Found {category}: {hit.name}")
                 return
             if since is not None:
-                stale_hit = self._pick_stale(candidates, cluster_ip, match_fn, since)
+                stale_hit = self._pick_stale(candidates, match_ip, match_fn, since)
                 if stale_hit:
                     stale[category] = stale_hit
                     self.emit(
@@ -396,14 +471,11 @@ class ResultBundler:
             )
 
         # -- Report PDFs --
-        from utils import get_data_dir as _gdd
-
-        reports_dir = _gdd() / "reports"
         if reports_dir.exists():
             pdf_candidates = list(reports_dir.glob("vast_asbuilt_report_*.pdf"))
             hit = self._pick_latest(
                 pdf_candidates,
-                cluster_ip,
+                match_ip,
                 lambda f, ip: (self._sidecar_matches(f, ip) or self._filename_has_ip(f, ip)),
                 since=since,
             )
@@ -422,7 +494,7 @@ class ResultBundler:
             elif since is not None:
                 stale_hit = self._pick_stale(
                     pdf_candidates,
-                    cluster_ip,
+                    match_ip,
                     lambda f, ip: (self._sidecar_matches(f, ip) or self._filename_has_ip(f, ip)),
                     since,
                 )

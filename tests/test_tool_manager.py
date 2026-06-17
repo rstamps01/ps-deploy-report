@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -8,7 +10,7 @@ import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from tool_manager import ToolManager
+from tool_manager import TOOL_FRESHNESS_WARN_DAYS, ToolManager
 
 
 @pytest.fixture
@@ -83,6 +85,80 @@ class TestToolManagerLocalOps:
         result = tool_manager.update_all_tools()
         assert "tools" in result
         assert set(result["tools"].keys()) == set(ToolManager.TOOLS.keys())
+
+
+def _write_tool(tm, name, age_days=0):
+    """Create a cached tool file and backdate its mtime by ``age_days``."""
+    p = tm._local_tools_dir / name
+    p.write_bytes(b"x")
+    if age_days:
+        old = time.time() - (age_days * 86400)
+        os.utime(p, (old, old))
+    return p
+
+
+class TestToolFreshness:
+    def test_freshness_constant_is_ten_days(self):
+        assert TOOL_FRESHNESS_WARN_DAYS == 10
+
+    def test_fresh_tool_not_stale(self, tool_manager):
+        _write_tool(tool_manager, "vnetmap.py", age_days=1)
+        info = tool_manager.get_tool_info("vnetmap.py")
+        assert info["cached"] is True
+        assert info["stale"] is False
+        assert info["age_days"] == 1
+
+    def test_old_tool_is_stale(self, tool_manager):
+        _write_tool(tool_manager, "vnetmap.py", age_days=15)
+        info = tool_manager.get_tool_info("vnetmap.py")
+        assert info["stale"] is True
+        assert info["age_days"] >= TOOL_FRESHNESS_WARN_DAYS
+
+    def test_missing_tool_has_no_age(self, tool_manager):
+        info = tool_manager.get_tool_info("vnetmap.py")
+        assert info["cached"] is False
+        assert info.get("stale") is False
+        assert "age_days" not in info
+
+
+class TestToolStatusSummary:
+    def test_all_missing_needs_attention(self, tool_manager):
+        status = tool_manager.get_tools_status()
+        assert status["total"] == 4
+        assert status["cached"] == 0
+        assert status["missing"] == 4
+        assert status["stale"] == 0
+        assert status["needs_attention"] is True
+        assert status["warn_days"] == TOOL_FRESHNESS_WARN_DAYS
+        assert len(status["tools"]) == 4
+
+    def test_all_fresh_no_attention(self, tool_manager):
+        for name in ToolManager.TOOLS:
+            _write_tool(tool_manager, name, age_days=2)
+        status = tool_manager.get_tools_status()
+        assert status["cached"] == 4
+        assert status["missing"] == 0
+        assert status["stale"] == 0
+        assert status["needs_attention"] is False
+
+    def test_one_stale_triggers_attention(self, tool_manager):
+        names = list(ToolManager.TOOLS)
+        _write_tool(tool_manager, names[0], age_days=20)
+        for name in names[1:]:
+            _write_tool(tool_manager, name, age_days=1)
+        status = tool_manager.get_tools_status()
+        assert status["missing"] == 0
+        assert status["stale"] == 1
+        assert status["needs_attention"] is True
+
+    def test_one_missing_triggers_attention(self, tool_manager):
+        names = list(ToolManager.TOOLS)
+        for name in names[1:]:
+            _write_tool(tool_manager, name, age_days=1)
+        status = tool_manager.get_tools_status()
+        assert status["missing"] == 1
+        assert status["stale"] == 0
+        assert status["needs_attention"] is True
 
 
 class TestToolManagerDeploy:

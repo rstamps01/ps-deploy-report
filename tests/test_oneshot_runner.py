@@ -1142,6 +1142,7 @@ class TestPrevalidationSwitchSshFallback(unittest.TestCase):
         self.assertEqual(runner._switch_password_by_ip, {})
 
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_validate_switch_ssh") as mock_probe,
             patch.object(runner, "_run_operations"),
             patch.object(runner, "_run_bundling"),
@@ -1175,6 +1176,7 @@ class TestPrevalidationSwitchSshFallback(unittest.TestCase):
         )
 
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_validate_switch_ssh") as mock_probe,
             patch.object(runner, "_run_operations"),
             patch.object(runner, "_run_bundling"),
@@ -1283,6 +1285,7 @@ class TestOneShotIncludeHealth(unittest.TestCase):
         """run_all always runs operations and bundling."""
         runner = self._make_runner(ops=["switch_config"], include_health=False)
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_run_operations") as mock_ops,
             patch.object(runner, "_run_bundling") as mock_bundle,
         ):
@@ -1295,6 +1298,7 @@ class TestOneShotIncludeHealth(unittest.TestCase):
         """When include_report=True, _run_report is called."""
         runner = self._make_runner(ops=["switch_config"], include_health=True, include_report=True)
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_run_operations"),
             patch.object(runner, "_run_report") as mock_report,
             patch.object(runner, "_run_bundling"),
@@ -1315,6 +1319,7 @@ class TestOneShotIncludeHealth(unittest.TestCase):
             include_report=False,
         )
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_run_operations"),
             patch.object(runner, "_run_bundling"),
         ):
@@ -1333,6 +1338,7 @@ class TestOneShotIncludeHealth(unittest.TestCase):
             include_report=True,
         )
         with (
+            patch.object(runner, "_resolve_cluster_identity_early"),
             patch.object(runner, "_run_operations"),
             patch.object(runner, "_run_report"),
             patch.object(runner, "_run_bundling"),

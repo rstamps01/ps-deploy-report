@@ -18,7 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from utils.logger import get_logger
 from utils.ssh_adapter import run_ssh_command
@@ -75,15 +75,20 @@ class ScriptRunner:
     def __init__(
         self,
         output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None,
+        local_dir: Optional[Union[str, Path]] = None,
     ):
         """
         Initialize the ScriptRunner.
 
         Args:
             output_callback: Callback function for logging output (level, message, details)
+            local_dir: Optional override for the local script output directory.
+                QP-2 callers point this at a per-cluster ``scripts`` dir so
+                artifacts are segmented by cluster.  When ``None`` the legacy
+                ``<data_dir>/output/scripts`` location is used (default).
         """
         self._output_callback = output_callback
-        self._local_dir: Optional[Path] = None
+        self._local_dir: Optional[Path] = Path(local_dir) if local_dir else None
         # RM-8: per-stream state flag so ``_classify_stderr_line`` can
         # treat code-snippet lines inside a Python traceback (the ones
         # indented below a ``File "...", line N, in func`` frame) as
@@ -103,13 +108,17 @@ class ScriptRunner:
             logger.log({"info": 20, "warn": 30, "error": 40, "success": 20, "debug": 10}.get(level, 20), message)
 
     def get_local_dir(self) -> Path:
-        """Get the local directory for script storage."""
+        """Get the local directory for script storage (creating it if needed)."""
         if self._local_dir is None:
             from utils import get_data_dir
 
             self._local_dir = get_data_dir() / self.DEFAULT_LOCAL_DIR
-            self._local_dir.mkdir(parents=True, exist_ok=True)
+        self._local_dir.mkdir(parents=True, exist_ok=True)
         return self._local_dir
+
+    def set_local_dir(self, local_dir: Union[str, Path]) -> None:
+        """Point the runner at ``local_dir`` for script output (QP-2 segmentation)."""
+        self._local_dir = Path(local_dir)
 
     def check_prerequisites(self, host: str, username: str, password: str) -> Tuple[bool, str]:
         """

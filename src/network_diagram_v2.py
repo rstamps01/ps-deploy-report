@@ -52,16 +52,22 @@ except (ImportError, OSError):
 # Color palette (B7)
 # ---------------------------------------------------------------------------
 # NET-3: subnet-based edge coloring replaces the deprecated Network A/B
-# classifier. Edges are colored by the switch's serviced /24 subnet:
-# the lowest-mgmt-IP switch's subnet gets palette[0] (design-mandated green),
-# the next gets palette[1] (design-mandated blue), additional subnets cycle
-# through the rest of the palette. Switches sharing a subnet share a color.
+# classifier. Edges are colored by the connected device's /24 subnet: the
+# lowest-mgmt-IP switch's subnet gets palette[0], the next gets palette[1],
+# and additional subnets cycle through the rest. Switches/devices sharing a
+# subnet share a color.
+#
+# Palette: a modern, cleanly contrasted set tuned for thin 2px lines on a
+# white background that overlap and may be semi-transparent. Entries 1 and 2
+# (most-used) are maximally distinct; the set stays distinguishable under
+# common color-vision deficiencies and avoids the reserved IPL purple and
+# spine gray. Sourced via the design assistant MCP (2026-06-16).
 SUBNET_COLOR_PALETTE: List[str] = [
-    "#0F9D58",  # teal-green (design-mandated for first subnet)
-    "#4285F4",  # deep blue  (design-mandated for second subnet)
-    "#FF6F00",  # amber/orange
-    "#00838F",  # dark teal
-    "#AB47BC",  # mauve (intentionally distinct from IPL purple)
+    "#1D4ED8",  # blue (primary, first subnet)
+    "#F59E0B",  # amber (second subnet — max contrast vs blue)
+    "#059669",  # emerald
+    "#DB2777",  # magenta/pink
+    "#06B6D4",  # cyan
 ]
 # Backward-compatible aliases — kept so existing test/code references resolve.
 # Prefer SUBNET_COLOR_PALETTE for new code.
@@ -69,6 +75,10 @@ COLOR_NETWORK_A = SUBNET_COLOR_PALETTE[0]
 COLOR_NETWORK_B = SUBNET_COLOR_PALETTE[1]
 COLOR_IPL = "#7B1FA2"  # purple
 COLOR_SPINE_FABRIC = "#757575"  # gray
+# Cabling validation banner colors (independent of the connection palette so a
+# restyle of the lines never changes PASS/FAIL semantics).
+COLOR_VALIDATION_PASS = "#059669"  # emerald green
+COLOR_VALIDATION_FAIL = "#EA4335"  # red
 COLOR_DEVICE_STROKE = "#2F2042"
 COLOR_CBOX_FILL = "#c8e6f8"
 COLOR_DBOX_FILL = "#ffe0b2"
@@ -88,6 +98,10 @@ DEVICE_GAP = 6
 SWITCH_W = 110
 SWITCH_H = 32
 SWITCH_GAP = 24
+# Device->switch landing fan: spacing between adjacent landing points and the
+# clearance reserved on each side of the centered fan within the switch box.
+LANDING_STAGGER = 5.0
+LANDING_FAN_PAD = 12.0
 RACK_PAD_X = 16
 RACK_PAD_TOP = 40  # space for rack header text
 RACK_PAD_BOTTOM = 12
@@ -855,20 +869,19 @@ class RackCentricDiagramGenerator:
         return max(counts.items(), key=lambda kv: (kv[1], -hash(kv[0]) if False else kv[0]))[0]
 
     @staticmethod
-    def _assign_subnet_colors(
+    def _assign_subnet_color_map(
         switches: List[Dict[str, Any]],
         port_map: List[Dict[str, Any]],
     ) -> Dict[str, str]:
-        """Map each switch's mgmt_ip to its NET-3 subnet color.
+        """Map each /24 subnet (``"a.b.c"``) to its NET-3 palette color.
 
-        Switches sharing a /24 subnet share the same color. Subnets are
-        colored in order of the lowest mgmt_ip serving them: first subnet
-        gets ``SUBNET_COLOR_PALETTE[0]`` (green), second gets ``[1]`` (blue),
-        and so on, cycling through the palette for additional subnets.
-
-        Switches without subnet evidence (no matching port_map rows) are
-        omitted from the result; the renderer falls back to a default
-        color in that case.
+        Subnets are colored in order of the lowest mgmt_ip of the switch(es)
+        that canonically serve them: first subnet gets
+        ``SUBNET_COLOR_PALETTE[0]`` (green), second ``[1]`` (blue), cycling
+        for more. This is the single source of truth shared by the legend
+        (projected to switch mgmt_ip via ``_assign_subnet_colors``) and by the
+        per-edge coloring (keyed on the connected device's IP subnet), so the
+        two never disagree.
         """
         if not switches:
             return {}
@@ -897,13 +910,54 @@ class RackCentricDiagramGenerator:
         ordered_subnets = sorted(subnet_to_min_ip.keys(), key=lambda s: subnet_to_min_ip[s])
 
         # 3) assign palette colors (cycling)
-        subnet_to_color: Dict[str, str] = {}
         palette_n = len(SUBNET_COLOR_PALETTE)
-        for idx, subnet in enumerate(ordered_subnets):
-            subnet_to_color[subnet] = SUBNET_COLOR_PALETTE[idx % palette_n]
+        return {subnet: SUBNET_COLOR_PALETTE[idx % palette_n] for idx, subnet in enumerate(ordered_subnets)}
 
-        # 4) project back to switch_ip -> color
-        return {ip: subnet_to_color[subnet] for ip, subnet in sw_subnet.items()}
+    @staticmethod
+    def _assign_subnet_colors(
+        switches: List[Dict[str, Any]],
+        port_map: List[Dict[str, Any]],
+    ) -> Dict[str, str]:
+        """Map each switch's mgmt_ip to its NET-3 subnet color (legend / back-compat).
+
+        Projection of ``_assign_subnet_color_map`` onto each switch's canonical
+        subnet. Switches without subnet evidence are omitted; the renderer
+        falls back to a default color in that case.
+        """
+        subnet_to_color = RackCentricDiagramGenerator._assign_subnet_color_map(switches, port_map)
+        if not subnet_to_color:
+            return {}
+        out: Dict[str, str] = {}
+        for sw in switches:
+            mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
+            if not mgmt_ip:
+                continue
+            subnet = RackCentricDiagramGenerator._compute_switch_subnet(mgmt_ip, port_map)
+            if subnet and subnet in subnet_to_color:
+                out[mgmt_ip] = subnet_to_color[subnet]
+        return out
+
+    @staticmethod
+    def _edge_color(
+        node_ip: str,
+        sw_ip: str,
+        subnet_color_by_subnet: Optional[Dict[str, str]],
+        switch_color_map: Optional[Dict[str, str]],
+    ) -> str:
+        """Color a device->switch edge by the CONNECTED DEVICE's IP /24 subnet.
+
+        This makes a mis-cabled strand render in the network color of the
+        device it actually carries (e.g. a 172.16.64.x line stays Blue even on
+        a Network-A switch). Falls back to the switch's canonical subnet color,
+        then ``SUBNET_COLOR_PALETTE[0]``, so edges still render when a device IP
+        lacks subnet evidence.
+        """
+        node_subnet = RackCentricDiagramGenerator._ipv4_subnet_24(node_ip)
+        if subnet_color_by_subnet and node_subnet and node_subnet in subnet_color_by_subnet:
+            return subnet_color_by_subnet[node_subnet]
+        if switch_color_map and sw_ip in switch_color_map:
+            return switch_color_map[sw_ip]
+        return SUBNET_COLOR_PALETTE[0]
 
     @staticmethod
     def _build_switch_ip_alias(
@@ -1176,10 +1230,10 @@ class RackCentricDiagramGenerator:
           connections (sum of off_subnet set sizes across all switches).
         """
         if not miscabling:
-            return ("Cabling validation: PASS", SUBNET_COLOR_PALETTE[0])  # green
+            return ("Cabling validation: PASS", COLOR_VALIDATION_PASS)  # green
         count = sum(len(off_subnets) for off_subnets in miscabling.values())
         word = "connection" if count == 1 else "connections"
-        return (f"Cabling validation: {count} mis-cabled {word} detected", "#EA4335")  # red
+        return (f"Cabling validation: {count} mis-cabled {word} detected", COLOR_VALIDATION_FAIL)  # red
 
     @staticmethod
     def _extract_manual_switch_to_rack(
@@ -1287,6 +1341,58 @@ class RackCentricDiagramGenerator:
     # ------------------------------------------------------------------
     # SVG rendering
     # ------------------------------------------------------------------
+    @staticmethod
+    def _ip_octets(ip: str) -> Tuple[int, ...]:
+        """Numeric IP tuple for stable sorting; invalid IPs sort last."""
+        try:
+            return tuple(int(p) for p in str(ip).split("."))
+        except (ValueError, AttributeError):
+            return (999, 999, 999, 999)
+
+    @staticmethod
+    def _build_landing_slots(
+        port_map: List[Dict[str, Any]], drawable_switch_ips: set
+    ) -> Tuple[Dict[str, Dict[Tuple[str, str, str], int]], Dict[str, int]]:
+        """Assign each distinct (switch_ip, node_ip, network) connection a
+        stable per-switch slot index so the device->switch fan can be centered.
+
+        Returns ``(slots, totals)`` where ``slots[sw_ip][conn_key]`` is the
+        0-based slot and ``totals[sw_ip]`` is the number of connections landing
+        on that switch. Only switches in ``drawable_switch_ips`` and drawable
+        interfaces are counted, matching the draw loop's filters.
+        """
+        per_switch: Dict[str, set] = {}
+        for conn in port_map or []:
+            sw_ip = conn.get("switch_ip", "")
+            if not sw_ip or sw_ip not in drawable_switch_ips:
+                continue
+            if not RackCentricDiagramGenerator._is_drawable_interface(conn.get("interface", ""), conn):
+                continue
+            key = (sw_ip, conn.get("node_ip", ""), conn.get("network", ""))
+            per_switch.setdefault(sw_ip, set()).add(key)
+
+        slots: Dict[str, Dict[Tuple[str, str, str], int]] = {}
+        totals: Dict[str, int] = {}
+        for sw_ip, keys in per_switch.items():
+            ordered = sorted(keys, key=lambda k: (RackCentricDiagramGenerator._ip_octets(k[1]), k[2]))
+            slots[sw_ip] = {k: i for i, k in enumerate(ordered)}
+            totals[sw_ip] = len(ordered)
+        return slots, totals
+
+    @staticmethod
+    def _fan_landing_x(sw_cx: float, slot: int, total: int, stagger: float = 5.0) -> float:
+        """X where connection ``slot`` of ``total`` lands, centered on ``sw_cx``."""
+        return sw_cx + (slot - (total - 1) / 2.0) * stagger
+
+    @staticmethod
+    def _dynamic_switch_width(max_conns: int, stagger: float = 5.0, pad: float = 12.0) -> float:
+        """Switch box width that contains a centered fan of ``max_conns`` lines.
+
+        Floors at the base ``SWITCH_W`` so sparse clusters keep their compact
+        look; grows by ``(n-1)*stagger + 2*pad`` once the fan needs more room.
+        """
+        return max(float(SWITCH_W), (max(int(max_conns), 1) - 1) * stagger + 2 * pad)
+
     def _render_page(
         self,
         svgwrite: Any,
@@ -1301,12 +1407,28 @@ class RackCentricDiagramGenerator:
         """Render a single page SVG and return the XML string."""
         num_racks = len(racks)
 
+        # QP-1: size each switch box (and therefore the rack and the overall
+        # diagram) so its device->switch landing fan fits within the switch's
+        # width at the fixed line spacing. The fan is centered on the switch,
+        # so the box must cover (n-1)*stagger plus padding on each side.
+        leaf_sw_ips = {
+            sw.get("mgmt_ip")
+            for r in racks
+            for sw in (r.get("switches", []) or [])[:2]
+            if isinstance(sw, dict) and sw.get("mgmt_ip")
+        }
+        landing_slots, landing_totals = self._build_landing_slots(port_map, leaf_sw_ips)
+        max_conns_per_switch = max(landing_totals.values(), default=0)
+        switch_w = self._dynamic_switch_width(max_conns_per_switch, LANDING_STAGGER, LANDING_FAN_PAD)
+        # Devices span the full switch-pair row so the rack reads as balanced.
+        device_w = max(float(DEVICE_W), 2 * switch_w + SWITCH_GAP)
+
         # Calculate rack column dimensions
         max_devs = max((len(r["cboxes"]) + len(r["bottom_devices"]) for r in racks), default=4)
         has_bottom_devs = any(r["bottom_devices"] for r in racks)
         separator_space = DEVICE_GAP * 4 if has_bottom_devs else 0
         rack_inner_h = SWITCH_H + SWITCH_GAP + max_devs * (DEVICE_H + DEVICE_GAP) + DEVICE_GAP * 2 + separator_space
-        rack_w = DEVICE_W + 2 * RACK_PAD_X
+        rack_w = device_w + 2 * RACK_PAD_X
         rack_h = RACK_PAD_TOP + rack_inner_h + RACK_PAD_BOTTOM
 
         has_spine = len(spines) > 0
@@ -1315,6 +1437,9 @@ class RackCentricDiagramGenerator:
         # NET-3: assign a subnet color to each switch (computed up front so it
         # can size the legend). Edges use this color to group by /24 subnet.
         subnet_color_map: Dict[str, str] = self._assign_subnet_colors(_all_switches, port_map)
+        # Per-subnet color map (keyed by /24) used to color edges by the
+        # connected device's IP subnet rather than the switch's subnet.
+        subnet_color_by_subnet: Dict[str, str] = self._assign_subnet_color_map(_all_switches, port_map)
 
         # Compute legend items up front so the canvas is wide enough to hold
         # the whole legend row — otherwise a narrow 2-rack page clips the
@@ -1440,7 +1565,7 @@ class RackCentricDiagramGenerator:
             # SW-SP-02 -> C02). Spines whose rack is unknown fall back to an
             # evenly distributed centered row. Track per-rack counts so two
             # spines in the same rack don't overlap.
-            fallback_start = (total_w - len(spines) * (SWITCH_W + 40)) / 2
+            fallback_start = (total_w - len(spines) * (switch_w + 40)) / 2
             per_rack_count: Dict[int, int] = {}
             for i, sp in enumerate(spines):
                 assigned_rack = sp.get("_assigned_rack", "") if isinstance(sp, dict) else ""
@@ -1449,23 +1574,24 @@ class RackCentricDiagramGenerator:
                     nth = per_rack_count.get(rack_index, 0)
                     per_rack_count[rack_index] = nth + 1
                     # Offset multiple spines in the same rack side by side.
-                    sx = _rack_center_x(rack_index) - SWITCH_W / 2 + (nth - 0) * (SWITCH_W + 12)
+                    sx = _rack_center_x(rack_index) - switch_w / 2 + (nth - 0) * (switch_w + 12)
                 else:
-                    sx = fallback_start + i * (SWITCH_W + 40)
+                    sx = fallback_start + i * (switch_w + 40)
                 sy = content_y + 10
-                hostname = sp.get("hostname", f"Spine-{i+1}")
+                sp_name = sp.get("hostname") or sp.get("name") or f"Spine-{i+1}"
+                sp_mgmt = sp.get("mgmt_ip", "")
                 self._draw_switch_node(
                     dwg,
                     sx,
                     sy,
-                    SWITCH_W,
+                    switch_w,
                     SWITCH_H,
-                    f"SP{i+1}",
-                    hostname,
+                    sp_name,
+                    sp_mgmt,
                     self._fill("grad_spine"),
                     COLOR_DEVICE_STROKE,
                 )
-                spine_positions[sp.get("mgmt_ip", f"spine_{i}")] = (sx + SWITCH_W / 2, sy + SWITCH_H)
+                spine_positions[sp.get("mgmt_ip", f"spine_{i}")] = (sx + switch_w / 2, sy + SWITCH_H)
 
             content_y += SPINE_ROW_H + SPINE_GAP
 
@@ -1479,7 +1605,7 @@ class RackCentricDiagramGenerator:
         switch_centers: Dict[str, Tuple[float, float]] = {}
         rack_switch_ips_by_index: List[set] = []
         switch_rack_idx: Dict[str, int] = {}
-        sw_pair_w_pre = min(SWITCH_W, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
+        sw_pair_w_pre = min(switch_w, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
         for ri_pre, rack_pre in enumerate(racks):
             rx_pre = rack_x_start + ri_pre * (rack_w + RACK_GAP)
             sw_y_pre = content_y + RACK_PAD_TOP
@@ -1545,23 +1671,22 @@ class RackCentricDiagramGenerator:
             # Local leaf switches at top of rack
             rack_switches = rack.get("switches", [])
             sw_y = ry + RACK_PAD_TOP
-            sw_pair_w = min(SWITCH_W, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
+            sw_pair_w = min(switch_w, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
             for si, sw in enumerate(rack_switches[:2]):
                 sx = rx + RACK_PAD_X + si * (sw_pair_w + SWITCH_GAP)
-                designation = "SWA" if si == 0 else "SWB"
-                hostname = sw.get("hostname", "") if isinstance(sw, dict) else ""
+                sw_name = (sw.get("hostname") or sw.get("name", "")) if isinstance(sw, dict) else ""
+                mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
                 self._draw_switch_node(
                     dwg,
                     sx,
                     sw_y,
                     sw_pair_w,
                     SWITCH_H,
-                    designation,
-                    hostname,
+                    sw_name,
+                    mgmt_ip,
                     self._fill("grad_switch"),
                     COLOR_DEVICE_STROKE,
                 )
-                mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
                 switch_centers[mgmt_ip] = (sx + sw_pair_w / 2, sw_y + SWITCH_H)
 
             # IPL between paired leaf switches — only for non-leaf/spine
@@ -1631,7 +1756,7 @@ class RackCentricDiagramGenerator:
                     dwg,
                     dev_x,
                     dev_y,
-                    DEVICE_W,
+                    device_w,
                     DEVICE_H,
                     cb_name,
                     self._fill("grad_cbox"),
@@ -1648,7 +1773,7 @@ class RackCentricDiagramGenerator:
                     cb,
                     dev_x,
                     dev_y,
-                    DEVICE_W,
+                    device_w,
                     DEVICE_H,
                     switch_centers,
                     rack_switches,
@@ -1661,6 +1786,10 @@ class RackCentricDiagramGenerator:
                     gutter_mid_x=gutter_mid_x,
                     subnet_color_map=subnet_color_map,
                     edge_filter="same_rack",
+                    landing_slots=landing_slots,
+                    landing_totals=landing_totals,
+                    switch_w=switch_w,
+                    subnet_color_by_subnet=subnet_color_by_subnet,
                 )
                 # Stash device geometry for the post-loop cross-rack pass.
                 pending_cross_rack.append(
@@ -1704,7 +1833,7 @@ class RackCentricDiagramGenerator:
                     dwg,
                     dev_x,
                     dev_y,
-                    DEVICE_W,
+                    device_w,
                     DEVICE_H,
                     bd_name,
                     grad,
@@ -1720,7 +1849,7 @@ class RackCentricDiagramGenerator:
                     bd,
                     dev_x,
                     dev_y,
-                    DEVICE_W,
+                    device_w,
                     DEVICE_H,
                     switch_centers,
                     rack_switches,
@@ -1733,6 +1862,10 @@ class RackCentricDiagramGenerator:
                     gutter_mid_x=gutter_mid_x,
                     subnet_color_map=subnet_color_map,
                     edge_filter="same_rack",
+                    landing_slots=landing_slots,
+                    landing_totals=landing_totals,
+                    switch_w=switch_w,
+                    subnet_color_by_subnet=subnet_color_by_subnet,
                 )
                 pending_cross_rack.append(
                     {
@@ -1837,7 +1970,7 @@ class RackCentricDiagramGenerator:
                 entry["device"],
                 entry["dev_x"],
                 entry["dev_y"],
-                DEVICE_W,
+                device_w,
                 DEVICE_H,
                 switch_centers,
                 entry["rack_switches"],
@@ -1850,6 +1983,10 @@ class RackCentricDiagramGenerator:
                 gutter_mid_x=gutter_mid_x,
                 subnet_color_map=subnet_color_map,
                 edge_filter="cross_rack",
+                landing_slots=landing_slots,
+                landing_totals=landing_totals,
+                switch_w=switch_w,
+                subnet_color_by_subnet=subnet_color_by_subnet,
             )
 
         # ----- Legend -----
@@ -2002,12 +2139,17 @@ class RackCentricDiagramGenerator:
         y: float,
         w: float,
         h: float,
-        designation: str,
-        hostname: str,
+        primary_label: str,
+        subtitle: str,
         fill: str,
         stroke: str,
     ) -> None:
-        """Draw a switch box with a bold designation label and small hostname subtitle."""
+        """Draw a switch box with a bold name label and a small mgmt-IP subtitle.
+
+        ``primary_label`` is the switch name/hostname (bold, primary) and
+        ``subtitle`` is its management IP (small, secondary). The legacy
+        SWA/SWB/SP1/SP2 designations are no longer rendered.
+        """
         dwg.add(
             dwg.rect(
                 insert=(x, y),
@@ -2027,23 +2169,24 @@ class RackCentricDiagramGenerator:
 
         text_x = x + (24 if self.device_icon_mode == "flat" else 6)
 
-        dwg.add(
-            dwg.text(
-                designation,
-                insert=(text_x, y + h / 2 - 1),
-                font_size="10px",
-                font_family="Helvetica, Arial, sans-serif",
-                font_weight="bold",
-                fill=COLOR_LABEL,
-            )
-        )
-
-        if hostname:
-            avail = int((w - (text_x - x) - 4) / 4.5)
-            short_name = hostname if len(hostname) <= avail else hostname[: avail - 1] + "…"
+        if primary_label:
+            avail_name = int((w - (text_x - x) - 4) / 5.0)
+            short_name = primary_label if len(primary_label) <= avail_name else primary_label[: avail_name - 1] + "…"
             dwg.add(
                 dwg.text(
                     short_name,
+                    insert=(text_x, y + h / 2 - 1),
+                    font_size="9px",
+                    font_family="Helvetica, Arial, sans-serif",
+                    font_weight="bold",
+                    fill=COLOR_LABEL,
+                )
+            )
+
+        if subtitle:
+            dwg.add(
+                dwg.text(
+                    subtitle,
                     insert=(text_x, y + h / 2 + 9),
                     font_size="7px",
                     font_family="Helvetica, Arial, sans-serif",
@@ -2070,6 +2213,10 @@ class RackCentricDiagramGenerator:
         gutter_mid_x: Optional[float] = None,
         subnet_color_map: Optional[Dict[str, str]] = None,
         edge_filter: str = "all",
+        landing_slots: Optional[Dict[str, Dict[Tuple[str, str, str], int]]] = None,
+        landing_totals: Optional[Dict[str, int]] = None,
+        switch_w: float = float(SWITCH_W),
+        subnet_color_by_subnet: Optional[Dict[str, str]] = None,
     ) -> None:
         """Draw device->switch connections as v1.5.8 mockup-style bezier swoops.
 
@@ -2132,10 +2279,13 @@ class RackCentricDiagramGenerator:
             current_rack_switch_ips = set(switch_centers.keys())
 
         # Bezier landing fan: each edge lands at a unique x under the switch's
-        # bottom edge, staggered by device_index. Centered around the switch
-        # center so the fan visually balances under the switch box.
-        LANDING_STAGGER = 5.0
-        LANDING_FAN_CENTER_INDEX = 4.5  # roughly centers a 10-device rack
+        # bottom edge. When per-switch landing slots are supplied (the normal
+        # render path) the fan is centered on the switch using the connection's
+        # local slot among all connections to THAT switch, so it always fits
+        # within the (dynamically widened) switch box. The legacy
+        # device_index fallback is kept for callers without slot context.
+        LANDING_FAN_CENTER_INDEX = 4.5  # roughly centers a 10-device rack (fallback)
+        _ = switch_w  # informs the centered fan width chosen by the caller
         _ = bus_y_base  # kept in signature for API compat with prior orthogonal path
 
         drawn: set = set()
@@ -2204,19 +2354,22 @@ class RackCentricDiagramGenerator:
             opacity = edge_plan["opacity"]
             exit_extends_right = exit_x > dev_x + dev_w / 2
 
-            # NET-3: color by the switch's serviced /24 subnet (deprecates
-            # the v1.5.7 Network A/B classifier). Fall back to palette[0] if
-            # the switch has no subnet evidence yet — defensive only; the
-            # renderer normally has full port_map evidence at this point.
-            if subnet_color_map and sw_ip in subnet_color_map:
-                color = subnet_color_map[sw_ip]
-            else:
-                color = SUBNET_COLOR_PALETTE[0]
+            # NET-3: color each edge by the CONNECTED DEVICE's IP /24 subnet so
+            # a mis-cabled strand renders in its true network color (a
+            # 172.16.64.x line stays Blue even on a Network-A switch), making
+            # the fault visible. Falls back to the switch's canonical subnet
+            # color, then palette[0], when the device IP lacks subnet evidence.
+            color = self._edge_color(node_ip, sw_ip, subnet_color_by_subnet, subnet_color_map)
             _ = network  # explicitly unused — kept in port_map for legacy data
             _ = gutter_mid_x  # no longer needed: bezier swoop replaces gutter routing
 
             exit_y = dev_y + dev_h / 2
-            landing_x = sw_cx + (device_index - LANDING_FAN_CENTER_INDEX) * LANDING_STAGGER
+            if landing_slots is not None and sw_ip in landing_slots and conn_key in landing_slots[sw_ip]:
+                slot = landing_slots[sw_ip][conn_key]
+                total = (landing_totals or {}).get(sw_ip, 1)
+                landing_x = self._fan_landing_x(sw_cx, slot, total, LANDING_STAGGER)
+            else:
+                landing_x = sw_cx + (device_index - LANDING_FAN_CENTER_INDEX) * LANDING_STAGGER
 
             path_d = self._bezier_swoop_path(
                 exit_x=exit_x,
@@ -2288,11 +2441,11 @@ class RackCentricDiagramGenerator:
         readable but visually distinct).
         """
         tints = {
-            "#0F9D58": "#e6f4ea",  # green
-            "#4285F4": "#e3f2fd",  # blue
-            "#FF6F00": "#fff3e0",  # amber
-            "#00838F": "#e0f2f1",  # teal
-            "#AB47BC": "#f3e5f5",  # mauve
+            "#1D4ED8": "#e8edfc",  # blue
+            "#F59E0B": "#fef3e2",  # amber
+            "#059669": "#e6f5f0",  # emerald
+            "#DB2777": "#fce7f1",  # magenta
+            "#06B6D4": "#e4f7fb",  # cyan
             COLOR_IPL: "#f3e5f5",  # purple
             COLOR_SPINE_FABRIC: "#f5f5f5",  # gray
         }

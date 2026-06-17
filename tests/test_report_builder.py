@@ -622,5 +622,170 @@ class TestRPT6ManualSwitchBridge(unittest.TestCase):
         self.assertEqual(entry["state"], "ACTIVE")
 
 
+def _flowable_text(content):
+    """Recursively collect plain text from a list of ReportLab flowables/cells."""
+    out = []
+
+    def walk(obj):
+        if obj is None:
+            return
+        if isinstance(obj, str):
+            out.append(obj)
+            return
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                walk(item)
+            return
+        # ReportLab Paragraph
+        get_plain = getattr(obj, "getPlainText", None)
+        if callable(get_plain):
+            try:
+                out.append(get_plain())
+                return
+            except Exception:
+                pass
+        text_attr = getattr(obj, "text", None)
+        if isinstance(text_attr, str):
+            out.append(text_attr)
+            return
+        # ReportLab Table stores rows in _cellvalues
+        cells = getattr(obj, "_cellvalues", None)
+        if cells is not None:
+            walk(cells)
+            return
+        # Wrappers like KeepTogether hold child flowables in _content
+        children = getattr(obj, "_content", None)
+        if isinstance(children, (list, tuple)):
+            walk(children)
+
+    walk(content)
+    return "\n".join(out)
+
+
+class TestNodeManagementMap(unittest.TestCase):
+    """QP-1: Node Management Map tables (Device Name (VMS) | Hostname | Mgmt IP)."""
+
+    def _data(self):
+        return {
+            "metadata": {"enhanced_features": {}},
+            "cluster_summary": {"name": "LAMBDA-VAST-LAX-01", "psnt": "VA2553454"},
+            "hardware_inventory": {
+                "cnodes": [
+                    {
+                        "id": "1",
+                        "name": "cnode-128-1",
+                        "hostname": "RackP01C01-CB6-U22-CN1",
+                        "mgmt_ip": "10.208.59.22",
+                        "ipmi_ip": "192.168.3.1",
+                    }
+                ],
+                "dnodes": [
+                    {
+                        "id": "5",
+                        "name": "dnode-128-104",
+                        "hostname": "RackP01C01-DB2-U4-DN1",
+                        "mgmt_ip": "10.208.59.106",
+                        "ipmi_ip": "192.168.3.21",
+                    }
+                ],
+            },
+            "sections": {},
+        }
+
+    def test_management_map_tables_present(self):
+        """Both CNode and DNode Management Map tables render with their titles."""
+        builder = VastReportBuilder()
+        text = _flowable_text(builder._create_comprehensive_network_configuration(self._data()))
+        self.assertIn("CNode Management Map", text)
+        self.assertIn("DNode Management Map", text)
+        self.assertIn("Device Name (VMS)", text)
+
+    def test_management_map_maps_name_hostname_mgmt_ip(self):
+        """Each node row carries VMS name, hostname, and external mgmt IP together."""
+        builder = VastReportBuilder()
+        text = _flowable_text(builder._create_comprehensive_network_configuration(self._data()))
+        # Hostname appears only in the new map (existing node tables show name, not hostname)
+        self.assertIn("RackP01C01-CB6-U22-CN1", text)
+        self.assertIn("cnode-128-1", text)
+        self.assertIn("10.208.59.22", text)
+        self.assertIn("RackP01C01-DB2-U4-DN1", text)
+        self.assertIn("dnode-128-104", text)
+
+
+class TestVnetmapTopologySwitchIdentity(unittest.TestCase):
+    """QP-1: Port Mapping tables resolve switch GUID -> hostname -> mgmt IP."""
+
+    def _args(self):
+        from reportlab.lib.styles import getSampleStyleSheet
+
+        port_map = [
+            {
+                "node_hostname": "RackP01C01-CB6-U22-CN1",
+                "node_ip": "172.16.128.5",
+                "interface": "ib0",
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "network": "A",
+                "switch_ip": "0xa088c203007860bc",
+                "switch_hostname": "SW-LF-03",
+                "port": "24",
+            }
+        ]
+        switches = [{"name": "SW-LF-03", "hostname": "SW-LF-03", "mgmt_ip": "10.208.59.15", "model": "MQM8700-HS2F"}]
+        return port_map, switches, getSampleStyleSheet()
+
+    def test_full_topology_shows_mgmt_ip_not_guid(self):
+        builder = VastReportBuilder()
+        port_map, switches, styles = self._args()
+        text = _flowable_text(builder._create_vnetmap_topology_tables(port_map, switches, styles))
+        self.assertIn("Switch Mgmt IP", text)
+        self.assertIn("10.208.59.15", text)
+
+    def test_per_switch_title_has_name_guid_mgmt_ip(self):
+        builder = VastReportBuilder()
+        port_map, switches, styles = self._args()
+        text = _flowable_text(builder._create_vnetmap_topology_tables(port_map, switches, styles))
+        self.assertIn("SW-LF-03", text)
+        self.assertIn("0xa088c203007860bc", text)
+        self.assertIn("10.208.59.15", text)
+
+
+class TestSwitchConfigActivePortsMtu(unittest.TestCase):
+    """QP-1: Active Ports + Port MTU recomputed from ports[] for replayed JSON."""
+
+    def _ports(self):
+        ports = [{"name": f"IB1/{i}", "state": "Active", "speed": "200G", "mtu": "4096"} for i in range(1, 39)]
+        ports += [{"name": "IB1/39", "state": "Down", "speed": "-", "mtu": "0"}]
+        ports += [{"name": "IB1/40", "state": "Down", "speed": "-", "mtu": "0"}]
+        return ports
+
+    def test_count_active_ports_counts_up_and_active(self):
+        self.assertEqual(VastReportBuilder._count_active_ports(self._ports()), 38)
+
+    def test_derive_port_mtu_picks_most_common_nonzero(self):
+        self.assertEqual(VastReportBuilder._derive_port_mtu(self._ports()), "4096")
+
+    def test_switch_config_recomputes_blank_active_ports_and_mtu(self):
+        builder = VastReportBuilder()
+        data = {
+            "hardware_inventory": {
+                "switches": [
+                    {
+                        "name": "SW-LF-03",
+                        "hostname": "SW-LF-03",
+                        "mgmt_ip": "10.208.59.15",
+                        "total_ports": 40,
+                        "active_ports": 0,
+                        "mtu": 0,
+                        "ports": self._ports(),
+                    }
+                ]
+            }
+        }
+        text = _flowable_text(builder._create_switch_configuration(data))
+        self.assertIn("Active Ports", text)
+        self.assertIn("38", text)
+        self.assertIn("4096", text)
+
+
 if __name__ == "__main__":
     unittest.main()

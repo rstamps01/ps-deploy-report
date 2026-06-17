@@ -19,6 +19,11 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Deployment tools older than this many days are flagged "stale" so the UI can
+# prompt a refresh. Canonical home for the threshold; one-shot pre-validation
+# imports this constant so the rule stays in one place.
+TOOL_FRESHNESS_WARN_DAYS = 10
+
 
 class ToolManager:
     """Manages deployment tools with local caching and smart deployment."""
@@ -93,13 +98,45 @@ class ToolManager:
         if local_path.exists():
             stat = local_path.stat()
             info["cached_size"] = stat.st_size
-            info["cached_date"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            cached_dt = datetime.fromtimestamp(stat.st_mtime)
+            info["cached_date"] = cached_dt.isoformat()
+            age_days = max(0, (datetime.now() - cached_dt).days)
+            info["age_days"] = age_days
+            info["stale"] = age_days >= TOOL_FRESHNESS_WARN_DAYS
+        else:
+            # A missing tool is not "stale" (stale implies present-but-old); it
+            # is surfaced separately via ``cached: False`` / the status summary.
+            info["stale"] = False
 
         return info
 
     def get_all_tools_info(self) -> List[Dict[str, Any]]:
         """Get information about all tools."""
         return [self.get_tool_info(name) for name in self.TOOLS.keys()]
+
+    def get_tools_status(self) -> Dict[str, Any]:
+        """Summarize deployment-tool readiness for the global nav indicator.
+
+        Returns:
+            Dict with the full per-tool ``tools`` list plus aggregate counts
+            (``total``, ``cached``, ``missing``, ``stale``) and a
+            ``needs_attention`` flag that is True when any tool is missing or
+            any cached tool is at least :data:`TOOL_FRESHNESS_WARN_DAYS` days
+            old. ``warn_days`` echoes the threshold for the UI.
+        """
+        tools = self.get_all_tools_info()
+        cached = sum(1 for t in tools if t.get("cached"))
+        missing = sum(1 for t in tools if not t.get("cached"))
+        stale = sum(1 for t in tools if t.get("stale"))
+        return {
+            "tools": tools,
+            "total": len(tools),
+            "cached": cached,
+            "missing": missing,
+            "stale": stale,
+            "needs_attention": missing > 0 or stale > 0,
+            "warn_days": TOOL_FRESHNESS_WARN_DAYS,
+        }
 
     def update_local_tool(self, tool_name: str) -> Tuple[bool, str]:
         """Download the latest version of a tool to local cache."""

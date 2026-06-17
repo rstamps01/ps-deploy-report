@@ -2272,7 +2272,8 @@ class VastApiHandler:
                     }
 
                 port_aggregation[switch_str]["total_ports"] += 1
-                if port.get("state", "").lower() == "up":
+                # IB ports report "Active"; Ethernet ports report "up".
+                if str(port.get("state", "")).strip().lower() in ("up", "active"):
                     port_aggregation[switch_str]["active_ports"] += 1
 
                 speed = port.get("speed") or "unconfigured"
@@ -2289,6 +2290,17 @@ class VastApiHandler:
                         "mtu": port.get("mtu", "Unknown"),
                     }
                 )
+
+            def _derive_switch_mtu(switch_ports: List[Dict[str, Any]]) -> str:
+                """Most common non-zero port MTU for a switch, or 'Unknown'."""
+                from collections import Counter
+
+                counts: Counter = Counter()
+                for sp in switch_ports or []:
+                    mtu_val = str(sp.get("mtu", "")).strip()
+                    if mtu_val and mtu_val not in ("0", "Unknown"):
+                        counts[mtu_val] += 1
+                return counts.most_common(1)[0][0] if counts else "Unknown"
 
             # Build comprehensive switch list by merging detailed info with port data
             switches = []
@@ -2318,7 +2330,7 @@ class VastApiHandler:
                     "total_ports": port_data["total_ports"] if port_data else 0,
                     "active_ports": port_data["active_ports"] if port_data else 0,
                     "port_speeds": port_data["port_speeds"] if port_data else {},
-                    "mtu": port_data["mtu"] if port_data else "Unknown",
+                    "mtu": _derive_switch_mtu(port_data["ports"]) if port_data else "Unknown",
                     "ports": port_data["ports"] if port_data else [],
                 }
                 switches.append(switch_entry)

@@ -7,6 +7,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Modern connection color palette.** The Logical Network Topology diagram
+  now uses a refreshed, cleanly contrasted connection palette designed via the
+  design assistant MCP: primary blue `#1D4ED8`, amber `#F59E0B`, emerald
+  `#059669`, magenta `#DB2777`, and cyan `#06B6D4`. The two most-used colors
+  are maximally distinct, the set stays distinguishable under common
+  color-vision deficiencies, and it avoids the reserved IPL purple and spine
+  gray. The cabling-validation PASS banner now uses a dedicated green so a
+  line-palette restyle never changes PASS/FAIL semantics. Legend pill tints
+  were re-tuned to match.
+- **Diagram edges colored by the connected device's network.** Device-to-switch
+  connections are now colored by the /24 subnet of the connection's device IP
+  (`node_ip`) instead of the switch's canonical subnet. A mis-cabled strand now
+  renders in its true network color, so cabling faults are visually obvious.
+  The legend and edge colors share one subnet->color source of truth, so they
+  stay in sync.
+
+### Added
+
+- **QP-3 (2): In-app update notifications + one-click download (notify-only).**
+  A new app-update status pill sits next to the version in the nav with three
+  states: **UPDATE AVAILABLE** (orange) when a newer release exists,
+  **PRE-RELEASE** (indigo) when running a beta/rc build that is already current,
+  or **LATEST VERSION** (green) on a confirmed-current stable build. When an
+  update is available, a **Download** control appears that auto-starts the
+  OS-matched installer (`.dmg` on macOS, `.zip` on Windows) — no GitHub visit
+  required — with a dropdown listing the new version, a release-notes link, and
+  explicit per-platform download buttons. Defaults to the stable channel with an
+  `include_prereleases` opt-in; results are cached in-process and a failed check
+  degrades silently. Notify + download only — it never auto-installs or
+  relaunches. Backed by a dependency-free version comparator that also extracts
+  release assets, `GET /api/update/status`, and a new `updates` config block
+  (`enabled`, `include_prereleases`, `check_on_startup`).
+- **QP-3 (4): Opt-in local usage metrics + ROI surface.** A new dashboard
+  "Usage & Privacy" card lets operators opt in to anonymous, **local-only**
+  usage metrics that estimate the time the tool has saved them. Recording is
+  OFF by default; only a random install id and coarse event counts are stored
+  (never hostnames, cluster identity, or credentials), filtered through a
+  strict property allowlist. Nothing is transmitted anywhere in this release —
+  see `docs/development/TELEMETRY.md` for the future central-receiver contract.
+  Backed by `GET /api/telemetry/status` + `POST /api/telemetry/consent` and a
+  new `telemetry` config block.
+- **QP-3 (3): Auto-shutdown when the browser is closed.** The Web UI now sends
+  a lightweight heartbeat (`POST /api/heartbeat`) every 5s; a watchdog thread
+  (started only for the real GUI server) exits the local server ~20s after the
+  last browser tab closes, so a forgotten background process no longer lingers.
+  Shutdown is always deferred while a report/health/one-shot/advanced-ops job is
+  running and never fires until at least one browser heartbeat has been seen
+  (headless/pre-launch stays up). Tunable via a new `auto_shutdown` config
+  block (`enabled`, `grace_seconds`, `heartbeat_interval_seconds`); set
+  `enabled: false` to keep the legacy "until Exit/Ctrl+C" behavior.
+- **QP-3 (1): Deployment Tools status in the global nav.** The navbar now has a
+  labeled **Update Tools** button (wrench icon + text) on every page that
+  **blinks** whenever any tool is missing or at least 10 days old — including a
+  fresh install with nothing downloaded yet (blink respects
+  `prefers-reduced-motion`). Clicking it opens a dropdown listing each tool's
+  state (Ready / N-days-old / Missing) with an inline Update Tools action.
+  Backed by a new `GET /api/tools/status` summary endpoint and
+  `POST /api/tools/update`; the 10-day freshness threshold
+  (`TOOL_FRESHNESS_WARN_DAYS`) now lives canonically in `tool_manager` and is
+  reused by one-shot pre-validation.
+- **QP-2: Per-cluster result segmentation.** All generated artifacts (report
+  PDF/JSON, diagrams, operation script outputs, health results, bundles, and
+  operation logs) are now organized under a per-cluster directory tree
+  `clusters/<name>__<PSNT-or-GUID>/...` with a `cluster.json` identity marker,
+  preventing data from different clusters intermingling when they are reached
+  over a shared tech-port IP (e.g. `192.168.2.2`). Cluster identity is resolved
+  once per job (PSNT, falling back to GUID, then name, then IP) — including an
+  early lightweight resolution in one-shot mode so operation artifacts segment
+  correctly before the report phase runs. Discovery and bundling read the new
+  per-cluster folders first and fall back to the legacy flat layout, so existing
+  installs keep working unchanged. Association keys on the cluster's real
+  identity (PSNT/GUID/name), never the shared tech-port IP, so two clusters on
+  the same IP stay separate. Gated by the new `output.segment_by_cluster` config
+  flag (default `true`); an explicit CLI `--output-dir` is always honored
+  verbatim (no per-cluster nesting) to preserve the offline-replay contract.
+- **QP-1: Node Management Map tables.** The Network Configuration section now
+  includes compact CNode and DNode Management Map tables (Device Name (VMS) |
+  Hostname | Mgmt IP), sourced from the hardware inventory and sorted by
+  management IP, so the VMS device name, assigned hostname, and externally
+  accessible management IP are visible together. Added matching TOC
+  subsections.
+
+### Changed
+
+- **QP-1: Port Mapping tables resolve switch identity.** The Full Topology
+  table's switch column now shows the switch management IP (was the raw IB
+  GUID), and each per-switch table title shows the switch name, management IP,
+  and GUID together (resolved via the port map's `switch_hostname` joined to
+  the switch inventory).
+- **QP-1: Logical Network Topology switch labels.** Switch boxes now label by
+  switch name (primary) with the management IP beneath it; the obsolete
+  SWA/SWB/SP1/SP2 designations have been removed.
+- **QP-1: Dynamic switch width + centered landing fan.** Each switch box (and
+  the rack and overall diagram) is widened based on the maximum number of
+  device connections so the entire device-to-switch fan is centered within the
+  switch's width at the fixed line spacing, instead of starting a quarter in
+  from the left and running past the right edge.
+
+### Fixed
+
+- **QP-3 (1): "Update Tools" progress now appears in Output Results.** Clicking
+  the global nav **Update Tools** button logged nothing to the Reporter
+  "Output Results" console because `POST /api/tools/update` routed progress only
+  to the Advanced Ops buffer, and the Reporter log stream opened solely during
+  an active run. The nav action now mirrors progress to both the Advanced Ops
+  console and the logger-backed SSE stream (`/stream/logs`), and the Reporter
+  "Output Results" pane keeps an ambient stream open so global actions surface
+  live (download/saved/size lines and the per-tool summary) on any page.
+- **QP-1: Switch Configuration Active Ports & Port MTU.** These columns were
+  blank for InfiniBand clusters because active ports were counted only for
+  state `up` (IB reports `Active`) and the MTU was taken from the first port
+  (often `0`). Active ports now count `up`/`active` states and the MTU is the
+  most common non-zero port MTU; the report also recomputes both defensively
+  from the per-port data when replaying older JSON.
+
 ## [1.5.8] - 2026-05-28
 
 Network diagram visualization overhaul + Tech-Port tunnel reliability fix.

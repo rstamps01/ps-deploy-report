@@ -11,9 +11,10 @@ import queue
 import re
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
@@ -45,6 +46,54 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 logger = get_logger(__name__)
 
 APP_VERSION = "1.5.8-beta"
+
+# QP-3 (3): auto-shutdown when the operator closes the browser.
+# The page sends a lightweight heartbeat every HEARTBEAT_INTERVAL seconds; the
+# watchdog shuts the local server down GRACE seconds after the last heartbeat,
+# but never while a job is running.  Grace must comfortably exceed the
+# heartbeat interval so a single dropped ping does not trigger an exit.
+AUTO_SHUTDOWN_DEFAULTS = {
+    "enabled": True,
+    "grace_seconds": 20,
+    "heartbeat_interval_seconds": 5,
+}
+
+
+def evaluate_auto_shutdown(
+    *,
+    enabled: bool,
+    ever_seen: bool,
+    last_heartbeat: Optional[float],
+    now: float,
+    grace_seconds: float,
+    job_running: bool,
+) -> bool:
+    """Decide whether the local web server should auto-shut-down.
+
+    Pure function (no I/O) so the policy is unit-testable.
+
+    Args:
+        enabled: Whether auto-shutdown is turned on.
+        ever_seen: True once at least one browser heartbeat has arrived. Until
+            then we never shut down (headless / pre-browser launch stays up).
+        last_heartbeat: Monotonic timestamp of the most recent heartbeat, or
+            ``None`` if none has been received.
+        now: Current monotonic timestamp.
+        grace_seconds: Seconds of heartbeat silence tolerated before shutdown.
+        job_running: True if any report/health/one-shot/advanced-ops job is
+            active. Shutdown is always deferred while a job runs.
+
+    Returns:
+        True if the server should shut itself down now.
+    """
+    if not enabled:
+        return False
+    if not ever_seen or last_heartbeat is None:
+        return False
+    if job_running:
+        return False
+    return (now - last_heartbeat) >= grace_seconds
+
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -247,6 +296,18 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["BUNDLE_DIR"] = str(bundle_dir)
     app.config["DEFAULT_OUTPUT_DIR"] = str(reports_dir)
     app.config["OUTPUT_DIRS"] = {str(reports_dir)}
+    # QP-2: surface any existing per-cluster reports dirs so the /reports
+    # listing keeps working across segmented runs (the read side extends
+    # discovery further; this keeps the flat listing complete).
+    try:
+        from utils.cluster_paths import iter_cluster_roots
+
+        for _root in iter_cluster_roots(data_dir):
+            _cluster_reports = _root / "reports"
+            if _cluster_reports.is_dir():
+                app.config["OUTPUT_DIRS"].add(str(_cluster_reports))
+    except Exception:  # noqa: BLE001 — discovery is best-effort at startup
+        pass
     app.config["CONFIG_PATH"] = str(config_path)
     app.config["CONFIG_TEMPLATE"] = str(bundle_dir / "config" / "config.yaml.template")
     app.config["PROFILES_PATH"] = str(config_dir / "cluster_profiles.json")
@@ -286,6 +347,18 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["ONESHOT_LAST_BUNDLE"] = {}
     app.config["ONESHOT_LAST_BUNDLE_LOCK"] = threading.Lock()
     app.config["ONESHOT_LAST_BUNDLE_REHYDRATED"] = False
+
+    # QP-3 (3): auto-shutdown state.  ``AUTO_SHUTDOWN`` merges template
+    # defaults with the operator config; ``LAST_HEARTBEAT`` / ``BROWSER_SEEN``
+    # are updated by the heartbeat route and consumed by the watchdog thread
+    # (started in ``run_gui`` so test/headless app instances never self-exit).
+    _shutdown_cfg = dict(AUTO_SHUTDOWN_DEFAULTS)
+    if config and isinstance(config.get("auto_shutdown"), dict):
+        _shutdown_cfg.update(config["auto_shutdown"])
+    app.config["AUTO_SHUTDOWN"] = _shutdown_cfg
+    app.config["LAST_HEARTBEAT"] = None
+    app.config["BROWSER_SEEN"] = False
+    app.config["SHUTDOWN_REQUESTED"] = False
 
     # Developer Mode - enables Advanced Operations page
     # Set via --dev-mode flag or VAST_DEV_MODE environment variable
@@ -481,6 +554,26 @@ def _register_routes(app: Flask) -> None:
         else:
             threading.Thread(target=lambda: os._exit(0), daemon=True).start()
         return jsonify({"status": "shutting_down"})
+
+    @app.route("/api/heartbeat", methods=["POST"])
+    def heartbeat():
+        """Record a browser liveness ping for the auto-shutdown watchdog.
+
+        The page posts here on an interval and via ``navigator.sendBeacon``
+        on unload.  Once any heartbeat is seen, the watchdog will auto-shut
+        the local server down after the configured grace period of silence
+        (unless a job is running).  Not Developer-gated.
+        """
+        app.config["LAST_HEARTBEAT"] = time.monotonic()
+        app.config["BROWSER_SEEN"] = True
+        cfg = app.config.get("AUTO_SHUTDOWN", AUTO_SHUTDOWN_DEFAULTS)
+        return jsonify(
+            {
+                "status": "ok",
+                "auto_shutdown": bool(cfg.get("enabled", True)),
+                "interval": cfg.get("heartbeat_interval_seconds", 5),
+            }
+        )
 
     # -- SSE log stream -----------------------------------------------------
 
@@ -770,6 +863,111 @@ def _register_routes(app: Flask) -> None:
 
         results = tool_manager.update_all_tools()
         return jsonify(results)
+
+    @app.route("/api/tools/status")
+    def api_tools_status():
+        """Deployment-tool readiness summary for the global nav indicator.
+
+        Returns the per-tool list plus aggregate counts and a
+        ``needs_attention`` flag (any tool missing or >= warn-days old), so the
+        nav can render an orange attention dot on any page.
+        """
+        from tool_manager import ToolManager
+
+        return jsonify(ToolManager().get_tools_status())
+
+    @app.route("/api/tools/update", methods=["POST"])
+    def api_tools_update():
+        """Refresh all deployment tools in the local cache (global nav action).
+
+        Mirrors ``/advanced-ops/tools/update`` but streams progress to the
+        Advanced Ops console when available so the action is observable from any
+        page. Returns the update result plus the refreshed status summary.
+        """
+        from tool_manager import ToolManager
+        from advanced_ops import get_advanced_ops_manager
+
+        tools_log = get_logger("tool_manager")
+        level_map = {"info": 20, "warn": 30, "warning": 30, "error": 40, "success": 20, "debug": 10}
+
+        try:
+            ops_manager = get_advanced_ops_manager()
+        except Exception:
+            ops_manager = None
+
+        def emit(level: str, message: str, details: Optional[str] = None) -> None:
+            # Mirror progress to BOTH the Advanced Ops console buffer and the
+            # logger-backed SSE stream so the action is visible in the
+            # "Output Results" console on any page (not just Advanced Ops).
+            if ops_manager is not None:
+                try:
+                    ops_manager._emit_output(level, message, details)
+                except Exception:  # noqa: BLE001 — console mirror must not break the update
+                    pass
+            if message:
+                tools_log.log(level_map.get(level, 20), message)
+
+        manager = ToolManager(output_callback=emit)
+        results = manager.update_all_tools()
+        results["status"] = manager.get_tools_status()
+        return jsonify(results)
+
+    # -- Usage metrics / ROI (QP-3 item 4) ----------------------------------
+
+    @app.route("/api/telemetry/status")
+    def api_telemetry_status():
+        """Local, anonymous ROI summary + opt-in state for the dashboard.
+
+        Local-only in this release (``transmitted`` is always False); nothing
+        is sent anywhere.  Not Developer-gated.
+        """
+        from usage_metrics import get_usage_metrics
+
+        return jsonify(get_usage_metrics(APP_VERSION).roi_summary())
+
+    @app.route("/api/telemetry/consent", methods=["POST"])
+    def api_telemetry_consent():
+        """Record the operator's opt-in / opt-out choice for usage metrics."""
+        from usage_metrics import get_usage_metrics
+
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get("enabled", False))
+        metrics = get_usage_metrics(APP_VERSION)
+        metrics.set_consent(enabled)
+        return jsonify(metrics.roi_summary())
+
+    # -- In-app update check (QP-3 item 2 — notify only) --------------------
+
+    @app.route("/api/update/status")
+    def api_update_status():
+        """Report whether a newer release is available (notify-only, cached).
+
+        Reads the ``updates`` config for the enable flag and channel.  Pass
+        ``?force=1`` to bypass the in-process cache.  Never Developer-gated and
+        never raises — a failed check returns ``update_available: false``.
+        """
+        cfg = app.config.get("REPORT_CONFIG") or {}
+        upd_cfg = cfg.get("updates") if isinstance(cfg.get("updates"), dict) else {}
+        # The running build is a pre-release if its version carries a suffix
+        # (e.g. ``-beta``); used by the nav pill's PRE-RELEASE state.
+        is_prerelease = "-" in APP_VERSION
+        if not upd_cfg.get("enabled", True):
+            return jsonify(
+                {
+                    "update_available": False,
+                    "current_version": APP_VERSION,
+                    "is_prerelease": is_prerelease,
+                    "enabled": False,
+                }
+            )
+        from updater import get_update_status
+
+        include_pre = bool(upd_cfg.get("include_prereleases", False))
+        force = request.args.get("force") in ("1", "true", "yes")
+        status = get_update_status(APP_VERSION, include_prereleases=include_pre, force=force)
+        status["enabled"] = True
+        status["is_prerelease"] = is_prerelease
+        return jsonify(status)
 
     @app.route("/advanced-ops/tools/deploy", methods=["POST"])
     def advanced_ops_tools_deploy():
@@ -1671,13 +1869,28 @@ def _register_routes(app: Flask) -> None:
         }
 
         try:
-            vnetmap_file = _find_latest_vnetmap_output(cluster_ip)
+            reports = _find_report_jsons_for_cluster(cluster_ip, app.config["DEFAULT_OUTPUT_DIR"])
+
+            # QP-2: scope the vnetmap lookup to this cluster's folder first.
+            # The connection IP is shared across tech-port clusters, so resolve
+            # the segmentation key from the newest report JSON's identity.
+            cluster_key = None
+            if reports:
+                import json as _json
+                from utils.cluster_paths import resolve_cluster_key_from_summary
+
+                try:
+                    with open(reports[0]) as f:
+                        cluster_key = resolve_cluster_key_from_summary(_json.load(f))
+                except Exception:  # noqa: BLE001 - advisory only
+                    cluster_key = None
+
+            vnetmap_file = _find_latest_vnetmap_output(cluster_ip, cluster_key=cluster_key)
             if vnetmap_file and vnetmap_file.exists():
                 result["exists"] = True
                 result["filename"] = vnetmap_file.name
                 result["created_at"] = _parse_vnetmap_timestamp(vnetmap_file.name)
 
-            reports = _find_report_jsons_for_cluster(cluster_ip, app.config["DEFAULT_OUTPUT_DIR"])
             if len(reports) >= 2:
                 import json as _json
 
@@ -1953,6 +2166,77 @@ class _JobCancelled(Exception):
     """Raised when the user cancels a running report job."""
 
 
+def _any_job_running(app: Flask) -> bool:
+    """True if any report/health/one-shot/advanced-ops job is active.
+
+    The auto-shutdown watchdog uses this to defer exit while work is in
+    flight even if the operator has closed every browser tab.
+    """
+    if app.config.get("JOB_RUNNING") or app.config.get("HEALTH_JOB_RUNNING") or app.config.get("ONESHOT_RUNNING"):
+        return True
+    try:
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        if manager is not None and getattr(manager, "is_running", None) and manager.is_running():
+            return True
+    except Exception:
+        # Advanced-ops manager is optional; never let its absence block or
+        # crash the watchdog decision.
+        pass
+    return False
+
+
+def _record_usage(event: str, properties: Optional[Dict[str, Any]] = None) -> None:
+    """Best-effort, anonymous usage event (QP-3 item 4).
+
+    No-op unless the operator has opted in.  Never raises — safe to call from
+    job completion paths.
+    """
+    try:
+        from usage_metrics import get_usage_metrics
+
+        get_usage_metrics(APP_VERSION).record_event(event, properties)
+    except Exception:  # pragma: no cover - telemetry must never break a job
+        pass
+
+
+def _auto_shutdown_watchdog(app: Flask, server: Any) -> None:
+    """Background loop that stops ``server`` after the browser goes away.
+
+    Polls the heartbeat state on a short interval and, once the page has
+    been seen and then goes silent past the grace window (with no job
+    running), triggers a graceful server shutdown.  Intended to run as a
+    daemon thread started from :func:`main.run_gui`.
+    """
+    cfg = app.config.get("AUTO_SHUTDOWN", AUTO_SHUTDOWN_DEFAULTS)
+    if not cfg.get("enabled", True):
+        return
+    grace = float(cfg.get("grace_seconds", 20))
+    poll = max(1.0, float(cfg.get("heartbeat_interval_seconds", 5)) / 2.0)
+    log = get_logger(__name__)
+    while True:
+        time.sleep(poll)
+        if app.config.get("SHUTDOWN_REQUESTED"):
+            return
+        should = evaluate_auto_shutdown(
+            enabled=bool(cfg.get("enabled", True)),
+            ever_seen=bool(app.config.get("BROWSER_SEEN")),
+            last_heartbeat=app.config.get("LAST_HEARTBEAT"),
+            now=time.monotonic(),
+            grace_seconds=grace,
+            job_running=_any_job_running(app),
+        )
+        if should:
+            app.config["SHUTDOWN_REQUESTED"] = True
+            log.info("Auto-shutdown: browser closed and idle for %.0fs; stopping server.", grace)
+            try:
+                server.shutdown()
+            except Exception as exc:  # pragma: no cover - defensive
+                log.warning("Auto-shutdown server.shutdown() failed: %s", exc)
+            return
+
+
 def _check_cancel(app: Flask) -> None:
     """Raise _JobCancelled if the cancel event has been set."""
     if app.config["JOB_CANCEL"].is_set():
@@ -2205,6 +2489,17 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
 
+        # QP-2: resolve the per-cluster paths/key now (post-auth) so the
+        # optional vnetmap workflow's output is segmented and the vnetmap
+        # finder searches this cluster's folder, never another tech-port
+        # cluster sharing 192.168.2.2.  Gated on output.segment_by_cluster.
+        seg_cp: Optional[Any] = None
+        seg_key: Optional[str] = None
+        try:
+            seg_cp, seg_key = _resolve_early_cluster_paths(api_handler, config, params["cluster_ip"])
+        except Exception as seg_exc:  # noqa: BLE001 - never block the job
+            job_logger.warning("QP-2 early identity resolution failed (%s)", seg_exc)
+
         # RM-15: pre-probe switches once so the Fast path of
         # ``VnetmapWorkflow`` (``vnetmap.py --multiple-passwords``) can
         # engage on heterogeneous fleets (e.g. two leaves on
@@ -2246,6 +2541,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         getattr(_logging, level.upper(), _logging.INFO), msg
                     )
                 )
+                # QP-2: segment vnetmap script output under clusters/<key>/.
+                # hasattr-guarded to match the one-shot wiring and tolerate
+                # duck-typed workflow doubles in tests.
+                if seg_cp is not None and hasattr(vnetmap_wf, "set_output_dir"):
+                    vnetmap_wf.set_output_dir(seg_cp.scripts)
                 vnetmap_creds: Dict[str, Any] = {
                     "cluster_ip": params["cluster_ip"],
                     "node_user": params.get("node_user", "vastdata"),
@@ -2390,7 +2690,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         )
         use_vnetmap = False
         if params.get("enable_port_mapping"):
-            vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"])
+            vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"], cluster_key=seg_key)
             if vnetmap_file:
                 job_logger.info("Found vnetmap output: %s — using as port mapping source", vnetmap_file.name)
                 try:
@@ -2450,6 +2750,27 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         cluster_ip = params["cluster_ip"]
         processed_data["cluster_ip"] = cluster_ip
 
+        # QP-2: segment all artifacts under clusters/<key>/ once the cluster
+        # identity is known (post-extraction).  Gated on output.segment_by_cluster
+        # so the flag-off path is byte-for-byte the legacy flat layout.
+        from utils.cluster_output import build_marker_identity, cluster_paths_if_enabled
+        from utils.cluster_paths import write_cluster_marker
+
+        # Reuse the early-resolved paths so the report lands in the same folder
+        # as any vnetmap output written above; only re-resolve if early
+        # resolution was skipped (e.g. segmentation toggled mid-flight).
+        cp = seg_cp if seg_cp is not None else cluster_paths_if_enabled(config, processed_data)
+        if cp is not None:
+            cp.ensure_all()
+            output_dir = cp.reports
+            app.config["OUTPUT_DIRS"].add(str(output_dir.resolve()))
+            report_builder.segment_by_cluster = True
+            write_cluster_marker(
+                cp.root,
+                build_marker_identity(processed_data, cluster_ip=cluster_ip, version=APP_VERSION),
+            )
+            job_logger.info("QP-2 segmentation active: writing under %s", cp.root)
+
         _update_progress(app, "JOB_PROGRESS", "json_save", phase_start["json_save"], "Saving JSON data...")
         json_path = output_dir / f"vast_data_{cluster_name}_{timestamp}.json"
         data_extractor.save_processed_data(processed_data, str(json_path))
@@ -2482,6 +2803,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     "json": json_path.name,
                     "cluster": cluster_name,
                 }
+                _record_usage("report_generated", {"operation": "report", "success": True})
 
     except _JobCancelled:
         job_logger = get_logger("job")
@@ -2595,23 +2917,70 @@ def _parse_vnetmap_timestamp(filename: str) -> str:
     return ""
 
 
-def _find_latest_vnetmap_output(cluster_ip: str) -> Optional[Path]:
+def _resolve_early_cluster_paths(
+    api_handler: Any, config: Dict[str, Any], cluster_ip: str
+) -> Tuple[Optional[Any], Optional[str]]:
+    """QP-2: resolve the per-cluster paths + key early (post-auth, pre-vnetmap).
+
+    The optional vnetmap workflow runs before full data collection, so its
+    output would otherwise leak to the flat dir.  Fetching the cluster
+    identity right after authentication lets us segment that output and scope
+    the vnetmap finder to this cluster's folder.  Returns ``(None, None)``
+    when segmentation is disabled.  A provisional IP-based key is used when the
+    identity fetch yields nothing, so artifacts still segment coherently.
+    """
+    from utils import get_data_dir
+    from utils.cluster_paths import cluster_paths, resolve_cluster_key, segment_enabled
+
+    if not segment_enabled(config):
+        return None, None
+
+    name = psnt = guid = None
+    try:
+        info = api_handler.get_cluster_info()
+        if info is not None:
+            name = getattr(info, "name", None)
+            guid = getattr(info, "guid", None)
+            psnt = getattr(info, "psnt", None)
+    except Exception:  # noqa: BLE001 - identity is best-effort
+        pass
+
+    name = None if name in (None, "", "Unknown") else name
+    guid = None if guid in (None, "", "Unknown") else guid
+    psnt = None if psnt in (None, "", "Unknown") else psnt
+
+    key = resolve_cluster_key(name=name, psnt=psnt, guid=guid, cluster_ip=cluster_ip)
+    cp = cluster_paths(get_data_dir(), key)
+    cp.ensure_all()
+    return cp, key
+
+
+def _find_latest_vnetmap_output(cluster_ip: str, cluster_key: Optional[str] = None) -> Optional[Path]:
     """Find the most recent vnetmap output file for a given cluster IP.
 
-    Scans ``output/scripts/`` for files matching
-    ``vnetmap_output_{cluster_ip}_*.txt``.  Does NOT fall back to
-    files from other clusters to avoid cross-contamination of port
-    mapping data.
+    With QP-2 segmentation, searches the current cluster's
+    ``clusters/<key>/output/scripts`` dir first (when ``cluster_key`` is
+    given), then falls back to the legacy flat ``output/scripts`` so files
+    written before segmentation still resolve.  Matches only
+    ``vnetmap_output_{cluster_ip}_*.txt`` to avoid cross-cluster
+    contamination of port mapping data.
     """
     from utils import get_data_dir
 
-    scripts_dir = get_data_dir() / "output" / "scripts"
-    if not scripts_dir.is_dir():
-        return None
+    data_dir = get_data_dir()
+    search_dirs: List[Path] = []
+    if cluster_key:
+        from utils.cluster_paths import cluster_paths
 
-    exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
-    if exact:
-        return Path(exact[0])
+        search_dirs.append(cluster_paths(data_dir, cluster_key).scripts)
+    search_dirs.append(data_dir / "output" / "scripts")
+
+    for scripts_dir in search_dirs:
+        if not scripts_dir.is_dir():
+            continue
+        exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
+        if exact:
+            return Path(exact[0])
 
     logger.info("No vnetmap output file found for cluster %s", cluster_ip)
     return None
@@ -2829,6 +3198,47 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
         _update_progress(app, "HEALTH_JOB_PROGRESS", "save", 96, "Saving results...")
 
         output_dir = config.get("output", {}).get("directory", "output")
+        # QP-2: segment standalone health output under the per-cluster tree.
+        # The report-embedded HealthChecker has no PSNT/GUID here, so the key
+        # is resolved from the report's name + IP (write_cluster_marker records
+        # full identity).  Gated on output.segment_by_cluster.
+        from utils.cluster_output import cluster_paths_if_enabled
+        from utils.cluster_paths import write_cluster_marker
+
+        # QP-2: include PSNT/GUID so the standalone health job shares ONE
+        # folder with the report path (clusters/<name>__<psnt>/), instead of
+        # producing a name-only clusters/<name>/ sibling.  In tech-port mode
+        # the connection IP is identical across clusters, so PSNT is the only
+        # distinguishing identity.
+        hc_psnt = hc_guid = None
+        try:
+            hc_info = api_handler.get_cluster_info()
+            if hc_info is not None:
+                hc_psnt = getattr(hc_info, "psnt", None)
+                hc_guid = getattr(hc_info, "guid", None)
+        except Exception:  # noqa: BLE001 - identity is best-effort
+            pass
+        hc_psnt = None if hc_psnt in (None, "", "Unknown") else hc_psnt
+        hc_guid = None if hc_guid in (None, "", "Unknown") else hc_guid
+
+        health_identity = {
+            "cluster_summary": {"name": report.cluster_name, "psnt": hc_psnt, "guid": hc_guid},
+            "cluster_ip": report.cluster_ip,
+        }
+        cp = cluster_paths_if_enabled(config, health_identity)
+        if cp is not None:
+            cp.ensure("health")
+            output_dir = str(cp.output)
+            write_cluster_marker(
+                cp.root,
+                {
+                    "name": report.cluster_name,
+                    "psnt": hc_psnt,
+                    "guid": hc_guid,
+                    "cluster_ip": report.cluster_ip,
+                    "version": APP_VERSION,
+                },
+            )
         json_path = checker.save_json(report, output_dir)
         remediation_path = checker.generate_remediation_report(report, output_dir)
 
@@ -2842,6 +3252,7 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
                 "remediation_path": remediation_path,
                 "cluster": report.cluster_name,
             }
+        _record_usage("health_check", {"operation": "health", "success": True})
         job_logger.info("Health check completed successfully")
 
     except Exception as exc:

@@ -22,6 +22,8 @@ from network_diagram_v2 import (
     COLOR_NETWORK_A,
     COLOR_NETWORK_B,
     COLOR_IPL,
+    COLOR_VALIDATION_PASS,
+    SUBNET_COLOR_PALETTE,
     PORTRAIT_W,
     MAX_RACKS_PER_PAGE,
     RackCentricDiagramGenerator,
@@ -1017,9 +1019,9 @@ class TestNET3SubnetColoring:
 
     - Each switch's color is determined by the most common /24 prefix of the
       ``node_ip``'s in port_map rows where ``switch_ip == switch.mgmt_ip``.
-    - The lowest-mgmt-IP switch's subnet gets ``#0F9D58`` (green), the next
-      gets ``#4285F4`` (blue), additional subnets cycle through a fixed
-      palette.
+    - The lowest-mgmt-IP switch's subnet gets ``SUBNET_COLOR_PALETTE[0]``, the
+      next gets ``SUBNET_COLOR_PALETTE[1]``, additional subnets cycle through a
+      fixed palette.
     - Two switches sharing the same /24 (e.g. an IPL pair both servicing
       ``172.16.0.x``) MUST share a color.
     - IPL/MLAG retains ``#7B1FA2`` (purple) — unchanged.
@@ -1029,7 +1031,7 @@ class TestNET3SubnetColoring:
       - ``_compute_switch_subnet(sw_ip, port_map)`` -> majority /24 or ``None``
       - ``_assign_subnet_colors(switches, port_map)`` -> ``{sw_mgmt_ip -> color}``
       - ``SUBNET_COLOR_PALETTE`` module constant whose first two entries are
-        the design-mandated green and blue.
+        the most-used, maximally distinct colors.
     """
 
     def _subnet_24(self):
@@ -1115,7 +1117,7 @@ class TestNET3SubnetColoring:
     # ------------------------------------------------------------------
     # _assign_subnet_colors
     # ------------------------------------------------------------------
-    def test_assign_subnet_colors_lowest_mgmt_ip_subnet_gets_green(self):
+    def test_assign_subnet_colors_lowest_mgmt_ip_subnet_gets_first_color(self):
         sw_low = _make_switch("sw1", "10.0.0.153")
         sw_high = _make_switch("sw2", "10.0.0.154")
         port_map = [
@@ -1123,9 +1125,9 @@ class TestNET3SubnetColoring:
             self._conn("172.16.64.1", "10.0.0.154"),
         ]
         colors = self._assign()([sw_high, sw_low], port_map)
-        assert colors["10.0.0.153"] == "#0F9D58", "Lowest-mgmt-IP switch's subnet must get green"
+        assert colors["10.0.0.153"] == SUBNET_COLOR_PALETTE[0], "Lowest-mgmt-IP switch's subnet must get palette[0]"
 
-    def test_assign_subnet_colors_second_subnet_gets_blue(self):
+    def test_assign_subnet_colors_second_subnet_gets_second_color(self):
         sw_a = _make_switch("sw1", "10.0.0.153")
         sw_b = _make_switch("sw2", "10.0.0.154")
         port_map = [
@@ -1133,11 +1135,11 @@ class TestNET3SubnetColoring:
             self._conn("172.16.64.1", "10.0.0.154"),
         ]
         colors = self._assign()([sw_a, sw_b], port_map)
-        assert colors["10.0.0.154"] == "#4285F4", "Second subnet must get design-mandated blue"
+        assert colors["10.0.0.154"] == SUBNET_COLOR_PALETTE[1], "Second subnet must get palette[1]"
 
     def test_assign_subnet_colors_switches_sharing_subnet_share_color(self):
         """An IPL pair where both switches service ``172.16.0.x`` must share
-        a single subnet color (green) — they're not two distinct subnets.
+        a single subnet color — they're not two distinct subnets.
         """
         sw_a = _make_switch("sw1", "10.0.0.153")
         sw_b = _make_switch("sw2", "10.0.0.154")
@@ -1147,7 +1149,7 @@ class TestNET3SubnetColoring:
         ]
         colors = self._assign()([sw_a, sw_b], port_map)
         assert colors["10.0.0.153"] == colors["10.0.0.154"], "Switches sharing /24 must share color"
-        assert colors["10.0.0.153"] == "#0F9D58"
+        assert colors["10.0.0.153"] == SUBNET_COLOR_PALETTE[0]
 
     def test_assign_subnet_colors_palette_cycles_for_extra_subnets(self):
         """Three distinct subnets => palette[0], palette[1], palette[2]."""
@@ -1178,20 +1180,21 @@ class TestNET3SubnetColoring:
 
 
 class TestNET3PaletteConstants:
-    """NET-3: ``SUBNET_COLOR_PALETTE`` is the new module-level palette and
-    its first two entries MUST match the design-mandated green and blue.
-    ``COLOR_IPL`` (purple) MUST remain unchanged.
+    """NET-3: ``SUBNET_COLOR_PALETTE`` is the module-level palette. Its first
+    two entries are the most-used, maximally distinct colors. The set is the
+    modern design-MCP palette and MUST stay clear of the reserved IPL purple
+    and spine gray.
     """
 
-    def test_subnet_palette_starts_with_green(self):
+    def test_subnet_palette_starts_with_primary_blue(self):
         from network_diagram_v2 import SUBNET_COLOR_PALETTE
 
-        assert SUBNET_COLOR_PALETTE[0] == "#0F9D58", "First palette entry must be design-mandated green"
+        assert SUBNET_COLOR_PALETTE[0] == "#1D4ED8", "First palette entry must be the modern primary blue"
 
-    def test_subnet_palette_second_is_blue(self):
+    def test_subnet_palette_second_is_amber(self):
         from network_diagram_v2 import SUBNET_COLOR_PALETTE
 
-        assert SUBNET_COLOR_PALETTE[1] == "#4285F4", "Second palette entry must be design-mandated blue"
+        assert SUBNET_COLOR_PALETTE[1] == "#F59E0B", "Second palette entry must be the modern amber"
 
     def test_subnet_palette_has_at_least_three_entries(self):
         """At least three colors so a 3-subnet cluster doesn't immediately wrap."""
@@ -1199,10 +1202,11 @@ class TestNET3PaletteConstants:
 
         assert len(SUBNET_COLOR_PALETTE) >= 3
 
-    def test_subnet_palette_does_not_collide_with_ipl(self):
-        from network_diagram_v2 import COLOR_IPL, SUBNET_COLOR_PALETTE
+    def test_subnet_palette_does_not_collide_with_reserved_colors(self):
+        from network_diagram_v2 import COLOR_IPL, COLOR_SPINE_FABRIC, SUBNET_COLOR_PALETTE
 
         assert COLOR_IPL not in SUBNET_COLOR_PALETTE, "Palette must not include the IPL purple"
+        assert COLOR_SPINE_FABRIC not in SUBNET_COLOR_PALETTE, "Palette must not include the spine gray"
 
     def test_ipl_color_unchanged(self):
         from network_diagram_v2 import COLOR_IPL
@@ -1375,7 +1379,7 @@ class TestNET4MiscablingDetection:
 
     def test_banner_no_miscabling_uses_green(self):
         _, color = self._banner()({})
-        assert color == "#0F9D58", "PASS banner must use the green palette color"
+        assert color == COLOR_VALIDATION_PASS, "PASS banner must use the green validation color"
 
     def test_banner_miscabling_returns_fail_text_with_count(self):
         text, _ = self._banner()({"10.0.0.153": {"172.16.64"}})
@@ -1861,3 +1865,181 @@ class TestIBSwitchGuidAlias:
         normalized = [{**c, "switch_ip": alias.get(c["switch_ip"], c["switch_ip"])} for c in port_map]
         colors = RackCentricDiagramGenerator._assign_subnet_colors(switches, normalized)
         assert colors.get("10.208.59.15")  # switch now has a subnet color
+
+
+class TestLandingFanSizing:
+    """QP-1: switch->node landing fan is centered on the switch and the switch
+    box is widened so the whole fan fits within its width at fixed line spacing.
+
+    Regression: the v1.5.8 fan keyed ``landing_x`` off the global per-rack
+    ``device_index`` (0..N), so a node at index 59 landed ~270px right of a
+    110px switch — connections started a quarter in from the left and ran
+    well past the right edge.
+    """
+
+    def _slots(self):
+        return RackCentricDiagramGenerator._build_landing_slots
+
+    def test_slots_grouped_per_switch_and_contiguous(self):
+        port_map = [
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.3", "network": "A", "interface": "ib0"},
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.1", "network": "A", "interface": "ib0"},
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.2", "network": "A", "interface": "ib0"},
+            {"switch_ip": "10.0.0.2", "node_ip": "172.16.64.1", "network": "B", "interface": "ib1"},
+        ]
+        slots, totals = self._slots()(port_map, {"10.0.0.1", "10.0.0.2"})
+        assert totals == {"10.0.0.1": 3, "10.0.0.2": 1}
+        # Slots contiguous 0..n-1, ordered by numeric node IP.
+        assert slots["10.0.0.1"][("10.0.0.1", "172.16.0.1", "A")] == 0
+        assert slots["10.0.0.1"][("10.0.0.1", "172.16.0.2", "A")] == 1
+        assert slots["10.0.0.1"][("10.0.0.1", "172.16.0.3", "A")] == 2
+
+    def test_slots_exclude_switches_not_in_drawable_set(self):
+        port_map = [{"switch_ip": "10.9.9.9", "node_ip": "1.1.1.1", "network": "A", "interface": "ib0"}]
+        slots, totals = self._slots()(port_map, {"10.0.0.1"})
+        assert totals == {}
+
+    def test_fan_landing_x_is_centered_and_symmetric(self):
+        gen = RackCentricDiagramGenerator
+        sw_cx = 200.0
+        # Single connection lands exactly on the switch center.
+        assert gen._fan_landing_x(sw_cx, 0, 1, 5.0) == sw_cx
+        # Three connections are symmetric around the center.
+        left = gen._fan_landing_x(sw_cx, 0, 3, 5.0)
+        mid = gen._fan_landing_x(sw_cx, 1, 3, 5.0)
+        right = gen._fan_landing_x(sw_cx, 2, 3, 5.0)
+        assert mid == sw_cx
+        assert abs((sw_cx - left) - (right - sw_cx)) < 1e-9
+
+    def test_dynamic_switch_width_has_floor_and_grows(self):
+        gen = RackCentricDiagramGenerator
+        from network_diagram_v2 import SWITCH_W
+
+        assert gen._dynamic_switch_width(1) == float(SWITCH_W)
+        assert gen._dynamic_switch_width(2) == float(SWITCH_W)
+        wide = gen._dynamic_switch_width(40)
+        assert wide > float(SWITCH_W)
+
+    def test_widened_switch_contains_centered_fan(self):
+        gen = RackCentricDiagramGenerator
+        stagger, pad = 5.0, 12.0
+        for n in (1, 5, 20, 40, 60):
+            width = gen._dynamic_switch_width(n, stagger, pad)
+            half_span = (n - 1) / 2.0 * stagger
+            # The extreme landing offset must sit inside the box (with pad).
+            assert half_span <= width / 2.0 - pad + 1e-6
+
+
+class TestEdgeColorByDeviceSubnet:
+    """The switch->node connection color must reflect the network of the
+    CONNECTED DEVICE's IP, not the switch's canonical subnet.
+
+    Regression: edges were colored by ``subnet_color_map[sw_ip]`` (the
+    switch's most-common /24), so a mis-cabled connection — e.g. a
+    172.16.64.x (Blue) device cabled to a Network-A (Green) switch — drew
+    Green, hiding the fault. Coloring by the device IP's /24 makes the
+    off-network strand render in its true color (here Blue) so the mis-cable
+    is visually obvious.
+    """
+
+    def _switches(self):
+        # Two leaves: A canonically serves 172.16.0 (Green), B serves 172.16.64 (Blue).
+        return [_make_switch("SW-LF-01", "10.0.0.1"), _make_switch("SW-LF-02", "10.0.0.2")]
+
+    def _port_map(self):
+        return [
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.5", "network": "A", "interface": "ib0"},
+            {"switch_ip": "10.0.0.1", "node_ip": "172.16.0.6", "network": "A", "interface": "ib0"},
+            {"switch_ip": "10.0.0.2", "node_ip": "172.16.64.5", "network": "B", "interface": "ib1"},
+            {"switch_ip": "10.0.0.2", "node_ip": "172.16.64.6", "network": "B", "interface": "ib1"},
+        ]
+
+    def test_subnet_color_map_keyed_by_subnet(self):
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        m = RackCentricDiagramGenerator._assign_subnet_color_map(self._switches(), self._port_map())
+        assert m["172.16.0"] == SUBNET_COLOR_PALETTE[0]  # green
+        assert m["172.16.64"] == SUBNET_COLOR_PALETTE[1]  # blue
+
+    def test_subnet_color_map_matches_switch_color_map(self):
+        """The per-subnet map must agree with the switch->color projection so
+        the legend (switch-based) and the edges (device-IP-based) stay in sync."""
+        sw_map = RackCentricDiagramGenerator._assign_subnet_colors(self._switches(), self._port_map())
+        subnet_map = RackCentricDiagramGenerator._assign_subnet_color_map(self._switches(), self._port_map())
+        assert sw_map["10.0.0.1"] == subnet_map["172.16.0"]
+        assert sw_map["10.0.0.2"] == subnet_map["172.16.64"]
+
+    def test_edge_color_uses_device_ip_subnet(self):
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        gen = RackCentricDiagramGenerator
+        subnet_map = {"172.16.0": SUBNET_COLOR_PALETTE[0], "172.16.64": SUBNET_COLOR_PALETTE[1]}
+        sw_map = {"10.0.0.1": SUBNET_COLOR_PALETTE[0], "10.0.0.2": SUBNET_COLOR_PALETTE[1]}
+        # Mis-cabled: Blue (172.16.64) device on the Green (172.16.0) switch -> Blue.
+        assert gen._edge_color("172.16.64.123", "10.0.0.1", subnet_map, sw_map) == SUBNET_COLOR_PALETTE[1]
+        # Mis-cabled the other way: Green device on the Blue switch -> Green.
+        assert gen._edge_color("172.16.0.123", "10.0.0.2", subnet_map, sw_map) == SUBNET_COLOR_PALETTE[0]
+        # Correctly cabled: device subnet == switch subnet -> that color.
+        assert gen._edge_color("172.16.0.7", "10.0.0.1", subnet_map, sw_map) == SUBNET_COLOR_PALETTE[0]
+
+    def test_edge_color_falls_back_to_switch_then_palette(self):
+        from network_diagram_v2 import SUBNET_COLOR_PALETTE
+
+        gen = RackCentricDiagramGenerator
+        sw_map = {"10.0.0.1": SUBNET_COLOR_PALETTE[1]}
+        # Unknown device subnet -> switch color.
+        assert gen._edge_color("10.9.9.9", "10.0.0.1", {}, sw_map) == SUBNET_COLOR_PALETTE[1]
+        # Nothing known -> palette[0].
+        assert gen._edge_color("", "", {}, {}) == SUBNET_COLOR_PALETTE[0]
+
+
+class TestSwitchLabels:
+    """QP-1: switch boxes label by hostname (primary) + mgmt IP (secondary).
+
+    The legacy SWA/SWB (leaf) and SP1/SP2 (spine) designations are no longer
+    used anywhere in the report or tooling, so they must not appear on the
+    diagram. Each switch box shows its name on top and its management IP
+    beneath it.
+    """
+
+    def _gen(self):
+        return RackCentricDiagramGenerator(config={"mode": "detailed"})
+
+    def _svg(self):
+        import svgwrite
+
+        switches = [
+            _make_switch("SW-LF-01", "10.208.59.13"),
+            _make_switch("LAX-01-SW-LF-02", "10.208.59.14"),
+        ]
+        spines = [
+            {"hostname": "SW-SP-01", "mgmt_ip": "10.208.59.11", "_assigned_rack": "RackP01C01"},
+        ]
+        racks = [
+            {
+                "rack_name": "RackP01C01",
+                "cboxes": [],
+                "bottom_devices": [],
+                "switches": [switches[0], switches[1]],
+                "bottom_label": "DN",
+            }
+        ]
+        port_map = [
+            {"switch_ip": "10.208.59.13", "node_ip": "172.16.0.5"},
+            {"switch_ip": "10.208.59.14", "node_ip": "172.16.64.5"},
+        ]
+        return self._gen()._render_page(svgwrite, racks, spines, [], port_map, switches + spines)
+
+    def test_switch_name_and_mgmt_ip_rendered(self):
+        svg = self._svg()
+        assert "SW-LF-01" in svg
+        assert "LAX-01-SW-LF-02" in svg
+        assert "SW-SP-01" in svg
+        assert "10.208.59.13" in svg
+        assert "10.208.59.14" in svg
+        assert "10.208.59.11" in svg
+
+    def test_legacy_designations_absent(self):
+        svg = self._svg()
+        for legacy in (">SWA<", ">SWB<", ">SP1<", ">SP2<"):
+            assert legacy not in svg

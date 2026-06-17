@@ -74,10 +74,17 @@ class SwitchConfigWorkflow:
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
         self._credentials: Dict[str, Any] = {}
         self._script_runner: Optional[ScriptRunner] = None
+        self._output_dir: Optional[Path] = None
         self._step_data: Dict[str, Any] = {}
 
     def set_output_callback(self, callback: Callable[[str, str, Optional[str]], None]) -> None:
         self._output_callback = callback
+
+    def set_output_dir(self, output_dir: Any) -> None:
+        """Point local script output at a per-cluster scripts dir (QP-2)."""
+        self._output_dir = Path(output_dir)
+        if self._script_runner is not None:
+            self._script_runner.set_local_dir(self._output_dir)
 
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
@@ -146,7 +153,7 @@ class SwitchConfigWorkflow:
             return {"success": False, "message": f"Invalid step ID: {step_id}"}
 
         if self._script_runner is None:
-            self._script_runner = ScriptRunner(output_callback=self._output_callback)
+            self._script_runner = ScriptRunner(output_callback=self._output_callback, local_dir=self._output_dir)
 
         try:
             return method()

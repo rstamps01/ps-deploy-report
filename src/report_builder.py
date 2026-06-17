@@ -229,6 +229,7 @@ class VastReportBuilder:
         config: Optional[ReportConfig] = None,
         library_path: Optional[str] = None,
         user_images_dir: Optional[str] = None,
+        segment_by_cluster: bool = False,
     ):
         """
         Initialize the report builder.
@@ -237,11 +238,16 @@ class VastReportBuilder:
             config (ReportConfig, optional): Report configuration
             library_path: Path to user device_library.json
             user_images_dir: Path to user-uploaded hardware images directory
+            segment_by_cluster: When True (QP-2), diagrams are written under the
+                per-cluster ``clusters/<key>/output/diagrams`` tree resolved from
+                the processed data's ``cluster_summary``.  Default False keeps the
+                legacy flat ``output/diagrams`` location.
         """
         self.logger = get_logger(__name__)
         self.config = config or ReportConfig()
         self.library_path = library_path
         self.user_images_dir = user_images_dir
+        self.segment_by_cluster = segment_by_cluster
         self.switch_positions: dict[int, Any] = {}
 
         if not REPORTLAB_AVAILABLE:
@@ -1105,6 +1111,8 @@ class VastReportBuilder:
             # Network Configuration section
             ("Network Configuration", 0, "network_config", True),
             ("Cluster Network", 1, None, False),
+            ("CNode Management Map", 1, None, False),
+            ("DNode Management Map", 1, None, False),
             ("CNode Network", 1, None, False),
             ("DNode Network", 1, None, False),
             # Switch Configuration section
@@ -3537,6 +3545,42 @@ class VastReportBuilder:
                 content.extend(network_table_elements)
                 content.append(Spacer(1, 16))
 
+        # Node Management Map: VMS device name -> assigned hostname -> external mgmt IP.
+        # Sourced from hardware_inventory so all three identifiers appear together;
+        # the per-node network tables below show name + mgmt IP but not hostname.
+        hw_inv = data.get("hardware_inventory", {})
+        map_headers = ["Device Name (VMS)", "Hostname", "Mgmt IP"]
+
+        def _management_map_rows(nodes: Any) -> List[List[str]]:
+            rows: List[List[str]] = []
+            for node in sorted(nodes or [], key=self._ip_sort_key):
+                rows.append(
+                    [
+                        node.get("name") or node.get("hostname", "Unknown"),
+                        node.get("hostname", "Unknown"),
+                        node.get("mgmt_ip", "Unknown"),
+                    ]
+                )
+            return rows
+
+        cnode_map_rows = _management_map_rows(hw_inv.get("cnodes"))
+        if cnode_map_rows:
+            content.extend(
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    cnode_map_rows, "CNode Management Map", map_headers
+                )
+            )
+            content.append(Spacer(1, 16))
+
+        dnode_map_rows = _management_map_rows(hw_inv.get("dnodes"))
+        if dnode_map_rows:
+            content.extend(
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    dnode_map_rows, "DNode Management Map", map_headers
+                )
+            )
+            content.append(Spacer(1, 16))
+
         # 1. CNodes Network Configuration
         # For EBox clusters, use hardware_inventory directly (from /api/v7/cnodes/)
         # For non-EBox clusters, try network_settings first then fallback
@@ -3695,6 +3739,22 @@ class VastReportBuilder:
 
         return content
 
+    def _resolve_diagrams_dir(self, data: Dict[str, Any]) -> Path:
+        """Resolve the diagram output directory.
+
+        With QP-2 segmentation enabled, diagrams land under the per-cluster
+        ``clusters/<key>/output/diagrams`` tree (key derived from the processed
+        data's ``cluster_summary``); otherwise the legacy flat
+        ``output/diagrams`` directory is used.
+        """
+        data_dir = get_data_dir()
+        if self.segment_by_cluster:
+            from utils.cluster_paths import cluster_paths, resolve_cluster_key_from_summary
+
+            key = resolve_cluster_key_from_summary(data)
+            return cluster_paths(data_dir, key).diagrams
+        return data_dir / "output" / "diagrams"
+
     def _create_logical_network_diagram(
         self,
         data: Dict[str, Any],
@@ -3792,7 +3852,7 @@ class VastReportBuilder:
             f"{len(hardware_data['switches'])} Switches"
         )
 
-        diagrams_dir = get_data_dir() / "output" / "diagrams"
+        diagrams_dir = self._resolve_diagrams_dir(data)
         diagrams_dir.mkdir(parents=True, exist_ok=True)
 
         generated_paths: list = []
@@ -3980,6 +4040,23 @@ class VastReportBuilder:
             # Other speeds (40G, 10G, etc.)
             return "Data Plane"
 
+    @staticmethod
+    def _build_switch_identity_map(switches: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
+        """Map a lowercased switch hostname/name -> {'name', 'mgmt_ip'}.
+
+        Used to resolve the GUID-based ``switch_ip`` carried by IB ``port_map``
+        entries (which also carry ``switch_hostname``) to a human-readable name
+        and the switch's management IP from the switch inventory.
+        """
+        out: Dict[str, Dict[str, str]] = {}
+        for sw in switches or []:
+            name = sw.get("name") or sw.get("hostname") or sw.get("host_name") or ""
+            mgmt = sw.get("mgmt_ip") or sw.get("management_ip") or sw.get("ip") or ""
+            for key in (sw.get("name"), sw.get("hostname"), sw.get("host_name")):
+                if key:
+                    out[str(key).strip().lower()] = {"name": str(name), "mgmt_ip": str(mgmt)}
+        return out
+
     def _create_vnetmap_topology_tables(
         self,
         port_map: List[Dict[str, Any]],
@@ -3988,6 +4065,17 @@ class VastReportBuilder:
     ) -> List[Any]:
         """Render vnetmap 'Full Topology' and per-switch topology tables."""
         content: List[Any] = []
+
+        # Resolve GUID/hostname -> mgmt IP so tables show the switch's
+        # management IP and name rather than the raw IB GUID.
+        switch_identity = self._build_switch_identity_map(switches)
+
+        def _switch_mgmt_ip(entry: Dict[str, Any]) -> str:
+            hostname = (entry.get("switch_hostname") or "").strip()
+            info = switch_identity.get(hostname.lower()) if hostname else None
+            if info and info.get("mgmt_ip"):
+                return info["mgmt_ip"]
+            return hostname or entry.get("switch_ip", "")
 
         unique_nodes = {e.get("node_hostname", "") for e in port_map if e.get("node_hostname")}
         unique_switches = {e.get("switch_ip", "") for e in port_map if e.get("switch_ip")}
@@ -4027,14 +4115,14 @@ class VastReportBuilder:
 
         # --- Full Topology table ---
         # Proportional weights: Node(wide) | Switch IP | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
-        full_headers = ["Node", "Switch IP", "Port", "Data IP", "Interface", "MAC", "Net"]
+        full_headers = ["Node", "Switch Mgmt IP", "Port", "Data IP", "Interface", "MAC", "Net"]
         full_col_weights = [5, 3, 1.2, 2.5, 2, 3.5, 0.8]
         full_data = []
         for e in sorted(port_map, key=lambda x: (x.get("node_hostname", ""), x.get("network", ""))):
             full_data.append(
                 [
                     e.get("node_hostname", ""),
-                    e.get("switch_ip", ""),
+                    _switch_mgmt_ip(e),
                     e.get("port", ""),
                     e.get("node_ip", ""),
                     e.get("interface", ""),
@@ -4084,7 +4172,20 @@ class VastReportBuilder:
                 )
 
             subnet_display = ", ".join(subnets) if subnets else ""
-            sw_title = f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
+            # Switch identity: name (primary) + mgmt IP + GUID, resolved from the
+            # inventory via the entry's switch_hostname; switch_ip holds the GUID.
+            first = entries[0]
+            sw_hostname = (first.get("switch_hostname") or "").strip()
+            sw_info = switch_identity.get(sw_hostname.lower()) if sw_hostname else None
+            sw_name = (sw_info or {}).get("name") or sw_hostname or switch_ip
+            sw_mgmt = (sw_info or {}).get("mgmt_ip") or ""
+            ident_parts = [str(sw_name)]
+            if sw_mgmt:
+                ident_parts.append(str(sw_mgmt))
+            if switch_ip and switch_ip != sw_name:
+                ident_parts.append(f"GUID {switch_ip}")
+            sw_ident = " — ".join(ident_parts)
+            sw_title = f"Switch {sw_ident} — subnet {{{subnet_display}}}, network {{{net_label}}}"
             sw_elements = self.brand_compliance.create_vast_table(
                 sw_data,
                 sw_title,
@@ -4378,6 +4479,30 @@ class VastReportBuilder:
 
         return content
 
+    @staticmethod
+    def _count_active_ports(ports: List[Dict[str, Any]]) -> int:
+        """Count ports whose operational state is up/active (case-insensitive).
+
+        IB switches report ``Active`` while Ethernet switches report ``up``;
+        both count toward active ports.
+        """
+        active = {"up", "active"}
+        return sum(1 for p in (ports or []) if str(p.get("state", "")).strip().lower() in active)
+
+    @staticmethod
+    def _derive_port_mtu(ports: List[Dict[str, Any]]) -> str:
+        """Return the most common non-zero MTU across ports, or 'Unknown'."""
+        from collections import Counter
+
+        counts: Counter = Counter()
+        for p in ports or []:
+            mtu = str(p.get("mtu", "")).strip()
+            if mtu and mtu not in ("0", "Unknown"):
+                counts[mtu] += 1
+        if not counts:
+            return "Unknown"
+        return counts.most_common(1)[0][0]
+
     def _create_switch_configuration(
         self,
         data: Dict[str, Any],
@@ -4450,6 +4575,15 @@ class VastReportBuilder:
             mtu = switch.get("mtu", "Unknown")
             port_speeds = switch.get("port_speeds", {})
             ports = switch.get("ports", [])
+
+            # Defensive recompute for replayed/older JSON where these were not
+            # populated at collection time (e.g. IB ports counted only "up").
+            if ports:
+                if not active_ports:
+                    active_ports = self._count_active_ports(ports)
+                if not mtu or str(mtu) in ("0", "Unknown"):
+                    mtu = self._derive_port_mtu(ports)
+            mtu = str(mtu)
 
             # Capitalize switch type for display
             if switch_type.lower() == "cumulus":
@@ -5720,6 +5854,7 @@ def create_report_builder(
     config: Optional[ReportConfig] = None,
     library_path: Optional[str] = None,
     user_images_dir: Optional[str] = None,
+    segment_by_cluster: bool = False,
 ) -> VastReportBuilder:
     """
     Create and return a configured VastReportBuilder instance.
@@ -5728,11 +5863,12 @@ def create_report_builder(
         config (ReportConfig, optional): Report configuration
         library_path: Path to user device_library.json
         user_images_dir: Path to user-uploaded hardware images directory
+        segment_by_cluster: QP-2 per-cluster diagram segmentation (default off)
 
     Returns:
         VastReportBuilder: Configured report builder instance
     """
-    return VastReportBuilder(config, library_path, user_images_dir)
+    return VastReportBuilder(config, library_path, user_images_dir, segment_by_cluster=segment_by_cluster)
 
 
 if __name__ == "__main__":
