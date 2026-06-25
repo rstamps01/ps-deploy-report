@@ -204,6 +204,20 @@ The app listens at `http://127.0.0.1:5173` and opens the browser automatically.
 | **Exit** (navbar) | Shut down the application |
 | **More** (hamburger) | Legacy pages (Generate, Reports) and Developer pages (Advanced Ops, Health Check, Configuration — requires `--dev-mode`) |
 
+#### Connection modes
+
+The Reporter's Connection Settings tile offers three ways to reach a cluster:
+
+| Mode | Path | Notes |
+|------|------|-------|
+| **Tech Port Mode** | SSH tunnel via the CBox Tech Port (`192.168.2.2`) | Auto-discovers the VMS and tunnels API calls through SSH. |
+| **VMS Mgmt Mode** | Direct HTTPS to the VMS management IP | No SSH tunnel. |
+| **Teleport Mode** | Teleport (`tsh`) proxy | **Beta.** Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires `tsh` on PATH and an authenticated session (the app auto-runs `tsh login` on expiry). |
+
+> **Teleport Mode is a Beta feature** in v1.5.8 — functional and shipped, but
+> still undergoing field validation. The UI flags it with a "Beta Feature"
+> badge above the Teleport Mode option.
+
 ### Command-line interface
 
 For scripts or headless use:
@@ -559,4 +573,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.5.8-beta · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1279 passing, 60%+ coverage threshold
+**Version:** 1.5.8 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1279 passing, 60%+ coverage threshold

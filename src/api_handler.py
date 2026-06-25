@@ -314,6 +314,10 @@ class VastApiHandler:
 
         self.logger.info("Detecting highest supported API version...")
 
+        # Track what each probe returned so a total failure can be diagnosed
+        # by the operator (auth vs routing) instead of silently falling back.
+        seen_status: Dict[str, Any] = {}
+        last_body = ""
         for version in api_versions:
             try:
                 # Test the version by making a simple API call
@@ -331,14 +335,61 @@ class VastApiHandler:
                     self.logger.info(f"Successfully detected API version: {version}")
                     return version
                 else:
+                    seen_status[version] = response.status_code
+                    last_body = (response.text or "")[:200]
                     self.logger.debug(f"API version {version} not supported: {response.status_code}")
 
             except Exception as e:
+                seen_status[version] = f"error: {e}"
                 self.logger.debug(f"API version {version} test failed: {e}")
                 continue
 
-        # Fallback to v1 if no version works
-        self.logger.warning("No API version detected, falling back to v1")
+        # No version returned 200: this is the true point of failure (the
+        # downstream "Failed to create new API token" is only a symptom).
+        # Surface the status codes at operator level so the cause is clear.
+        codes = {str(v) for v in seen_status.values()}
+        self.logger.warning(
+            "API version detection failed — no version (v7..v1) returned HTTP 200. Per-version responses: %s",
+            seen_status,
+        )
+        # Classify the failure so the operator gets an actionable cause rather
+        # than a cryptic downstream "Failed to create API token / SSL EOF".
+        joined = " ".join(str(v) for v in seen_status.values())
+        is_transport = any(
+            marker in joined
+            for marker in ("SSL", "EOF", "Max retries", "Connection", "ConnectionError", "timed out", "refused")
+        )
+        if is_transport and self._api_host != self.cluster_ip:
+            self.logger.warning(
+                "The forwarded API endpoint (%s) did not complete a TLS/HTTP exchange. This usually means "
+                "the tunnel target is not serving the VMS API. In Teleport mode the API is forwarded to the "
+                "selected node's loopback (127.0.0.1:443), which only works if that node hosts the VMS. "
+                "Fix: target the node that runs the VMS management UI, or set the Cluster/VMS IP to the VMS "
+                "management VIP (reachable from the node) so the tunnel forwards there instead.",
+                self._api_host,
+            )
+        elif is_transport:
+            self.logger.warning(
+                "Could not complete a TLS/HTTP exchange with %s. Verify the cluster IP is reachable and "
+                "serving HTTPS on 443.",
+                self._api_host,
+            )
+        elif codes & {"401", "403"}:
+            hint = (
+                "The cluster API rejected the request (HTTP 401/403). The most likely cause is an "
+                "incorrect VMS username/password for this cluster. "
+            )
+            if self._api_host != self.cluster_ip and not self._tunnel_host:
+                hint += (
+                    "You are connected through a tunnel (e.g. Teleport) with no Host header set; if the "
+                    "credentials are correct, this cluster's nginx may require virtual-host routing "
+                    "(a Host header matching the VMS management IP). "
+                )
+            self.logger.warning("%sResponse snippet: %s", hint, last_body or "<empty>")
+        elif last_body:
+            self.logger.warning("Last response snippet: %s", last_body)
+
+        self.logger.warning("Falling back to v1 (authentication will likely fail).")
         return "v1"
 
     def _set_api_version(self, version: str) -> None:

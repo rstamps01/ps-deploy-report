@@ -90,7 +90,22 @@ class SwitchConfigWorkflow:
         self._credentials = credentials
 
     def _jump_kwargs(self) -> Dict[str, Any]:
-        """Return jump-host SSH kwargs when Tech Port mode is active."""
+        """Return jump-host SSH kwargs when Tech Port or Teleport mode is active."""
+        # Teleport mode: jump through the forwarded local SSH endpoint.
+        ssh_host = self._credentials.get("ssh_host")
+        if ssh_host:
+            kwargs: Dict[str, Any] = {
+                "jump_host": ssh_host,
+                "jump_user": self._credentials.get("node_user", "vastdata"),
+                "jump_password": self._credentials.get("node_password"),
+            }
+            try:
+                ssh_port = int(self._credentials.get("ssh_port") or 22)
+            except (TypeError, ValueError):
+                ssh_port = 22
+            if ssh_port != 22:
+                kwargs["jump_port"] = ssh_port
+            return kwargs
         if self._credentials.get("tunnel_address"):
             return {
                 "jump_host": self._credentials.get("cluster_ip"),

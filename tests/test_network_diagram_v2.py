@@ -89,6 +89,121 @@ class TestRackGrouping:
         assert len(racks) == 1
         assert racks[0]["rack_name"] == "Default"
 
+    def test_default_rack_name_rescued_from_hostname(self):
+        """A device tagged rack_name='Default' but whose hostname encodes a
+        known rack is rescued into that rack instead of spawning a stray
+        'Default' rack that pagination would isolate."""
+        gen = RackCentricDiagramGenerator()
+        cboxes = [
+            {"name": "c1", "hostname": "R0404-CB1-U22", "rack_name": "R0404", "data_ips": []},
+            {"name": "c2", "hostname": "R0406-CB1-U43", "rack_name": "R0406", "data_ips": []},
+            # Stray: API gave it "Default" but the hostname says R0404.
+            {"name": "c3", "hostname": "R0404-CB10-U31", "rack_name": "Default", "data_ips": []},
+        ]
+        racks = gen._build_rack_groups(cboxes, [], [], [], None, "DB")
+        rack_names = {r["rack_name"] for r in racks}
+        assert "Default" not in rack_names
+        r0404 = next(r for r in racks if r["rack_name"] == "R0404")
+        assert len(r0404["cboxes"]) == 2
+
+    def test_unknown_hostname_rack_not_invented(self):
+        """Hostname inference only rescues into ALREADY-known racks; it must
+        not fabricate a rack from arbitrary hostname noise."""
+        gen = RackCentricDiagramGenerator()
+        cboxes = [
+            {"name": "c1", "hostname": "R0404-CB1-U22", "rack_name": "R0404", "data_ips": []},
+            # Hostname token R9999 is not a known rack -> stays Default.
+            {"name": "c2", "hostname": "R9999-CB1-U1", "rack_name": "Default", "data_ips": []},
+        ]
+        racks = gen._build_rack_groups(cboxes, [], [], [], None, "DB")
+        rack_names = {r["rack_name"] for r in racks}
+        assert rack_names == {"R0404", "Default"}
+
+
+class TestSpineDetectionFromTopology:
+    """Spines must be recognized from spine_uplink/spine_fabric topology even
+    when their hostnames use the 'SS' convention the name classifier does not
+    match. Otherwise the diagram draws a leaf-leaf IPL mesh and drops the
+    spines instead of rendering leaf->spine ISLs."""
+
+    def test_ss_named_switch_classified_as_spine(self):
+        fn = RackCentricDiagramGenerator._classify_switch_role
+        assert fn({"hostname": "VAST-SS-A"}) == "spine"
+        assert fn({"hostname": "VAST-SS-B"}) == "spine"
+        # Leaf naming still resolves to leaf.
+        assert fn({"hostname": "VAST-SL-A"}) == "leaf"
+        assert fn({"hostname": "VAST-TN1-SL-3"}) == "leaf"
+
+    def test_spine_ips_from_ipl_excludes_leaves(self):
+        fn = RackCentricDiagramGenerator._spine_ips_from_ipl
+        ipl = [
+            {"connection_type": "spine_uplink", "switch1_ip": "10.0.0.21", "switch2_ip": "10.0.0.11"},
+            {"connection_type": "spine_uplink", "switch1_ip": "10.0.0.22", "switch2_ip": "10.0.0.12"},
+            {"connection_type": "IPL", "switch1_ip": "10.0.0.11", "switch2_ip": "10.0.0.12"},
+        ]
+        leaf_ips = {"10.0.0.11", "10.0.0.12"}
+        assert fn(ipl, leaf_ips) == {"10.0.0.21", "10.0.0.22"}
+
+    def test_no_spine_uplinks_returns_empty(self):
+        fn = RackCentricDiagramGenerator._spine_ips_from_ipl
+        ipl = [{"connection_type": "IPL", "switch1_ip": "10.0.0.11", "switch2_ip": "10.0.0.12"}]
+        assert fn(ipl, {"10.0.0.11", "10.0.0.12"}) == set()
+
+
+class TestRackFromHostname:
+    def test_extracts_leading_rack_token(self):
+        fn = RackCentricDiagramGenerator._rack_from_hostname
+        assert fn({"hostname": "R0404-CB10-U31"}) == "R0404"
+        assert fn({"hostname": "R0406-CB1-U43-top-right"}) == "R0406"
+
+    def test_falls_back_to_name_field(self):
+        fn = RackCentricDiagramGenerator._rack_from_hostname
+        assert fn({"name": "RackA1-CB1"}) == "RackA1"
+
+    def test_no_token_returns_empty(self):
+        fn = RackCentricDiagramGenerator._rack_from_hostname
+        assert fn({"hostname": "cnode-129-10"}) == ""
+        assert fn({}) == ""
+
+
+class TestPaginationAffinity:
+    """Racks connected by the port_map must share a page so node->switch
+    edges are not dropped as 'orphan' when an operator places a switch in a
+    different rack than the nodes wired to it."""
+
+    def _rack(self, name: str, cbox_hosts: List[str], switch_ips: List[str]) -> Dict[str, Any]:
+        return {
+            "rack_name": name,
+            "cboxes": [{"name": h, "hostname": h, "data_ips": [], "mgmt_ip": ""} for h in cbox_hosts],
+            "bottom": [],
+            "switches": [{"hostname": ip, "mgmt_ip": ip} for ip in switch_ips],
+        }
+
+    def test_no_reorder_when_fits_one_page(self):
+        gen = RackCentricDiagramGenerator()
+        racks = [self._rack("A", ["h1"], ["10.0.0.1"]), self._rack("B", ["h2"], ["10.0.0.2"])]
+        out = gen._order_racks_for_pagination(racks, [])
+        assert [r["rack_name"] for r in out] == ["A", "B"]
+
+    def test_connected_racks_paired_on_same_page(self):
+        gen = RackCentricDiagramGenerator()
+        # A's node wired to C's switch; B is a lone rack. With 3 racks and
+        # MAX_RACKS_PER_PAGE=2, A and C must end up adjacent (same page).
+        racks = [
+            self._rack("A", ["nodeA"], []),
+            self._rack("B", ["nodeB"], ["10.0.0.9"]),
+            self._rack("C", [], ["10.0.0.1"]),
+        ]
+        port_map = [
+            _make_port_map_entry("", "10.0.0.1", hostname="nodeA"),
+            _make_port_map_entry("", "10.0.0.1", hostname="nodeA"),
+        ]
+        out = gen._order_racks_for_pagination(racks, port_map)
+        order = [r["rack_name"] for r in out]
+        # A and C land in the same 2-rack page chunk.
+        pages = [order[i : i + MAX_RACKS_PER_PAGE] for i in range(0, len(order), MAX_RACKS_PER_PAGE)]
+        assert any("A" in p and "C" in p for p in pages)
+
 
 class TestNodeRackFromBoxId:
     """Node rack placement must come from the engineer-assigned hardware
@@ -840,6 +955,45 @@ class TestNET2AManualSwitchPlacement:
         assert not any(
             s.get("hostname") == "sw2" for s in rack_by_name["R1"]["switches"]
         ), "sw2 must NOT appear in R1 (the v1.5.7 bug)"
+
+
+class TestDuplicateNamedSwitchPlacement:
+    """Two switches that share a name (e.g. two "Spine-B" at different mgmt
+    IPs) must map to their assigned racks independently. The bug keyed the
+    manual switch->rack map by name, so the second duplicate collided with the
+    first. The fix keys by the stable switch_id/mgmt_ip.
+    """
+
+    def test_extract_manual_switch_to_rack_keys_by_switch_id(self):
+        fn = RackCentricDiagramGenerator._extract_manual_switch_to_rack
+        placements = [
+            {"switch_name": "Spine-B", "switch_id": "10.84.214.28", "mgmt_ip": "10.84.214.28", "rack_name": "R1"},
+            {"switch_name": "Spine-B", "switch_id": "10.84.214.29", "mgmt_ip": "10.84.214.29", "rack_name": "R2"},
+        ]
+        result = fn(placements)
+        # Both ids present and mapped to distinct racks despite the shared name.
+        assert result["10.84.214.28"] == "R1"
+        assert result["10.84.214.29"] == "R2"
+
+    def test_duplicate_named_spines_assigned_to_distinct_racks(self):
+        gen = RackCentricDiagramGenerator()
+        sw1 = {"hostname": "Spine-B", "name": "Spine-B", "switch_id": "10.84.214.28", "mgmt_ip": "10.84.214.28"}
+        sw2 = {"hostname": "Spine-B", "name": "Spine-B", "switch_id": "10.84.214.29", "mgmt_ip": "10.84.214.29"}
+        rack_map = {
+            "R1": {"cboxes": [_make_cbox("cb-r1", "R1")], "bottom": [], "switches": []},
+            "R2": {"cboxes": [_make_cbox("cb-r2", "R2")], "bottom": [], "switches": []},
+        }
+        manual_map = {"10.84.214.28": "R1", "10.84.214.29": "R2"}
+
+        result = gen._assign_switches_to_racks(
+            [sw1, sw2],
+            [],  # no topology evidence; manual map must split them
+            rack_map,
+            manual_switch_to_rack=manual_map,
+        )
+
+        assert result[id(sw1)] == "R1"
+        assert result[id(sw2)] == "R2"
 
 
 class TestNET2BEdgeRouting:

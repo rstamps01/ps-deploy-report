@@ -194,12 +194,12 @@ class ToolManager:
 
         return results
 
-    def _ensure_remote_dir(self, host: str, username: str, password: str) -> Tuple[bool, str]:
+    def _ensure_remote_dir(self, host: str, username: str, password: str, port: int = 22) -> Tuple[bool, str]:
         """Ensure the remote directory exists on the CNode."""
         mkdir_cmd = f"mkdir -p {self.REMOTE_DIR}"
         self._emit("info", f"Ensuring remote directory exists: {self.REMOTE_DIR}")
 
-        rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=30, port=port)
         if rc != 0:
             error_msg = stderr or stdout or "SSH command failed"
             return False, f"Failed to create directory: {error_msg}"
@@ -214,6 +214,7 @@ class ToolManager:
         username: str,
         password: str,
         skip_mkdir: bool = False,
+        port: int = 22,
     ) -> Tuple[bool, str]:
         """
         Deploy a tool to CNode.
@@ -234,7 +235,7 @@ class ToolManager:
 
         # Step 1: Ensure remote directory exists (unless already done)
         if not skip_mkdir:
-            success, msg = self._ensure_remote_dir(host, username, password)
+            success, msg = self._ensure_remote_dir(host, username, password, port=port)
             if not success:
                 return False, msg
 
@@ -242,17 +243,17 @@ class ToolManager:
         self._emit("info", f"  Attempting direct download to CNode...")
         wget_cmd = f'wget -q "{url}" -O {remote_path} 2>&1'
 
-        rc, stdout, stderr = run_ssh_command(host, username, password, wget_cmd, timeout=60)
+        rc, stdout, stderr = run_ssh_command(host, username, password, wget_cmd, timeout=60, port=port)
 
         if rc == 0:
             # Verify file exists and has content
             check_cmd = f"test -s {remote_path} && echo 'ok'"
-            rc2, stdout2, _ = run_ssh_command(host, username, password, check_cmd, timeout=10)
+            rc2, stdout2, _ = run_ssh_command(host, username, password, check_cmd, timeout=10, port=port)
 
             if "ok" in stdout2:
                 self._emit("success", f"  Downloaded directly to CNode: {remote_path}")
                 # Set executable
-                run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10)
+                run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10, port=port)
                 return True, f"Downloaded {tool_name} directly to CNode"
 
         # Step 3: Fallback to local copy
@@ -276,6 +277,7 @@ class ToolManager:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             ssh.connect(
                 host,
+                port=port,
                 username=username,
                 password=password,
                 timeout=30,
@@ -290,7 +292,7 @@ class ToolManager:
             ssh.close()
 
             # Set executable
-            run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10)
+            run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10, port=port)
 
             self._emit("success", f"  Copied from local cache: {remote_path}")
             return True, f"Copied {tool_name} from local cache"

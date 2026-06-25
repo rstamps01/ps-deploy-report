@@ -126,6 +126,19 @@ class VnetmapWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _ssh_host(self) -> Optional[str]:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else None
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -170,6 +183,8 @@ class VnetmapWorkflow:
 
         if self._script_runner is None:
             self._script_runner = ScriptRunner(output_callback=self._output_callback, local_dir=self._output_dir)
+        # Teleport mode: SSH/SCP go to the forwarded local endpoint port.
+        self._script_runner.set_ssh_port(self._ssh_port())
 
         try:
             return method()
@@ -180,7 +195,8 @@ class VnetmapWorkflow:
     def _step_deploy_scripts(self) -> Dict[str, Any]:
         from tool_manager import ToolManager
 
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -202,7 +218,7 @@ class VnetmapWorkflow:
         tool_manager = ToolManager(output_callback=self._output_callback)
 
         # Create remote directory first (before any downloads)
-        dir_success, dir_msg = tool_manager._ensure_remote_dir(host, user, password)
+        dir_success, dir_msg = tool_manager._ensure_remote_dir(host, user, password, port=ssh_port)
         if not dir_success:
             self.emit("error", f"Failed to create remote directory: {dir_msg}")
             return {"success": False, "message": f"Failed to create remote directory: {dir_msg}"}
@@ -211,7 +227,9 @@ class VnetmapWorkflow:
         deployed = []
         for script in self.REQUIRED_SCRIPTS:
             self.emit("info", f"─── Deploying: {script} ───")
-            success, message = tool_manager.deploy_tool_to_cnode(script, host, user, password, skip_mkdir=True)
+            success, message = tool_manager.deploy_tool_to_cnode(
+                script, host, user, password, skip_mkdir=True, port=ssh_port
+            )
             if not success:
                 self.emit("error", f"Deployment failed for {script}: {message}")
                 return {"success": False, "message": f"Failed to deploy {script}: {message}"}
@@ -544,7 +562,8 @@ class VnetmapWorkflow:
         return "ETH" if switch_ips else "IB"
 
     def _step_generate_export_commands(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         switch_user = self._credentials.get("switch_user", "cumulus")
@@ -580,7 +599,9 @@ class VnetmapWorkflow:
 
         # Step 1: Read /etc/clustershell/groups.d/local.cfg from CNode
         self.emit("info", f"$ ssh {user}@{host} 'cat {self.LOCAL_CFG_PATH}'")
-        rc, cfg_content, stderr = run_ssh_command(host, user, password, f"cat {self.LOCAL_CFG_PATH}", timeout=30)
+        rc, cfg_content, stderr = run_ssh_command(
+            host, user, password, f"cat {self.LOCAL_CFG_PATH}", timeout=30, port=ssh_port
+        )
 
         if rc != 0:
             self.emit("error", f"Failed to read local.cfg: {stderr}")
@@ -723,7 +744,8 @@ class VnetmapWorkflow:
         }
 
     def _step_execute_exports(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -743,7 +765,7 @@ class VnetmapWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {verify_cmd}")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, verify_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(host, user, password, verify_cmd, timeout=30, port=ssh_port)
 
         if rc != 0:
             self.emit("error", f"Export validation failed: {stderr}")
@@ -766,7 +788,7 @@ class VnetmapWorkflow:
     )
 
     def _step_run_vnetmap(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         remote_dir = self._step_data.get("remote_dir", self._script_runner.DEFAULT_REMOTE_DIR)
@@ -1261,7 +1283,9 @@ class VnetmapWorkflow:
         'cat "$latest"'
     )
 
-    def _fetch_fabric_report(self, host: str, user: str, password: str) -> Tuple[Optional[str], Optional[str]]:
+    def _fetch_fabric_report(
+        self, host: str, user: str, password: str, port: int = 22
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Retrieve vnetmap's fabric-report file from the CNode.
 
         ``vnetmap.py`` writes ``/vast/log/vnetmap-<timestamp>.txt`` after a
@@ -1289,6 +1313,7 @@ class VnetmapWorkflow:
                 password,
                 self._FABRIC_REPORT_FETCH_CMD,
                 timeout=60,
+                port=port,
             )
         except Exception as exc:  # noqa: BLE001 — best-effort, never fatal
             self.emit("warn", f"Fabric-report fetch raised: {exc}")
@@ -1348,9 +1373,10 @@ class VnetmapWorkflow:
         # switch-to-switch edges (including spine uplinks) even when
         # ExternalPortMapper is disabled (offline / support-bundle runs).
         fabric_path, fabric_body = self._fetch_fabric_report(
-            self._credentials.get("cluster_ip", ""),
+            self._ssh_host() or "",
             self._credentials.get("node_user", "vastdata"),
             self._credentials.get("node_password", ""),
+            port=self._ssh_port(),
         )
         merged_output = clean_output
         if fabric_body:

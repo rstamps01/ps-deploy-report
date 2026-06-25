@@ -89,6 +89,10 @@ class ScriptRunner:
         """
         self._output_callback = output_callback
         self._local_dir: Optional[Path] = Path(local_dir) if local_dir else None
+        # Teleport mode forwards a CNode's SSH (22) to a local port; callers
+        # set this so every SSH/SCP call below targets the forwarded port
+        # instead of the default 22.  Defaults to 22 (Tech Port / direct).
+        self._ssh_port: int = 22
         # RM-8: per-stream state flag so ``_classify_stderr_line`` can
         # treat code-snippet lines inside a Python traceback (the ones
         # indented below a ``File "...", line N, in func`` frame) as
@@ -120,6 +124,14 @@ class ScriptRunner:
         """Point the runner at ``local_dir`` for script output (QP-2 segmentation)."""
         self._local_dir = Path(local_dir)
 
+    def set_ssh_port(self, port: int) -> None:
+        """Override the SSH/SCP TCP port for all remote operations.
+
+        Used by Teleport mode where a CNode's SSH is forwarded to a local
+        port; Tech Port / direct modes leave this at the default 22.
+        """
+        self._ssh_port = int(port) if port else 22
+
     def check_prerequisites(self, host: str, username: str, password: str) -> Tuple[bool, str]:
         """
         Check that prerequisites are met for remote execution.
@@ -135,7 +147,7 @@ class ScriptRunner:
         self._emit("info", f"Checking prerequisites for {host}")
 
         # Check SSH connectivity
-        rc, stdout, stderr = run_ssh_command(host, username, password, "echo OK", timeout=10)
+        rc, stdout, stderr = run_ssh_command(host, username, password, "echo OK", timeout=10, port=self._ssh_port)
         if rc != 0:
             error = stderr or "SSH connection failed"
             self._emit("error", f"SSH check failed: {error}")
@@ -143,7 +155,7 @@ class ScriptRunner:
 
         # Check for required directories
         rc, stdout, stderr = run_ssh_command(
-            host, username, password, f"mkdir -p {self.DEFAULT_REMOTE_DIR} && echo OK", timeout=10
+            host, username, password, f"mkdir -p {self.DEFAULT_REMOTE_DIR} && echo OK", timeout=10, port=self._ssh_port
         )
         if rc != 0:
             self._emit("error", f"Cannot create remote directory: {stderr}")
@@ -311,7 +323,9 @@ class ScriptRunner:
             if not skip_mkdir:
                 mkdir_cmd = f"mkdir -p {remote_dir}"
                 self._emit("info", f"$ ssh {username}@{host} '{mkdir_cmd}'")
-                rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=10)
+                rc, stdout, stderr = run_ssh_command(
+                    host, username, password, mkdir_cmd, timeout=10, port=self._ssh_port
+                )
                 if rc == 0:
                     self._emit("success", f"Directory ready: {remote_dir}")
                 else:
@@ -343,7 +357,7 @@ class ScriptRunner:
             if set_executable:
                 chmod_cmd = f"chmod +x {remote_path}"
                 self._emit("info", f"$ ssh {username}@{host} '{chmod_cmd}'")
-                rc, _, stderr = run_ssh_command(host, username, password, chmod_cmd, timeout=10)
+                rc, _, stderr = run_ssh_command(host, username, password, chmod_cmd, timeout=10, port=self._ssh_port)
                 if rc == 0:
                     self._emit("success", "Executable permission set")
                 else:
@@ -400,9 +414,15 @@ class ScriptRunner:
             "UserKnownHostsFile=/dev/null",
             "-o",
             "ConnectTimeout=30",
-            local_path,
-            f"{username}@{host}:{remote_path}",
         ]
+        if self._ssh_port and int(self._ssh_port) != 22:
+            cmd.extend(["-P", str(self._ssh_port)])
+        cmd.extend(
+            [
+                local_path,
+                f"{username}@{host}:{remote_path}",
+            ]
+        )
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
@@ -433,6 +453,7 @@ class ScriptRunner:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
+                port=self._ssh_port,
                 username=username,
                 password=password,
                 timeout=30,
@@ -694,7 +715,9 @@ class ScriptRunner:
         self._emit("info", "")
 
         try:
-            rc, stdout, stderr = run_ssh_command(host, username, password, command, timeout=timeout)
+            rc, stdout, stderr = run_ssh_command(
+                host, username, password, command, timeout=timeout, port=self._ssh_port
+            )
             duration_sec = time.time() - start_time
 
             success = rc == 0
@@ -945,9 +968,15 @@ class ScriptRunner:
             "UserKnownHostsFile=/dev/null",
             "-o",
             "ConnectTimeout=30",
-            f"{username}@{host}:{remote_path}",
-            local_path,
         ]
+        if self._ssh_port and int(self._ssh_port) != 22:
+            cmd.extend(["-P", str(self._ssh_port)])
+        cmd.extend(
+            [
+                f"{username}@{host}:{remote_path}",
+                local_path,
+            ]
+        )
 
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env)
@@ -978,6 +1007,7 @@ class ScriptRunner:
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             client.connect(
                 host,
+                port=self._ssh_port,
                 username=username,
                 password=password,
                 timeout=30,
@@ -1019,7 +1049,7 @@ class ScriptRunner:
 
         success = True
         for path in paths:
-            rc, _, stderr = run_ssh_command(host, username, password, f"rm -rf {path}", timeout=30)
+            rc, _, stderr = run_ssh_command(host, username, password, f"rm -rf {path}", timeout=30, port=self._ssh_port)
             if rc != 0:
                 self._emit("warn", f"Failed to remove {path}: {stderr}")
                 success = False

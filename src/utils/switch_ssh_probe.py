@@ -40,6 +40,7 @@ user is neither ``cumulus`` nor ``admin``).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from utils.ssh_adapter import (
@@ -49,6 +50,85 @@ from utils.ssh_adapter import (
 )
 
 _DEFAULT_LOGGER = logging.getLogger(__name__)
+
+# Per-attempt SSH timeout for the probe.  Raised from the historical 15s
+# because Cumulus / NVIDIA switches reached through a CNode proxy-jump (and
+# especially through a Teleport-forwarded local port) can take several
+# seconds to present their SSH protocol banner — observed 5-7s in the field,
+# occasionally more under load.  Too short a window makes paramiko raise an
+# "Error reading SSH protocol banner" SSHException *before* the password is
+# ever evaluated, which the probe would otherwise misread as a credential
+# rejection and skip a perfectly valid password.
+_PROBE_TIMEOUT = 30
+
+# A single retry per candidate on *transient* (non-auth) connection failures.
+# This directly addresses the "switch auth failing out before it succeeds"
+# class of problem: a slow / momentarily-throttled banner read returns a
+# transient error string (never a clean USERAUTH_FAILURE), so retrying the
+# same (user, password) once — rather than discarding the candidate — lets a
+# correct password win on the second try instead of producing a false
+# "rejected every candidate".  Auth rejections are NOT retried (a wrong
+# password never becomes right, and retrying wastes a full round-trip).
+_TRANSIENT_RETRIES = 1
+_TRANSIENT_BACKOFF_S = 2.0
+
+# stderr fragments that indicate a transient connectivity / banner problem
+# rather than an authentication rejection.  ``run_ssh_command`` surfaces
+# paramiko ``SSHException`` (e.g. banner-read timeouts) and subprocess
+# timeouts as rc != 0 with these strings; an actual bad password instead
+# yields "permission denied" / "authentication failed".
+_TRANSIENT_MARKERS = (
+    "banner",
+    "timed out",
+    "timeout",
+    "etimedout",
+    "connection reset",
+    "reset by peer",
+    "connection failed",
+    "no route to host",
+)
+
+
+def _looks_transient(stderr: str) -> bool:
+    """Return True when *stderr* indicates a retryable connectivity failure.
+
+    Distinguishes a slow/transient SSH banner or connection error (worth one
+    retry) from a clean authentication rejection (never retried).
+    """
+    blob = (stderr or "").lower()
+    if "permission denied" in blob or "authentication" in blob:
+        return False
+    return any(marker in blob for marker in _TRANSIENT_MARKERS)
+
+
+def _hostname_attempt(
+    switch_ip: str,
+    user: str,
+    password: str,
+    log: logging.Logger,
+    ssh_kwargs: Dict[str, Any],
+) -> tuple:
+    """Run the cheap ``hostname`` probe for one combo, retrying transients.
+
+    Returns the final ``(rc, stdout, stderr)`` tuple.  A transient
+    connectivity error (slow banner, momentary throttle) is retried up to
+    :data:`_TRANSIENT_RETRIES` times with a short backoff so a valid password
+    is not discarded because the switch was briefly slow to answer.
+    """
+    rc, out, err = run_ssh_command(switch_ip, user, password, "hostname", timeout=_PROBE_TIMEOUT, **ssh_kwargs)
+    attempt = 0
+    while rc != 0 and _looks_transient(err) and attempt < _TRANSIENT_RETRIES:
+        attempt += 1
+        log.info(
+            "Switch %s: transient SSH error before authentication (%s); retrying %d/%d",
+            switch_ip,
+            (err or "").strip().splitlines()[-1] if err else "no detail",
+            attempt,
+            _TRANSIENT_RETRIES,
+        )
+        time.sleep(_TRANSIENT_BACKOFF_S)
+        rc, out, err = run_ssh_command(switch_ip, user, password, "hostname", timeout=_PROBE_TIMEOUT, **ssh_kwargs)
+    return rc, out, err
 
 
 def probe_switch_password(
@@ -106,7 +186,7 @@ def probe_switch_password(
 
     for user, password in combos:
         try:
-            rc, _stdout, stderr = run_ssh_command(switch_ip, user, password, "hostname", timeout=15, **ssh_kwargs)
+            rc, _stdout, stderr = _hostname_attempt(switch_ip, user, password, log, ssh_kwargs)
             if rc == 0:
                 return str(password)
             # Only fall back to interactive ``show version`` when the
@@ -115,7 +195,7 @@ def probe_switch_password(
             combined = (stderr or "").lower()
             if "permission denied" in combined or "authentication" in combined:
                 rc_i, _out_i, _err_i = run_interactive_ssh(
-                    switch_ip, user, password, "show version", timeout=15, **ssh_kwargs
+                    switch_ip, user, password, "show version", timeout=_PROBE_TIMEOUT, **ssh_kwargs
                 )
                 if rc_i == 0:
                     return str(password)
@@ -124,8 +204,12 @@ def probe_switch_password(
             continue
 
     log.warning(
-        "Switch %s rejected every candidate password; downstream workflows will fall back to primary password",
+        "Switch %s rejected all %d candidate password(s) for user '%s'. "
+        "Verify the Switch Password and switch user in Connection Settings — "
+        "vnetmap port-mapping and switch health checks for this switch will fail until a working credential is supplied.",
         switch_ip,
+        len(candidates),
+        switch_user,
     )
     return None
 
@@ -173,6 +257,15 @@ def build_switch_password_by_ip(
     if not switch_ips or not candidates:
         return {}
 
+    log = logger or _DEFAULT_LOGGER
+    total = len(switch_ips)
+    log.info(
+        "Probing %d switch(es) for a working SSH credential (user '%s', %d candidate password(s))...",
+        total,
+        switch_user,
+        len(candidates),
+    )
+
     result: Dict[str, str] = {}
     for ip in switch_ips:
         pw = probe_switch_password(
@@ -184,4 +277,22 @@ def build_switch_password_by_ip(
         )
         if pw is not None:
             result[str(ip)] = pw
+
+    matched = len(result)
+    if matched == total:
+        log.info(
+            "Switch credential pre-probe: all %d switch(es) authenticated — vnetmap will use per-switch passwords.",
+            total,
+        )
+    else:
+        missing = [str(ip) for ip in switch_ips if str(ip) not in result]
+        log.warning(
+            "Switch credential pre-probe: only %d of %d switch(es) authenticated. "
+            "No working SSH password found for: %s. "
+            "vnetmap port-mapping and switch health checks will fail for those switches — "
+            "verify the Switch Password and switch user in Connection Settings.",
+            matched,
+            total,
+            ", ".join(missing),
+        )
     return result

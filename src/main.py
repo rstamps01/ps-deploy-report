@@ -47,7 +47,7 @@ from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
 # Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
-APP_VERSION = "1.5.8-beta"
+APP_VERSION = "1.5.8"
 __version__ = APP_VERSION
 
 
@@ -940,8 +940,9 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -
     # QP-3 (3): auto-shutdown watchdog.  Started here (not in
     # create_flask_app) so it only runs for the real GUI server and never
     # for test/headless app instances.  Exits the server once the browser
-    # closes and the app goes idle past the grace window.
-    if flask_app.config.get("AUTO_SHUTDOWN", {}).get("enabled", True):
+    # closes and the app goes idle past the grace window.  OFF by default
+    # (opt-in via ``auto_shutdown.enabled``); the fallback must match.
+    if flask_app.config.get("AUTO_SHUTDOWN", {}).get("enabled", False):
         from app import _auto_shutdown_watchdog
 
         threading.Thread(
@@ -1181,6 +1182,13 @@ def main() -> int:
     --dev-mode: enables Developer Mode for advanced operations.
     --port <number>: override the default GUI port (5173).
     """
+    # Print version and exit before the GUI/CLI router, so a bare
+    # ``vast-reporter --version`` reports the version instead of falling
+    # through to the default GUI launch.
+    if "--version" in sys.argv or "-V" in sys.argv:
+        print(f"VAST As-Built Report Generator {APP_VERSION}")
+        return 0
+
     dev_mode = "--dev-mode" in sys.argv
     if dev_mode:
         sys.argv.remove("--dev-mode")

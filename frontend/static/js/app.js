@@ -26,9 +26,11 @@
     }
 
     // -- Browser liveness heartbeat (auto-shutdown) -----------------------
-    // Posts a lightweight ping so the local server can exit shortly after
-    // the operator closes the browser.  A final beacon on unload speeds up
-    // detection; the server still has a grace window and never exits mid-job.
+    // Auto-shutdown is OPT-IN and OFF by default, so normally the first ping
+    // returns auto_shutdown:false and this loop stops itself immediately.
+    // When the operator opts in (auto_shutdown.enabled: true), the ping lets
+    // the local server exit shortly after the browser closes; the server has
+    // a grace window and never exits mid-job.
     (function initHeartbeat() {
         let intervalMs = 5000;
         let timer = null;

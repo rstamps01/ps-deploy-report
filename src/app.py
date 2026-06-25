@@ -45,15 +45,17 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.8-beta"
+APP_VERSION = "1.5.8"
 
 # QP-3 (3): auto-shutdown when the operator closes the browser.
-# The page sends a lightweight heartbeat every HEARTBEAT_INTERVAL seconds; the
-# watchdog shuts the local server down GRACE seconds after the last heartbeat,
-# but never while a job is running.  Grace must comfortably exceed the
-# heartbeat interval so a single dropped ping does not trigger an exit.
+# OPT-IN and OFF by default.  When enabled, the page sends a lightweight
+# heartbeat every HEARTBEAT_INTERVAL seconds and the watchdog shuts the local
+# server down GRACE seconds after the last heartbeat (never while a job runs).
+# It is off by default because browsers throttle/suspend timers in backgrounded
+# tabs, so an open-but-inactive tab can go silent past the grace window and
+# trigger a premature shutdown.  Set ``auto_shutdown.enabled: true`` to opt in.
 AUTO_SHUTDOWN_DEFAULTS = {
-    "enabled": True,
+    "enabled": False,
     "grace_seconds": 20,
     "heartbeat_interval_seconds": 5,
 }
@@ -495,6 +497,11 @@ def _register_routes(app: Flask) -> None:
             "switch_placement": form.get("switch_placement", "auto"),
             "proxy_jump": form.get("proxy_jump") == "on",
             "tech_port": form.get("tech_port") == "on",
+            # Teleport (tsh) connection mode: app launches a tsh tunnel that
+            # forwards the CNode's API (443) and SSH (22) to local ports.
+            "teleport": form.get("teleport") == "on",
+            "teleport_node": form.get("teleport_node", "").strip(),
+            "teleport_user": form.get("teleport_user", "vastdata").strip() or "vastdata",
             "run_vnetmap": form.get("run_vnetmap") == "1",
             # RM-13: mirror the Test Suite tile so the Reporter tile also
             # honours "Advanced -> Autofill Password".  When ticked, the
@@ -511,6 +518,9 @@ def _register_routes(app: Flask) -> None:
                 params["manual_placements"] = json.loads(raw_mp)
             except (json.JSONDecodeError, TypeError):
                 return jsonify({"error": "Invalid manual_placements JSON"}), 400
+
+        if params["teleport"] and not params["teleport_node"]:
+            return jsonify({"error": "Teleport node target is required for Teleport mode"}), 400
 
         app.config["JOB_CANCEL"].clear()
         thread = threading.Thread(target=_run_report_job, args=(app, params), daemon=True)
@@ -1584,6 +1594,10 @@ def _register_routes(app: Flask) -> None:
             "manual_switch_ips": [],
             "proxy_jump": True,
             "tech_port": False,
+            "conn_mode": "tech_port",
+            "teleport": False,
+            "teleport_node": "",
+            "teleport_user": "vastdata",
             "rpt_pre_validation": True,
             "rpt_run_reporter": True,
             "rpt_health_check": True,
@@ -1631,24 +1645,28 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"error": "Cluster IP is required"}), 400
 
         is_tech_port = bool(data.get("tech_port"))
+        is_teleport = bool(data.get("teleport"))
         probe_port = 22 if is_tech_port else 443
 
         # --- Fast reachability probe before any API work ---
-        try:
-            sock = socket.create_connection((cluster_ip, probe_port), timeout=CONNECT_PROBE_TIMEOUT)
-            sock.close()
-        except OSError:
-            label = "SSH (Tech Port)" if is_tech_port else "HTTPS"
-            return (
-                jsonify(
-                    {
-                        "error": f"Unable to reach {cluster_ip}:{probe_port} — {label} connection "
-                        f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
-                        f"the cluster IP is correct and reachable."
-                    }
-                ),
-                504,
-            )
+        # Teleport mode reaches the cluster only through a tsh tunnel that is
+        # not up yet, so the direct cluster_ip probe is skipped.
+        if not is_teleport:
+            try:
+                sock = socket.create_connection((cluster_ip, probe_port), timeout=CONNECT_PROBE_TIMEOUT)
+                sock.close()
+            except OSError:
+                label = "SSH (Tech Port)" if is_tech_port else "HTTPS"
+                return (
+                    jsonify(
+                        {
+                            "error": f"Unable to reach {cluster_ip}:{probe_port} — {label} connection "
+                            f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
+                            f"the cluster IP is correct and reachable."
+                        }
+                    ),
+                    504,
+                )
 
         username = password = token = None
         if data.get("auth_method") == "token":
@@ -1683,6 +1701,20 @@ def _register_routes(app: Flask) -> None:
                 tunnel.connect()
                 tunnel_address = tunnel.local_bind_address
                 tunnel_host = tunnel.vms_management_ip
+            elif is_teleport:
+                from utils.teleport_tunnel import TeleportTunnel, options_from_config
+
+                node = (data.get("teleport_node") or "").strip()
+                if not node:
+                    return jsonify({"error": "Teleport node target is required for Teleport mode"}), 400
+                tunnel = TeleportTunnel(
+                    node,
+                    data.get("teleport_user", "vastdata"),
+                    api_remote_host=_teleport_api_remote_host(cluster_ip),
+                    **options_from_config(config),
+                )
+                tunnel.connect()
+                tunnel_address = tunnel.api_local_address
 
             handler = create_vast_api_handler(
                 cluster_ip=cluster_ip,
@@ -1719,9 +1751,17 @@ def _register_routes(app: Flask) -> None:
                         "name": sw.get("name", "Unknown"),
                         "model": model,
                         "serial": sw.get("serial", ""),
+                        "mgmt_ip": sw.get("mgmt_ip", ""),
                         "height_u": rd._get_device_height_units(model),
                     }
                 )
+            # Assign a stable unique ``switch_id`` (mgmt_ip) and disambiguated
+            # ``display_name`` (e.g. "Spine-B (a)"/"(b)") so two switches that
+            # share a name (different IPs) remain distinct in the placement
+            # dropdown and downstream report/diagrams.
+            from utils.switch_identity import assign_switch_designators
+
+            assign_switch_designators(switches)
 
             return jsonify({"racks": racks, "switches": switches})
         except Exception as exc:
@@ -2020,6 +2060,9 @@ def _extract_oneshot_credentials(data: Dict[str, Any]) -> Dict[str, Any]:
         "manual_placements": data.get("manual_placements", []),
         "manual_switch_ips": data.get("manual_switch_ips", []),
         "tech_port": data.get("tech_port", False),
+        "teleport": data.get("teleport", False),
+        "teleport_node": (data.get("teleport_node", "") or "").strip(),
+        "teleport_user": (data.get("teleport_user", "vastdata") or "vastdata").strip() or "vastdata",
     }
 
 
@@ -2166,6 +2209,21 @@ class _JobCancelled(Exception):
     """Raised when the user cancels a running report job."""
 
 
+def _teleport_api_remote_host(cluster_ip: str) -> str:
+    """Resolve the host the Teleport API ``-L`` forward should terminate on.
+
+    In Teleport mode the operator enters the VMS the report targets in the
+    Cluster IP field. A routable VMS management IP/VIP is forwarded directly
+    (``-L <port>:<vip>:443``) so the VMS is reachable from *any* node, not just
+    the one that happens to host it. A blank or loopback value falls back to the
+    node's own loopback (``127.0.0.1``), preserving the prior node-local behavior.
+    """
+    host = (cluster_ip or "").strip()
+    if not host or host == "localhost" or host.startswith("127."):
+        return "127.0.0.1"
+    return host
+
+
 def _any_job_running(app: Flask) -> bool:
     """True if any report/health/one-shot/advanced-ops job is active.
 
@@ -2256,6 +2314,7 @@ def _preprobe_switch_passwords_for_job(
     switch_password_candidates: List[str],
     has_vnetmap: bool,
     has_health_switch: bool,
+    logger: Optional[Any] = None,
 ) -> Dict[str, str]:
     """RM-15: pre-probe every switch once to build a ``{ip: password}`` map.
 
@@ -2307,7 +2366,15 @@ def _preprobe_switch_passwords_for_job(
     """
     if not (has_vnetmap or has_health_switch):
         return {}
-    if not switch_password_candidates or len(switch_password_candidates) < 2:
+    # Engage with a single candidate too: even on a homogeneous fleet,
+    # probing validates the operator's Switch Password against every switch
+    # *before* vnetmap runs and lets ``vnetmap.py --multiple-passwords``
+    # target each switch with its verified password.  More importantly, a
+    # failed probe here surfaces a clear, actionable credential error in the
+    # operator log instead of letting vnetmap fail later with the opaque
+    # "Unable to determine suitable switch API".  Only a truly empty
+    # candidate list (autofill off, no password typed) short-circuits.
+    if not switch_password_candidates:
         return {}
 
     try:
@@ -2320,7 +2387,22 @@ def _preprobe_switch_passwords_for_job(
         return {}
 
     jump_kwargs: Dict[str, Any] = {}
-    if params.get("proxy_jump", True):
+    teleport_ssh_host = params.get("ssh_host")
+    if teleport_ssh_host:
+        # Teleport mode: the switches (and the real cluster mgmt IP) are not
+        # reachable from the operator's machine — switch SSH must proxy-jump
+        # through the CNode whose sshd is forwarded to 127.0.0.1:<ssh_port>.
+        # Jumping through ``cluster_ip`` here (the legacy path below) would
+        # fail every probe, leaving ``switch_password_by_ip`` empty and
+        # forcing vnetmap onto its single-``-p`` candidate sweep, which can
+        # never satisfy a heterogeneous fleet.
+        jump_kwargs = {
+            "jump_host": teleport_ssh_host,
+            "jump_user": params.get("node_user", "vastdata"),
+            "jump_password": params.get("node_password", ""),
+            "jump_port": int(params.get("ssh_port", 22) or 22),
+        }
+    elif params.get("proxy_jump", True):
         jump_kwargs = {
             "jump_host": params.get("cluster_ip", ""),
             "jump_user": params.get("node_user", "vastdata"),
@@ -2334,6 +2416,7 @@ def _preprobe_switch_passwords_for_job(
             switch_ips=switch_ips,
             switch_user=params.get("switch_user", "cumulus"),
             candidates=list(switch_password_candidates),
+            logger=logger,
             **jump_kwargs,
         )
         return result
@@ -2462,6 +2545,29 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 tunnel.vms_management_ip,
                 tunnel_address,
             )
+        elif params.get("teleport"):
+            from utils.teleport_tunnel import TeleportTunnel, options_from_config
+
+            job_logger.info("Teleport mode: launching tsh tunnel to %s ...", params.get("teleport_node"))
+            tunnel = TeleportTunnel(
+                params["teleport_node"],
+                params.get("teleport_user", "vastdata"),
+                api_remote_host=_teleport_api_remote_host(params["cluster_ip"]),
+                **options_from_config(config),
+            )
+            tunnel.connect()
+            tunnel_address = tunnel.api_local_address
+            # SSH consumers (vnetmap deploy/run, switch proxy-jump) target the
+            # forwarded local SSH endpoint instead of cluster_ip:22.
+            ssh_host, ssh_port = tunnel.ssh_endpoint
+            params["ssh_host"] = ssh_host
+            params["ssh_port"] = ssh_port
+            job_logger.info(
+                "Teleport tunnel active: API %s, SSH %s:%d",
+                tunnel_address,
+                ssh_host,
+                ssh_port,
+            )
 
         # Build components
         api_handler = create_vast_api_handler(
@@ -2519,10 +2625,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             switch_password_candidates=switch_password_candidates,
             has_vnetmap=has_vnetmap,
             has_health_switch=has_health_switch_preprobe,
+            logger=job_logger,
         )
         if switch_password_by_ip:
             job_logger.info(
-                "RM-15: pre-probed %d switch(es); vnetmap --multiple-passwords fast path will engage",
+                "Pre-probed %d switch(es); vnetmap --multiple-passwords fast path will engage",
                 len(switch_password_by_ip),
             )
 
@@ -2567,6 +2674,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 # docs/issues/SR-1/01-summary.md for full repro.
                 if tunnel_address:
                     vnetmap_creds["tunnel_address"] = tunnel_address
+                # Teleport mode: SSH targets the forwarded local endpoint
+                # (127.0.0.1:<sshPort>) rather than cluster_ip:22.
+                if params.get("ssh_host"):
+                    vnetmap_creds["ssh_host"] = params["ssh_host"]
+                    vnetmap_creds["ssh_port"] = params.get("ssh_port", 22)
                 # RM-13: feed the resolved candidate list so
                 # ``vnetmap.py --multiple-passwords`` gets every published
                 # default when Autofill Password is active.
@@ -2654,10 +2766,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         switch_ssh_config["password_by_ip"] = dict(switch_password_by_ip)
                     if params.get("proxy_jump", True):
                         switch_ssh_config["proxy_jump"] = {
-                            "host": params["cluster_ip"],
+                            "host": params.get("ssh_host") or params["cluster_ip"],
                             "username": params.get("node_user", "vastdata"),
                             "password": params.get("node_password", ""),
                         }
+                        if params.get("ssh_host"):
+                            switch_ssh_config["proxy_jump"]["port"] = params.get("ssh_port", 22)
 
                     checker = HealthChecker(
                         api_handler=api_handler,
@@ -3040,6 +3154,16 @@ def _collect_port_mapping_web(
             if cnode_ips:
                 logger.info(f"Found {len(cnode_ips)} CNode IPs from hardware data: {cnode_ips}")
 
+        # Teleport mode: the tsh tunnel lands on a single CNode reachable at
+        # the forwarded local SSH endpoint.  Pin the CNode list to that
+        # endpoint (mirrors the Tech-Port one-shot ``cnode_ips = [cluster_ip]``
+        # pattern) so clush runs over the tunnel instead of unreachable
+        # cluster-internal CNode IPs.
+        teleport_ssh_host = params.get("ssh_host")
+        teleport_ssh_port = int(params.get("ssh_port", 22) or 22)
+        if teleport_ssh_host:
+            cnode_ips = [teleport_ssh_host]
+
         if not cnode_ips:
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
@@ -3086,6 +3210,8 @@ def _collect_port_mapping_web(
                     tunnel_address=tunnel_addr,
                     switch_hostname_map=switch_hostname_map or None,
                     spine_ips=spine_ips_web or None,
+                    ssh_host=teleport_ssh_host or None,
+                    ssh_port=teleport_ssh_port,
                 )
                 result = mapper.collect_port_mapping()
                 if result.get("available"):

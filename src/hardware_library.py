@@ -150,6 +150,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "smc_milan_ebox_2u.png",
         "description": "SMC Milan EBox",
     },
+    "cisco_ebox": {
+        "type": "ebox",
+        "height_u": 1,
+        "image_filename": "cisco_ebox_1u.png",
+        "description": "Cisco UCS C225 EBox",
+    },
     # =========================================================================
     # Switches
     # =========================================================================
@@ -230,6 +236,18 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "height_u": 2,
         "image_filename": "mellanox_sn5400_1x64p_400g_switch_2u.png",
         "description": "Mellanox SN5400 400Gb 64pt Switch",
+    },
+    "mqm8700-hs2f": {
+        "type": "switch",
+        "height_u": 1,
+        "image_filename": "mqm8700-hs2f_1u.png",
+        "description": "Mellanox SN8700-HS2F IB 200Gb 40pt Switch",
+    },
+    "nexus_c9332d_gx2b": {
+        "type": "switch",
+        "height_u": 1,
+        "image_filename": "nexus_c9332d_gx2b_1u.png",
+        "description": "Cisco Nexus c9332d gx2b",
     },
 }
 

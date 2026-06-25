@@ -385,29 +385,42 @@ function renderPlacementUI() {
     renderPlacedTable();
 }
 
+function switchKey(s) {
+    return s.switch_id || s.mgmt_ip || s.switch_name || s.name || '';
+}
+
 function renderSwitchDropdown() {
     const swSel = document.getElementById('switchSelect');
     swSel.innerHTML = '';
-    const placedNames = new Set(placedSwitches.map(p => p.switch_name));
-    const available = discoveredSwitches.filter(s => !placedNames.has(s.name));
+    const placedIds = new Set(placedSwitches.map(p => switchKey(p)));
+    const available = discoveredSwitches.filter(s => !placedIds.has(switchKey(s)));
     for (const s of available) {
         const opt = document.createElement('option');
-        opt.value = s.name;
-        opt.textContent = s.name + ' (' + s.model + ', ' + s.height_u + 'U)';
+        opt.value = switchKey(s);
+        let label = s.display_name || s.name;
+        if (s.mgmt_ip && s.mgmt_ip !== label) {
+            label += ' (' + s.mgmt_ip + ', ' + s.model + ', ' + s.height_u + 'U)';
+        } else {
+            label += ' (' + s.model + ', ' + s.height_u + 'U)';
+        }
+        opt.textContent = label;
         swSel.appendChild(opt);
     }
 }
 
 function addSwitchPlacement() {
     const rackName = document.getElementById('rackSelect').value;
-    const swName = document.getElementById('switchSelect').value;
+    const swId = document.getElementById('switchSelect').value;
     const uPos = parseInt(document.getElementById('uPositionInput').value, 10);
-    if (!rackName || !swName) { return; }
+    if (!rackName || !swId) { return; }
     if (!uPos || uPos < 1) { alert('Enter a valid U position'); return; }
 
-    const sw = discoveredSwitches.find(s => s.name === swName);
+    const sw = discoveredSwitches.find(s => switchKey(s) === swId);
     placedSwitches.push({
-        switch_name: swName,
+        switch_id: swId,
+        switch_name: sw ? sw.name : swId,
+        display_name: sw ? (sw.display_name || sw.name) : swId,
+        mgmt_ip: sw ? (sw.mgmt_ip || '') : swId,
         rack_name: rackName,
         u_position: uPos,
         model: sw ? sw.model : 'Unknown',
@@ -439,7 +452,7 @@ function renderPlacedTable() {
             : 'U' + p.u_position;
         const tr = document.createElement('tr');
         tr.innerHTML = '<td>' + p.rack_name + '</td>'
-            + '<td>' + p.switch_name + '</td>'
+            + '<td>' + (p.display_name || p.switch_name) + '</td>'
             + '<td>' + p.model + '</td>'
             + '<td>' + posLabel + '</td>'
             + '<td><button type="button" class="btn-icon-delete" onclick="removeSwitchPlacement(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
@@ -449,7 +462,10 @@ function renderPlacedTable() {
 
 function syncManualPlacements() {
     const arr = placedSwitches.map(p => ({
+        switch_id: p.switch_id || p.mgmt_ip || p.switch_name,
         switch_name: p.switch_name,
+        display_name: p.display_name || p.switch_name,
+        mgmt_ip: p.mgmt_ip || '',
         rack_name: p.rack_name,
         u_position: p.u_position
     }));

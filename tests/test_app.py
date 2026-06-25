@@ -24,7 +24,24 @@ from app import (
     APP_VERSION,
     evaluate_auto_shutdown,
     _any_job_running,
+    _teleport_api_remote_host,
 )
+
+
+class TestTeleportApiRemoteHost(unittest.TestCase):
+    """_teleport_api_remote_host resolves the API forward target for Teleport."""
+
+    def test_routable_vip_is_forwarded_directly(self):
+        self.assertEqual(_teleport_api_remote_host("10.84.214.5"), "10.84.214.5")
+
+    def test_loopback_falls_back_to_node_loopback(self):
+        self.assertEqual(_teleport_api_remote_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("127.0.0.2"), "127.0.0.1")
+
+    def test_blank_and_localhost_fall_back(self):
+        self.assertEqual(_teleport_api_remote_host(""), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("localhost"), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("  "), "127.0.0.1")
 
 
 class TestFlaskAppFactory(unittest.TestCase):
@@ -252,15 +269,23 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
         mock_build.assert_not_called()
         handler.get_switches_detail.assert_not_called()
 
-    def test_skipped_when_single_candidate(self):
-        # One candidate = nothing to probe; the legacy single-``-p``
-        # path is trivially correct for homogeneous fleets and runs
-        # per-switch SSH anyway.  Skipping here also saves a full
-        # ``/api/switches/`` call on clusters that don't use Autofill.
+    def test_probes_with_single_candidate(self):
+        # A single candidate now engages the probe (changed from the earlier
+        # ``< 2`` short-circuit).  Even on a homogeneous fleet this validates
+        # the operator's Switch Password against every switch *before*
+        # vnetmap runs, lets ``vnetmap.py --multiple-passwords`` target each
+        # switch with its verified password, and — critically — surfaces a
+        # clear credential error in the operator log when the switch rejects
+        # the password, instead of vnetmap later failing with the opaque
+        # "Unable to determine suitable switch API".
         from app import _preprobe_switch_passwords_for_job
 
-        handler = self._make_api_handler(["10.0.0.1"])
-        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+        handler = self._make_api_handler(["10.0.0.1", "10.0.0.2"])
+        fake_map = {"10.0.0.1": "only-one-pw", "10.0.0.2": "only-one-pw"}
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
             result = _preprobe_switch_passwords_for_job(
                 api_handler=handler,
                 params={"switch_user": "cumulus"},
@@ -268,8 +293,9 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
                 has_vnetmap=True,
                 has_health_switch=True,
             )
-        self.assertEqual(result, {})
-        mock_build.assert_not_called()
+        self.assertEqual(result, fake_map)
+        mock_build.assert_called_once()
+        self.assertEqual(list(mock_build.call_args.kwargs["candidates"]), ["only-one-pw"])
 
     def test_skipped_when_empty_candidates(self):
         from app import _preprobe_switch_passwords_for_job
@@ -408,6 +434,46 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
 
         call_kwargs = mock_build.call_args.kwargs
         self.assertNotIn("jump_host", call_kwargs)
+
+    def test_teleport_mode_jumps_through_forwarded_local_ssh_endpoint(self):
+        # Teleport mode: the real cluster mgmt IP and the switches are NOT
+        # reachable from the operator's machine — the only path to the
+        # switches is a proxy-jump through the CNode whose sshd is forwarded
+        # to 127.0.0.1:<ssh_port>.  If the probe jumped through ``cluster_ip``
+        # (the legacy path) every probe would fail, leaving the map empty and
+        # forcing vnetmap onto its single-``-p`` sweep — exactly the PDX02
+        # "Unable to determine suitable switch API" failure.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.84.214.26", "10.84.214.27"])
+        fake_map = {"10.84.214.26": "Vastdata1!", "10.84.214.27": "VastData1!"}
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={
+                    "cluster_ip": "10.84.214.5",
+                    "switch_user": "cumulus",
+                    "node_user": "vastdata",
+                    "node_password": "node-pw",
+                    "proxy_jump": True,
+                    # Teleport tunnel set these to the forwarded local endpoint.
+                    "ssh_host": "127.0.0.1",
+                    "ssh_port": 49585,
+                },
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=True,
+                has_health_switch=False,
+            )
+
+        self.assertEqual(result, fake_map)
+        call_kwargs = mock_build.call_args.kwargs
+        self.assertEqual(call_kwargs.get("jump_host"), "127.0.0.1")
+        self.assertEqual(call_kwargs.get("jump_port"), 49585)
+        self.assertEqual(call_kwargs.get("jump_user"), "vastdata")
+        self.assertEqual(call_kwargs.get("jump_password"), "node-pw")
 
     def test_api_handler_failure_returns_empty_map(self):
         # /api/switches/ can fail for a host of reasons (VMS still
@@ -770,9 +836,53 @@ class TestApiDiscover(unittest.TestCase):
         self.assertIn("switches", body)
         self.assertEqual(len(body["racks"]), 2)
         self.assertEqual(len(body["switches"]), 2)
+        # Each switch carries a stable id, mgmt_ip, and disambiguated display_name.
+        for sw in body["switches"]:
+            self.assertIn("mgmt_ip", sw)
+            self.assertIn("switch_id", sw)
+            self.assertIn("display_name", sw)
         mock_handler.get_racks.assert_called_once()
         mock_handler.get_switch_inventory.assert_called_once()
         mock_handler.close.assert_called_once()
+
+    @patch("socket.create_connection")
+    @patch("rack_diagram.RackDiagram")
+    @patch("api_handler.create_vast_api_handler")
+    def test_api_discover_duplicate_named_switches_get_distinct_ids(
+        self, mock_create_handler, mock_rack_diagram, mock_socket
+    ):
+        """Two switches sharing a name remain distinct (by mgmt_ip) with (a)/(b) labels."""
+        mock_socket.return_value = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.authenticate.return_value = True
+        mock_handler.get_racks.return_value = [{"id": 1, "name": "Rack-A", "number_of_units": 42}]
+        mock_handler.get_switch_inventory.return_value = {
+            "switches": [
+                {"name": "Spine-B", "model": "msn3700", "serial": "S1", "mgmt_ip": "10.84.214.29"},
+                {"name": "Spine-B", "model": "msn3700", "serial": "S2", "mgmt_ip": "10.84.214.28"},
+            ],
+        }
+        mock_create_handler.return_value = mock_handler
+
+        mock_rd_instance = MagicMock()
+        mock_rd_instance._get_device_height_units.side_effect = lambda m: 1
+        mock_rack_diagram.return_value = mock_rd_instance
+
+        resp = self.client.post(
+            "/api/discover",
+            json={"cluster_ip": "10.0.0.1", "username": "u", "password": "p"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        switches = body["switches"]
+        self.assertEqual(len(switches), 2)
+        ids = {sw["switch_id"] for sw in switches}
+        self.assertEqual(ids, {"10.84.214.28", "10.84.214.29"})
+        displays = {sw["switch_id"]: sw["display_name"] for sw in switches}
+        # (a) goes to the lower mgmt_ip (.28), (b) to .29.
+        self.assertEqual(displays["10.84.214.28"], "Spine-B (a)")
+        self.assertEqual(displays["10.84.214.29"], "Spine-B (b)")
 
 
 class TestProfilesRoutes(unittest.TestCase):
@@ -2171,14 +2281,24 @@ class TestHeartbeatRoute(unittest.TestCase):
         self.client = self.app.test_client()
 
     def test_heartbeat_marks_browser_seen_and_returns_ok(self):
-        self.assertFalse(self.app.config["BROWSER_SEEN"])
-        resp = self.client.post("/api/heartbeat")
+        # Auto-shutdown is OFF by default, so use an opt-in app to exercise the
+        # "browser seen" + auto_shutdown:true path.
+        app = create_flask_app(config={"auto_shutdown": {"enabled": True}})
+        self.assertFalse(app.config["BROWSER_SEEN"])
+        resp = app.test_client().post("/api/heartbeat")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertEqual(body["status"], "ok")
         self.assertTrue(body["auto_shutdown"])
-        self.assertTrue(self.app.config["BROWSER_SEEN"])
-        self.assertIsNotNone(self.app.config["LAST_HEARTBEAT"])
+        self.assertTrue(app.config["BROWSER_SEEN"])
+        self.assertIsNotNone(app.config["LAST_HEARTBEAT"])
+
+    def test_heartbeat_disabled_by_default(self):
+        # The feature is opt-in: the default app reports auto_shutdown:false so
+        # the client stops pinging after the first ping.
+        resp = self.client.post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.get_json()["auto_shutdown"])
 
     def test_heartbeat_not_dev_gated(self):
         # No --dev-mode: heartbeat must still work on every page.

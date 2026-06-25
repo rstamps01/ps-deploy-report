@@ -1,11 +1,16 @@
-# Release Notes — v1.5.8-beta
+# Release Notes — v1.5.8
 
-**Date:** 2026-05-28
-**Branch:** `feature/v1.5.8-batch`
-**Status:** Beta — not yet promoted to latest release
+**Date:** 2026-06-25
+**Status:** Released
 
-> **Note:** This is a pre-release beta. It should NOT be linked as the latest
-> version until the production v1.5.8 tag is cut after live validation.
+Production release promoting the prior `1.5.8-beta`. It delivers the Teleport
+(Beta) connection mode, switch-identity disambiguation, a logical
+network-diagram rendering overhaul, Reporter Library built-in device additions,
+a health-check bundle fix, QP-1/2/3 report and UI enhancements, Intel macOS
+build support, and the Tech-Port tunnel reliability fix.
+
+> Supersedes `RELEASE_NOTES_v1.5.8-beta.md`, which is retained as historical
+> record of the beta cut.
 
 ---
 
@@ -13,16 +18,27 @@
 
 - **Logical Network Diagram overhaul** — Complete rendering refresh with
   subnet-aware coloring, mis-cabling detection, bezier-curve link routing,
-  and improved cross-rack connection visibility.
-- **Intel macOS build support** — Release pipeline now produces separate
-  `.dmg` artifacts for both Apple Silicon (arm64) and Intel (x86_64).
-- **Tech-Port tunnel reliability** — Two-hop SSH architecture fixes the
-  S3 gateway interception issue that blocked authentication on clusters
-  using virtual-host routing.
+  spine/IPL classification, affinity-based rack pagination, and improved
+  cross-rack connection visibility.
+- **Switch-identity disambiguation** — Switches are keyed by a stable
+  `switch_id` (mgmt IP / GUID) with human-readable `display_name`, so
+  identically named switches no longer collide in the UI, reports, or diagrams.
 - **Teleport (tsh) connection mode — Beta** — New third connection method that
   tunnels the cluster API (443) and CNode SSH (22) through a Teleport proxy so
   reports and `vnetmap` work against Teleport-only clusters. Shipped as a
   **Beta feature** (flagged in the UI) pending further field validation.
+- **Reporter Library built-in devices** — `mqm8700-hs2f`, `nexus_c9332d_gx2b`,
+  and `cisco_ebox` ship as built-in devices with bundled bezel images; missing
+  built-in image references reconciled so rack diagrams stop falling back to a
+  generic bezel.
+- **Health-check bundle fix** — Cluster Health Check Results now land in the
+  per-cluster bundle path and report OK/SKIPPED in `SUMMARY.md` instead of
+  "MISSING".
+- **Intel macOS build support** — Release pipeline produces separate `.dmg`
+  artifacts for Apple Silicon (arm64) and Intel (x86_64).
+- **Tech-Port tunnel reliability** — Two-hop SSH architecture fixes the S3
+  gateway interception that blocked authentication on clusters using
+  virtual-host routing.
 
 ---
 
@@ -50,8 +66,6 @@
 - Configurable via a new `teleport` config block (`enabled`, `ssh_user`,
   `tsh_path`, `auto_login`, `proxy`, `login_timeout`). Requires `tsh` on PATH.
 
-
-
 ### Network Diagram Visualization (NET-2A through NET-5)
 
 | ID | Feature |
@@ -62,23 +76,28 @@
 | NET-4 | Mis-cabling detection with red/orange highlighting and validation banner |
 | NET-5 | Inter-rack IPL/MLAG connections restored (fixes regression from bezier refactor) |
 
-### Link Routing
+Additional diagram fixes in this release: spine/IPL classification recognizes
+"SS"-named spines and topological evidence; affinity-based rack pagination keeps
+connected racks on the same page so node-to-switch edges are not dropped after
+manual placement.
 
-- Device-to-switch connections use smooth cubic bezier curves matching the
-  approved mockup (`docs/issues/NET-2/mockup-target.svg.png`), replacing
-  the previous orthogonal polyline style.
-- Cross-rack connections use dashed lines at reduced opacity (0.40) and are
-  drawn in a separate Z-order pass for visibility.
+### Reporter Library
+
+- `mqm8700-hs2f`, `nexus_c9332d_gx2b`, and `cisco_ebox` promoted to built-in
+  devices in `src/hardware_library.py` with images bundled under
+  `assets/hardware_images/`, so they ship in the frozen build without
+  first-launch seeding.
+- Missing built-in image references (`broadwell`, `cascadelake`,
+  `arista_7060dx5`) reconciled to existing assets so rack diagrams no longer
+  silently fall back to a generic bezel.
 
 ### Intel macOS Support
 
-- `build-release.yml` matrix expanded with `macos-15-intel` runner.
-- `build-mac.sh` appends architecture suffix (`-arm64` or `-x64`) to the
+- `build-release.yml` matrix expanded with the `macos-15-intel` runner.
+- `build-mac.sh` appends an architecture suffix (`-arm64` or `-x64`) to the
   `.dmg` filename automatically based on `uname -m`.
 - Release assets: `VAST-Reporter-v1.5.8-mac-arm64.dmg` and
   `VAST-Reporter-v1.5.8-mac-x64.dmg`.
-- Intel runner available until August 2027; universal2 binary approach
-  documented as future fallback.
 
 ---
 
@@ -86,10 +105,12 @@
 
 | ID | Fix |
 |----|-----|
+| HC-BUNDLE | Health Check Results saved to the per-cluster bundle path; `SUMMARY.md` shows OK/SKIPPED instead of MISSING |
 | RPT-6 | Rack diagram device placement aligns with Discovery UI U-position convention |
 | RPT-7 | Regenerated reports from Results tab preserve YAML-defined margins (deep-merge) |
 | Tunnel | Two-hop SSH to VMS `localhost:443` bypasses S3 gateway virtual-host routing |
 | Auth | Default VMS credentials corrected to `support`/`654321` for `use_default_creds` |
+| CI | Security-audit workflow no longer false-positives or fails on a missing `security` label |
 
 ---
 
@@ -108,37 +129,8 @@ local:port → SSH(192.168.2.2) → SSH(172.16.3.3/VMS) → direct-tcpip(127.0.0
 ```
 
 By terminating on the VMS loopback, the management API is reached directly
-without virtual-host routing. Additionally, the HTTP `Host` header is set to
-the management IP as a defensive fallback.
-
----
-
-## Quality Metrics
-
-| Metric | Value |
-|--------|-------|
-| Tests | 1279 passed |
-| Coverage | 65.66% (threshold: 60%) |
-| Flake8 | Clean |
-| Black | Clean |
-
----
-
-## Validation Checklist (Beta)
-
-- [ ] Tech Port connection via `192.168.2.2` authenticates successfully
-- [ ] Report generation completes end-to-end via Tech Port mode
-- [ ] Network diagram renders with correct subnet coloring
-- [ ] Mis-cabling detection fires on known mis-cabled cluster (if available)
-- [ ] Cross-rack IPL/MLAG connections visible in multi-rack diagrams
-- [ ] macOS ARM64 .dmg launches and generates a report
-- [ ] macOS Intel .dmg launches and generates a report (CI artifact)
-- [ ] Windows .zip launches and generates a report
-- [ ] **(Beta)** Teleport Mode connects and generates a report against a
-      Teleport-only cluster
-- [ ] **(Beta)** Teleport Mode runs `vnetmap`/port mapping end-to-end
-- [ ] **(Beta)** Teleport Node field resolves hostname / node ID /
-      `cluster_psnt` / label inputs correctly
+without virtual-host routing. The HTTP `Host` header is set to the management
+IP as a defensive fallback.
 
 ---
 
@@ -148,17 +140,15 @@ the management IP as a defensive fallback.
   early use but is still being validated and hardened in the field; it is
   flagged with a "Beta Feature" badge in the Reporter UI. It requires `tsh` on
   PATH and an authenticated `tsh` session (auto-login handles expiry). Expect
-  iterative fixes ahead of the production v1.5.8 tag.
+  iterative fixes in subsequent releases.
 - **SR-2 (deferred):** Onyx SSH pre-probe logs `[WARN]` for each rejected
   candidate password even on success runs. Cosmetic only.
-- **RPT-VALIDATION-1/2:** Node User field rendering and password-clear UX
-  issues on profile restore. Form submits correctly; cosmetic.
-- **Intel runner sunset:** `macos-15-intel` available until August 2027.
+- **Intel runner sunset:** `macos-15-intel` is available until August 2027.
   Post-sunset, a universal2 binary approach will be needed.
 
 ---
 
 ## Upgrade Notes
 
-No breaking changes. Drop-in replacement for v1.5.7. Configuration files
-are backward-compatible.
+No breaking changes. Drop-in replacement for v1.5.7. Configuration files are
+backward-compatible.

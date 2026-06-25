@@ -49,13 +49,14 @@ else
     echo "OK: src/app.py APP_VERSION"
 fi
 
-# Check src/main.py --version argument
-MAIN_VERSION=$(grep -E 'version="VAST As-Built Report Generator' "$PROJECT_ROOT/src/main.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
+# Check src/main.py APP_VERSION (the argparse --version output derives from it
+# via an f-string, so the constant is the authoritative value to compare).
+MAIN_VERSION=$(grep -E '^APP_VERSION\s*=' "$PROJECT_ROOT/src/main.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
 if [ "$MAIN_VERSION" != "$CANONICAL_VERSION" ]; then
-    echo "MISMATCH: src/main.py --version has '$MAIN_VERSION', expected '$CANONICAL_VERSION'"
+    echo "MISMATCH: src/main.py APP_VERSION has '$MAIN_VERSION', expected '$CANONICAL_VERSION'"
     ERRORS=$((ERRORS + 1))
 else
-    echo "OK: src/main.py --version"
+    echo "OK: src/main.py APP_VERSION"
 fi
 
 # Check packaging/vast-reporter.spec CFBundleShortVersionString

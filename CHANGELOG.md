@@ -7,8 +7,127 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No unreleased changes._
+
+## [1.5.8] - 2026-06-25
+
+Production release promoting the prior `1.5.8-beta`. Consolidates the Teleport
+(Beta) connection mode, switch-identity disambiguation, logical network-diagram
+fixes (spine/IPL rendering, affinity-based rack pagination), Reporter Library
+built-in device additions, the health-check bundle fix, and QP-1/2/3 report and
+UI enhancements, together with the network-diagram visualization overhaul and
+Tech-Port tunnel reliability fix described below.
+
+### Added
+
+- **Teleport node auto-resolution.** The Teleport Node field now accepts any
+  unique identifier — a hostname, node ID, `cluster_name`, `cluster_psnt`, a
+  `key=value` label, the full comma-separated label blob, or `user@…` — and the
+  app resolves it against `tsh ls --format=json` to the one matching node,
+  dialing it unambiguously by node ID (`user@<node-id>`). This fixes two
+  common Teleport failures: a hostname shared by multiple clusters
+  (`ambiguous host could match multiple nodes`) and entering a label value such
+  as a PSNT (`target host … is offline or does not exist`). On no-match or
+  ambiguity the app now fails fast with the candidate nodes listed (hostname,
+  `cluster_name`, `cluster_psnt`, node ID) instead of surfacing `tsh`'s cryptic
+  error. When several matches all belong to the **same cluster** (identical
+  `cluster_psnt`), the input named a cluster rather than a node, so one of its
+  (online) CNodes is auto-picked deterministically instead of erroring — making
+  `cluster_psnt=…`/`cluster_name=…` reliable even for clusters that register
+  many CNodes; ambiguity is only reported when matches span *different*
+  clusters. Falls back to dialing the entered value verbatim when the node
+  inventory cannot be listed, so existing setups are unaffected.
+- **Teleport auto-login on expired session.** When a report/Test-Suite run
+  starts in Teleport Mode and no active `tsh` session is found (e.g. the
+  profile expired mid-session), the app now runs `tsh login` itself — opening
+  the SSO browser window so the operator can re-authenticate in place — then
+  re-checks and continues, instead of failing with "No active Teleport
+  session." Controlled by new `teleport` config keys: `auto_login` (default
+  `true`), optional `proxy` (passed to `tsh login`; blank reuses the existing
+  local profile's proxy), and `login_timeout` (seconds to wait for SSO/MFA,
+  default 180). The login URL/progress is surfaced to the operator output pane
+  in case the browser does not auto-open.
+
+### Fixed
+
+- **Spine switches render in the Logical Network Diagram (and deprecated
+  spine tables removed).** Clusters whose spines use the `SS` (spine-switch)
+  naming — e.g. `VAST-SS-A`/`VAST-SS-B` — were misclassified as rack-local
+  leaves because the role classifier only recognized `-SP-`/`SPINE` names. The
+  diagram then drew an inferred leaf-leaf IPL mesh, never rendered the spines,
+  and the report emitted two deprecated `SPx (...) Port-to-Device Mapping`
+  tables. Spines are now identified from topology evidence (the non-leaf
+  endpoint of a `spine_uplink`/`spine_fabric` link) in addition to naming
+  (`-SS-`/`SW-SS` added), so they render in the spine tier with leaf→spine
+  ISLs, the bogus leaf-leaf IPL paths are suppressed, and the per-spine
+  Port-to-Device tables are removed entirely (spine connectivity is shown
+  visually in the diagram instead).
+- **Logical network diagram keeps node→switch connections after switch
+  placement.** When an operator assigned switch U-heights that landed a leaf
+  switch in a different rack than the nodes wired to it, every node→switch
+  edge could vanish from the diagram (the same report rendered without
+  placement showed all connections). Edges only draw when the node's rack and
+  the switch's rack share a diagram page, and two changes restore that: (1)
+  racks are now paginated by connection affinity, so racks exchanging the most
+  port_map edges are kept on the same page (page count is unchanged); and (2) a
+  device tagged `rack_name="Default"` (or blank) whose hostname encodes a known
+  rack — e.g. `R0404-CB10-U31` → `R0404` — is rescued into that rack instead of
+  spawning a stray "Default" rack that pagination would isolate. Hostname
+  inference only rescues into already-known racks, so it never invents racks
+  from arbitrary names.
+- **Teleport report generation works against any node, not just the
+  VMS-hosting one.** The Teleport tunnel previously forwarded the VMS API to
+  the selected node's own loopback (`127.0.0.1:443`), which only serves the
+  VMS on the node that happens to host it — connecting through any other node
+  failed at the TLS layer (`SSL: UNEXPECTED_EOF_WHILE_READING`) and surfaced
+  confusingly as "Failed to create new API token." The API forward now targets
+  the VMS management IP/VIP entered in the Cluster IP field (reachable from any
+  node), falling back to the node loopback for blank/`127.x` values. SSH still
+  forwards to the node's own loopback. Additionally, API version detection now
+  emits an operator-visible diagnosis (per-version HTTP status codes, and a
+  tailored hint distinguishing credential rejection from a TLS/transport
+  failure) instead of silently falling back to `v1`.
+- **Same-named switches can now be placed independently.** Clusters that
+  contain two switches sharing a name (e.g. two `Spine-B` at `10.84.214.28`
+  and `10.84.214.29`) no longer collapse into one in the Discovery dropdown —
+  previously, placing one removed the other. Switch identity is now keyed on
+  the management IP (`switch_id`) instead of the name, and any name shared by
+  more than one switch gets a stable `(a)`/`(b)` designator (ordered by mgmt
+  IP) that flows through the placement UI, the Port Mapping and Switch
+  Configuration tables, and the rack/logical-network diagrams. The discovery
+  dropdown also shows each switch's management IP next to its label. Existing
+  saved profiles remain compatible: placements without a `switch_id` still
+  match by name, and re-saving upgrades them. The `/api/discover` switch
+  objects now include `mgmt_ip`, `switch_id`, and `display_name` fields.
+- **Switch credential probe is resilient to slow/transient SSH banners.** The
+  shared switch-SSH probe (used by the vnetmap pre-probe, switch health checks,
+  and port mapping) previously gave up on a candidate password whenever the
+  switch was momentarily slow to present its SSH banner — common for Cumulus /
+  NVIDIA switches reached through a CNode proxy-jump or a Teleport-forwarded
+  port, where the banner can take 5-7s. A transient connection/banner error
+  (never a clean authentication failure) is now retried once per candidate, and
+  the per-attempt timeout was raised from 15s to 30s so a valid password is no
+  longer discarded as "rejected." Genuine authentication failures are still not
+  retried.
+
 ### Changed
 
+- **Teleport Mode flagged as Beta in the UI.** A "Beta Feature" pill badge now
+  sits directly above the Teleport Mode option in the Reporter's Connection
+  Settings, signalling that the feature is still under active development and
+  testing for the v1.5.8 release. Tech Port Mode and VMS Mgmt Mode are
+  unaffected (no badge).
+- **Switch credential pre-probe now engages with a single password.** The
+  Reporter's pre-probe previously short-circuited unless at least two candidate
+  passwords were present (i.e. Autofill on). It now runs whenever any switch
+  password is supplied, so the operator's Switch Password is validated against
+  every switch *before* vnetmap runs and `vnetmap.py --multiple-passwords`
+  targets each switch with its verified password.
+- **Clear, operator-facing switch credential diagnostics.** When a switch
+  rejects every candidate, the operator log now names the switch IP and user and
+  explains the report impact, and the pre-probe emits a summary naming exactly
+  which switches have no working password — instead of the opaque vnetmap
+  "Unable to determine suitable switch API" failure surfacing downstream.
 - **Modern connection color palette.** The Logical Network Topology diagram
   now uses a refreshed, cleanly contrasted connection palette designed via the
   design assistant MCP: primary blue `#1D4ED8`, amber `#F59E0B`, emerald
@@ -27,6 +146,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Teleport (tsh) connection mode (Beta).** _Released as a **Beta feature** in
+  v1.5.8 — functional and shipped, but still undergoing field validation and
+  hardening; the Reporter UI flags it with a "Beta Feature" badge above the
+  Teleport Mode radio._ The Reporter can now generate a full
+  report (including `vnetmap`/port mapping) against a cluster reachable only
+  through a Teleport proxy. A new `TeleportTunnel`
+  (`src/utils/teleport_tunnel.py`) launches a single `tsh ssh` subprocess with
+  two `-L` forwards off the chosen CNode — API (443) and SSH (22) — so the VMS
+  REST API and CNode SSH are both available locally at the same time (the
+  previous manual `socat` approach could only expose one). The tunnel runs a
+  preflight (`tsh` on PATH + active `tsh login` session) before launching and
+  surfaces actionable errors. The forwarded local API address feeds the API
+  handler's `tunnel_address`; the forwarded local SSH endpoint
+  (`ssh_host`/`ssh_port`) is threaded through the SSH adapter, vnetmap workflow,
+  external port mapper, switch-config workflow, health checker, and the one-shot
+  Test Suite (CNode commands connect direct to the local SSH port; switch
+  commands proxy-jump through it). Configurable via a new `teleport` config
+  block (`enabled`, `ssh_user`, `tsh_path`). Requires an already-authenticated
+  `tsh` session; SSO/MFA is handled by `tsh`, not this tool.
+- **Connection Settings redesign: connection-mode radios + Autofill toggle.**
+  The Reporter's Connection Settings tile now has a bottom-center three-way
+  radio group — **Tech Port Mode** (SSH tunnel via CBox Tech Port), **VMS Mgmt
+  Mode** (direct HTTPS), and **Teleport Mode** — replacing the old Advanced-menu
+  Tech Port checkbox. **Autofill Passwords** moved out of the Advanced menu to a
+  labeled toggle switch above it: ON auto-populates and locks the six default
+  credential fields; OFF keeps default usernames (`support`/`vastdata`/
+  `cumulus`), clears passwords, and unlocks the fields for manual entry.
+  Teleport node/user fields appear only when Teleport Mode is selected, and the
+  selected mode plus Teleport target persist in saved profiles.
 - **QP-3 (2): In-app update notifications + one-click download (notify-only).**
   A new app-update status pill sits next to the version in the nav with three
   states: **UPDATE AVAILABLE** (orange) when a newer release exists,
@@ -109,6 +257,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **QP-3 (3): Auto-shutdown on browser close is now OFF by default (opt-in).**
+  Browsers throttle or suspend timers in backgrounded tabs, so the liveness
+  heartbeat could go silent past the grace window while a tab was still open,
+  causing the local server to shut down prematurely when the operator simply
+  switched away. The feature is now disabled by default and only runs when
+  `auto_shutdown.enabled: true` is set in config; when disabled, the client
+  stops pinging after the first heartbeat. No change to the mid-job shutdown
+  guard for those who opt in.
 - **QP-3 (1): "Update Tools" progress now appears in Output Results.** Clicking
   the global nav **Update Tools** button logged nothing to the Reporter
   "Output Results" console because `POST /api/tools/update` routed progress only
@@ -124,9 +280,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   most common non-zero port MTU; the report also recomputes both defensively
   from the per-port data when replaying older JSON.
 
-## [1.5.8] - 2026-05-28
-
-Network diagram visualization overhaul + Tech-Port tunnel reliability fix.
+**Network diagram visualization overhaul + Tech-Port tunnel reliability fix.**
 This release delivers a complete refresh of the logical network diagram
 rendering engine (NET-2A through NET-5) with subnet-aware coloring,
 mis-cabling detection, bezier-curve link routing, and cross-rack IPL

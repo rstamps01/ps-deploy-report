@@ -233,6 +233,7 @@ class TestRunInteractiveSSHWithJumpHost(unittest.TestCase):
             jump_host="192.168.2.2",
             jump_user="vastdata",
             jump_password="cnodepass",
+            jump_port=22,
         )
 
 

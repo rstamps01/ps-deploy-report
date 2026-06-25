@@ -377,11 +377,34 @@ class RackCentricDiagramGenerator:
         if not isinstance(switch, dict):
             return "leaf"
         name = (switch.get("hostname") or switch.get("name") or "").upper()
-        if "-SP-" in name or "SW-SP" in name or "SPINE" in name:
+        if "-SP-" in name or "SW-SP" in name or "SPINE" in name or "-SS-" in name or "SW-SS" in name:
             return "spine"
         if "-LF-" in name or "SW-LF" in name or "LEAF" in name:
             return "leaf"
         return "leaf"
+
+    @staticmethod
+    def _spine_ips_from_ipl(ipl_conns: List[Dict[str, Any]], leaf_switch_ips: set) -> set:
+        """Return switch mgmt_ips that are spines per the inter-switch links.
+
+        A switch that appears as an endpoint of a ``spine_uplink`` /
+        ``spine_fabric`` link but is NOT a leaf (i.e. not present in the
+        port_map, which only captures leaf<->node correlations) is a spine.
+        This identifies spines from topology even when their hostnames do not
+        match the ``-SP-``/``SPINE`` naming convention (e.g. the ``SS`` =
+        spine-switch abbreviation), so they render in the spine tier with
+        leaf->spine ISLs instead of being misfiled as rack-local leaves.
+        """
+        spine_ips: set = set()
+        for conn in ipl_conns or []:
+            if not isinstance(conn, dict):
+                continue
+            if (conn.get("connection_type") or "").lower() not in ("spine_uplink", "spine_fabric"):
+                continue
+            for ip in (conn.get("switch1_ip"), conn.get("switch2_ip")):
+                if ip and ip not in leaf_switch_ips:
+                    spine_ips.add(ip)
+        return spine_ips
 
     @staticmethod
     def _hostname_node_key(hostname: Optional[str]) -> str:
@@ -498,8 +521,21 @@ class RackCentricDiagramGenerator:
         # port_map membership here would dump leaf switches that vnetmap
         # could not reach into the spine tier.
         port_map_switch_ips = {c.get("switch_ip") for c in port_map if c.get("switch_ip")}
-        spine_switches = [sw for sw in switches if self._classify_switch_role(sw) == "spine"]
-        leaf_switches = [sw for sw in switches if self._classify_switch_role(sw) != "spine"]
+        # Spines are identified by naming AND by topology: a switch that is the
+        # non-leaf endpoint of a spine_uplink/spine_fabric link is a spine even
+        # when its hostname does not match the -SP-/SPINE convention. Without
+        # the topology fallback such a spine is misfiled as a rack-local leaf —
+        # the diagram then draws a leaf-leaf IPL mesh instead of leaf->spine
+        # ISLs and the spine never appears.
+        spine_ips_from_ipl = self._spine_ips_from_ipl(ipl_conns, port_map_switch_ips)
+
+        def _is_spine(sw: Dict[str, Any]) -> bool:
+            return self._classify_switch_role(sw) == "spine" or (
+                isinstance(sw, dict) and sw.get("mgmt_ip") in spine_ips_from_ipl
+            )
+
+        spine_switches = [sw for sw in switches if _is_spine(sw)]
+        leaf_switches = [sw for sw in switches if not _is_spine(sw)]
 
         if not leaf_switches:
             leaf_switches = switches
@@ -544,10 +580,23 @@ class RackCentricDiagramGenerator:
         manual_switch_to_rack = self._extract_manual_switch_to_rack(manual_switch_placements)
         for sp in spine_switches:
             if isinstance(sp, dict):
-                sp_name = sp.get("hostname") or sp.get("name") or ""
-                sp["_assigned_rack"] = manual_switch_to_rack.get(sp_name, "")
+                # Match by stable switch_id/mgmt_ip first so two same-named
+                # spines resolve independently; fall back to name.
+                sp["_assigned_rack"] = (
+                    manual_switch_to_rack.get(sp.get("switch_id") or "")
+                    or manual_switch_to_rack.get(sp.get("mgmt_ip") or "")
+                    or manual_switch_to_rack.get(sp.get("hostname") or "")
+                    or manual_switch_to_rack.get(sp.get("name") or "")
+                    or ""
+                )
 
         # ----- paginate -----
+        # Order racks so that racks connected by the port_map (a node in one
+        # rack wired to a switch in another) share a page. Node->switch edges
+        # are only drawable when both endpoints are on the same page; without
+        # this, an operator who places a leaf switch in a different rack than
+        # the nodes it serves would see every cross-rack edge silently dropped.
+        racks = self._order_racks_for_pagination(racks, port_map)
         pages: List[List[Dict[str, Any]]] = []
         for i in range(0, len(racks), MAX_RACKS_PER_PAGE):
             pages.append(racks[i : i + MAX_RACKS_PER_PAGE])
@@ -597,13 +646,36 @@ class RackCentricDiagramGenerator:
         """
         rack_map: Dict[str, Dict[str, List[Any]]] = defaultdict(lambda: {"cboxes": [], "bottom": [], "switches": []})
 
-        # --- API rack_name ---
+        manual_switch_to_rack = self._extract_manual_switch_to_rack(manual_switch_placements)
+
+        # Real rack names: those explicitly assigned to a device (excluding the
+        # "Default" fallback bucket) plus any operator-named switch racks. Used
+        # to rescue a device whose rack_name is missing or "Default" but whose
+        # hostname encodes a known rack (e.g. "R0404-CB10-U31" -> "R0404"). A
+        # single stray node otherwise spawns an isolated "Default" rack that
+        # pagination separates from the racks it is wired to, dropping every
+        # node->switch edge to that rack as an "orphan".
+        known_racks = {
+            (d.get("rack_name") or "").strip()
+            for d in list(cboxes) + list(bottom_devices)
+            if (d.get("rack_name") or "").strip() and (d.get("rack_name") or "").strip() != "Default"
+        }
+        known_racks |= {rn for rn in manual_switch_to_rack.values() if rn and rn != "Default"}
+
+        def _resolved_rack(dev: Dict[str, Any]) -> str:
+            rn = (dev.get("rack_name") or "").strip()
+            if rn and rn != "Default":
+                return rn
+            inferred = self._rack_from_hostname(dev)
+            if inferred and inferred in known_racks:
+                return inferred
+            return rn or "Default"
+
+        # --- API rack_name (with hostname-based rescue into known racks) ---
         for cb in cboxes:
-            rn = cb.get("rack_name") or "Default"
-            rack_map[rn]["cboxes"].append(cb)
+            rack_map[_resolved_rack(cb)]["cboxes"].append(cb)
         for bd in bottom_devices:
-            rn = bd.get("rack_name") or "Default"
-            rack_map[rn]["bottom"].append(bd)
+            rack_map[_resolved_rack(bd)]["bottom"].append(bd)
 
         # If everything landed in "Default" and we have manual_placements, use those
         all_default = list(rack_map.keys()) == ["Default"]
@@ -613,7 +685,6 @@ class RackCentricDiagramGenerator:
         # NET-2A: ensure racks named in manual_switch_placements exist on the
         # rack map even when no devices were grouped into them yet (otherwise
         # topology voting would discard the manual assignment).
-        manual_switch_to_rack = self._extract_manual_switch_to_rack(manual_switch_placements)
         for rn in manual_switch_to_rack.values():
             if rn not in rack_map:
                 rack_map[rn] = {"cboxes": [], "bottom": [], "switches": []}
@@ -1261,11 +1332,114 @@ class RackCentricDiagramGenerator:
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
-            name = entry.get("switch_name")
             rack = entry.get("rack_name")
-            if name and rack:
-                result[name] = rack
+            if not rack:
+                continue
+            # Key by the stable switch_id (mgmt_ip) so two same-named switches
+            # map independently, and also keep switch_name as a back-compat key
+            # for older profiles that have no switch_id.
+            for key in (entry.get("switch_id"), entry.get("mgmt_ip"), entry.get("switch_name")):
+                if key:
+                    result[str(key)] = rack
         return result
+
+    @staticmethod
+    def _rack_from_hostname(dev: Dict[str, Any]) -> str:
+        """Infer a rack name from a device hostname's leading token.
+
+        VAST node hostnames commonly encode the physical rack as a leading
+        ``R<digits>`` token (e.g. ``R0404-CB10-U31`` -> ``R0404``). The caller
+        only honors the result when it matches an already-known rack, so this
+        never invents racks from arbitrary hostname noise.
+        """
+        if not isinstance(dev, dict):
+            return ""
+        for field in ("hostname", "name"):
+            h = dev.get(field)
+            if not h:
+                continue
+            m = re.match(r"^([A-Za-z]+\d+)-", str(h).strip())
+            if m:
+                return m.group(1)
+        return ""
+
+    @staticmethod
+    def _order_racks_for_pagination(
+        racks: List[Dict[str, Any]],
+        port_map: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Reorder racks so connected racks share a page.
+
+        Node->switch edges only render when the node's rack and the switch's
+        rack are on the same page (``MAX_RACKS_PER_PAGE``). When a switch is
+        placed in a different rack than the nodes wired to it, naive in-order
+        pagination can separate them, dropping every such edge. This greedily
+        packs each page with the racks that exchange the most port_map edges,
+        keeping the page count unchanged. Returns the racks unchanged when
+        they already fit on one page or no cross-rack edges exist.
+        """
+        if len(racks) <= MAX_RACKS_PER_PAGE or not port_map:
+            return racks
+
+        # Index node IPs/hostnames and switch mgmt_ips to their rack index.
+        ip_to_idx: Dict[str, int] = {}
+        host_to_idx: Dict[str, int] = {}
+        sw_to_idx: Dict[str, int] = {}
+        for idx, r in enumerate(racks):
+            for dev in r.get("cboxes", []) + r.get("bottom", []):
+                if not isinstance(dev, dict):
+                    continue
+                for f in ("mgmt_ip", "ipmi_ip", "ip"):
+                    v = dev.get(f)
+                    if v:
+                        ip_to_idx[v] = idx
+                for dip in dev.get("data_ips", []) or []:
+                    ip_to_idx[dip] = idx
+                for aip in dev.get("_all_ips", []) or []:
+                    ip_to_idx[aip] = idx
+                for hf in ("hostname", "name"):
+                    hn = dev.get(hf)
+                    if hn:
+                        host_to_idx[hn] = idx
+            for sw in r.get("switches", []):
+                if isinstance(sw, dict):
+                    mip = sw.get("mgmt_ip")
+                    if mip:
+                        sw_to_idx[mip] = idx
+
+        # Weight each unordered rack pair by the number of edges between them.
+        affinity: Dict[Tuple[int, int], int] = defaultdict(int)
+        for conn in port_map:
+            n_idx = ip_to_idx.get(conn.get("node_ip"))
+            if n_idx is None:
+                n_idx = host_to_idx.get(conn.get("node_hostname", conn.get("hostname")))
+            s_idx = sw_to_idx.get(conn.get("switch_ip"))
+            if n_idx is None or s_idx is None or n_idx == s_idx:
+                continue
+            affinity[(min(n_idx, s_idx), max(n_idx, s_idx))] += 1
+
+        if not affinity:
+            return racks
+
+        def total_affinity(r: int) -> int:
+            return sum(w for (a, b), w in affinity.items() if r in (a, b))
+
+        def pair_affinity(r: int, members: List[int]) -> int:
+            return max((affinity.get((min(r, m), max(r, m)), 0) for m in members), default=0)
+
+        remaining = list(range(len(racks)))
+        order: List[int] = []
+        while remaining:
+            seed = max(remaining, key=total_affinity)
+            page = [seed]
+            remaining.remove(seed)
+            while len(page) < MAX_RACKS_PER_PAGE and remaining:
+                nxt = max(remaining, key=lambda r: pair_affinity(r, page))
+                page.append(nxt)
+                remaining.remove(nxt)
+            order.extend(page)
+
+        return [racks[i] for i in order]
 
     def _assign_switches_to_racks(
         self,
@@ -1313,8 +1487,14 @@ class RackCentricDiagramGenerator:
 
         result: Dict[int, str] = {}
         for sw in switches:
-            sw_name = sw.get("hostname") or sw.get("name") or ""
-            manual_rack = manual_map.get(sw_name)
+            # Match the manual map by stable switch_id (mgmt_ip) first, then by
+            # name for back-compat with older profiles.
+            manual_rack = (
+                manual_map.get(sw.get("switch_id") or "")
+                or manual_map.get(sw.get("mgmt_ip") or "")
+                or manual_map.get(sw.get("hostname") or "")
+                or manual_map.get(sw.get("name") or "")
+            )
             if manual_rack and manual_rack in rack_map:
                 best_rack = manual_rack
             else:
@@ -1578,7 +1758,7 @@ class RackCentricDiagramGenerator:
                 else:
                     sx = fallback_start + i * (switch_w + 40)
                 sy = content_y + 10
-                sp_name = sp.get("hostname") or sp.get("name") or f"Spine-{i+1}"
+                sp_name = sp.get("display_name") or sp.get("hostname") or sp.get("name") or f"Spine-{i+1}"
                 sp_mgmt = sp.get("mgmt_ip", "")
                 self._draw_switch_node(
                     dwg,
@@ -1674,7 +1854,9 @@ class RackCentricDiagramGenerator:
             sw_pair_w = min(switch_w, (rack_w - 2 * RACK_PAD_X - SWITCH_GAP) / 2)
             for si, sw in enumerate(rack_switches[:2]):
                 sx = rx + RACK_PAD_X + si * (sw_pair_w + SWITCH_GAP)
-                sw_name = (sw.get("hostname") or sw.get("name", "")) if isinstance(sw, dict) else ""
+                sw_name = (
+                    (sw.get("display_name") or sw.get("hostname") or sw.get("name", "")) if isinstance(sw, dict) else ""
+                )
                 mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
                 self._draw_switch_node(
                     dwg,

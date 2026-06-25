@@ -154,6 +154,43 @@ ssh:
   # Per-ping timeout for SSH health checks (seconds)
   ping_timeout: 10
 
+# Teleport (tsh) connection mode
+# When the Reporter's "Teleport Mode" is selected, the app launches a tsh
+# tunnel that forwards the chosen CNode's API (443) and SSH (22) to local
+# ports.  Requires an authenticated `tsh login` session on the operator's
+# machine (SSO/MFA is handled by tsh, not this tool).
+teleport:
+  # Default off; enabled per-run by selecting Teleport Mode in the UI.
+  #
+  # API forward target: the tunnel forwards the VMS API (443) as seen from the
+  # selected Teleport node. Enter the cluster's VMS management IP/VIP in the
+  # Cluster IP field so the API is forwarded to that VIP (reachable from any
+  # node). A blank or loopback (127.x) value forwards to the node's own
+  # loopback, which only works when that node hosts the VMS.
+  enabled: false
+
+  # Default Teleport login user for the SSH session.
+  ssh_user: vastdata
+
+  # Optional explicit path to the tsh binary.  Leave blank to resolve `tsh`
+  # from PATH.
+  tsh_path: ""
+
+  # When true (default), if no active Teleport session is found at launch the
+  # app runs `tsh login` so the SSO browser window opens and you can re-auth
+  # in-place (e.g. when the profile has expired) instead of failing the run.
+  # Set false to require a pre-existing session and fail fast instead.
+  auto_login: true
+
+  # Optional Teleport proxy (host:port, e.g. teleport.example.com:443) passed
+  # to `tsh login`.  Leave blank to reuse the proxy from your existing local
+  # tsh profile (the common case once you have logged in at least once).
+  proxy: ""
+
+  # Seconds to wait for the interactive SSO/MFA login to complete before
+  # giving up.
+  login_timeout: 180
+
 # Health Check Configuration
 health_check:
   # Enable health check in report generation
@@ -260,14 +297,18 @@ security:
   mask_sensitive_data: true
 
 # Auto-shutdown (Web UI)
-# QP-3 (3): the local web server exits automatically a short time after the
-# operator closes the browser, so a forgotten background process does not
-# linger.  The page sends a heartbeat every ``heartbeat_interval_seconds``;
-# the server shuts down after ``grace_seconds`` of silence, but NEVER while a
-# report/health/one-shot/advanced-ops job is running.  Set enabled: false to
-# keep the server running until the operator clicks Exit (or Ctrl+C).
+# QP-3 (3): OPT-IN and OFF by default.  When enabled, the local web server
+# exits automatically a short time after the operator closes the browser so a
+# forgotten background process does not linger: the page sends a heartbeat
+# every ``heartbeat_interval_seconds`` and the server shuts down after
+# ``grace_seconds`` of silence, but NEVER while a report/health/one-shot/
+# advanced-ops job is running.  It is OFF by default because browsers
+# throttle/suspend timers in backgrounded tabs, so an open-but-inactive tab can
+# go silent past the grace window and trigger a premature shutdown.  Set
+# enabled: true to opt in; otherwise the server runs until the operator clicks
+# Exit (or Ctrl+C).
 auto_shutdown:
-  enabled: true
+  enabled: false
   grace_seconds: 20
   heartbeat_interval_seconds: 5
 

@@ -125,6 +125,8 @@ def run_ssh_command(
     jump_host: Optional[str] = None,
     jump_user: Optional[str] = None,
     jump_password: Optional[str] = None,
+    port: int = 22,
+    jump_port: int = 22,
 ) -> Tuple[int, str, str]:
     """Execute a single command over SSH and return (returncode, stdout, stderr).
 
@@ -152,6 +154,12 @@ def run_ssh_command(
                           platform.
         jump_user:        Username for the jump host.
         jump_password:    Password for the jump host.
+        port:             TCP port for the *host* connection (default 22).
+                          Teleport mode forwards a CNode's SSH to a local
+                          port, so callers pass that local port here.
+        jump_port:        TCP port for the *jump_host* connection (default
+                          22).  Used when the jump host itself is reached
+                          over a forwarded local port (Teleport mode).
     """
     effective_cmd = _wrap_login_shell(command) if login_shell else command
 
@@ -167,6 +175,8 @@ def run_ssh_command(
             jump_host=jump_host,
             jump_user=jump_user,
             jump_password=jump_password,
+            port=port,
+            jump_port=jump_port,
         )
 
     if IS_WINDOWS:
@@ -178,6 +188,7 @@ def run_ssh_command(
             timeout,
             force_tty=force_tty,
             agent_forward=agent_forward,
+            port=port,
         )
     return _subprocess_ssh(
         host,
@@ -188,6 +199,7 @@ def run_ssh_command(
         known_hosts_file,
         force_tty=force_tty,
         agent_forward=agent_forward,
+        port=port,
     )
 
 
@@ -201,6 +213,8 @@ def run_interactive_ssh(
     jump_host: Optional[str] = None,
     jump_user: Optional[str] = None,
     jump_password: Optional[str] = None,
+    port: int = 22,
+    jump_port: int = 22,
 ) -> Tuple[int, str, str]:
     """Interactive SSH session (required for Mellanox Onyx admin user).
 
@@ -210,6 +224,10 @@ def run_interactive_ssh(
     When *jump_host* is provided, paramiko's ``invoke_shell()`` is used
     to open a true interactive shell channel through the tunnel — this is
     required for Onyx restricted shells that reject ``exec_command()``.
+
+    ``port``/``jump_port`` override the default port 22 for the host and
+    jump-host connections respectively (used by Teleport mode where a
+    CNode's SSH is forwarded to a local port).
     """
     if jump_host:
         return _paramiko_shell(
@@ -221,10 +239,11 @@ def run_interactive_ssh(
             jump_host=jump_host,
             jump_user=jump_user,
             jump_password=jump_password,
+            jump_port=jump_port,
         )
     if IS_WINDOWS:
-        return _paramiko_shell(host, username, password, command, timeout)
-    return _pexpect_interactive(host, username, password, command, timeout, known_hosts_file)
+        return _paramiko_shell(host, username, password, command, timeout, port=port)
+    return _pexpect_interactive(host, username, password, command, timeout, known_hosts_file, port=port)
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +292,7 @@ def _subprocess_ssh(
     known_hosts_file: str,
     force_tty: bool = False,
     agent_forward: bool = False,
+    port: int = 22,
 ) -> Tuple[int, str, str]:
     """Non-interactive SSH via ``sshpass -e`` + ``ssh``.
 
@@ -290,6 +310,8 @@ def _subprocess_ssh(
             cmd.append("-tt")
         if agent_forward:
             cmd.append("-A")
+        if port and int(port) != 22:
+            cmd.extend(["-p", str(port)])
 
         connect_timeout = min(timeout, 30)
         cmd.extend(
@@ -333,6 +355,7 @@ def _subprocess_ssh(
         timeout,
         force_tty=force_tty,
         agent_forward=agent_forward,
+        port=port,
     )
 
 
@@ -343,20 +366,22 @@ def _pexpect_interactive(
     command: str,
     timeout: int,
     known_hosts_file: str,
+    port: int = 22,
 ) -> Tuple[int, str, str]:
     """Interactive SSH via *pexpect* (for Onyx switches that reject non-interactive SSH)."""
     try:
         import pexpect
     except ImportError:
         logger.warning("pexpect not available, falling back to paramiko")
-        return _paramiko_exec(host, username, password, command, timeout, force_tty=True)
+        return _paramiko_exec(host, username, password, command, timeout, force_tty=True, port=port)
 
     try:
         connect_timeout = min(timeout, 30)
+        port_opt = ("-p " + str(port) + " ") if port and int(port) != 22 else ""
         ssh_cmd = (
             "ssh -o StrictHostKeyChecking=no "
             "-o UserKnownHostsFile=" + known_hosts_file + " "
-            "-o ConnectTimeout=" + str(connect_timeout) + " " + username + "@" + host
+            "-o ConnectTimeout=" + str(connect_timeout) + " " + port_opt + username + "@" + host
         )
         child = pexpect.spawn(ssh_cmd, timeout=timeout, encoding="utf-8")
 
@@ -404,6 +429,8 @@ def _paramiko_shell(
     jump_host: Optional[str] = None,
     jump_user: Optional[str] = None,
     jump_password: Optional[str] = None,
+    port: int = 22,
+    jump_port: int = 22,
 ) -> Tuple[int, str, str]:
     """Open an interactive shell channel via paramiko and type the command.
 
@@ -444,6 +471,7 @@ def _paramiko_shell(
             try:
                 jump_client.connect(
                     jump_host,
+                    port=jump_port,
                     username=jump_user,
                     password=jump_password,
                     timeout=connect_timeout,
@@ -463,6 +491,7 @@ def _paramiko_shell(
 
         client.connect(
             host,
+            port=port,
             username=username,
             password=password,
             timeout=connect_timeout,
@@ -535,6 +564,8 @@ def _paramiko_exec(
     jump_host: Optional[str] = None,
     jump_user: Optional[str] = None,
     jump_password: Optional[str] = None,
+    port: int = 22,
+    jump_port: int = 22,
 ) -> Tuple[int, str, str]:
     """Execute a command over SSH using paramiko (pure Python, cross-platform).
 
@@ -581,6 +612,7 @@ def _paramiko_exec(
             try:
                 jump_client.connect(
                     jump_host,
+                    port=jump_port,
                     username=jump_user,
                     password=jump_password,
                     timeout=connect_timeout,
@@ -618,6 +650,7 @@ def _paramiko_exec(
 
         client.connect(
             host,
+            port=port,
             username=username,
             password=password,
             timeout=connect_timeout,

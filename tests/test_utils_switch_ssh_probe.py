@@ -162,6 +162,62 @@ class TestProbeSwitchPassword:
         seen = {(call.args[1], call.args[2]) for call in mock_ssh.call_args_list}
         assert ("admin", "admin") in seen, f"admin/admin combo missing from probe attempts: {seen}"
 
+    @patch("utils.switch_ssh_probe.time.sleep")
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_transient_banner_error_is_retried_then_succeeds(self, mock_ssh, mock_pty, mock_sleep):
+        # The field-reported failure mode: a Cumulus switch reached through a
+        # CNode proxy-jump is briefly slow to present its SSH banner, so the
+        # first attempt returns a transient "Error reading SSH protocol
+        # banner" (NOT an auth rejection).  The probe must retry the *same*
+        # correct password rather than discard it, otherwise a valid switch
+        # is falsely reported as rejecting every candidate.
+        mock_ssh.side_effect = [
+            (1, "", "SSH error for cumulus@10.0.0.1: Error reading SSH protocol banner"),
+            (0, "leaf-1.example.com\n", ""),
+        ]
+        result = probe_switch_password("10.0.0.1", "cumulus", ["Vastdata1!"])
+        assert result == "Vastdata1!"
+        assert mock_ssh.call_count == 2  # same combo retried once
+        mock_pty.assert_not_called()  # transient != auth, so no interactive fallback
+        mock_sleep.assert_called_once()  # backoff between attempts
+
+    @patch("utils.switch_ssh_probe.time.sleep")
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_transient_error_exhausts_retries_then_tries_next_candidate(self, mock_ssh, mock_pty, mock_sleep):
+        # When a candidate stays transient through its single retry, the
+        # probe gives up on THAT candidate (not the whole switch) and moves
+        # to the next combo.  combos for ["a","b"] under cumulus are
+        # (cumulus,a), (cumulus,b), (admin,admin).
+        mock_ssh.side_effect = [
+            (1, "", "Error reading SSH protocol banner"),  # (cumulus,a) attempt 1
+            (1, "", "Error reading SSH protocol banner"),  # (cumulus,a) retry
+            (0, "leaf.example.com\n", ""),  # (cumulus,b)
+        ]
+        result = probe_switch_password("10.0.0.1", "cumulus", ["a", "b"])
+        assert result == "b"
+        assert mock_ssh.call_count == 3
+        mock_pty.assert_not_called()
+
+    @patch("utils.switch_ssh_probe.time.sleep")
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_clean_auth_failure_is_not_retried(self, mock_ssh, mock_pty, mock_sleep):
+        # A genuine USERAUTH_FAILURE (paramiko -> "Authentication failed")
+        # must NOT be retried: a wrong password never becomes right, and
+        # retrying wastes a full proxy-jump round-trip.  The single candidate
+        # should be attempted exactly once on the command path (plus the
+        # interactive Onyx fallback), never a transient retry.
+        mock_ssh.return_value = (1, "", "Authentication failed for cumulus@10.0.0.1")
+        mock_pty.return_value = (1, "", "authentication failed")
+        result = probe_switch_password("10.0.0.1", "cumulus", ["only"])
+        assert result is None
+        # combos for ["only"] under cumulus are (cumulus,only) + (admin,admin):
+        # exactly one command-path attempt per combo, never a transient retry.
+        assert mock_ssh.call_count == 2
+        mock_sleep.assert_not_called()
+
     @patch("utils.switch_ssh_probe.run_ssh_command")
     def test_jump_kwargs_are_forwarded(self, mock_ssh):
         # The Reporter-tile probe runs through a bastion (the VAST CNode
@@ -313,6 +369,50 @@ class TestBuildSwitchPasswordByIp:
             candidates=["Vastdata1!"],
         )
         assert set(result.keys()) == set(ips)
+
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_partial_probe_logs_actionable_warning_naming_missing_switches(self, mock_ssh, mock_pty):
+        # (a) When some switches reject every credential, the operator must
+        # see a single, clear warning naming exactly which switch IPs have
+        # no working password — so they know it is a credential problem on
+        # those switches, not an opaque tool failure.
+        def ssh_side_effect(host, user, pw, cmd, *a, **kw):
+            if host == "10.0.0.99":
+                return (1, "", "Authentication failed")
+            return (0, "ok", "")
+
+        mock_ssh.side_effect = ssh_side_effect
+        mock_pty.return_value = (1, "", "authentication failed")
+        logger = MagicMock(spec=logging.Logger)
+        build_switch_password_by_ip(
+            switch_ips=["10.0.0.1", "10.0.0.99"],
+            switch_user="cumulus",
+            candidates=["Vastdata1!"],
+            logger=logger,
+        )
+        # The summary warning must name the unauthenticated switch so the
+        # operator knows exactly where to fix credentials.
+        summary_calls = [c for c in logger.warning.call_args_list if "pre-probe" in str(c.args[0])]
+        assert summary_calls, "expected a pre-probe summary warning"
+        rendered = summary_calls[-1].args[0] % summary_calls[-1].args[1:]
+        assert "10.0.0.99" in rendered
+
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_all_matched_logs_success_summary(self, mock_ssh):
+        mock_ssh.return_value = (0, "ok", "")
+        logger = MagicMock(spec=logging.Logger)
+        build_switch_password_by_ip(
+            switch_ips=["10.0.0.1", "10.0.0.2"],
+            switch_user="cumulus",
+            candidates=["Vastdata1!"],
+            logger=logger,
+        )
+        success_calls = [
+            c for c in logger.info.call_args_list if "all" in str(c.args[0]) and "authenticated" in str(c.args[0])
+        ]
+        assert success_calls, "expected an all-authenticated success summary"
+        assert success_calls[-1].args[1] == 2  # total switch count rendered into the message
 
     @patch("utils.switch_ssh_probe.run_ssh_command")
     def test_jump_kwargs_are_forwarded_to_every_probe(self, mock_ssh):

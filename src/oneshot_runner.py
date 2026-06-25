@@ -178,6 +178,9 @@ class OneShotRunner:
         self._lock = threading.Lock()
         self._tunnel = None
         self._tunnel_address: Optional[str] = None
+        # Teleport mode: forwarded local SSH endpoint (set by _setup_teleport_tunnel).
+        self._teleport_ssh_host: Optional[str] = None
+        self._teleport_ssh_port: int = 22
         self._switch_password_candidates: List[str] = self._resolve_switch_password_candidates()
         if self._switch_password_candidates:
             self._credentials.setdefault("switch_password_candidates", list(self._switch_password_candidates))
@@ -280,10 +283,14 @@ class OneShotRunner:
             creds["switch_user_by_ip"] = dict(self._switch_user_by_ip)
         if self._tunnel_address:
             creds["tunnel_address"] = self._tunnel_address
+        if self._teleport_ssh_host:
+            creds["ssh_host"] = self._teleport_ssh_host
+            creds["ssh_port"] = self._teleport_ssh_port
         if self._tunnel:
-            if self._tunnel.vms_internal_ip:
+            # VMSTunnel exposes these; TeleportTunnel does not (guarded).
+            if getattr(self._tunnel, "vms_internal_ip", None):
                 creds["vms_internal_ip"] = self._tunnel.vms_internal_ip
-            if self._tunnel.vms_management_ip:
+            if getattr(self._tunnel, "vms_management_ip", None):
                 creds["vms_management_ip"] = self._tunnel.vms_management_ip
         return creds
 
@@ -409,6 +416,8 @@ class OneShotRunner:
         try:
             if self._credentials.get("tech_port"):
                 self._setup_tunnel()
+            elif self._credentials.get("teleport"):
+                self._setup_teleport_tunnel()
 
             self._check_cancel()
             checks.append(self._validate_credentials())
@@ -498,6 +507,9 @@ class OneShotRunner:
         if self._credentials.get("tech_port"):
             return self._validate_tech_port_discovery(cluster_ip)
 
+        if self._credentials.get("teleport"):
+            return self._validate_teleport_tunnel(cluster_ip)
+
         try:
             url = f"https://{cluster_ip}/api/clusters/"
             # Intentional [B501]: VAST VMS uses self-signed certs; verify_ssl disabled is the documented default.
@@ -511,6 +523,40 @@ class OneShotRunner:
             )
         except Exception as exc:
             return ValidationCheck("Cluster API", "fail", f"Cannot reach cluster API: {exc}", "connectivity")
+
+    def _validate_teleport_tunnel(self, cluster_ip: str) -> "ValidationCheck":
+        """In Teleport mode, verify the tsh tunnel is up and the API answers."""
+        if not self._tunnel_address:
+            return ValidationCheck(
+                "Cluster API",
+                "fail",
+                "Teleport tunnel not established. Verify `tsh login` and the node target.",
+                "connectivity",
+            )
+        try:
+            url = f"https://{self._tunnel_address}/api/clusters/"
+            # Intentional [B501]: VAST VMS uses self-signed certs.
+            resp = _requests_lib.get(url, timeout=10, verify=False)  # noqa: S501  # nosec B501
+            if resp.status_code in (200, 401, 403):
+                return ValidationCheck(
+                    "Cluster API",
+                    "pass",
+                    f"Teleport: API reachable via tunnel {self._tunnel_address} (HTTP {resp.status_code}).",
+                    "connectivity",
+                )
+            return ValidationCheck(
+                "Cluster API",
+                "warn",
+                f"Teleport tunnel up but API returned HTTP {resp.status_code}.",
+                "connectivity",
+            )
+        except Exception as exc:
+            return ValidationCheck(
+                "Cluster API",
+                "fail",
+                f"Teleport tunnel up but API unreachable: {exc}",
+                "connectivity",
+            )
 
     def _validate_tech_port_discovery(self, cluster_ip: str) -> "ValidationCheck":
         """In Tech Port mode, verify VMS discovery instead of direct API access."""
@@ -562,10 +608,16 @@ class OneShotRunner:
         if not node_password:
             return ValidationCheck("Node SSH", "fail", "Node SSH password not provided.", "connectivity")
 
+        # Teleport mode: SSH to the forwarded local CNode endpoint.
+        node_host = self._teleport_ssh_host or cluster_ip
+        node_port = self._teleport_ssh_port if self._teleport_ssh_host else 22
+
         try:
             from utils.ssh_adapter import run_ssh_command
 
-            rc, stdout, _stderr = run_ssh_command(cluster_ip, node_user, node_password, "hostname", timeout=15)
+            rc, stdout, _stderr = run_ssh_command(
+                node_host, node_user, node_password, "hostname", timeout=15, port=node_port
+            )
             if rc == 0:
                 hostname = stdout.strip() if stdout else "unknown"
                 return ValidationCheck("Node SSH", "pass", f"Node SSH connected ({hostname}).", "connectivity")
@@ -627,10 +679,20 @@ class OneShotRunner:
         as unreachable/auth-failed on clusters where only some switches are
         reachable from the Reporter's LAN.
         """
-        if not self._tunnel_address:
-            return {}
         node_password = self._credentials.get("node_password")
         if not node_password:
+            return {}
+        # Teleport mode: jump through the forwarded local SSH endpoint.
+        if self._teleport_ssh_host:
+            kwargs: Dict[str, Any] = {
+                "jump_host": self._teleport_ssh_host,
+                "jump_user": self._credentials.get("node_user", "vastdata"),
+                "jump_password": node_password,
+            }
+            if self._teleport_ssh_port != 22:
+                kwargs["jump_port"] = self._teleport_ssh_port
+            return kwargs
+        if not self._tunnel_address:
             return {}
         return {
             "jump_host": self._credentials.get("cluster_ip"),
@@ -971,11 +1033,12 @@ class OneShotRunner:
             from utils.ssh_adapter import run_ssh_command
 
             rc, stdout, _ = run_ssh_command(
-                cluster_ip,
+                self._teleport_ssh_host or cluster_ip,
                 node_user,
                 node_password,
                 "curl -sI --max-time 10 https://github.com 2>&1 | head -1",
                 timeout=20,
+                port=self._teleport_ssh_port if self._teleport_ssh_host else 22,
             )
             if rc == 0 and stdout and ("200" in stdout or "301" in stdout or "HTTP" in stdout):
                 return ValidationCheck("Internet Access", "pass", "Cluster has outbound internet access.", "internet")
@@ -1058,6 +1121,8 @@ class OneShotRunner:
         try:
             if self._credentials.get("tech_port"):
                 self._setup_tunnel()
+            elif self._credentials.get("teleport"):
+                self._setup_teleport_tunnel()
 
             # Safety net: when a switch-touching op is selected but the
             # per-switch password map is empty (e.g. the operator clicked
@@ -1143,6 +1208,38 @@ class OneShotRunner:
             f"management={tunnel.vms_management_ip}, tunnel={self._tunnel_address}",
         )
 
+    def _setup_teleport_tunnel(self) -> None:
+        """Establish the Teleport (tsh) tunnel for Teleport mode.
+
+        Forwards the CNode's API (443) and SSH (22) to local ports; the API
+        port becomes ``tunnel_address`` and the SSH port is threaded to
+        workflows/switch-jumps via ``ssh_host``/``ssh_port``.
+        """
+        from utils.teleport_tunnel import TeleportTunnel, options_from_config
+
+        node = self._credentials.get("teleport_node", "")
+        user = self._credentials.get("teleport_user", "vastdata")
+        self._emit("info", f"Teleport mode: launching tsh tunnel to {node}...")
+        # Forward the API to the entered VMS IP/VIP when routable, so the VMS is
+        # reachable from any node (loopback only works on the VMS-hosting node).
+        cluster_ip = (self._credentials.get("cluster_ip", "") or "").strip()
+        api_remote_host = (
+            "127.0.0.1"
+            if (not cluster_ip or cluster_ip == "localhost" or cluster_ip.startswith("127."))
+            else cluster_ip
+        )
+        tunnel = TeleportTunnel(node, user, api_remote_host=api_remote_host, **options_from_config(self._load_config()))
+        tunnel.connect()
+        self._tunnel = tunnel
+        self._tunnel_address = tunnel.api_local_address
+        ssh_host, ssh_port = tunnel.ssh_endpoint
+        self._teleport_ssh_host = ssh_host
+        self._teleport_ssh_port = ssh_port
+        self._emit(
+            "info",
+            f"Teleport tunnel active: API {self._tunnel_address}, SSH {ssh_host}:{ssh_port}",
+        )
+
     def _teardown_tunnel(self) -> None:
         if self._tunnel is not None:
             try:
@@ -1151,6 +1248,8 @@ class OneShotRunner:
                 pass
             self._tunnel = None
             self._tunnel_address = None
+            self._teleport_ssh_host = None
+            self._teleport_ssh_port = 22
 
     # ------------------------------------------------------------------
     # Phase: Health Checks
@@ -1212,7 +1311,14 @@ class OneShotRunner:
                 # switch on a different default password).
                 if self._switch_password_by_ip:
                     switch_ssh_config["password_by_ip"] = dict(self._switch_password_by_ip)
-                if self._tunnel_address:
+                if self._teleport_ssh_host:
+                    switch_ssh_config["proxy_jump"] = {
+                        "host": self._teleport_ssh_host,
+                        "username": self._credentials.get("node_user", "vastdata"),
+                        "password": self._credentials.get("node_password"),
+                        "port": self._teleport_ssh_port,
+                    }
+                elif self._tunnel_address:
                     switch_ssh_config["proxy_jump"] = {
                         "host": self._credentials.get("cluster_ip"),
                         "username": self._credentials.get("node_user", "vastdata"),
@@ -1255,7 +1361,9 @@ class OneShotRunner:
             # Save results
             from utils import get_data_dir
 
-            output_dir = str(get_data_dir() / "output")
+            output_dir = (
+                str(self._cluster_paths.output) if self._cluster_paths is not None else str(get_data_dir() / "output")
+            )
             checker.save_json(report, output_dir=output_dir)
             checker.generate_remediation_report(report, output_dir=output_dir)
 
@@ -1533,7 +1641,14 @@ class OneShotRunner:
                             sw_cfg["password_by_ip"] = dict(self._switch_password_by_ip)
                         if self._switch_password_candidates:
                             sw_cfg["password_candidates"] = list(self._switch_password_candidates)
-                        if self._tunnel_address:
+                        if self._teleport_ssh_host:
+                            sw_cfg["proxy_jump"] = {
+                                "host": self._teleport_ssh_host,
+                                "username": self._credentials.get("node_user", "vastdata"),
+                                "password": self._credentials.get("node_password"),
+                                "port": self._teleport_ssh_port,
+                            }
+                        elif self._tunnel_address:
                             sw_cfg["proxy_jump"] = {
                                 "host": self._credentials.get("cluster_ip"),
                                 "username": self._credentials.get("node_user", "vastdata"),
@@ -1562,11 +1677,23 @@ class OneShotRunner:
                             self._emit(level, f"        {result.message}")
 
                     raw_data["health_check_results"] = checker.to_dict(hc_report)
+                    with self._lock:
+                        self._state.operation_results["health_check"] = "success"
 
                     try:
                         from utils import get_data_dir
 
-                        checker.save_json(hc_report, output_dir=str(get_data_dir() / "output"))
+                        # Under QP-2 per-cluster segmentation, write into the
+                        # cluster's output dir so the bundler (which scans
+                        # ``clusters/<key>/output/health/``) finds these files;
+                        # otherwise fall back to the flat data dir.
+                        health_out = (
+                            str(self._cluster_paths.output)
+                            if self._cluster_paths is not None
+                            else str(get_data_dir() / "output")
+                        )
+                        checker.save_json(hc_report, output_dir=health_out)
+                        checker.generate_remediation_report(hc_report, output_dir=health_out)
                     except Exception as save_exc:
                         self._emit("warn", f"Could not save standalone health JSON: {save_exc}")
 
@@ -1579,6 +1706,8 @@ class OneShotRunner:
                     self._emit("info", "Health check data included in report.")
                 except Exception as hc_exc:
                     self._emit("warn", f"Health check for report failed (non-blocking): {hc_exc}")
+                    with self._lock:
+                        self._state.operation_results["health_check"] = "failed"
             else:
                 self._emit("info", "Health checks not selected — skipping.")
 
@@ -1647,7 +1776,16 @@ class OneShotRunner:
                         if "spine" in role:
                             spine_ips.append(ip)
 
-                    if self._tunnel_address:
+                    if self._teleport_ssh_host:
+                        # Teleport tunnel lands on a single CNode at the
+                        # forwarded local SSH endpoint; pin port mapping to it.
+                        cnode_ips = [self._teleport_ssh_host]
+                        self._emit(
+                            "info",
+                            f"Teleport mode: using tunneled CNode {self._teleport_ssh_host}:"
+                            f"{self._teleport_ssh_port} for port mapping",
+                        )
+                    elif self._tunnel_address:
                         entry_ip = self._credentials.get("cluster_ip")
                         cnode_ips = [entry_ip] if entry_ip else []
                         self._emit("info", f"Tech Port mode: using entry CNode {entry_ip} for port mapping")
@@ -1683,6 +1821,8 @@ class OneShotRunner:
                                     tunnel_address=self._tunnel_address,
                                     switch_hostname_map=switch_hostname_map or None,
                                     spine_ips=spine_ips or None,
+                                    ssh_host=self._teleport_ssh_host,
+                                    ssh_port=self._teleport_ssh_port,
                                 )
                                 result = mapper.collect_port_mapping()
                                 if result.get("available"):
@@ -1857,6 +1997,12 @@ class OneShotRunner:
             for op_id in self._selected_ops:
                 cat = self._OP_CATEGORY_MAP.get(op_id, op_id)
                 op_results.setdefault(cat, "skipped")
+            # Health checks run inside the report phase, not as a selected op, so
+            # mark them skipped here when not requested; when requested, the
+            # report phase records success/failed. Without this the bundler would
+            # report the health category as MISSING instead of SKIPPED.
+            if not self._include_health:
+                op_results.setdefault("health_check", "skipped")
 
             bundler.collect_results(
                 cluster_ip=cluster_ip or None,

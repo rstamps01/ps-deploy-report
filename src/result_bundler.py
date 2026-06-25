@@ -195,12 +195,12 @@ class ResultBundler:
                 continue
             hits = [root for root, marker in markers if _norm(marker.get(field)) == target]
             if hits:
-                return hits[0]
+                return Path(hits[0])
 
         if cluster_ip:
             ip_hits = [root for root, marker in markers if marker.get("cluster_ip") == cluster_ip]
             if len(ip_hits) == 1:
-                return ip_hits[0]
+                return Path(ip_hits[0])
         return None
 
     # ------------------------------------------------------------------

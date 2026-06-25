@@ -261,6 +261,8 @@ class ExternalPortMapper:
         switch_password_candidates: Optional[List[str]] = None,
         switch_hostname_map: Optional[Dict[str, str]] = None,
         spine_ips: Optional[List[str]] = None,
+        ssh_host: Optional[str] = None,
+        ssh_port: int = 22,
     ):
         """
         Initialize external port mapper.
@@ -293,7 +295,14 @@ class ExternalPortMapper:
         self._api_host = tunnel_address or cluster_ip
         self.api_user = api_user
         self.api_password = api_password
-        self.cnode_ip = cnode_ip
+        # Teleport mode forwards the CNode's SSH (22) to a local port.  When
+        # ``ssh_host`` is given, CNode (clush) SSH connects *directly* to that
+        # local endpoint (it already lands on the CNode, so no jump), and
+        # switch SSH proxy-jumps through the same endpoint.
+        self._teleport = bool(ssh_host)
+        self.ssh_port = int(ssh_port) if ssh_port else 22
+        self.cnode_ip = ssh_host or cnode_ip
+        self._jump_host = ssh_host or cluster_ip
         self.node_user = node_user
         self.node_password = node_password
         self.switch_ips = switch_ips
@@ -358,12 +367,27 @@ class ExternalPortMapper:
         the operator's machine.
         """
         if self.proxy_jump:
-            return {
-                "jump_host": self.cluster_ip,
+            kwargs: Dict[str, Any] = {
+                "jump_host": self._jump_host,
                 "jump_user": self.node_user,
                 "jump_password": self.node_password,
             }
+            if self.ssh_port != 22:
+                kwargs["jump_port"] = self.ssh_port
+            return kwargs
         return {}
+
+    def _cnode_kwargs(self) -> dict:
+        """Return SSH kwargs for *direct* CNode (clush) commands.
+
+        In Teleport mode the CNode is reached directly over the forwarded
+        local port (``127.0.0.1:<ssh_port>``) with no jump host, so we just
+        pass ``port``.  Otherwise we fall back to the standard jump-host
+        behavior (Tech Port tunnels CNode SSH via ``cluster_ip``).
+        """
+        if self._teleport:
+            return {"port": self.ssh_port}
+        return self._jump_kwargs()
 
     def _detect_switch_os(self, switch_ip: str) -> Tuple[str, str, str]:
         """
@@ -1095,7 +1119,7 @@ class ExternalPortMapper:
                 self.node_password,
                 clush_cmd,
                 timeout=30,
-                **self._jump_kwargs(),
+                **self._cnode_kwargs(),
             )
 
             # Log result
@@ -1174,7 +1198,7 @@ class ExternalPortMapper:
                 self.node_password,
                 clush_cmd,
                 timeout=60,
-                **self._jump_kwargs(),
+                **self._cnode_kwargs(),
             )
 
             self.vlog.log(
