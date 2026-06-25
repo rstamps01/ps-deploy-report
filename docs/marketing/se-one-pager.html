@@ -980,10 +980,11 @@
                 <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data"
                     style="height: 2.4rem; filter: brightness(0) invert(1);">
                 <span><span class="brand-white">asbuilt</span><span class="accent">-reporter</span></span>
-                <span class="brand-version">v1.5.0</span>
+                <span class="brand-version" id="appVersion">v1.5.8</span>
             </h1>
             <p class="tagline">Generate customer-ready as-built reports in minutes &mdash; not hours.</p>
-            <p class="subtext">No Python. No terminal. Just download, connect, and go.</p>
+            <p class="subtext">No Python. No terminal. Tech Port, VMS, or Teleport (Beta) &mdash; just download,
+                connect, and go.</p>
             <div class="cta-row">
                 <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -1081,8 +1082,9 @@
                         </svg>
                     </div>
                     <h3>Customer-Ready Output</h3>
-                    <p>VAST-branded PDF with executive summary, 42U rack diagrams, network topology, and health results.
-                        Plus machine-readable JSON for CMDB or scripted workflows.</p>
+                    <p>VAST-branded PDF with executive summary, 42U rack diagrams, subnet-colored network topology with
+                        mis-cabling detection, and health results. Plus machine-readable JSON for CMDB or scripted
+                        workflows.</p>
                 </div>
                 <div class="benefit-card">
                     <div class="benefit-icon field">
@@ -1093,8 +1095,9 @@
                         </svg>
                     </div>
                     <h3>Field-Ready Design</h3>
-                    <p>SSH proxy hop for unreachable switches, Tech Port mode, graceful degradation when data is
-                        partial. Works on macOS and Windows &mdash; no Python install needed.</p>
+                    <p>Connect over Tech Port, VMS, or Teleport (Beta); SSH proxy hop for unreachable switches,
+                        same-named switch handling, and graceful degradation when data is partial. Runs on Apple
+                        Silicon &amp; Intel macOS and Windows &mdash; no Python install needed.</p>
                 </div>
                 <div class="benefit-card">
                     <div class="benefit-icon health">
@@ -1138,8 +1141,8 @@
                         class="screenshot-img">
                     <div class="showcase-caption">
                         <h4>Reporter</h4>
-                        <p>Unified 5-step workflow: Discover, Place Switches, Generate Report, Health Check, Download.
-                        </p>
+                        <p>Guided 3-step workflow with Tech Port, VMS, or Teleport (Beta) connection modes &mdash;
+                            Discover, place switches, generate the report, and run a one-click Health Check.</p>
                     </div>
                 </div>
                 <!-- Test Suite -->
@@ -1160,8 +1163,8 @@
                         class="screenshot-img">
                     <div class="showcase-caption">
                         <h4>Validation Results</h4>
-                        <p>Browse all outputs by operation type &mdash; reports, health checks, network maps, and
-                            bundles.</p>
+                        <p>Per-cluster results browser with tabs and live counts for reports, health, network, switch,
+                            vnetmap, vperfsanity, support, logs, and bundles &mdash; regenerate PDFs from saved JSON.</p>
                     </div>
                 </div>
                 <!-- Library -->
@@ -1174,15 +1177,15 @@
                         </p>
                     </div>
                 </div>
-                <!-- Advanced Configuration -->
+                <!-- Update Tools -->
                 <div class="showcase-item fade-in">
-                    <img src="screenshots/Adv-Config.png"
-                        alt="Advanced Configuration — Fine-tune report settings and output formatting"
+                    <img src="screenshots/Update-Tools.png"
+                        alt="Update Tools — Cached deployment tools shown READY for offline runs"
                         class="screenshot-img">
                     <div class="showcase-caption">
-                        <h4>Advanced Configuration</h4>
-                        <p>Fine-tune report formatting, data collection scope, and output settings without editing YAML.
-                        </p>
+                        <h4>Update Tools</h4>
+                        <p>One-click sync of deployment tools (vnetmap, mlnx_switch_api, vast_support_tools, vperfsanity)
+                            cached locally and shown READY, so runs work even air-gapped.</p>
                     </div>
                 </div>
             </div>
@@ -1212,7 +1215,7 @@
                                 class="screenshot-img"
                                 style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
                         </div>
-                        <p class="date-line">Generated March 31, 2026</p>
+                        <p class="date-line">Generated in minutes, not hours</p>
                         <div class="format-badges">
                             <span class="format-badge pdf">PDF</span>
                             <span class="format-badge json">JSON</span>
@@ -1365,7 +1368,7 @@
             <span style="font-weight: 600; font-size: 0.85rem;"><span
                     style="color: var(--text-primary);">asbuilt</span><span
                     style="color: var(--accent);">-reporter</span></span>
-            <span class="version-badge">v1.5.0</span>
+            <span class="version-badge" id="appVersionFooter">v1.5.8</span>
         </div>
         <p>Built by PS Engineering</p>
     </footer>
@@ -1395,6 +1398,20 @@
 
     <script>
         (function () {
+            /* ---- Version badge: auto-update from latest GitHub Release ---- */
+            /* Falls back silently to the hardcoded version if the API is unreachable. */
+            fetch('https://api.github.com/repos/rstamps01/ps-deploy-report/releases/latest')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (d) {
+                    if (!d || !d.tag_name) return;
+                    var v = d.tag_name[0] === 'v' ? d.tag_name : 'v' + d.tag_name;
+                    ['appVersion', 'appVersionFooter'].forEach(function (id) {
+                        var el = document.getElementById(id);
+                        if (el) el.textContent = v;
+                    });
+                })
+                .catch(function () { });
+
             /* ---- Fade-in observer ---- */
             var fadeEls = document.querySelectorAll('.fade-in');
             var statEl = document.querySelector('.benefit-stat[data-target]');
