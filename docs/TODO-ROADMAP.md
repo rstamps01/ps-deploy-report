@@ -121,7 +121,7 @@
 | ID   | Item | Status   | Notes |
 |------|------|----------|--------|
 | QG-1 | Run flake8 + black (and optionally mypy) as part of documented pre-release run | Done | README Development § Pre-release checklist |
-| QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Done | Followed [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md): types-paramiko, _MEIPASS, var annotations, return casts, api_handler session/optional, network_diagram Path/float, report_builder tuple/int/float; mypy passes. |
+| QG-2 | Fix or document flake8/black/mypy exceptions to achieve green quality gate | Done | Followed MYPY_FIX_SUGGESTIONS notes (retired in v1.5.8 cleanup; see `pre-1.5.8-cleanup` tag): types-paramiko, _MEIPASS, var annotations, return casts, api_handler session/optional, network_diagram Path/float, report_builder tuple/int/float; mypy passes. |
 | QG-3 | Raise coverage toward 80% or formally set cov-fail-under with restoration plan | In progress | cov-fail-under=60 (raised from 55); total coverage 60%+; Phase A-C complete; track TSE-9 for 80% |
 
 ---
@@ -144,7 +144,7 @@
 
 ## Planned — EBox Hardware Overview & Inventory
 
-*Source: [EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md](development/EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md)*
+*Source: EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN notes (retired in v1.5.8 cleanup; see `pre-1.5.8-cleanup` tag)*
 
 | ID    | Item | Status   | Notes |
 |-------|------|----------|--------|
@@ -316,7 +316,7 @@
 | AO-15 | Advanced Ops hardening | Cross-tenant vperfsanity cleanup in Step 7; reporter profile save includes rpt_* checklist fields; ALL_FIELDS extended for profile round-trip |
 | AO-19 | Dynamic log levels, state persistence | Tier UI on Adv Ops + Reporter; ops_log_manager 1GB/25% purge; YAML config wired to OpsLogManager factory; state snapshot API + hydration; localStorage persistence |
 | CFG-1 | Configuration template refresh | Template verified in sync with runtime config; all new keys present (SSH proxy, ops_log, section toggles, advanced operations) |
-| QG-2 | Fix flake8/black/mypy exceptions to achieve green quality gate | mypy: 97→0 errors; see [MYPY_FIX_SUGGESTIONS.md](development/MYPY_FIX_SUGGESTIONS.md). |
+| QG-2 | Fix flake8/black/mypy exceptions to achieve green quality gate | mypy: 97→0 errors; see MYPY_FIX_SUGGESTIONS notes (retired in v1.5.8 cleanup; `pre-1.5.8-cleanup` tag). |
 | QG-1 | Document pre-release run (flake8, black, mypy, pytest) | README Development § Pre-release checklist. |
 | TSE-1 | Library API unit tests | GET /library, GET/POST/DELETE /api/library (mocked _load_library/_save_library). |
 | TSE-2 | Generate cancel unit test | POST /generate/cancel (no job → no_job; job running → cancelled). |

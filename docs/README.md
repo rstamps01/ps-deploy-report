@@ -17,7 +17,6 @@ docs/
 ├── PRE-RELEASE-QA-GAP-ANALYSIS.md   # Pre-release QA checklist
 ├── TODO-ROADMAP.md                  # Canonical roadmap and task tracking
 ├── api/                             # API discovery documentation
-│   ├── CLUSTER_10.143.11.202_API_DISCOVERY.md
 │   └── EBOX_API_V7_DISCOVERY.md
 ├── confluence/                      # Internal only — not published to GitHub
 │   └── (26 design & requirements docs synced from Confluence)
@@ -34,25 +33,15 @@ docs/
 │   ├── install-windows.ps1         # Automated Windows installation
 │   ├── uninstall-mac.sh            # Automated macOS uninstall
 │   └── uninstall-windows.ps1       # Automated Windows uninstall
-└── development/                     # Developer references and analysis
-    ├── DYNAMIC-TOC-IMPLEMENTATION.md
-    ├── EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md
+└── development/                     # Developer references and active guides
     ├── HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md
-    ├── MYPY_FIX_SUGGESTIONS.md
     ├── READ_ONLY_VAST_API_POLICY.md
-    ├── TOC-IMPLEMENTATION-GUIDE.md
-    ├── ONYX_INTERACTIVE_SSH_IMPLEMENTATION.md
-    ├── ONYX_SUPPORT_SUMMARY.md
-    ├── PORT_MAPPING_ANALYSIS.md
-    ├── PORT_MAPPING_ISSUE_ANALYSIS.md
-    ├── API_DISCOVERY_MULTI_RACK.md
-    ├── MULTI_RACK_FINDINGS_10.143.11.204.md
-    ├── MULTI_RACK_IDENTIFICATION_ANALYSIS.md
-    ├── MULTI_RACK_QUICK_START.md
-    ├── RCA_ANALYSIS_SUMMARY.md
-    ├── RCA_LAMBDA-VAST-SLC-02_DBox_Unresponsive_Issue.md
-    └── RCA_Slack_Thread_Analysis_Template.md
+    └── TELEMETRY.md
 ```
+
+> Historical implementation notes, RCA write-ups, and completed-issue evidence
+> were retired in the v1.5.8 pre-release cleanup; their content remains in git
+> history (see the `pre-1.5.8-cleanup` tag).
 
 ---
 
@@ -84,12 +73,7 @@ docs/
 |----------|---------|
 | [Health Check Module Guide](development/HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md) | Tier 1 + Tier 3 health check architecture and implementation |
 | [Read-Only API Policy](development/READ_ONLY_VAST_API_POLICY.md) | GET-only API access policy rationale |
-| [EBox Hardware Plan](development/EBOX-HARDWARE-TABLE-IMPLEMENTATION-PLAN.md) | EBox cluster support implementation |
-| [Onyx SSH Implementation](development/ONYX_INTERACTIVE_SSH_IMPLEMENTATION.md) | Mellanox Onyx interactive SSH approach |
-| [Onyx Support Summary](development/ONYX_SUPPORT_SUMMARY.md) | Onyx OS detection and dual-credential support |
-| [Port Mapping Analysis](development/PORT_MAPPING_ANALYSIS.md) | Port mapping discovery troubleshooting |
-| [Multi-Rack Analysis](development/MULTI_RACK_IDENTIFICATION_ANALYSIS.md) | Multi-rack detection via API |
-| [TOC Implementation](development/TOC-IMPLEMENTATION-GUIDE.md) | Dynamic table of contents generation |
+| [Telemetry](development/TELEMETRY.md) | Opt-in usage metrics and future central-receiver contract |
 
 ### Project Design (Confluence — Internal Only)
 
@@ -97,5 +81,5 @@ docs/
 
 ---
 
-**Last Updated**: March 21, 2026
+**Last Updated**: June 25, 2026
 **Maintained By**: VAST Professional Services

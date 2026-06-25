@@ -86,21 +86,12 @@ Configurable via Advanced Configuration or `config/config.yaml`:
 - **Include TOC** — Toggle table of contents
 - **Include Page Numbers** — Toggle page number footer
 
-## Archived Reports
+## Generated Output
 
-All development iterations, test reports, and reference reports have been moved to:
-```
-.archive/development_reports/
-```
-
-This directory is **not tracked in Git** (excluded via `.gitignore`) and includes:
-- Rack diagram development iterations
-- Network diagram integration phases
-- Table formatting tests
-- Color scheme tests
-- All historical test reports
-
-See `.archive/README.md` for detailed archive information.
+Newly generated reports are written to the configured output directory (default `output/`,
+or per-cluster `clusters/<key>/output/` when cluster segmentation is active). Generated PDFs
+and JSON are **not tracked in Git** (excluded via `.gitignore`); only the MVP baseline below
+is version-controlled, as it serves as the offline replay fixture for the test suite.
 
 ## Directory Structure
 
@@ -128,6 +119,6 @@ reports/
 
 ---
 
-**Last Updated**: March 21, 2026
-**Report Version**: v1.5.0
+**Last Updated**: June 25, 2026
+**Report Version**: v1.5.8
 **Maintained By**: VAST Professional Services
