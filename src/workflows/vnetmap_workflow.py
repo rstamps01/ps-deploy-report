@@ -108,6 +108,7 @@ class VnetmapWorkflow:
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
         self._credentials: Dict[str, Any] = {}
         self._script_runner: Optional[ScriptRunner] = None
+        self._output_dir: Optional[Path] = None
         self._step_data: Dict[str, Any] = {}
         self._remote_dir_created: bool = False
 
@@ -116,8 +117,27 @@ class VnetmapWorkflow:
         if self._script_runner:
             self._script_runner._output_callback = callback
 
+    def set_output_dir(self, output_dir: Any) -> None:
+        """Point local script output at a per-cluster scripts dir (QP-2)."""
+        self._output_dir = Path(output_dir)
+        if self._script_runner is not None:
+            self._script_runner.set_local_dir(self._output_dir)
+
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
+
+    def _ssh_host(self) -> Optional[str]:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else None
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
 
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
@@ -162,7 +182,9 @@ class VnetmapWorkflow:
             return {"success": False, "message": f"Invalid step ID: {step_id}"}
 
         if self._script_runner is None:
-            self._script_runner = ScriptRunner(output_callback=self._output_callback)
+            self._script_runner = ScriptRunner(output_callback=self._output_callback, local_dir=self._output_dir)
+        # Teleport mode: SSH/SCP go to the forwarded local endpoint port.
+        self._script_runner.set_ssh_port(self._ssh_port())
 
         try:
             return method()
@@ -173,7 +195,8 @@ class VnetmapWorkflow:
     def _step_deploy_scripts(self) -> Dict[str, Any]:
         from tool_manager import ToolManager
 
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -195,7 +218,7 @@ class VnetmapWorkflow:
         tool_manager = ToolManager(output_callback=self._output_callback)
 
         # Create remote directory first (before any downloads)
-        dir_success, dir_msg = tool_manager._ensure_remote_dir(host, user, password)
+        dir_success, dir_msg = tool_manager._ensure_remote_dir(host, user, password, port=ssh_port)
         if not dir_success:
             self.emit("error", f"Failed to create remote directory: {dir_msg}")
             return {"success": False, "message": f"Failed to create remote directory: {dir_msg}"}
@@ -204,7 +227,9 @@ class VnetmapWorkflow:
         deployed = []
         for script in self.REQUIRED_SCRIPTS:
             self.emit("info", f"─── Deploying: {script} ───")
-            success, message = tool_manager.deploy_tool_to_cnode(script, host, user, password, skip_mkdir=True)
+            success, message = tool_manager.deploy_tool_to_cnode(
+                script, host, user, password, skip_mkdir=True, port=ssh_port
+            )
             if not success:
                 self.emit("error", f"Deployment failed for {script}: {message}")
                 return {"success": False, "message": f"Failed to deploy {script}: {message}"}
@@ -274,17 +299,47 @@ class VnetmapWorkflow:
         """
         Convert ClusterShell IP format to bash brace expansion format.
 
-        Example: 10.143.11.[1-4] -> 10.143.11.{1..4}
+        Example: ``10.143.11.[1-4]`` -> ``10.143.11.{1..4}``
+
+        Multi-subnet clusters resolve to a comma-separated list with more
+        than one bracket range (e.g.
+        ``172.16.128.[1-10],172.16.129.[1-10]``). Every range must be
+        converted independently. A previous implementation anchored the
+        regex to the end of the whole string, so only the trailing range
+        was converted and the leading range(s) were left as literal
+        ``[1-10]``. bash never expands the bracket form, so vnetmap SSHed
+        to the literal host string and silently dropped that entire half
+        of the cluster from the fabric map.
+
+        The output is consumed by ``echo <result> | sed 's/ /,/g'`` (see
+        ``_step_generate_export_commands``), which relies on bash brace
+        expansion. Two *adjacent* brace groups separated by a comma expand
+        as a Cartesian PRODUCT
+        (``a.{1..2},b.{1..2}`` -> ``a.1,b.1 a.1,b.2 a.2,b.1 a.2,b.2``),
+        which explodes the node list (e.g. 60 ports -> 2000). To get the
+        UNION instead, multiple groups are wrapped in an outer brace
+        (``{a.{1..2},b.{1..2}}`` -> ``a.1 a.2 b.1 b.2``). A single group
+        must NOT be wrapped (``{a.{1..2}}`` does not expand correctly).
         """
-        # Match pattern like xxx.xxx.xxx.[x-x]
-        match = re.search(r"^(.+)\[(\d+)-(\d+)\]$", clustershell_format.strip())
-        if match:
-            prefix = match.group(1)
-            start = match.group(2)
-            end = match.group(3)
-            return f"{prefix}{{{start}..{end}}}"
-        # If no range pattern, return as-is (single IP)
-        return clustershell_format.strip()
+        if not clustershell_format or not clustershell_format.strip():
+            return ""
+
+        # Convert each comma-separated element independently, converting
+        # every bracket range it contains. ``re.sub`` handles one or more
+        # ranges per element; non-range elements (single IPs) pass through.
+        converted = []
+        for element in clustershell_format.split(","):
+            element = element.strip()
+            if not element:
+                continue
+            converted.append(re.sub(r"\[(\d+)-(\d+)\]", r"{\1..\2}", element))
+
+        if not converted:
+            return ""
+        if len(converted) == 1:
+            return converted[0]
+        # 2+ groups: wrap so bash expands the union, not the Cartesian product.
+        return "{" + ",".join(converted) + "}"
 
     def _parse_local_cfg(self, cfg_content: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -507,7 +562,8 @@ class VnetmapWorkflow:
         return "ETH" if switch_ips else "IB"
 
     def _step_generate_export_commands(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         switch_user = self._credentials.get("switch_user", "cumulus")
@@ -543,7 +599,9 @@ class VnetmapWorkflow:
 
         # Step 1: Read /etc/clustershell/groups.d/local.cfg from CNode
         self.emit("info", f"$ ssh {user}@{host} 'cat {self.LOCAL_CFG_PATH}'")
-        rc, cfg_content, stderr = run_ssh_command(host, user, password, f"cat {self.LOCAL_CFG_PATH}", timeout=30)
+        rc, cfg_content, stderr = run_ssh_command(
+            host, user, password, f"cat {self.LOCAL_CFG_PATH}", timeout=30, port=ssh_port
+        )
 
         if rc != 0:
             self.emit("error", f"Failed to read local.cfg: {stderr}")
@@ -686,7 +744,8 @@ class VnetmapWorkflow:
         }
 
     def _step_execute_exports(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -706,7 +765,7 @@ class VnetmapWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {verify_cmd}")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, verify_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(host, user, password, verify_cmd, timeout=30, port=ssh_port)
 
         if rc != 0:
             self.emit("error", f"Export validation failed: {stderr}")
@@ -729,7 +788,7 @@ class VnetmapWorkflow:
     )
 
     def _step_run_vnetmap(self) -> Dict[str, Any]:
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         remote_dir = self._step_data.get("remote_dir", self._script_runner.DEFAULT_REMOTE_DIR)
@@ -1224,7 +1283,9 @@ class VnetmapWorkflow:
         'cat "$latest"'
     )
 
-    def _fetch_fabric_report(self, host: str, user: str, password: str) -> Tuple[Optional[str], Optional[str]]:
+    def _fetch_fabric_report(
+        self, host: str, user: str, password: str, port: int = 22
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Retrieve vnetmap's fabric-report file from the CNode.
 
         ``vnetmap.py`` writes ``/vast/log/vnetmap-<timestamp>.txt`` after a
@@ -1252,6 +1313,7 @@ class VnetmapWorkflow:
                 password,
                 self._FABRIC_REPORT_FETCH_CMD,
                 timeout=60,
+                port=port,
             )
         except Exception as exc:  # noqa: BLE001 — best-effort, never fatal
             self.emit("warn", f"Fabric-report fetch raised: {exc}")
@@ -1311,9 +1373,10 @@ class VnetmapWorkflow:
         # switch-to-switch edges (including spine uplinks) even when
         # ExternalPortMapper is disabled (offline / support-bundle runs).
         fabric_path, fabric_body = self._fetch_fabric_report(
-            self._credentials.get("cluster_ip", ""),
+            self._ssh_host() or "",
             self._credentials.get("node_user", "vastdata"),
             self._credentials.get("node_password", ""),
+            port=self._ssh_port(),
         )
         merged_output = clean_output
         if fabric_body:

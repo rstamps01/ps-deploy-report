@@ -2826,6 +2826,10 @@ class HealthChecker:
                 "jump_user": pj.get("username"),
                 "jump_password": pj.get("password"),
             }
+            # Teleport mode: the jump host is reached over a forwarded local
+            # port instead of 22.
+            if pj.get("port") and int(pj["port"]) != 22:
+                jump_kwargs["jump_port"] = int(pj["port"])
 
         # RM-13: When the Reporter tile (or any caller) has not pre-
         # probed switches but supplies a candidate list, discover which

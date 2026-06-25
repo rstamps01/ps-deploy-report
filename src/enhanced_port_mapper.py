@@ -109,7 +109,18 @@ class EnhancedPortMapper:
                 if hostname not in host_meta:
                     host_meta[hostname] = {"box_name": box_name}
 
-                is_dnode = node_type_raw == "dnode" or "enp3" in interface or "dnode" in hn_lower or "-dn-" in hn_lower
+                # IB clusters name DNodes ``...-DB<n>-...-DN<n>`` and CNodes
+                # ``...-CB<n>-...-CN<n>``; the vnetmap-derived ``node_type``
+                # column is unreliable (often "cnode" for everything), so
+                # detect the DBox/DNode hostname pattern directly. The
+                # ``-dn-`` literal is kept for older naming schemes.
+                is_dnode = (
+                    node_type_raw == "dnode"
+                    or "enp3" in interface
+                    or "dnode" in hn_lower
+                    or "-dn-" in hn_lower
+                    or bool(re.search(r"(?:^|[-_])d[bn]\d", hn_lower))
+                )
 
                 if is_dnode:
                     dnode_hosts.setdefault(hostname, []).append(node_ip)

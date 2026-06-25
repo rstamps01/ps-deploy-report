@@ -16,6 +16,26 @@
             <img src="{{ url_for('static', filename='img/vast-logo.png') }}" alt="VAST Data" class="nav-logo">
             <span class="nav-title">asbuilt<span class="nav-title-accent">-reporter</span></span>
             <span class="nav-version">v{{ version }}</span>
+            {% set is_prerelease = '-beta' in version or '-rc' in version or '-alpha' in version %}
+            <span class="app-status-pill {% if is_prerelease %}prerelease{% else %}hidden{% endif %}" id="appStatusPill">{% if is_prerelease %}PRE-RELEASE{% endif %}</span>
+            <div class="app-update" id="appUpdate" hidden>
+                <a class="app-update-btn" id="appUpdateBtn" href="#" title="Download the latest version">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download
+                </a>
+                <button type="button" class="app-update-caret" id="appUpdateCaret" aria-label="Update details" title="Update details">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div class="app-update-dropdown" id="appUpdateDropdown">
+                    <div class="app-update-head">Update available</div>
+                    <div class="app-update-version" id="appUpdateVersion"></div>
+                    <a class="app-update-notes" id="appUpdateNotes" href="#" target="_blank" rel="noopener">Release notes</a>
+                    <div class="app-update-dl">
+                        <a class="app-update-dl-btn" id="appUpdateMac" href="#" hidden>Download for macOS</a>
+                        <a class="app-update-dl-btn" id="appUpdateWin" href="#" hidden>Download for Windows</a>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="nav-links">
             <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
@@ -73,6 +93,25 @@
                         Health Check
                     </a>
                     {% endif %}
+                </div>
+            </div>
+            <div class="nav-tools" id="navTools">
+                <button type="button" class="nav-tools-btn" id="navToolsBtn" title="Deployment tools status" aria-label="Deployment tools status">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M14.7 6.3a4 4 0 00-5.4 5.4L3 18l3 3 6.4-6.3a4 4 0 005.4-5.4l-2.7 2.7-2.4-.6-.6-2.4 2.6-2.4z"/></svg>
+                    <span class="nav-tools-label">Update Tools</span>
+                    <span class="nav-tools-dot" id="navToolsDot" hidden></span>
+                </button>
+                <div class="nav-tools-dropdown" id="navToolsDropdown">
+                    <div class="nav-tools-head">
+                        <span>Deployment Tools</span>
+                        <span class="nav-tools-summary" id="navToolsSummary"></span>
+                    </div>
+                    <div class="nav-tools-list" id="navToolsList">
+                        <div class="nav-tools-empty">Loading…</div>
+                    </div>
+                    <div class="nav-tools-foot">
+                        <button type="button" class="nav-tools-update" id="btnUpdateTools">Update Tools</button>
+                    </div>
                 </div>
             </div>
             <button type="button" class="btn-exit" id="btnExit" title="Exit application">

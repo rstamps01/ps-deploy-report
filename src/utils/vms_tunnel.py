@@ -2,14 +2,19 @@
 VMS Auto-Discovery and API Proxy Tunnel.
 
 Enables the As-Built Reporter to connect to any CBox Tech Port (192.168.2.2)
-and automatically discover the VMS management IP, then tunnel all API calls
-through the SSH connection.
+and automatically discover the VMS, then tunnel all API calls through a
+two-hop SSH chain directly to the VMS localhost.
 
-Discovery chain:
+Discovery and tunnel chain:
     1. SSH to Tech Port (any CBox) → run ``find-vms`` → VMS internal IP
     2. SSH hop to VMS internal IP → ``ip addr`` → VMS management IP
-    3. Open paramiko ``direct-tcpip`` channel to management IP:443
-    4. Local TCP listener forwards ``requests`` traffic through the tunnel
+    3. Nested SSH from Tech Port → VMS internal IP (port 22)
+    4. ``direct-tcpip`` channel from VMS → 127.0.0.1:443 (VMS localhost)
+    5. Local TCP listener forwards ``requests`` traffic through the tunnel
+
+By terminating on the VMS loopback, the management REST API is reached
+directly — bypassing the S3 gateway virtual-host routing that intercepts
+connections arriving on external management VIPs.
 
 Usage::
 
@@ -488,12 +493,15 @@ def _format_probe_log(results: List[Tuple[str, str]]) -> str:
 
 
 class VMSTunnel:
-    """SSH tunnel forwarding a local TCP port to VMS management IP:443.
+    """Two-hop SSH tunnel forwarding a local TCP port to VMS localhost:443.
 
-    The tunnel uses paramiko's ``direct-tcpip`` channel through an SSH
-    connection to a CNode.  A local TCP server accepts connections on
-    ``127.0.0.1:<random_port>`` and forwards each one through the channel
-    to the VMS management IP.
+    Connection chain:
+        local:random_port → SSH(tech_port_ip) → SSH(vms_internal_ip) →
+        direct-tcpip(127.0.0.1:443 on VMS)
+
+    By terminating on the VMS's own loopback interface, the management API
+    is reached directly — bypassing the S3 gateway virtual-host routing that
+    intercepts connections arriving on external management VIPs.
 
     Attributes:
         vms_internal_ip:  Internal cluster IP discovered via ``find-vms``.
@@ -516,6 +524,7 @@ class VMSTunnel:
         self.timeout = timeout
 
         self._ssh_client: Optional[paramiko.SSHClient] = None
+        self._vms_ssh_client: Optional[paramiko.SSHClient] = None
         self._server_socket: Optional[socket.socket] = None
         self._accept_thread: Optional[threading.Thread] = None
         self._running = False
@@ -535,22 +544,22 @@ class VMSTunnel:
     # -- lifecycle -----------------------------------------------------------
 
     def connect(self) -> None:
-        """Discover VMS and open the forwarding tunnel.
+        """Discover VMS and open the two-hop forwarding tunnel.
+
+        Chain: tech_port → VMS internal IP → localhost:443 on VMS.
 
         Raises:
             VMSDiscoveryError: If VMS discovery fails.
             RuntimeError: If the SSH transport cannot be established.
         """
-        # 1. Discover VMS management IP
+        # 1. Discover VMS management IP (also determines vms_internal_ip)
         self.vms_internal_ip, self.vms_management_ip = discover_vms_management_ip(
             self.tech_port_ip, self.ssh_user, self.ssh_password, self.timeout
         )
 
-        # 2. SSH to entry CNode (kept alive for the tunnel lifetime)
+        # 2. SSH to entry CNode (tech port)
         logger.info("Opening persistent SSH to %s for API tunnel...", self.tech_port_ip)
         self._ssh_client = paramiko.SSHClient()
-        # Intentional [B507]: tunnel target is the freshly-deployed CNode (tech_port_ip) used for
-        # post-install discovery; AutoAddPolicy is required for first-contact operations.
         self._ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
         self._ssh_client.connect(
             self.tech_port_ip,
@@ -561,12 +570,36 @@ class VMSTunnel:
             look_for_keys=False,
             allow_agent=False,
         )
-        transport = self._ssh_client.get_transport()
-        if transport is None:
-            raise RuntimeError("SSH transport unavailable after connect")
-        transport.set_keepalive(15)
+        entry_transport = self._ssh_client.get_transport()
+        if entry_transport is None:
+            raise RuntimeError("SSH transport unavailable after connect to tech port")
+        entry_transport.set_keepalive(15)
 
-        # 3. Bind local listener
+        # 3. Nested SSH hop: tech port → VMS internal IP
+        logger.info("Opening nested SSH hop to VMS %s ...", self.vms_internal_ip)
+        vms_channel = entry_transport.open_channel(
+            "direct-tcpip",
+            (self.vms_internal_ip, 22),
+            ("127.0.0.1", 0),
+        )
+        self._vms_ssh_client = paramiko.SSHClient()
+        self._vms_ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
+        self._vms_ssh_client.connect(
+            self.vms_internal_ip,
+            username=self.ssh_user,
+            password=self.ssh_password,
+            sock=vms_channel,
+            timeout=self.timeout,
+            banner_timeout=self.timeout,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+        vms_transport = self._vms_ssh_client.get_transport()
+        if vms_transport is None:
+            raise RuntimeError("SSH transport unavailable after connect to VMS")
+        vms_transport.set_keepalive(15)
+
+        # 4. Bind local listener
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._server_socket.bind(("127.0.0.1", 0))
@@ -574,21 +607,21 @@ class VMSTunnel:
         self._server_socket.listen(5)
         self._server_socket.settimeout(1.0)
 
-        # 4. Accept loop in background
+        # 5. Accept loop in background
         self._running = True
         self._accept_thread = threading.Thread(target=self._accept_loop, daemon=True)
         self._accept_thread.start()
 
         logger.info(
-            "VMS API tunnel active: 127.0.0.1:%d → %s:%d (via %s)",
+            "VMS API tunnel active: 127.0.0.1:%d → %s (SSH) → 127.0.0.1:%d (via %s)",
             self.local_port,
-            self.vms_management_ip,
+            self.vms_internal_ip,
             self.remote_port,
             self.tech_port_ip,
         )
 
     def close(self) -> None:
-        """Shut down the tunnel, listener, and SSH connection."""
+        """Shut down the tunnel, listener, and both SSH connections."""
         self._running = False
 
         if self._server_socket:
@@ -604,6 +637,13 @@ class VMSTunnel:
         for t in self._forwarding_threads:
             t.join(timeout=2)
         self._forwarding_threads.clear()
+
+        if self._vms_ssh_client:
+            try:
+                self._vms_ssh_client.close()
+            except Exception:
+                pass
+            self._vms_ssh_client = None
 
         if self._ssh_client:
             try:
@@ -637,19 +677,19 @@ class VMSTunnel:
             self._forwarding_threads.append(t)
 
     def _forward_connection(self, local_sock: socket.socket) -> None:
-        """Forward one TCP connection through the SSH tunnel."""
+        """Forward one TCP connection through the two-hop SSH tunnel to VMS localhost."""
         channel = None
         try:
-            assert self._ssh_client is not None
-            transport = self._ssh_client.get_transport()
+            assert self._vms_ssh_client is not None
+            transport = self._vms_ssh_client.get_transport()
             if transport is None or not transport.is_active():
-                logger.warning("SSH transport not active, dropping connection")
+                logger.warning("VMS SSH transport not active, dropping connection")
                 local_sock.close()
                 return
 
             channel = transport.open_channel(
                 "direct-tcpip",
-                (self.vms_management_ip, self.remote_port),
+                ("127.0.0.1", self.remote_port),
                 local_sock.getpeername(),
             )
 

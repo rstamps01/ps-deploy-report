@@ -1168,6 +1168,10 @@ class RackDiagram:
                 model = switch.get("model", "switch")
                 status = switch.get("state", "ACTIVE")
                 sw_name = str(switch.get("id") or switch.get("name") or "").strip()
+                # Prefer the disambiguated display_name (e.g. "Spine-B (a)") for
+                # the rendered rack label so duplicate-named switches are
+                # distinguishable.
+                sw_label = str(switch.get("display_name") or switch.get("name") or sw_name or "").strip() or None
 
                 # Build indicator: only for switches in Hardware Inventory
                 sw_indicators: Optional[List[Dict[str, Any]]] = None
@@ -1195,6 +1199,7 @@ class RackDiagram:
                             switch_height,
                             model,
                             status,
+                            label_override=sw_label,
                             indicators=sw_indicators,
                         )
                 elif switch_positions_map and switch_num in switch_positions_map:
@@ -1213,6 +1218,7 @@ class RackDiagram:
                         model,
                         status,
                         annotation="Unverified - Auto Switch Placement",
+                        label_override=sw_label,
                         indicators=sw_indicators,
                     )
                 else:

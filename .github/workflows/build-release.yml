@@ -96,11 +96,15 @@ jobs:
   # -------------------------------------------------------------------
   build:
     strategy:
-      fail-fast: false  # Run both macOS and Windows; one failure does not cancel the other
+      fail-fast: false  # Run all platforms; one failure does not cancel the others
       matrix:
         include:
           - os: macos-latest
-            artifact: VAST-Reporter-mac
+            artifact: VAST-Reporter-mac-arm64
+            script: bash packaging/build-mac.sh
+            pip-cache: ~/Library/Caches/pip
+          - os: macos-15-intel
+            artifact: VAST-Reporter-mac-x64
             script: bash packaging/build-mac.sh
             pip-cache: ~/Library/Caches/pip
           - os: windows-latest
@@ -139,7 +143,7 @@ jobs:
           if (!(Test-Path config/config.yaml)) { Copy-Item config/config.yaml.template config/config.yaml }
 
       - name: Ensure config files exist (macOS/Linux; cluster_profiles.json + config.yaml are gitignored)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           mkdir -p config
@@ -149,7 +153,7 @@ jobs:
           [ -f config/config.yaml ] || cp config/config.yaml.template config/config.yaml
 
       - name: Install macOS build deps (cairo for SVG diagrams, create-dmg for .dmg)
-        if: matrix.os == 'macos-latest'
+        if: startsWith(matrix.os, 'macos')
         run: brew install cairo create-dmg
 
       - name: Build
@@ -170,11 +174,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download macOS artifact
+      - name: Download macOS ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: VAST-Reporter-mac
-          path: artifacts/mac
+          name: VAST-Reporter-mac-arm64
+          path: artifacts/mac-arm64
+
+      - name: Download macOS x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VAST-Reporter-mac-x64
+          path: artifacts/mac-x64
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
@@ -185,13 +195,22 @@ jobs:
       - name: Prepare release assets
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          # macOS — DMG (preferred) or zip the .app bundle
-          if ls artifacts/mac/*.dmg 1>/dev/null 2>&1; then
-            cp artifacts/mac/*.dmg "VAST-Reporter-${TAG}-mac.dmg"
-          elif [ -d "artifacts/mac/VAST Reporter.app" ]; then
-            cd artifacts/mac && zip -r "../../VAST-Reporter-${TAG}-mac.zip" "VAST Reporter.app" && cd ../..
+          # macOS ARM64 — DMG (preferred) or zip the .app bundle
+          if ls artifacts/mac-arm64/*.dmg 1>/dev/null 2>&1; then
+            cp artifacts/mac-arm64/*.dmg "VAST-Reporter-${TAG}-mac-arm64.dmg"
+          elif [ -d "artifacts/mac-arm64/VAST Reporter.app" ]; then
+            cd artifacts/mac-arm64 && zip -r "../../VAST-Reporter-${TAG}-mac-arm64.zip" "VAST Reporter.app" && cd ../..
           else
-            echo "::error::No macOS artifact: no .dmg and no VAST Reporter.app"
+            echo "::error::No macOS ARM64 artifact: no .dmg and no VAST Reporter.app"
+            exit 1
+          fi
+          # macOS x64 — DMG (preferred) or zip the .app bundle
+          if ls artifacts/mac-x64/*.dmg 1>/dev/null 2>&1; then
+            cp artifacts/mac-x64/*.dmg "VAST-Reporter-${TAG}-mac-x64.dmg"
+          elif [ -d "artifacts/mac-x64/VAST Reporter.app" ]; then
+            cd artifacts/mac-x64 && zip -r "../../VAST-Reporter-${TAG}-mac-x64.zip" "VAST Reporter.app" && cd ../..
+          else
+            echo "::error::No macOS x64 artifact: no .dmg and no VAST Reporter.app"
             exit 1
           fi
           # Windows — zip created by packaging/build-windows.ps1 (VAST-Reporter-vX.Y.Z-win.zip)
@@ -202,6 +221,18 @@ jobs:
           else
             echo "::error::No Windows artifact: no .zip and no VAST Reporter folder"
             exit 1
+          fi
+
+      - name: Detect pre-release tag
+        id: prerelease
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          if [[ "$TAG" == *-beta* || "$TAG" == *-rc* || "$TAG" == *-alpha* ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Extract release notes
@@ -219,6 +250,8 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
+          make_latest: ${{ steps.prerelease.outputs.make_latest }}
           body_path: ${{ steps.notes.outputs.body_path }}
           files: |
             VAST-Reporter-*.dmg

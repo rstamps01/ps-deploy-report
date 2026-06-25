@@ -522,14 +522,18 @@ class TestVMSTunnel:
     def test_connect_and_close(self, mock_discover):
         mock_discover.return_value = ("172.16.3.4", "10.143.11.202")
 
-        mock_transport = MagicMock()
-        mock_transport.is_active.return_value = True
+        mock_entry_transport = MagicMock()
+        mock_entry_transport.is_active.return_value = True
+        mock_vms_transport = MagicMock()
+        mock_vms_transport.is_active.return_value = True
 
-        mock_client = MagicMock()
-        mock_client.get_transport.return_value = mock_transport
+        mock_entry_client = MagicMock()
+        mock_entry_client.get_transport.return_value = mock_entry_transport
+        mock_vms_client = MagicMock()
+        mock_vms_client.get_transport.return_value = mock_vms_transport
 
         with patch("utils.vms_tunnel.paramiko") as mock_paramiko:
-            mock_paramiko.SSHClient.return_value = mock_client
+            mock_paramiko.SSHClient.side_effect = [mock_entry_client, mock_vms_client]
             mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
             tunnel = VMSTunnel("192.168.2.2", "vastdata", "pw")
@@ -540,29 +544,39 @@ class TestVMSTunnel:
             assert tunnel.local_port is not None
             assert "127.0.0.1:" in tunnel.local_bind_address
 
-            mock_client.connect.assert_called_once()
-            mock_transport.set_keepalive.assert_called_once_with(15)
+            mock_entry_client.connect.assert_called_once()
+            mock_entry_transport.set_keepalive.assert_called_once_with(15)
+            mock_entry_transport.open_channel.assert_called_once_with(
+                "direct-tcpip", ("172.16.3.4", 22), ("127.0.0.1", 0)
+            )
+            mock_vms_client.connect.assert_called_once()
+            mock_vms_transport.set_keepalive.assert_called_once_with(15)
 
             tunnel.close()
-            mock_client.close.assert_called()
+            mock_vms_client.close.assert_called()
+            mock_entry_client.close.assert_called()
 
     @patch("utils.vms_tunnel.discover_vms_management_ip")
     def test_context_manager(self, mock_discover):
         mock_discover.return_value = ("172.16.3.4", "10.143.11.202")
 
-        mock_transport = MagicMock()
-        mock_client = MagicMock()
-        mock_client.get_transport.return_value = mock_transport
+        mock_entry_transport = MagicMock()
+        mock_vms_transport = MagicMock()
+        mock_entry_client = MagicMock()
+        mock_entry_client.get_transport.return_value = mock_entry_transport
+        mock_vms_client = MagicMock()
+        mock_vms_client.get_transport.return_value = mock_vms_transport
 
         with patch("utils.vms_tunnel.paramiko") as mock_paramiko:
-            mock_paramiko.SSHClient.return_value = mock_client
+            mock_paramiko.SSHClient.side_effect = [mock_entry_client, mock_vms_client]
             mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
             with VMSTunnel("192.168.2.2", "vastdata", "pw") as tunnel:
                 tunnel.connect()
                 assert tunnel.local_port is not None
 
-            mock_client.close.assert_called()
+            mock_vms_client.close.assert_called()
+            mock_entry_client.close.assert_called()
 
     @patch("utils.vms_tunnel.discover_vms_management_ip")
     def test_discovery_failure_propagates(self, mock_discover):
@@ -573,21 +587,25 @@ class TestVMSTunnel:
 
     @patch("utils.vms_tunnel.discover_vms_management_ip")
     def test_tunnel_forwards_data(self, mock_discover):
-        """Verify that a connection to the local port gets forwarded."""
+        """Verify that a connection to the local port gets forwarded via VMS localhost."""
         mock_discover.return_value = ("172.16.3.4", "10.143.11.202")
 
-        mock_channel = MagicMock()
-        mock_channel.recv.return_value = b"HTTP/1.1 200 OK\r\n"
+        mock_fwd_channel = MagicMock()
+        mock_fwd_channel.recv.return_value = b"HTTP/1.1 200 OK\r\n"
 
-        mock_transport = MagicMock()
-        mock_transport.is_active.return_value = True
-        mock_transport.open_channel.return_value = mock_channel
+        mock_entry_transport = MagicMock()
+        mock_entry_transport.is_active.return_value = True
+        mock_vms_transport = MagicMock()
+        mock_vms_transport.is_active.return_value = True
+        mock_vms_transport.open_channel.return_value = mock_fwd_channel
 
-        mock_client = MagicMock()
-        mock_client.get_transport.return_value = mock_transport
+        mock_entry_client = MagicMock()
+        mock_entry_client.get_transport.return_value = mock_entry_transport
+        mock_vms_client = MagicMock()
+        mock_vms_client.get_transport.return_value = mock_vms_transport
 
         with patch("utils.vms_tunnel.paramiko") as mock_paramiko:
-            mock_paramiko.SSHClient.return_value = mock_client
+            mock_paramiko.SSHClient.side_effect = [mock_entry_client, mock_vms_client]
             mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
             tunnel = VMSTunnel("192.168.2.2", "vastdata", "pw")
@@ -605,10 +623,10 @@ class TestVMSTunnel:
 
             tunnel.close()
 
-            mock_transport.open_channel.assert_called_once()
-            call_args = mock_transport.open_channel.call_args
+            mock_vms_transport.open_channel.assert_called_once()
+            call_args = mock_vms_transport.open_channel.call_args
             assert call_args[0][0] == "direct-tcpip"
-            assert call_args[0][1] == ("10.143.11.202", 443)
+            assert call_args[0][1] == ("127.0.0.1", 443)
 
 
 # ---------------------------------------------------------------------------

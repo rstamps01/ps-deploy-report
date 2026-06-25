@@ -229,6 +229,7 @@ class VastReportBuilder:
         config: Optional[ReportConfig] = None,
         library_path: Optional[str] = None,
         user_images_dir: Optional[str] = None,
+        segment_by_cluster: bool = False,
     ):
         """
         Initialize the report builder.
@@ -237,11 +238,16 @@ class VastReportBuilder:
             config (ReportConfig, optional): Report configuration
             library_path: Path to user device_library.json
             user_images_dir: Path to user-uploaded hardware images directory
+            segment_by_cluster: When True (QP-2), diagrams are written under the
+                per-cluster ``clusters/<key>/output/diagrams`` tree resolved from
+                the processed data's ``cluster_summary``.  Default False keeps the
+                legacy flat ``output/diagrams`` location.
         """
         self.logger = get_logger(__name__)
         self.config = config or ReportConfig()
         self.library_path = library_path
         self.user_images_dir = user_images_dir
+        self.segment_by_cluster = segment_by_cluster
         self.switch_positions: dict[int, Any] = {}
 
         if not REPORTLAB_AVAILABLE:
@@ -510,6 +516,51 @@ class VastReportBuilder:
             return {b.get("name") or str(b.get("id", i)): b for i, b in enumerate(boxes)}
         return {}
 
+    @staticmethod
+    def _manual_switch_bottom_u(top_u: int, height_u: int) -> int:
+        """Convert Discovery UI top-U placement to rack diagram bottom-U (RPT-6).
+
+        The Discovery UI (frontend/templates/reporter.html) stores ``u_position``
+        as the TOP of the device occupied (highest U). For example, a 2U switch
+        placed at U35 in the UI means it spans U34-U35 with ``u_position=35``.
+        The rack diagram renderer (src/rack_diagram.py
+        ``_create_device_representation``) treats the same value as the
+        BOTTOM of the device (lowest U occupied, extending upward).
+
+        For 1U devices, top equals bottom — no conversion needed.
+        For 2U+ devices, ``bottom = top - (height_u - 1)``.
+
+        Args:
+            top_u: U-position from the Discovery UI (top of the device).
+            height_u: Device height in rack units (1 for 1U, 2 for 2U, etc).
+
+        Returns:
+            The lowest U the device occupies (the rack diagram convention).
+            Heights of 0 or negative are treated as 1U for safety.
+        """
+        if height_u <= 1:
+            return top_u
+        return top_u - (height_u - 1)
+
+    @staticmethod
+    def _build_diagram_switch_entry(placement: Dict[str, Any]) -> Dict[str, Any]:
+        """Build a rack diagram switch dict from a manual_switch_placement (RPT-6).
+
+        Bridges the Discovery UI top-U convention into the rack diagram
+        bottom-U convention by applying ``_manual_switch_bottom_u``. The
+        returned dict is consumed by ``RackDiagram.generate_rack_diagram``,
+        which parses ``rack_unit`` as a single bottom-U value.
+        """
+        top_u = int(placement.get("u_position", 0))
+        height_u = int(placement.get("height_u") or 1)
+        bottom_u = VastReportBuilder._manual_switch_bottom_u(top_u, height_u)
+        return {
+            "id": placement.get("name", placement.get("switch_name", "Unknown")),
+            "model": placement.get("model", "switch"),
+            "state": placement.get("state", "ACTIVE"),
+            "rack_unit": f"U{bottom_u}",
+        }
+
     def _ensure_hardware_inventory(self, data: Dict[str, Any]) -> None:
         """If hardware_inventory is missing or empty but raw 'hardware' exists, build it."""
         hi = data.get("hardware_inventory") or {}
@@ -523,6 +574,7 @@ class VastReportBuilder:
             or (hi.get("switches") or [])
         )
         if has_any:
+            self._apply_switch_designators(hi.get("switches"))
             return
         raw = data.get("hardware") or data.get("raw_hardware") or {}
         if not raw:
@@ -549,6 +601,7 @@ class VastReportBuilder:
             if isinstance(switch_inv, dict)
             else (switch_inv if isinstance(switch_inv, list) else [])
         )
+        self._apply_switch_designators(switches)
         data["hardware_inventory"] = {
             "cnodes": cnodes,
             "dnodes": dnodes,
@@ -560,6 +613,23 @@ class VastReportBuilder:
             "rack_positions_available": bool(cnodes or dnodes or cboxes or dboxes),
             "physical_layout": None,
         }
+
+    @staticmethod
+    def _apply_switch_designators(switches: Any) -> None:
+        """Enrich the canonical switch list with switch_id/display_name in place.
+
+        Ensures the report tables and rack/network diagrams all see the same
+        stable id and disambiguated label (e.g. "Spine-B (a)"/"(b)") for
+        switches that share a name.
+        """
+        if not isinstance(switches, list) or not switches:
+            return
+        try:
+            from utils.switch_identity import assign_switch_designators
+
+            assign_switch_designators(switches)
+        except Exception:  # pragma: no cover - never block report generation
+            pass
 
     def _generate_with_reportlab(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """Generate PDF using ReportLab with two-pass generation for dynamic TOC."""
@@ -1060,6 +1130,8 @@ class VastReportBuilder:
             # Network Configuration section
             ("Network Configuration", 0, "network_config", True),
             ("Cluster Network", 1, None, False),
+            ("CNode Management Map", 1, None, False),
+            ("DNode Management Map", 1, None, False),
             ("CNode Network", 1, None, False),
             ("DNode Network", 1, None, False),
             # Switch Configuration section
@@ -1714,14 +1786,18 @@ class VastReportBuilder:
 
         # Switches at bottom
         if switches:
+            from utils.switch_identity import switch_identity_key
+
             manual_rack_map = getattr(self, "manual_rack_placements", {})
+            # Key the manual switch->rack lookup by the stable switch_id so two
+            # same-named switches map to their own rack independently.
             manual_sw_rack: Dict[str, str] = {}
             if manual_rack_map:
                 for rn, placements in manual_rack_map.items():
                     for p in placements:
-                        sw_name = p.get("name", p.get("hostname", ""))
-                        if sw_name:
-                            manual_sw_rack[sw_name] = rn
+                        key = switch_identity_key(p)
+                        if key:
+                            manual_sw_rack[key] = rn
             default_rack = "Unknown"
             if not manual_sw_rack:
                 if hasattr(self, "switch_rack_name") and self.switch_rack_name:
@@ -1729,14 +1805,14 @@ class VastReportBuilder:
                 elif ebox_list:
                     default_rack = ebox_list[0].get("rack_name") or "Unknown"
             for switch_num, switch in enumerate(switches, start=1):
-                sw_name = switch.get("name", switch.get("hostname", "Unknown"))
+                sw_name = switch.get("display_name") or switch.get("name", switch.get("hostname", "Unknown"))
                 hostname = switch.get("hostname", sw_name)
                 model_sw = switch.get("model", "Unknown")
                 if isinstance(model_sw, str) and "," in model_sw:
                     model_sw = model_sw.split(",")[0].strip()
                 serial = switch.get("serial", "Unknown")
                 state_sw = switch.get("state", "Unknown")
-                rack_name_sw = manual_sw_rack.get(sw_name, default_rack)
+                rack_name_sw = manual_sw_rack.get(switch_identity_key(switch), default_rack)
                 position = ""
                 if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
                     position = f"U{self.switch_positions[switch_num]}"
@@ -1940,16 +2016,19 @@ class VastReportBuilder:
 
         # Add Switches
         if switches:
+            from utils.switch_identity import switch_identity_key
+
             manual_rack_map = getattr(self, "manual_rack_placements", {})
 
-            # Build per-switch rack lookup from manual placements
+            # Build per-switch rack lookup from manual placements, keyed by the
+            # stable switch_id so same-named switches map independently.
             manual_sw_rack: Dict[str, str] = {}
             if manual_rack_map:
                 for rn, placements in manual_rack_map.items():
                     for p in placements:
-                        sw_name = p.get("name", p.get("hostname", ""))
-                        if sw_name:
-                            manual_sw_rack[sw_name] = rn
+                        key = switch_identity_key(p)
+                        if key:
+                            manual_sw_rack[key] = rn
 
             if not manual_sw_rack:
                 if hasattr(self, "switch_rack_name") and self.switch_rack_name:
@@ -1964,7 +2043,7 @@ class VastReportBuilder:
 
             switch_rows = []
             for switch_num, switch in enumerate(switches, start=1):
-                sw_name = switch.get("name", switch.get("hostname", "Unknown"))
+                sw_name = switch.get("display_name") or switch.get("name", switch.get("hostname", "Unknown"))
                 hostname = switch.get("hostname", sw_name)
                 model = switch.get("model", "Unknown")
                 if isinstance(model, str) and "," in model:
@@ -1972,7 +2051,7 @@ class VastReportBuilder:
                 serial = switch.get("serial", "Unknown")
                 state = switch.get("state", "Unknown")
 
-                rack_name = manual_sw_rack.get(sw_name, default_rack)
+                rack_name = manual_sw_rack.get(switch_identity_key(switch), default_rack)
 
                 position = ""
                 if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
@@ -2335,14 +2414,31 @@ class VastReportBuilder:
 
             manual_placements = data.get("manual_switch_placements")
             if manual_placements:
+                # Resolve placements by the stable switch_id (mgmt_ip) first so
+                # two switches that share a name map to distinct inventory
+                # entries; fall back to switch_name for older profiles.
+                from utils.switch_identity import switch_identity_key
+
+                sw_by_id = {switch_identity_key(sw): sw for sw in switches} if switches else {}
                 sw_by_name = {sw.get("name", sw.get("hostname", "")): sw for sw in switches} if switches else {}
                 for idx, mp in enumerate(manual_placements, start=1):
                     rn = mp.get("rack_name", "Unknown")
                     u_pos = int(mp.get("u_position", 0))
                     self.switch_positions[idx] = u_pos
-                    sw_data = dict(sw_by_name.get(mp.get("switch_name"), {}))
+                    placement_id = mp.get("switch_id") or mp.get("mgmt_ip")
+                    matched = None
+                    if placement_id and placement_id in sw_by_id:
+                        matched = sw_by_id[placement_id]
+                    elif mp.get("switch_name") in sw_by_name:
+                        matched = sw_by_name[mp.get("switch_name")]
+                    sw_data = dict(matched or {})
                     sw_data["u_position"] = u_pos
                     sw_data.setdefault("name", mp.get("switch_name", ""))
+                    # Prefer the disambiguated display_name so duplicate-named
+                    # switches render as "Spine-B (a)"/"(b)" in the rack diagram.
+                    display_name = (matched or {}).get("display_name") or mp.get("display_name")
+                    if display_name:
+                        sw_data["display_name"] = display_name
                     if mp.get("model_key"):
                         sw_data["model"] = mp["model_key"]
                     elif mp.get("model") and "model" not in sw_data:
@@ -2600,16 +2696,7 @@ class VastReportBuilder:
                                     f"(available: {list(racks_data.keys())}). Skipping these switches."
                                 )
                                 continue
-                        sw_list = []
-                        for p in placements:
-                            sw_list.append(
-                                {
-                                    "id": p.get("name", "Unknown"),
-                                    "model": p.get("model", "switch"),
-                                    "state": p.get("state", "ACTIVE"),
-                                    "rack_unit": f"U{p['u_position']}",
-                                }
-                            )
+                        sw_list = [self._build_diagram_switch_entry(p) for p in placements]
                         racks_data[target_rn]["switches"] = sw_list
                         assigned_any = True
                         self.logger.info(f"Manual: assigned {len(sw_list)} switches to rack '{target_rn}'")
@@ -3501,6 +3588,42 @@ class VastReportBuilder:
                 content.extend(network_table_elements)
                 content.append(Spacer(1, 16))
 
+        # Node Management Map: VMS device name -> assigned hostname -> external mgmt IP.
+        # Sourced from hardware_inventory so all three identifiers appear together;
+        # the per-node network tables below show name + mgmt IP but not hostname.
+        hw_inv = data.get("hardware_inventory", {})
+        map_headers = ["Device Name (VMS)", "Hostname", "Mgmt IP"]
+
+        def _management_map_rows(nodes: Any) -> List[List[str]]:
+            rows: List[List[str]] = []
+            for node in sorted(nodes or [], key=self._ip_sort_key):
+                rows.append(
+                    [
+                        node.get("name") or node.get("hostname", "Unknown"),
+                        node.get("hostname", "Unknown"),
+                        node.get("mgmt_ip", "Unknown"),
+                    ]
+                )
+            return rows
+
+        cnode_map_rows = _management_map_rows(hw_inv.get("cnodes"))
+        if cnode_map_rows:
+            content.extend(
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    cnode_map_rows, "CNode Management Map", map_headers
+                )
+            )
+            content.append(Spacer(1, 16))
+
+        dnode_map_rows = _management_map_rows(hw_inv.get("dnodes"))
+        if dnode_map_rows:
+            content.extend(
+                self.brand_compliance.create_vast_hardware_table_with_pagination(
+                    dnode_map_rows, "DNode Management Map", map_headers
+                )
+            )
+            content.append(Spacer(1, 16))
+
         # 1. CNodes Network Configuration
         # For EBox clusters, use hardware_inventory directly (from /api/v7/cnodes/)
         # For non-EBox clusters, try network_settings first then fallback
@@ -3659,6 +3782,22 @@ class VastReportBuilder:
 
         return content
 
+    def _resolve_diagrams_dir(self, data: Dict[str, Any]) -> Path:
+        """Resolve the diagram output directory.
+
+        With QP-2 segmentation enabled, diagrams land under the per-cluster
+        ``clusters/<key>/output/diagrams`` tree (key derived from the processed
+        data's ``cluster_summary``); otherwise the legacy flat
+        ``output/diagrams`` directory is used.
+        """
+        data_dir = get_data_dir()
+        if self.segment_by_cluster:
+            from utils.cluster_paths import cluster_paths, resolve_cluster_key_from_summary
+
+            key = resolve_cluster_key_from_summary(data)
+            return Path(cluster_paths(data_dir, key).diagrams)
+        return Path(data_dir) / "output" / "diagrams"
+
     def _create_logical_network_diagram(
         self,
         data: Dict[str, Any],
@@ -3756,7 +3895,7 @@ class VastReportBuilder:
             f"{len(hardware_data['switches'])} Switches"
         )
 
-        diagrams_dir = get_data_dir() / "output" / "diagrams"
+        diagrams_dir = self._resolve_diagrams_dir(data)
         diagrams_dir.mkdir(parents=True, exist_ok=True)
 
         generated_paths: list = []
@@ -3776,6 +3915,7 @@ class VastReportBuilder:
                     port_mapping_data=port_mapping_data,
                     hardware_data=hardware_data,
                     output_dir=str(diagrams_dir),
+                    manual_switch_placements=data.get("manual_switch_placements"),
                 )
                 self.logger.info("Detailed diagram generated %d page(s)", len(generated_paths))
             except Exception as e:
@@ -3809,26 +3949,9 @@ class VastReportBuilder:
 
         # Generate network diagram dynamically
         try:
-            # Add color legend
-            legend_style = ParagraphStyle(
-                "Diagram_Legend",
-                parent=styles["Normal"],
-                fontSize=self.config.font_size - 1,
-                textColor=colors.HexColor("#666666"),
-                alignment=TA_CENTER,
-                spaceAfter=12,
-            )
-            content.append(
-                Paragraph(
-                    "<font color='#0F9D58'><b>■</b> Green</font> = Network A | "
-                    "<font color='#4285F4'><b>■</b> Blue</font> = Network B | "
-                    "<font color='#7B1FA2'><b>■</b> Purple</font> = IPL/MLAG | "
-                    "<font color='#757575'><b>■</b> Gray</font> = Spine",
-                    legend_style,
-                )
-            )
-            content.append(Spacer(1, 12))
-
+            # NET-3: the redundant text color key was removed — the rendered
+            # diagram carries its own subnet-pill legend at the bottom, which
+            # is authoritative (per-/24 subnet) and avoids a stale duplicate.
             if generated_paths:
                 from PIL import Image as PILImage
 
@@ -3960,6 +4083,29 @@ class VastReportBuilder:
             # Other speeds (40G, 10G, etc.)
             return "Data Plane"
 
+    @staticmethod
+    def _build_switch_identity_map(switches: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
+        """Map a lowercased switch hostname/name -> {'name', 'display_name', 'mgmt_ip'}.
+
+        Used to resolve the GUID-based ``switch_ip`` carried by IB ``port_map``
+        entries (which also carry ``switch_hostname``) to a human-readable name
+        and the switch's management IP from the switch inventory. ``display_name``
+        carries any (a)/(b) designator assigned to duplicate-named switches.
+        """
+        out: Dict[str, Dict[str, str]] = {}
+        for sw in switches or []:
+            name = sw.get("name") or sw.get("hostname") or sw.get("host_name") or ""
+            display_name = sw.get("display_name") or name
+            mgmt = sw.get("mgmt_ip") or sw.get("management_ip") or sw.get("ip") or ""
+            for key in (sw.get("name"), sw.get("hostname"), sw.get("host_name")):
+                if key:
+                    out[str(key).strip().lower()] = {
+                        "name": str(name),
+                        "display_name": str(display_name),
+                        "mgmt_ip": str(mgmt),
+                    }
+        return out
+
     def _create_vnetmap_topology_tables(
         self,
         port_map: List[Dict[str, Any]],
@@ -3968,6 +4114,17 @@ class VastReportBuilder:
     ) -> List[Any]:
         """Render vnetmap 'Full Topology' and per-switch topology tables."""
         content: List[Any] = []
+
+        # Resolve GUID/hostname -> mgmt IP so tables show the switch's
+        # management IP and name rather than the raw IB GUID.
+        switch_identity = self._build_switch_identity_map(switches)
+
+        def _switch_mgmt_ip(entry: Dict[str, Any]) -> str:
+            hostname = (entry.get("switch_hostname") or "").strip()
+            info = switch_identity.get(hostname.lower()) if hostname else None
+            if info and info.get("mgmt_ip"):
+                return info["mgmt_ip"]
+            return hostname or entry.get("switch_ip", "")
 
         unique_nodes = {e.get("node_hostname", "") for e in port_map if e.get("node_hostname")}
         unique_switches = {e.get("switch_ip", "") for e in port_map if e.get("switch_ip")}
@@ -4007,14 +4164,14 @@ class VastReportBuilder:
 
         # --- Full Topology table ---
         # Proportional weights: Node(wide) | Switch IP | Port(narrow) | Data IP | Interface | MAC | Net(narrow)
-        full_headers = ["Node", "Switch IP", "Port", "Data IP", "Interface", "MAC", "Net"]
+        full_headers = ["Node", "Switch Mgmt IP", "Port", "Data IP", "Interface", "MAC", "Net"]
         full_col_weights = [5, 3, 1.2, 2.5, 2, 3.5, 0.8]
         full_data = []
         for e in sorted(port_map, key=lambda x: (x.get("node_hostname", ""), x.get("network", ""))):
             full_data.append(
                 [
                     e.get("node_hostname", ""),
-                    e.get("switch_ip", ""),
+                    _switch_mgmt_ip(e),
                     e.get("port", ""),
                     e.get("node_ip", ""),
                     e.get("interface", ""),
@@ -4064,7 +4221,20 @@ class VastReportBuilder:
                 )
 
             subnet_display = ", ".join(subnets) if subnets else ""
-            sw_title = f"Switch {switch_ip} — subnet {{{subnet_display}}}, network {{{net_label}}}"
+            # Switch identity: name (primary) + mgmt IP + GUID, resolved from the
+            # inventory via the entry's switch_hostname; switch_ip holds the GUID.
+            first = entries[0]
+            sw_hostname = (first.get("switch_hostname") or "").strip()
+            sw_info = switch_identity.get(sw_hostname.lower()) if sw_hostname else None
+            sw_name = (sw_info or {}).get("display_name") or (sw_info or {}).get("name") or sw_hostname or switch_ip
+            sw_mgmt = (sw_info or {}).get("mgmt_ip") or ""
+            ident_parts = [str(sw_name)]
+            if sw_mgmt:
+                ident_parts.append(str(sw_mgmt))
+            if switch_ip and switch_ip != sw_name:
+                ident_parts.append(f"GUID {switch_ip}")
+            sw_ident = " — ".join(ident_parts)
+            sw_title = f"Switch {sw_ident} — subnet {{{subnet_display}}}, network {{{net_label}}}"
             sw_elements = self.brand_compliance.create_vast_table(
                 sw_data,
                 sw_title,
@@ -4075,103 +4245,6 @@ class VastReportBuilder:
             content.extend(sw_elements)
 
         content.append(Spacer(1, 8))
-        return content
-
-    def _create_spine_port_tables(
-        self,
-        port_mapping_data: Dict[str, Any],
-        switches: List[Dict[str, Any]],
-        leaf_switch_ips: set,
-        headers: List[str],
-    ) -> List[Any]:
-        """Render one Port-to-Device Mapping table per spine switch.
-
-        Spine switches are not discovered through the MAC-based port map
-        (``port_map`` only holds leaf<->node correlations), so they never
-        appear in the main per-switch loop above.  When LLDP-derived (or
-        inferred) ``spine_uplink`` / ``spine_fabric`` entries are present in
-        ``ipl_connections``, we render a dedicated table for each spine so
-        the reader can see which leaves each spine is connected to, even
-        without full node-level data.
-
-        Inputs intentionally kept simple (no PDF styling objects) so the
-        helper is easy to unit-test.
-        """
-        content: List[Any] = []
-        ipl_connections = port_mapping_data.get("ipl_connections", []) or []
-        if not ipl_connections:
-            return content
-
-        # Collect the set of switch IPs that appear as an endpoint of a
-        # spine_uplink / spine_fabric entry but are NOT leaves (i.e., not in
-        # the port_map-derived leaf set).  Those are the spines to render.
-        spine_ips: List[str] = []
-        spine_seen: set = set()
-        for conn in ipl_connections:
-            conn_type = (conn.get("connection_type") or "").lower()
-            if conn_type not in ("spine_uplink", "spine_fabric"):
-                continue
-            for ip in (conn.get("switch1_ip"), conn.get("switch2_ip")):
-                if not ip or ip in spine_seen:
-                    continue
-                if ip in leaf_switch_ips:
-                    continue
-                spine_seen.add(ip)
-                spine_ips.append(ip)
-
-        if not spine_ips:
-            return content
-
-        # Build an IP -> hostname / designation lookup so the table title and
-        # per-row "local side" label match the leaf-side tables.
-        switch_lookup: Dict[str, Dict[str, Any]] = {sw.get("mgmt_ip"): sw for sw in switches if sw.get("mgmt_ip")}
-
-        for sp_idx, spine_ip in enumerate(sorted(spine_ips), start=1):
-            spine_info = switch_lookup.get(spine_ip, {})
-            spine_hostname = spine_info.get("hostname") or spine_info.get("name") or spine_ip
-            # Designation: prefer one from an ipl_connection that involves this spine.
-            spine_designation = f"SP{sp_idx}"
-            for conn in ipl_connections:
-                if conn.get("switch1_ip") == spine_ip:
-                    cand = conn.get("switch_designation", "")
-                    if cand:
-                        spine_designation = cand
-                        break
-                if conn.get("switch2_ip") == spine_ip:
-                    cand = conn.get("node_designation", "")
-                    if cand:
-                        spine_designation = cand
-                        break
-
-            table_data: List[List[str]] = []
-            for conn in ipl_connections:
-                conn_type = (conn.get("connection_type") or "").lower()
-                if conn_type not in ("spine_uplink", "spine_fabric"):
-                    continue
-                ip1 = conn.get("switch1_ip", "")
-                ip2 = conn.get("switch2_ip", "")
-                if spine_ip not in (ip1, ip2):
-                    continue
-
-                if ip1 == spine_ip:
-                    local = conn.get("switch_designation", "") or spine_designation
-                    remote = conn.get("node_designation", "") or ""
-                else:
-                    local = conn.get("node_designation", "") or spine_designation
-                    remote = conn.get("switch_designation", "") or ""
-
-                default_note = "Spine uplink" if conn_type == "spine_uplink" else "Spine fabric"
-                note = conn.get("notes") or default_note
-                network_label = "Uplink" if conn_type == "spine_uplink" else "Fabric"
-                table_data.append([local, remote, network_label, "", note])
-
-            if not table_data:
-                continue
-
-            table_title = f"{spine_designation} ({spine_hostname}) Port-to-Device Mapping"
-            content.extend(self.brand_compliance.create_vast_table(table_data, table_title, headers))
-            content.append(Spacer(1, 12))
-
         return content
 
     def _create_port_mapping_section(
@@ -4251,206 +4324,12 @@ class VastReportBuilder:
         if port_mapping_data.get("data_source", "").startswith("vnetmap"):
             content.extend(self._create_vnetmap_topology_tables(port_map, switches, styles))
 
-        # Group ports by switch
-        ports_by_switch: dict[str, Any] = {}
-        for entry in port_map:
-            switch_ip = entry["switch_ip"]
-            if switch_ip not in ports_by_switch:
-                ports_by_switch[switch_ip] = []
-            ports_by_switch[switch_ip].append(entry)
-
-        # Sort ports within each switch by port number
-        for switch_ip in ports_by_switch:
-            ports_by_switch[switch_ip].sort(
-                key=lambda x: (
-                    int("".join(filter(str.isdigit, x["port"]))) if any(c.isdigit() for c in x["port"]) else 0
-                )
-            )
-
-        # Only number switches that actually appear in the port map (leaf switches)
-        port_map_switch_ips = {e["switch_ip"] for e in port_map if e.get("switch_ip")}
-        leaf_switches = [sw for sw in switches if sw.get("mgmt_ip") in port_map_switch_ips]
-        if not leaf_switches:
-            leaf_switches = list(switches)
-        leaf_switches.sort(key=lambda s: s.get("mgmt_ip", ""))
-
-        switch_ip_to_number = {}
-        switch_port_speed_lookup: dict[str, dict[str, str]] = {}
-        for idx, switch in enumerate(leaf_switches, start=1):
-            mgmt_ip = switch.get("mgmt_ip")
-            switch_ip_to_number[mgmt_ip] = idx
-            speed_map: dict[str, str] = {}
-            for port_info in switch.get("ports", []):
-                port_name = port_info.get("name", "")
-                port_speed = port_info.get("speed", "")
-                if port_name and port_speed:
-                    speed_map[port_name] = port_speed
-                    if port_name.startswith("Eth") and "/" in port_name:
-                        parts = port_name.split("/")
-                        if len(parts) == 2:
-                            speed_map[f"swp{parts[1]}"] = port_speed
-                        elif len(parts) == 3:
-                            speed_map[f"swp{parts[1]}/{parts[2]}"] = port_speed
-                            parent_key = f"Eth{parts[0]}/{parts[1]}"
-                            if parent_key not in speed_map:
-                                speed_map[parent_key] = port_speed
-            if mgmt_ip:
-                switch_port_speed_lookup[mgmt_ip] = speed_map
-
-        # Sort switches by switch number (Switch 1 before Switch 2)
-        sorted_switch_ips = sorted(ports_by_switch.keys(), key=lambda ip: switch_ip_to_number.get(ip, 999))
-
-        # Create port map table for each switch (in order: Switch 1, Switch 2, etc.)
-        for switch_ip in sorted_switch_ips:
-            connections = ports_by_switch[switch_ip]
-            switch_num = switch_ip_to_number.get(switch_ip, "?")
-
-            # Build table data - filter to show only primary physical connections
-            table_data = []
-            headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
-
-            # Track which ports we've already added to avoid duplicates
-            # Key: (switch_designation, node_designation, network)
-            seen_connections = set()
-
-            for conn in connections:
-                # Smart filtering: show one primary interface per network per node
-                # CNodes: f0 = Net A (primary), f1 = Net B (primary), f2/f3 = bonded
-                # DNodes: f0 = Net A (primary), f2/f3 = Net B (primary - different than CNodes!)
-
-                interface = conn.get("interface", "")
-                network = conn.get("network", "?")
-                node_designation = conn.get("node_designation", "Unknown")
-
-                # Determine if this is a DNode or CNode
-                is_dnode = "DN" in node_designation
-                is_cnode = "CN" in node_designation
-                is_unknown = "UNKNOWN" in node_designation.upper()
-
-                # Primary interface logic (simplified):
-                # Show physical interfaces (f0, f1, f2, f3) - these are the primary physical ports
-                # Skip bonded/virtual interfaces (bonds, VLANs, etc.)
-                #
-                # Network assignment (A or B) is already correctly determined
-                # by which switch the connection is on, so we don't need to
-                # make assumptions about which interface goes to which network.
-
-                is_primary = False
-                if "f0" in interface or "f1" in interface or "f2" in interface or "f3" in interface:
-                    # This is a primary physical interface
-                    is_primary = True
-
-                # Skip non-primary interfaces (bonds, VLANs, etc.)
-                if not is_primary:
-                    continue
-
-                # Use enhanced switch designation (e.g., SWA-P20)
-                port_display = conn.get("switch_designation", conn["port"])
-
-                # Use node designation (already have it from above)
-                node_display = node_designation
-
-                # Create unique key for this connection
-                conn_key = (port_display, node_designation, network)
-
-                # Skip if we've already added this connection
-                if conn_key in seen_connections:
-                    continue
-                seen_connections.add(conn_key)
-
-                port_name_raw = conn.get("port", "")
-                speed = (
-                    switch_port_speed_lookup.get(switch_ip, {}).get(
-                        port_name_raw,
-                        switch_port_speed_lookup.get(switch_ip, {}).get(conn.get("original_port", ""), ""),
-                    )
-                    or "Unknown"
-                )
-
-                # Use notes from port map entry
-                # Check if this is an EBox cluster entry (has ebox_id or ebox_node_type)
-                is_ebox_entry = conn.get("ebox_id") is not None or conn.get("ebox_node_type") is not None
-
-                if is_ebox_entry:
-                    # EBox clusters: notes contain the CNode/DNode name
-                    notes_str = conn.get("notes", "")
-                    if not notes_str:
-                        # Fallback for EBox entries without notes
-                        notes_str = conn.get("node_name", "")
-                else:
-                    # Standard CBox/DBox clusters: show "Primary" for all active connections
-                    notes_str = "Primary"
-
-                table_data.append([port_display, node_display, network, speed, notes_str])
-
-            # Add IPL / spine-uplink rows to this switch's table.  Each
-            # entry in ``ipl_connections`` is either:
-            #
-            #   * IPL (leaf<->leaf, ``connection_type == "ipl"``)
-            #   * spine uplink (leaf<->spine, ``connection_type == "spine_uplink"``)
-            #   * spine fabric (spine<->spine, rendered only under spine tables)
-            #
-            # We want every row whose endpoint is the leaf currently being
-            # rendered to show up in that leaf's table, with the peer-side
-            # designation on the right.
-            ipl_connections = port_mapping_data.get("ipl_connections", [])
-            for ipl_conn in ipl_connections:
-                conn_type = (ipl_conn.get("connection_type") or "ipl").lower()
-                if conn_type == "spine_fabric":
-                    continue  # spine<->spine links belong in the spine table
-                ip1 = ipl_conn.get("switch1_ip", "")
-                ip2 = ipl_conn.get("switch2_ip", "")
-
-                local_side, remote_side = None, None
-                if ip1 == switch_ip:
-                    local_side = ipl_conn.get("switch_designation", "")
-                    remote_side = ipl_conn.get("node_designation", "")
-                elif ip2 == switch_ip:
-                    # Flip the pair so the "local" column always shows this leaf.
-                    local_side = ipl_conn.get("node_designation", "")
-                    remote_side = ipl_conn.get("switch_designation", "")
-                else:
-                    # Legacy rows without switch IPs rely on switch_num heuristic.
-                    if conn_type != "ipl" or (ip1 and ip2):
-                        continue
-                    if switch_num == 1:
-                        local_side = ipl_conn.get("switch_designation", "") or "SWA"
-                        remote_side = ipl_conn.get("node_designation", "") or "SWB"
-                    elif switch_num == 2:
-                        local_side = ipl_conn.get("node_designation", "") or "SWB"
-                        remote_side = ipl_conn.get("switch_designation", "") or "SWA"
-                    else:
-                        continue
-
-                default_note = "Spine uplink" if conn_type == "spine_uplink" else "IPL"
-                ipl_note = ipl_conn.get("notes") or default_note
-                network_label = "Uplink" if conn_type == "spine_uplink" else "A/B"
-
-                table_data.append(
-                    [
-                        local_side or "",
-                        remote_side or "",
-                        network_label,
-                        "",
-                        ipl_note,
-                    ]
-                )
-
-            # Create table
-            table_title = f"Switch {switch_num} Port-to-Device Mapping"
-            table_elements = self.brand_compliance.create_vast_table(table_data, table_title, headers)
-            content.extend(table_elements)
-            content.append(Spacer(1, 12))
-
-        # --- Spine switch tables (if any spine_uplink / spine_fabric entries exist) ---
-        content.extend(
-            self._create_spine_port_tables(
-                port_mapping_data=port_mapping_data,
-                switches=switches,
-                leaf_switch_ips=port_map_switch_ips,
-                headers=headers,
-            )
-        )
+        # The legacy per-leaf-switch "Switch N Port-to-Device Mapping" and the
+        # per-spine "SPx (...) Port-to-Device Mapping" tables were removed: the
+        # vnetmap Topology Detail tables above are the authoritative
+        # per-connection view, and spine-to-leaf uplinks are shown visually as
+        # leaf->spine ISLs in the Logical Network Diagram. Inferred IPL/uplink
+        # rows are intentionally no longer rendered as tables.
 
         # Add diagnostic summary if available
         diagnostic_summary = port_mapping_data.get("diagnostic_summary")
@@ -4541,6 +4420,30 @@ class VastReportBuilder:
 
         return content
 
+    @staticmethod
+    def _count_active_ports(ports: List[Dict[str, Any]]) -> int:
+        """Count ports whose operational state is up/active (case-insensitive).
+
+        IB switches report ``Active`` while Ethernet switches report ``up``;
+        both count toward active ports.
+        """
+        active = {"up", "active"}
+        return sum(1 for p in (ports or []) if str(p.get("state", "")).strip().lower() in active)
+
+    @staticmethod
+    def _derive_port_mtu(ports: List[Dict[str, Any]]) -> str:
+        """Return the most common non-zero MTU across ports, or 'Unknown'."""
+        from collections import Counter
+
+        counts: Counter = Counter()
+        for p in ports or []:
+            mtu = str(p.get("mtu", "")).strip()
+            if mtu and mtu not in ("0", "Unknown"):
+                counts[mtu] += 1
+        if not counts:
+            return "Unknown"
+        return str(counts.most_common(1)[0][0])
+
     def _create_switch_configuration(
         self,
         data: Dict[str, Any],
@@ -4596,8 +4499,10 @@ class VastReportBuilder:
             if switch_num > 1:
                 content.append(PageBreak())
 
-            # Get switch name first to use in consolidated heading
-            switch_name = switch.get("name", "Unknown")
+            # Get switch name first to use in consolidated heading. Prefer the
+            # disambiguated display_name so two same-named switches read as
+            # "Spine-B (a)"/"(b)".
+            switch_name = switch.get("display_name") or switch.get("name", "Unknown")
 
             hostname = switch.get("hostname", "Unknown")
             model = switch.get("model", "Unknown")
@@ -4613,6 +4518,15 @@ class VastReportBuilder:
             mtu = switch.get("mtu", "Unknown")
             port_speeds = switch.get("port_speeds", {})
             ports = switch.get("ports", [])
+
+            # Defensive recompute for replayed/older JSON where these were not
+            # populated at collection time (e.g. IB ports counted only "up").
+            if ports:
+                if not active_ports:
+                    active_ports = self._count_active_ports(ports)
+                if not mtu or str(mtu) in ("0", "Unknown"):
+                    mtu = self._derive_port_mtu(ports)
+            mtu = str(mtu)
 
             # Capitalize switch type for display
             if switch_type.lower() == "cumulus":
@@ -5883,6 +5797,7 @@ def create_report_builder(
     config: Optional[ReportConfig] = None,
     library_path: Optional[str] = None,
     user_images_dir: Optional[str] = None,
+    segment_by_cluster: bool = False,
 ) -> VastReportBuilder:
     """
     Create and return a configured VastReportBuilder instance.
@@ -5891,11 +5806,12 @@ def create_report_builder(
         config (ReportConfig, optional): Report configuration
         library_path: Path to user device_library.json
         user_images_dir: Path to user-uploaded hardware images directory
+        segment_by_cluster: QP-2 per-cluster diagram segmentation (default off)
 
     Returns:
         VastReportBuilder: Configured report builder instance
     """
-    return VastReportBuilder(config, library_path, user_images_dir)
+    return VastReportBuilder(config, library_path, user_images_dir, segment_by_cluster=segment_by_cluster)
 
 
 if __name__ == "__main__":

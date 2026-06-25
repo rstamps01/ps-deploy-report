@@ -44,7 +44,7 @@ When enabled, the following links appear in the navigation bar:
 | **Switch SSH User/Password** | Switch workflows | `cumulus` / `Vastdata1!` | SSH credentials for switches |
 | **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing |
 
-**Global Setting — Autofill Default Passwords:** A toggle in the Connection Settings bottom toolbar auto-populates standard credentials when set to Enable (default). Set to Disable to enter custom credentials for non-standard configurations. When default passwords are enabled, `support`/`654321` is used for all operations except vperfsanity, which is automatically overridden to `admin`/`123456` (the only operation requiring admin access). If the admin password has been changed on the cluster, disable the toggle and enter the current admin credentials manually.
+**Global Setting — Autofill Passwords:** A toggle switch in the Connection Settings tile (above the Advanced menu) auto-populates standard credentials when set to Enable (default). Set to Disable to enter custom credentials for non-standard configurations. When default passwords are enabled, `support`/`654321` is used for all operations except vperfsanity, which is automatically overridden to `admin`/`123456` (the only operation requiring admin access). If the admin password has been changed on the cluster, disable the toggle and enter the current admin credentials manually.
 
 ---
 
@@ -141,12 +141,39 @@ The Connection Settings tile opens in a compact collapsed view and expands to re
 
 **Expanded (arrow click or Create Cluster Profile):**
 - All credential fields: Cluster IP / VMS, API Username/Password, Node SSH User/Password, Switch SSH User/Password, VIP Pool Name
-- **Global Setting — Autofill Default Passwords** toggle at the bottom-left with Disable/Enable labels
+- **Autofill Passwords** toggle switch above the Advanced menu (see below)
+- **Connection Mode** radio group at the bottom-center (see below)
 - **Save** (checkmark) and **Delete** (trash) profile icons at the bottom-right
+
+**Autofill Passwords toggle:** When **ON**, the six credential fields (VMS `support`/`654321`, Node `vastdata`/`vastdata`, Switch `cumulus`/`Vastdata1!`) are auto-populated and locked (greyed out) so they cannot be edited. When **OFF**, the default usernames stay populated, the password fields are cleared, and all fields are unlocked for manual entry before saving the profile.
+
+**Connection Mode** (three-way radio group, bottom-center of the tile):
+- **Tech Port Mode** — connect via a CBox Tech Port (`192.168.2.2`); auto-discovers the VMS and tunnels API calls through SSH.
+- **VMS Mgmt Mode** — connect directly to the VMS management IP over HTTPS (no SSH tunnel).
+- **Teleport Mode** — connect through Teleport (`tsh`); requires an active `tsh login` session. Forwards the cluster API (443) and CNode SSH (22) to local ports so report generation and `vnetmap`/port mapping both work against Teleport-only clusters. Selecting this mode reveals **Teleport Node** (hostname, label query such as `hostname=PDX02-Vast01-c-128-4`, or `user@host`) and **Teleport User** (default `vastdata`) fields. See [Teleport Mode](#teleport-mode) below.
 
 **Create Cluster Profile button:** Expands the tile, switches dropdown to "-- Create a profile --", clears Cluster IP, resets default credentials, and opens the form for entry.
 
-**Profiles** are shared across Advanced Ops, Health Check, and Generate Report pages. The tile collapse/expand state is persisted across page navigation.
+**Profiles** are shared across Advanced Ops, Health Check, and Generate Report pages. The selected connection mode and Teleport target persist in the profile. The tile collapse/expand state is persisted across page navigation.
+
+### Teleport Mode
+
+Teleport Mode lets the Reporter generate a full as-built report — including `vnetmap`/port mapping — against a cluster that is reachable only through a Teleport proxy.
+
+**How it works.** Selecting Teleport Mode launches a single `tsh ssh` subprocess against the chosen node with two `-L` forwards off the CNode's loopback:
+
+```
+tsh ssh -L <apiPort>:127.0.0.1:443 -L <sshPort>:127.0.0.1:22 -l <user> <node> <keepalive>
+```
+
+This exposes the VMS REST API (443) and the CNode's SSH (22) on local ephemeral ports at the same time — the single-port limitation that broke earlier manual `socat` attempts. The forwarded local API port feeds the API handler; the forwarded local SSH endpoint is used by all SSH-dependent workflows (vnetmap deploy/run, `clush`, and the switch proxy-jump).
+
+**Prerequisites:**
+- The Teleport CLI (`tsh`) must be installed and on `PATH`.
+- You must already be logged in: `tsh login --proxy=<proxy>` (SSO/MFA is handled by `tsh`, not this tool).
+- Your Teleport role must permit local port forwarding.
+
+The tool runs a preflight check (`tsh` present + active session) before launching and reports an actionable error if either is missing. Configurable via the `teleport` block in `config/config.yaml` (`enabled`, `ssh_user`, `tsh_path`).
 
 ### Starting a Workflow
 

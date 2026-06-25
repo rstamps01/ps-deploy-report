@@ -19,6 +19,11 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Deployment tools older than this many days are flagged "stale" so the UI can
+# prompt a refresh. Canonical home for the threshold; one-shot pre-validation
+# imports this constant so the rule stays in one place.
+TOOL_FRESHNESS_WARN_DAYS = 10
+
 
 class ToolManager:
     """Manages deployment tools with local caching and smart deployment."""
@@ -93,13 +98,45 @@ class ToolManager:
         if local_path.exists():
             stat = local_path.stat()
             info["cached_size"] = stat.st_size
-            info["cached_date"] = datetime.fromtimestamp(stat.st_mtime).isoformat()
+            cached_dt = datetime.fromtimestamp(stat.st_mtime)
+            info["cached_date"] = cached_dt.isoformat()
+            age_days = max(0, (datetime.now() - cached_dt).days)
+            info["age_days"] = age_days
+            info["stale"] = age_days >= TOOL_FRESHNESS_WARN_DAYS
+        else:
+            # A missing tool is not "stale" (stale implies present-but-old); it
+            # is surfaced separately via ``cached: False`` / the status summary.
+            info["stale"] = False
 
         return info
 
     def get_all_tools_info(self) -> List[Dict[str, Any]]:
         """Get information about all tools."""
         return [self.get_tool_info(name) for name in self.TOOLS.keys()]
+
+    def get_tools_status(self) -> Dict[str, Any]:
+        """Summarize deployment-tool readiness for the global nav indicator.
+
+        Returns:
+            Dict with the full per-tool ``tools`` list plus aggregate counts
+            (``total``, ``cached``, ``missing``, ``stale``) and a
+            ``needs_attention`` flag that is True when any tool is missing or
+            any cached tool is at least :data:`TOOL_FRESHNESS_WARN_DAYS` days
+            old. ``warn_days`` echoes the threshold for the UI.
+        """
+        tools = self.get_all_tools_info()
+        cached = sum(1 for t in tools if t.get("cached"))
+        missing = sum(1 for t in tools if not t.get("cached"))
+        stale = sum(1 for t in tools if t.get("stale"))
+        return {
+            "tools": tools,
+            "total": len(tools),
+            "cached": cached,
+            "missing": missing,
+            "stale": stale,
+            "needs_attention": missing > 0 or stale > 0,
+            "warn_days": TOOL_FRESHNESS_WARN_DAYS,
+        }
 
     def update_local_tool(self, tool_name: str) -> Tuple[bool, str]:
         """Download the latest version of a tool to local cache."""
@@ -157,12 +194,12 @@ class ToolManager:
 
         return results
 
-    def _ensure_remote_dir(self, host: str, username: str, password: str) -> Tuple[bool, str]:
+    def _ensure_remote_dir(self, host: str, username: str, password: str, port: int = 22) -> Tuple[bool, str]:
         """Ensure the remote directory exists on the CNode."""
         mkdir_cmd = f"mkdir -p {self.REMOTE_DIR}"
         self._emit("info", f"Ensuring remote directory exists: {self.REMOTE_DIR}")
 
-        rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(host, username, password, mkdir_cmd, timeout=30, port=port)
         if rc != 0:
             error_msg = stderr or stdout or "SSH command failed"
             return False, f"Failed to create directory: {error_msg}"
@@ -177,6 +214,7 @@ class ToolManager:
         username: str,
         password: str,
         skip_mkdir: bool = False,
+        port: int = 22,
     ) -> Tuple[bool, str]:
         """
         Deploy a tool to CNode.
@@ -197,7 +235,7 @@ class ToolManager:
 
         # Step 1: Ensure remote directory exists (unless already done)
         if not skip_mkdir:
-            success, msg = self._ensure_remote_dir(host, username, password)
+            success, msg = self._ensure_remote_dir(host, username, password, port=port)
             if not success:
                 return False, msg
 
@@ -205,17 +243,17 @@ class ToolManager:
         self._emit("info", f"  Attempting direct download to CNode...")
         wget_cmd = f'wget -q "{url}" -O {remote_path} 2>&1'
 
-        rc, stdout, stderr = run_ssh_command(host, username, password, wget_cmd, timeout=60)
+        rc, stdout, stderr = run_ssh_command(host, username, password, wget_cmd, timeout=60, port=port)
 
         if rc == 0:
             # Verify file exists and has content
             check_cmd = f"test -s {remote_path} && echo 'ok'"
-            rc2, stdout2, _ = run_ssh_command(host, username, password, check_cmd, timeout=10)
+            rc2, stdout2, _ = run_ssh_command(host, username, password, check_cmd, timeout=10, port=port)
 
             if "ok" in stdout2:
                 self._emit("success", f"  Downloaded directly to CNode: {remote_path}")
                 # Set executable
-                run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10)
+                run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10, port=port)
                 return True, f"Downloaded {tool_name} directly to CNode"
 
         # Step 3: Fallback to local copy
@@ -239,6 +277,7 @@ class ToolManager:
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
             ssh.connect(
                 host,
+                port=port,
                 username=username,
                 password=password,
                 timeout=30,
@@ -253,7 +292,7 @@ class ToolManager:
             ssh.close()
 
             # Set executable
-            run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10)
+            run_ssh_command(host, username, password, f"chmod +x {remote_path}", timeout=10, port=port)
 
             self._emit("success", f"  Copied from local cache: {remote_path}")
             return True, f"Copied {tool_name} from local cache"

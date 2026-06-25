@@ -217,6 +217,52 @@ class TestParamikoExec(unittest.TestCase):
         mock_client.close.assert_called_once()
 
 
+class TestExplicitPort(unittest.TestCase):
+    """Teleport mode forwards a CNode's SSH (22) to an ephemeral local port,
+    so the adapter must honor an explicit ``port`` instead of always using 22."""
+
+    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
+    def test_subprocess_adds_port_flag_when_non_default(self, _which, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _subprocess_ssh("127.0.0.1", "user", "pass", "ls", 10, "/dev/null", port=50022)
+        cmd = mock_run.call_args[0][0]
+        self.assertIn("-p", cmd)
+        self.assertIn("50022", cmd)
+
+    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
+    def test_subprocess_omits_port_flag_for_default_22(self, _which, mock_run):
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        _subprocess_ssh("host", "user", "pass", "ls", 10, "/dev/null", port=22)
+        cmd = mock_run.call_args[0][0]
+        self.assertNotIn("-p", cmd)
+
+    @patch.dict("sys.modules", {})
+    def test_paramiko_connects_to_explicit_port(self):
+        mock_paramiko = MagicMock()
+        mock_paramiko.AuthenticationException = type("AuthenticationException", (Exception,), {})
+        mock_paramiko.SSHException = type("SSHException", (Exception,), {})
+        mock_paramiko.AutoAddPolicy.return_value = "policy"
+        mock_client = MagicMock()
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_stdout = MagicMock()
+        mock_stdout.channel.recv_exit_status.return_value = 0
+        mock_stdout.read.return_value = b"ok"
+        mock_stderr = MagicMock()
+        mock_stderr.read.return_value = b""
+        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+
+        with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
+            from importlib import reload
+            import utils.ssh_adapter as mod
+
+            reload(mod)
+            mod._paramiko_exec("127.0.0.1", "user", "pass", "ls", 10, port=50022)
+
+        self.assertEqual(mock_client.connect.call_args.kwargs.get("port"), 50022)
+
+
 class TestPexpectInteractive(unittest.TestCase):
     """Tests for the pexpect interactive SSH path."""
 

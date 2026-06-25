@@ -77,6 +77,16 @@
                     <input type="hidden" id="vipPool" name="vip_pool" value="main">
                 </div>
 
+                <!-- Autofill toggle (above Advanced menu) -->
+                <div class="autofill-row">
+                    <label class="switch-toggle" for="useDefaultCreds">
+                        <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
+                        <span class="switch-track"><span class="switch-thumb"></span></span>
+                        <span class="switch-label">Autofill Passwords</span>
+                    </label>
+                    <span class="info-icon" title="When ON, auto-populates and locks default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!&#10;&#10;When OFF, default usernames stay populated and password fields are cleared for manual entry.">&#9432;</span>
+                </div>
+
                 <!-- Action bar: Advanced + Save + Delete -->
                 <div class="conn-action-bar">
                     <div class="conn-action-bar-left">
@@ -91,16 +101,6 @@
                                     <span>SSH Proxy Mode</span>
                                     <span class="info-icon" title="Tunnel switch SSH through CNode. Enable for tech port or when switches are not directly reachable.">&#9432;</span>
                                 </label>
-                                <label class="adv-menu-item">
-                                    <input type="checkbox" name="tech_port" id="techPortToggle" checked style="width:auto;">
-                                    <span>Tech Port Mode</span>
-                                    <span class="info-icon" title="Connect via CBox Tech Port (192.168.2.2). Auto-discovers VMS and tunnels API calls through SSH.">&#9432;</span>
-                                </label>
-                                <label class="adv-menu-item">
-                                    <input type="checkbox" id="useDefaultCreds" checked onchange="toggleDefaultCredentials()">
-                                    <span>Autofill Passwords</span>
-                                    <span class="info-icon" title="Auto-populate default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!">&#9432;</span>
-                                </label>
                             </div>
                         </div>
                     </div>
@@ -113,6 +113,40 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg>
                             Delete
                         </button>
+                    </div>
+                </div>
+
+                <!-- Connection mode (bottom-center): Tech Port / VMS Mgmt / Teleport -->
+                <div class="conn-mode-group" role="radiogroup" aria-label="Connection Mode">
+                    <label class="conn-mode-opt">
+                        <input type="radio" name="conn_mode" value="tech_port" checked onchange="onConnModeChange()">
+                        <span>Tech Port Mode</span>
+                        <span class="info-icon" title="Connect via CBox Tech Port (192.168.2.2). Auto-discovers VMS and tunnels API calls through SSH.">&#9432;</span>
+                    </label>
+                    <label class="conn-mode-opt">
+                        <input type="radio" name="conn_mode" value="vms_mgmt" onchange="onConnModeChange()">
+                        <span>VMS Mgmt Mode</span>
+                        <span class="info-icon" title="Connect directly to the VMS management IP over HTTPS (no SSH tunnel).">&#9432;</span>
+                    </label>
+                    <label class="conn-mode-opt conn-mode-opt--beta">
+                        <span class="beta-badge">Beta Feature</span>
+                        <input type="radio" name="conn_mode" value="teleport" onchange="onConnModeChange()">
+                        <span>Teleport Mode</span>
+                        <span class="info-icon" title="Connect through Teleport (tsh). Requires an active `tsh login` session. Forwards the cluster API (443) and SSH (22) to local ports. Set the Cluster IP field above to the cluster's VMS management VIP (e.g. 10.143.10.100) — NOT 127.0.0.1 — so the API is forwarded to the VMS and reachable from any node.">&#9432;</span>
+                    </label>
+                </div>
+
+                <!-- Teleport target fields (shown only in Teleport mode) -->
+                <div class="teleport-fields" id="teleportFields" style="display:none;">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="teleportNode">Teleport Node <span class="info-icon" title="Any node or cluster identifier — the app resolves it against `tsh ls` to the correct node. Accepts a hostname, node ID, cluster_name (VAST-PI-01), cluster_psnt (VA24129237), a key=value label (cluster_psnt=VA24129237), or user@host. A cluster-level value (cluster_psnt/cluster_name) auto-picks one CNode of that cluster. If it matches nodes across DIFFERENT clusters (e.g. a hostname shared between clusters), the error lists candidates so you can pick a unique one.">&#9432;</span></label>
+                            <input type="text" id="teleportNode" name="teleport_node" placeholder="VAST-PI-01 or cluster_psnt=VA24129237 or hostname=..." autocomplete="off">
+                        </div>
+                        <div class="form-group">
+                            <label for="teleportUser">Teleport User</label>
+                            <input type="text" id="teleportUser" name="teleport_user" value="vastdata" autocomplete="off">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -719,6 +753,59 @@
 
 .info-icon { cursor: help; color: var(--text-secondary); font-size: 14px; opacity: 0.7; transition: opacity 0.15s; }
 .info-icon:hover { opacity: 1; color: var(--accent); }
+
+/* --- Autofill toggle switch (above Advanced) --- */
+.autofill-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.switch-toggle { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; user-select: none; margin: 0; }
+.switch-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+    position: relative; display: inline-block; width: 38px; height: 20px;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    border-radius: 999px; transition: background 0.15s, border-color 0.15s;
+}
+.switch-thumb {
+    position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    background: var(--text-secondary); border-radius: 50%; transition: transform 0.15s, background 0.15s;
+}
+.switch-toggle input:checked + .switch-track { background: var(--accent); border-color: var(--accent); }
+.switch-toggle input:checked + .switch-track .switch-thumb { transform: translateX(18px); background: #fff; }
+.switch-toggle input:focus-visible + .switch-track { box-shadow: 0 0 0 2px rgba(88,166,255,0.4); }
+.switch-label { font-size: 13px; color: var(--text-primary); }
+
+/* --- Locked (autofilled) credential fields --- */
+.cred-locked {
+    opacity: 0.6; cursor: not-allowed;
+    background: var(--bg-tertiary) !important; color: var(--text-secondary) !important;
+}
+
+/* --- Connection mode radio group (bottom-center) --- */
+.conn-mode-group {
+    display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 22px;
+    margin-top: 14px; padding-top: 28px; border-top: 1px solid var(--border-color);
+}
+.conn-mode-opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-primary); cursor: pointer; margin: 0;
+}
+.conn-mode-opt input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
+
+/* "Beta Feature" pill badge above the Teleport Mode option */
+.conn-mode-opt--beta { position: relative; }
+.beta-badge {
+    position: absolute;
+    bottom: calc(100% + 5px);
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+    line-height: 1; padding: 3px 9px; border-radius: 9999px;
+    color: #fff; background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4);
+    pointer-events: none;
+}
+
+/* --- Teleport target fields --- */
+.teleport-fields { margin-top: 12px; }
 .btn-icon-collapse { background: none; border: none; cursor: pointer; padding: 0.25rem; color: var(--text-secondary); transition: color 0.15s, transform 0.2s; vertical-align: middle; line-height: 0; }
 .btn-icon-collapse:hover { color: var(--text-primary); }
 .btn-icon-collapse svg { width: 20px; height: 20px; }
@@ -974,20 +1061,75 @@ function isCredentialsExpanded() {
     return !document.getElementById('connSettingsDetails').classList.contains('collapsed-section');
 }
 
+// Default usernames retained even when Autofill is OFF (passwords stay blank
+// until the operator types them in and saves a profile).
+var DEFAULT_USERNAMES = {
+    username: 'support',
+    node_user: 'vastdata',
+    switch_user: 'cumulus'
+};
+
+var CRED_FIELD_KEYS = ['username', 'password', 'node_user', 'node_password', 'switch_user', 'switch_password'];
+
+function _setCredLocked(locked) {
+    CRED_FIELD_KEYS.forEach(function(k) {
+        var el = document.getElementById(profileFieldMap[k] || k);
+        if (!el) return;
+        el.readOnly = locked;
+        el.classList.toggle('cred-locked', locked);
+    });
+}
+
 function toggleDefaultCredentials() {
     var on = document.getElementById('useDefaultCreds').checked;
     if (on) {
+        // Fill every credential field with its default and lock them all.
         for (var key in DEFAULT_CREDENTIALS) {
-            var elId = profileFieldMap[key] || key;
-            var el = document.getElementById(elId);
+            var el = document.getElementById(profileFieldMap[key] || key);
             if (el) el.value = DEFAULT_CREDENTIALS[key];
         }
+        _setCredLocked(true);
     } else {
-        ['username', 'password', 'node_user', 'node_password', 'switch_user', 'switch_password'].forEach(function(k) {
-            var el = document.getElementById(profileFieldMap[k] || k);
-            if (el) el.value = '';
+        // Unlock; keep default usernames populated but clear passwords for
+        // manual entry.
+        _setCredLocked(false);
+        for (var uk in DEFAULT_USERNAMES) {
+            var ue = document.getElementById(profileFieldMap[uk] || uk);
+            if (ue) ue.value = DEFAULT_USERNAMES[uk];
+        }
+        ['password', 'node_password', 'switch_password'].forEach(function(k) {
+            var pe = document.getElementById(profileFieldMap[k] || k);
+            if (pe) pe.value = '';
         });
     }
+}
+
+// --- Connection mode (Tech Port / VMS Mgmt / Teleport) ---
+function getConnMode() {
+    var sel = document.querySelector('input[name="conn_mode"]:checked');
+    return sel ? sel.value : 'tech_port';
+}
+
+function setConnMode(mode) {
+    var radios = document.querySelectorAll('input[name="conn_mode"]');
+    var matched = false;
+    radios.forEach(function(r) {
+        var on = r.value === mode;
+        r.checked = on;
+        if (on) matched = true;
+    });
+    if (!matched) {
+        var def = document.querySelector('input[name="conn_mode"][value="tech_port"]');
+        if (def) def.checked = true;
+    }
+    onConnModeChange();
+}
+
+function onConnModeChange() {
+    var mode = getConnMode();
+    var tf = document.getElementById('teleportFields');
+    if (tf) tf.style.display = (mode === 'teleport') ? '' : 'none';
+    saveUIState();
 }
 
 // --- Log Tier ---
@@ -1028,8 +1170,11 @@ function saveUIState() {
         };
         var proxyJump = document.getElementById('proxyJumpToggle');
         if (proxyJump) state.proxy_jump = proxyJump.checked;
-        var techPort = document.getElementById('techPortToggle');
-        if (techPort) state.tech_port = techPort.checked;
+        state.conn_mode = getConnMode();
+        var telNode = document.getElementById('teleportNode');
+        if (telNode) state.teleport_node = telNode.value;
+        var telUser = document.getElementById('teleportUser');
+        if (telUser) state.teleport_user = telUser.value;
         var healthEl = document.getElementById('oneShotIncludeHealth');
         if (healthEl) state.includeHealth = healthEl.checked;
         var reportEl = document.getElementById('oneShotIncludeReport');
@@ -1138,8 +1283,12 @@ async function applySavedUIState(saved) {
     if (!sshAdvChanged) {
         var proxyJump = document.getElementById('proxyJumpToggle');
         if (proxyJump && saved.proxy_jump !== undefined) proxyJump.checked = saved.proxy_jump;
-        var techPort = document.getElementById('techPortToggle');
-        if (techPort && saved.tech_port !== undefined) techPort.checked = saved.tech_port;
+        if (saved.conn_mode) setConnMode(saved.conn_mode);
+        else if (saved.tech_port !== undefined) setConnMode(saved.tech_port ? 'tech_port' : 'vms_mgmt');
+        var telNode = document.getElementById('teleportNode');
+        if (telNode && saved.teleport_node !== undefined) telNode.value = saved.teleport_node;
+        var telUser = document.getElementById('teleportUser');
+        if (telUser && saved.teleport_user) telUser.value = saved.teleport_user;
     }
 }
 
@@ -1291,10 +1440,19 @@ async function loadProfile() {
     if (vipVis) vipVis.value = document.getElementById('vipPool').value || 'main';
     var toggle = document.getElementById('useDefaultCreds');
     toggle.checked = p.use_default_creds !== false;
+    // Apply lock state to match the loaded profile's autofill setting without
+    // clobbering any custom values just loaded from the profile.
+    _setCredLocked(toggle.checked);
     var pj = document.getElementById('proxyJumpToggle');
     if (pj) pj.checked = p.proxy_jump !== false;
-    var tp = document.getElementById('techPortToggle');
-    if (tp) tp.checked = !!p.tech_port;
+    var telNode = document.getElementById('teleportNode');
+    if (telNode) telNode.value = p.teleport_node || '';
+    var telUser = document.getElementById('teleportUser');
+    if (telUser) telUser.value = p.teleport_user || 'vastdata';
+    // Resolve connection mode: explicit conn_mode wins, else derive from
+    // legacy tech_port/teleport booleans for backward compatibility.
+    var mode = p.conn_mode || (p.teleport ? 'teleport' : (p.tech_port ? 'tech_port' : 'vms_mgmt'));
+    setConnMode(mode);
 
     rptDiscoveredRacks = [];
     rptDiscoveredSwitches = [];
@@ -1353,8 +1511,14 @@ async function saveProfile() {
     data.switch_placement = document.getElementById('rptSwitchPlacement').value;
     var pj = document.getElementById('proxyJumpToggle');
     data.proxy_jump = pj ? pj.checked : true;
-    var tpSave = document.getElementById('techPortToggle');
-    data.tech_port = tpSave ? tpSave.checked : false;
+    var connMode = getConnMode();
+    data.conn_mode = connMode;
+    data.tech_port = connMode === 'tech_port';
+    data.teleport = connMode === 'teleport';
+    var telNodeS = document.getElementById('teleportNode');
+    data.teleport_node = telNodeS ? telNodeS.value : '';
+    var telUserS = document.getElementById('teleportUser');
+    data.teleport_user = telUserS ? telUserS.value : 'vastdata';
     try { data.manual_placements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]'); } catch(e) { data.manual_placements = []; }
     data.manual_switch_ips = rptManualSwitchIps;
     var preValEl = document.getElementById('rptPreValidation');
@@ -1408,7 +1572,9 @@ async function deleteProfile() {
 
 function getCredentials() {
     var pj = document.getElementById('proxyJumpToggle');
-    var tp = document.getElementById('techPortToggle');
+    var mode = getConnMode();
+    var telNode = document.getElementById('teleportNode');
+    var telUser = document.getElementById('teleportUser');
     return {
         cluster_ip: document.getElementById('clusterIp').value,
         username: document.getElementById('username').value,
@@ -1419,7 +1585,11 @@ function getCredentials() {
         switch_password: document.getElementById('switchPassword').value,
         vip_pool: document.getElementById('vipPool').value || 'main',
         proxy_jump: pj ? pj.checked : true,
-        tech_port: tp ? tp.checked : false,
+        conn_mode: mode,
+        tech_port: mode === 'tech_port',
+        teleport: mode === 'teleport',
+        teleport_node: telNode ? telNode.value : '',
+        teleport_user: telUser ? telUser.value : 'vastdata',
     };
 }
 
@@ -1789,14 +1959,19 @@ async function rptDiscoverSwitches() {
     var ip = document.getElementById('clusterIp').value.trim();
     if (!ip) { statusEl.textContent = 'Enter Cluster IP first'; return; }
 
-    var tp = document.getElementById('techPortToggle');
+    var mode = getConnMode();
+    var telNode = document.getElementById('teleportNode');
+    var telUser = document.getElementById('teleportUser');
     var payload = {
         cluster_ip: ip,
         auth_method: 'password',
         username: document.getElementById('username').value,
         password: document.getElementById('password').value,
         token: '',
-        tech_port: tp ? tp.checked : false,
+        tech_port: mode === 'tech_port',
+        teleport: mode === 'teleport',
+        teleport_node: telNode ? telNode.value : '',
+        teleport_user: telUser ? telUser.value : 'vastdata',
         node_user: document.getElementById('nodeUser').value || 'vastdata',
         node_password: document.getElementById('nodePassword').value
     };
@@ -1813,10 +1988,26 @@ async function rptDiscoverSwitches() {
         rptDiscoveredSwitches = data.switches || [];
         var savedPlacements = JSON.parse(document.getElementById('rptManualPlacements').value || '[]');
         if (savedPlacements.length > 0) {
-            var discoveredNames = {};
-            rptDiscoveredSwitches.forEach(function(s) { discoveredNames[s.name] = s; });
+            // Index discovered switches by stable id and by name. Match saved
+            // placements by switch_id first; fall back to switch_name for
+            // back-compat with profiles saved before switch_id existed.
+            var discoveredById = {};
+            var discoveredByName = {};
+            rptDiscoveredSwitches.forEach(function(s) {
+                discoveredById[rptSwitchKey(s)] = s;
+                discoveredByName[s.name] = s;
+            });
             rptPlacedSwitches = savedPlacements.filter(function(p) {
-                return discoveredNames[p.switch_name] || rptManualSwitchIps.some(function(m) { return m.ip === p.switch_name; });
+                var match = (p.switch_id && discoveredById[p.switch_id])
+                    || discoveredByName[p.switch_name]
+                    || rptManualSwitchIps.some(function(m) { return m.ip === (p.switch_id || p.switch_name); });
+                if (match && typeof match === 'object') {
+                    // Upgrade legacy placements with the resolved identity.
+                    p.switch_id = p.switch_id || rptSwitchKey(match);
+                    p.display_name = p.display_name || match.display_name || match.name;
+                    p.mgmt_ip = p.mgmt_ip || match.mgmt_ip || '';
+                }
+                return match;
             });
         } else {
             rptPlacedSwitches = [];
@@ -1871,16 +2062,26 @@ function rptRenderPlacementUI() {
     rptRenderPlacedTable();
 }
 
+// Stable unique key for a switch option (mgmt_ip first, then name). Manual-IP
+// entries key on their IP. Falls back to switch_name for placements loaded
+// from older profiles that predate switch_id.
+function rptSwitchKey(s) {
+    return s.switch_id || s.mgmt_ip || s.switch_name || s.name || '';
+}
+
 function rptRenderSwitchDropdown() {
     var swSel = document.getElementById('rptSwitchSelect');
     swSel.innerHTML = '';
-    var placedNames = {};
-    rptPlacedSwitches.forEach(function(p) { placedNames[p.switch_name] = true; });
+    var placedIds = {};
+    rptPlacedSwitches.forEach(function(p) { placedIds[rptSwitchKey(p)] = true; });
     var allSw = rptDiscoveredSwitches.concat(
-        rptManualSwitchIps.filter(function(m) { return !rptDiscoveredSwitches.some(function(s) { return s.name === m.ip; }); })
+        rptManualSwitchIps.filter(function(m) { return !rptDiscoveredSwitches.some(function(s) { return (s.mgmt_ip || s.name) === m.ip; }); })
             .map(function(m) {
                 return {
                     name: m.ip,
+                    display_name: m.ip,
+                    switch_id: m.ip,
+                    mgmt_ip: m.ip,
                     model: m.model_description || 'Manual',
                     model_key: m.model_key || '',
                     height_u: m.height_u || 1
@@ -1888,10 +2089,19 @@ function rptRenderSwitchDropdown() {
             })
     );
     allSw.forEach(function(s) {
-        if (placedNames[s.name]) return;
+        var key = rptSwitchKey(s);
+        if (placedIds[key]) return;
+        var label = s.display_name || s.name;
+        // Show the mgmt IP alongside the (a)/(b) designator so the operator
+        // can verify which physical switch they are placing.
+        if (s.mgmt_ip && s.mgmt_ip !== label) {
+            label += ' (' + s.mgmt_ip + ', ' + s.model + ', ' + s.height_u + 'U)';
+        } else {
+            label += ' (' + s.model + ', ' + s.height_u + 'U)';
+        }
         var opt = document.createElement('option');
-        opt.value = s.name;
-        opt.textContent = s.name + ' (' + s.model + ', ' + s.height_u + 'U)';
+        opt.value = key;
+        opt.textContent = label;
         opt.dataset.modelKey = s.model_key || '';
         opt.dataset.heightU = s.height_u || 1;
         swSel.appendChild(opt);
@@ -1901,17 +2111,22 @@ function rptRenderSwitchDropdown() {
 function rptAddSwitchPlacement() {
     var rackName = document.getElementById('rptRackSelect').value;
     var swSel = document.getElementById('rptSwitchSelect');
-    var swName = swSel.value;
+    var swId = swSel.value;
     var uPos = parseInt(document.getElementById('rptUPositionInput').value, 10);
-    if (!rackName || !swName) return;
+    if (!rackName || !swId) return;
     if (!uPos || uPos < 1) { alert('Enter a valid U position'); return; }
 
-    var sw = rptDiscoveredSwitches.find(function(s) { return s.name === swName; });
+    var sw = rptDiscoveredSwitches.find(function(s) { return rptSwitchKey(s) === swId; });
     var selOpt = swSel.options[swSel.selectedIndex];
     var modelKey = (sw ? (sw.model_key || sw.model || '') : (selOpt ? selOpt.dataset.modelKey : '')) || '';
     var heightU = sw ? sw.height_u : parseInt(selOpt ? selOpt.dataset.heightU : '1', 10) || 1;
+    var switchName = sw ? sw.name : swId;
+    var displayName = sw ? (sw.display_name || sw.name) : swId;
     rptPlacedSwitches.push({
-        switch_name: swName,
+        switch_id: swId,
+        switch_name: switchName,
+        display_name: displayName,
+        mgmt_ip: sw ? (sw.mgmt_ip || '') : swId,
         rack_name: rackName,
         u_position: uPos,
         model: sw ? sw.model : (modelKey || 'Manual'),
@@ -1945,7 +2160,7 @@ function rptRenderPlacedTable() {
             : 'U' + p.u_position;
         var tr = document.createElement('tr');
         tr.innerHTML = '<td>' + p.rack_name + '</td>'
-            + '<td>' + p.switch_name + '</td>'
+            + '<td>' + (p.display_name || p.switch_name) + '</td>'
             + '<td>' + (p.model || '') + '</td>'
             + '<td>' + posLabel + '</td>'
             + '<td><button type="button" class="btn-icon-delete" onclick="rptRemoveSwitchPlacement(' + i + ')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14M10 11v6M14 11v6"/></svg></button></td>';
@@ -1956,7 +2171,10 @@ function rptRenderPlacedTable() {
 function rptSyncManualPlacements() {
     var arr = rptPlacedSwitches.map(function(p) {
         return {
+            switch_id: p.switch_id || p.mgmt_ip || p.switch_name,
             switch_name: p.switch_name,
+            display_name: p.display_name || p.switch_name,
+            mgmt_ip: p.mgmt_ip || '',
             rack_name: p.rack_name,
             u_position: p.u_position,
             model_key: p.model_key || '',
@@ -2036,7 +2254,7 @@ var _validationInFlight = false;
 var _oneShotOutputCursor = 0;
 
 function startReporterLogStream() {
-    stopReporterLogStream();
+    if (reporterLogStream) return;  // ambient stream already listening
     reporterLogStream = new EventSource('/stream/logs');
     reporterLogStream.onmessage = function(e) {
         if (e.data.startsWith(':')) return;
@@ -2053,7 +2271,9 @@ function startReporterLogStream() {
     };
 }
 function stopReporterLogStream() {
-    if (reporterLogStream) { reporterLogStream.close(); reporterLogStream = null; }
+    // Keep the ambient log stream open between runs so global actions such as
+    // "Update Tools" remain visible in Output Results. Intentionally a no-op;
+    // the browser closes the EventSource automatically on page unload.
 }
 
 async function runReporterChecklist() {
@@ -2273,6 +2493,9 @@ async function runReporterGenerate(creds, includeHealth) {
         enable_port_mapping: (creds.switch_password && creds.node_password) ? 'on' : '',
         proxy_jump: creds.proxy_jump ? 'on' : '',
         tech_port: creds.tech_port ? 'on' : '',
+        teleport: creds.teleport ? 'on' : '',
+        teleport_node: creds.teleport_node || '',
+        teleport_user: creds.teleport_user || 'vastdata',
         run_vnetmap: (doVnetmap && doVnetmap.checked) ? '1' : '',
         // RM-13: relay the Autofill Password checkbox so /generate can
         // expand the single switch_password into the full candidate
@@ -2855,6 +3078,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     outputPane = new OutputPaneCtor('outputPane');
     rptRing = new VastProgress('reporterProgress');
     osRing = new VastProgress('oneShotProgressVast');
+    // Open an ambient log stream so global actions (e.g. nav "Update Tools")
+    // surface in Output Results even when no report/health run is active.
+    startReporterLogStream();
     await loadWorkflows();
     await fetchProfiles();
     toggleDefaultCredentials();
@@ -2879,7 +3105,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             document.getElementById('proxyJumpToggle').checked = !!sshCfg.proxy_jump;
         }
         if (sshCfg.tech_port_mode !== undefined) {
-            document.getElementById('techPortToggle').checked = !!sshCfg.tech_port_mode;
+            setConnMode(sshCfg.tech_port_mode ? 'tech_port' : 'vms_mgmt');
         }
         if (adv.autofill_default_passwords !== undefined) {
             document.getElementById('useDefaultCreds').checked = !!adv.autofill_default_passwords;

@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1100" viewBox="0 0 800 1100" font-family="Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="800" height="1100" fill="white"/>
+  <rect x="20" y="20" width="760" height="1060" fill="none" stroke="#e0e0e0" stroke-width="1" stroke-dasharray="3,3" rx="4"/>
+  <text x="770" y="38" text-anchor="end" font-size="9" fill="#9e9e9e">A4 portrait page area (0.5in margins, ~aspect 0.75)</text>
+  <text x="400.0" y="56" text-anchor="middle" font-size="20" font-weight="bold" fill="#212121">Logical Network Diagram &#8212; Target v1.5.8 Mockup</text>
+  <text x="400.0" y="76" text-anchor="middle" font-size="12" font-style="italic" fill="#424242">Cluster m-pr-xpvast-a01 &#8212; 2 racks, 2 switches, 22 nodes, 44 edges</text>
+  <text x="400.0" y="94" text-anchor="middle" font-size="10" fill="#616161">NET-2A: manual switch&#8594;rack honored &#8226; NET-2B: outer/inner exit-side rule</text>
+  <text x="400.0" y="110" text-anchor="middle" font-size="10" fill="#616161">NET-3: subnet-based color &#8226; NET-4: cabling validation</text>
+  <text x="400.0" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#1B8E3F">Cabling validation: PASS &#8226; sw1 (10.103.0.8): 172.16.0.x &#8226; sw2 (10.103.0.9): 172.16.64.x</text>
+  <line x1="129" y1="158" x2="155" y2="158" stroke="#0F9D58" stroke-width="3" opacity="0.85"/>
+  <line x1="159" y1="158" x2="185" y2="158" stroke="#0F9D58" stroke-width="3" stroke-dasharray="6,4" opacity="0.55"/>
+  <text x="193" y="162" font-size="10" fill="#212121">172.16.0.x  (sw1)</text>
+  <line x1="333" y1="158" x2="359" y2="158" stroke="#4285F4" stroke-width="3" opacity="0.85"/>
+  <line x1="363" y1="158" x2="389" y2="158" stroke="#4285F4" stroke-width="3" stroke-dasharray="6,4" opacity="0.55"/>
+  <text x="397" y="162" font-size="10" fill="#212121">172.16.64.x  (sw2)</text>
+  <line x1="547" y1="158" x2="603" y2="158" stroke="#7B1FA2" stroke-width="3" stroke-dasharray="6,3"/>
+  <text x="611" y="162" font-size="10" fill="#212121">IPL/MLAG</text>
+  <text x="400.0" y="184" text-anchor="middle" font-size="9" font-style="italic" fill="#424242">Solid line = same-rack (exits OUTER side of device)</text>
+  <text x="400.0" y="198" text-anchor="middle" font-size="9" font-style="italic" fill="#424242">Dashed line = cross-rack (exits INNER side, routes through gutter)</text>
+  <rect x="40" y="215" width="330" height="605" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1" rx="6"/>
+  <text x="205" y="239" text-anchor="middle" font-size="13" font-weight="bold" fill="#616161">H1U11 (16U) &#8212; CBoxes</text>
+  <rect x="430" y="215" width="330" height="605" fill="#f5f5f5" stroke="#e0e0e0" stroke-width="1" rx="6"/>
+  <text x="595" y="239" text-anchor="middle" font-size="13" font-weight="bold" fill="#616161">H1U12 (10U) &#8212; DBoxes</text>
+  <rect x="130" y="265" width="150" height="56" fill="#e8f5e9" stroke="#4285F4" stroke-width="2" rx="5"/>
+  <text x="205" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#212121">sw2 (10.103.0.9)</text>
+  <text x="205" y="295" text-anchor="middle" font-size="9" fill="#424242">m-pr-xpvast-a01-sw2</text>
+  <text x="205" y="307" text-anchor="middle" font-size="9" fill="#424242">U34-U35</text>
+  <text x="205" y="319" text-anchor="middle" font-size="10" font-weight="bold" fill="#4285F4">172.16.64.x</text>
+  <rect x="520" y="265" width="150" height="56" fill="#e8f5e9" stroke="#0F9D58" stroke-width="2" rx="5"/>
+  <text x="595" y="281" text-anchor="middle" font-size="11" font-weight="bold" fill="#212121">sw1 (10.103.0.8)</text>
+  <text x="595" y="295" text-anchor="middle" font-size="9" fill="#424242">m-pr-xpvast-a01-sw1</text>
+  <text x="595" y="307" text-anchor="middle" font-size="9" fill="#424242">U34-U35</text>
+  <text x="595" y="319" text-anchor="middle" font-size="10" font-weight="bold" fill="#0F9D58">172.16.0.x</text>
+  <line x1="280" y1="293.0" x2="520" y2="293.0" stroke="#7B1FA2" stroke-width="2" stroke-dasharray="6,3"/>
+  <text x="400.0" y="287.0" text-anchor="middle" font-size="10" font-weight="bold" fill="#7B1FA2">IPL/MLAG</text>
+  <rect x="65" y="335" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="352" font-size="10" font-weight="bold" fill="#212121">CB1</text>
+  <text x="113" y="352" font-size="9" fill="#424242">H1U11-CB1-U2-CN1</text>
+  <text x="339" y="352" text-anchor="end" font-size="9" fill="#424242">U2-U3</text>
+  <rect x="65" y="367" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="384" font-size="10" font-weight="bold" fill="#212121">CB2</text>
+  <text x="113" y="384" font-size="9" fill="#424242">H1U11-CB2-U3-CN1</text>
+  <text x="339" y="384" text-anchor="end" font-size="9" fill="#424242">U3-U4</text>
+  <rect x="65" y="399" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="416" font-size="10" font-weight="bold" fill="#212121">CB3</text>
+  <text x="113" y="416" font-size="9" fill="#424242">H1U11-CB3-U5-CN1</text>
+  <text x="339" y="416" text-anchor="end" font-size="9" fill="#424242">U5-U6</text>
+  <rect x="65" y="431" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="448" font-size="10" font-weight="bold" fill="#212121">CB4</text>
+  <text x="113" y="448" font-size="9" fill="#424242">H1U11-CB4-U6-CN1</text>
+  <text x="339" y="448" text-anchor="end" font-size="9" fill="#424242">U6-U7</text>
+  <rect x="65" y="463" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="480" font-size="10" font-weight="bold" fill="#212121">CB5</text>
+  <text x="113" y="480" font-size="9" fill="#424242">H1U11-CB5-U8-CN1</text>
+  <text x="339" y="480" text-anchor="end" font-size="9" fill="#424242">U8-U9</text>
+  <rect x="65" y="495" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="512" font-size="10" font-weight="bold" fill="#212121">CB6</text>
+  <text x="113" y="512" font-size="9" fill="#424242">H1U11-CB6-U9-CN1</text>
+  <text x="339" y="512" text-anchor="end" font-size="9" fill="#424242">U9-U10</text>
+  <rect x="65" y="527" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="544" font-size="10" font-weight="bold" fill="#212121">CB7</text>
+  <text x="113" y="544" font-size="9" fill="#424242">H1U11-CB7-U11-CN1</text>
+  <text x="339" y="544" text-anchor="end" font-size="9" fill="#424242">U11-U12</text>
+  <rect x="65" y="559" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="576" font-size="10" font-weight="bold" fill="#212121">CB8</text>
+  <text x="113" y="576" font-size="9" fill="#424242">H1U11-CB8-U12-CN1</text>
+  <text x="339" y="576" text-anchor="end" font-size="9" fill="#424242">U12-U13</text>
+  <rect x="65" y="591" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="608" font-size="10" font-weight="bold" fill="#212121">CB9</text>
+  <text x="113" y="608" font-size="9" fill="#424242">H1U11-CB9-U14-CN1</text>
+  <text x="339" y="608" text-anchor="end" font-size="9" fill="#424242">U14-U15</text>
+  <rect x="65" y="623" width="280" height="26" fill="#c8e6f8" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="71" y="640" font-size="10" font-weight="bold" fill="#212121">CB10</text>
+  <text x="113" y="640" font-size="9" fill="#424242">H1U11-CB10-U15-CN1</text>
+  <text x="339" y="640" text-anchor="end" font-size="9" fill="#424242">U15-U16</text>
+  <rect x="455" y="349" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="366" font-size="10" font-weight="bold" fill="#212121">DB1</text>
+  <text x="503" y="366" font-size="9" fill="#424242">H1U12-DB1 / DN1+DN2</text>
+  <text x="729" y="366" text-anchor="end" font-size="9" fill="#424242">U2-U3</text>
+  <rect x="455" y="401" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="418" font-size="10" font-weight="bold" fill="#212121">DB2</text>
+  <text x="503" y="418" font-size="9" fill="#424242">H1U12-DB2 / DN1+DN2</text>
+  <text x="729" y="418" text-anchor="end" font-size="9" fill="#424242">U3-U4</text>
+  <rect x="455" y="453" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="470" font-size="10" font-weight="bold" fill="#212121">DB3</text>
+  <text x="503" y="470" font-size="9" fill="#424242">H1U12-DB3 / DN1+DN2</text>
+  <text x="729" y="470" text-anchor="end" font-size="9" fill="#424242">U5-U6</text>
+  <rect x="455" y="505" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="522" font-size="10" font-weight="bold" fill="#212121">DB4</text>
+  <text x="503" y="522" font-size="9" fill="#424242">H1U12-DB4 / DN1+DN2</text>
+  <text x="729" y="522" text-anchor="end" font-size="9" fill="#424242">U6-U7</text>
+  <rect x="455" y="557" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="574" font-size="10" font-weight="bold" fill="#212121">DB5</text>
+  <text x="503" y="574" font-size="9" fill="#424242">H1U12-DB5 / DN1+DN2</text>
+  <text x="729" y="574" text-anchor="end" font-size="9" fill="#424242">U8-U9</text>
+  <rect x="455" y="609" width="280" height="26" fill="#ffe0b2" stroke="#2F2042" stroke-width="1" rx="3"/>
+  <text x="461" y="626" font-size="10" font-weight="bold" fill="#212121">DB6</text>
+  <text x="503" y="626" font-size="9" fill="#424242">H1U12-DB6 / DN1+DN2</text>
+  <text x="729" y="626" text-anchor="end" font-size="9" fill="#424242">U9-U10</text>
+  <path d="M 65.0,348.0 C 15.0,348.0 179.0,391.0 179.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,348.0 C 415.0,348.0 569.0,401.0 569.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,380.0 C 15.0,380.0 184.0,391.0 184.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,380.0 C 415.0,380.0 574.0,401.0 574.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,412.0 C 15.0,412.0 189.0,391.0 189.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,412.0 C 415.0,412.0 579.0,401.0 579.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,444.0 C 15.0,444.0 194.0,391.0 194.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,444.0 C 415.0,444.0 584.0,401.0 584.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,476.0 C 15.0,476.0 199.0,391.0 199.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,476.0 C 415.0,476.0 589.0,401.0 589.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,508.0 C 15.0,508.0 204.0,391.0 204.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,508.0 C 415.0,508.0 594.0,401.0 594.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,540.0 C 15.0,540.0 209.0,391.0 209.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,540.0 C 415.0,540.0 599.0,401.0 599.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,572.0 C 15.0,572.0 214.0,391.0 214.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,572.0 C 415.0,572.0 604.0,401.0 604.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,604.0 C 15.0,604.0 219.0,391.0 219.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,604.0 C 415.0,604.0 609.0,401.0 609.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 65.0,636.0 C 15.0,636.0 224.0,391.0 224.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" opacity="0.85"/>
+  <path d="M 345.0,636.0 C 415.0,636.0 614.0,401.0 614.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,362.0 C 785.0,362.0 621.0,391.0 621.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,362.0 C 385.0,362.0 231.0,401.0 231.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,414.0 C 785.0,414.0 616.0,391.0 616.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,414.0 C 385.0,414.0 226.0,401.0 226.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,466.0 C 785.0,466.0 611.0,391.0 611.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,466.0 C 385.0,466.0 221.0,401.0 221.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,518.0 C 785.0,518.0 606.0,391.0 606.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,518.0 C 385.0,518.0 216.0,401.0 216.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,570.0 C 785.0,570.0 601.0,391.0 601.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,570.0 C 385.0,570.0 211.0,401.0 211.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <path d="M 735.0,622.0 C 785.0,622.0 596.0,391.0 596.0,321.0" fill="none" stroke="#0F9D58" stroke-width="2" opacity="0.85"/>
+  <path d="M 455.0,622.0 C 385.0,622.0 206.0,401.0 206.0,321.0" fill="none" stroke="#4285F4" stroke-width="2" stroke-dasharray="6,4" opacity="0.55"/>
+  <text x="52" y="798" font-size="10" font-style="italic" fill="#424242">10 CBoxes &#215; 1 CNode &#8226; 20 edges total</text>
+  <text x="52" y="812" font-size="9" fill="#424242">10 solid blue &#8594; sw2 &#8226; 10 dashed green &#8594; sw1</text>
+  <text x="442" y="798" font-size="10" font-style="italic" fill="#424242">6 DBoxes &#215; 2 DNodes &#8226; 24 edges total</text>
+  <text x="442" y="812" font-size="9" fill="#424242">12 solid green &#8594; sw1 &#8226; 12 dashed blue &#8594; sw2</text>
+  <rect x="189" y="840" width="130" height="22" rx="11" ry="11" fill="#e6f4ea" stroke="#0F9D58" stroke-width="1.5"/>
+  <line x1="199" y1="851.0" x2="215" y2="851.0" stroke="#0F9D58" stroke-width="2.5"/>
+  <text x="221" y="855.0" font-size="9" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#0F9D58">172.16.0.x (sw1)</text>
+  <rect x="335" y="840" width="130" height="22" rx="11" ry="11" fill="#e3f2fd" stroke="#4285F4" stroke-width="1.5"/>
+  <line x1="345" y1="851.0" x2="361" y2="851.0" stroke="#4285F4" stroke-width="2.5"/>
+  <text x="367" y="855.0" font-size="9" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#4285F4">172.16.64.x (sw2)</text>
+  <rect x="481" y="840" width="130" height="22" rx="11" ry="11" fill="#f3e5f5" stroke="#7B1FA2" stroke-width="1.5"/>
+  <line x1="491" y1="851.0" x2="507" y2="851.0" stroke="#7B1FA2" stroke-width="2.5"/>
+  <text x="513" y="855.0" font-size="9" font-family="Helvetica, Arial, sans-serif" font-weight="bold" fill="#7B1FA2">IPL/MLAG</text>
+  <text x="400.0" y="880" text-anchor="middle" font-size="9" font-style="italic" fill="#424242">Mockup uses smooth bezier curves for clarity; production renderer uses orthogonal waypoints.</text>
+  <text x="400.0" y="896" text-anchor="middle" font-size="9" font-style="italic" fill="#424242">Color, dash pattern, opacity, and routing rule are production-faithful.</text>
+</svg>

@@ -11,9 +11,10 @@ import queue
 import re
 import sys
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from urllib.parse import unquote, urlparse
 
 from flask import (
@@ -44,7 +45,57 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.5.8"
+
+# QP-3 (3): auto-shutdown when the operator closes the browser.
+# OPT-IN and OFF by default.  When enabled, the page sends a lightweight
+# heartbeat every HEARTBEAT_INTERVAL seconds and the watchdog shuts the local
+# server down GRACE seconds after the last heartbeat (never while a job runs).
+# It is off by default because browsers throttle/suspend timers in backgrounded
+# tabs, so an open-but-inactive tab can go silent past the grace window and
+# trigger a premature shutdown.  Set ``auto_shutdown.enabled: true`` to opt in.
+AUTO_SHUTDOWN_DEFAULTS = {
+    "enabled": False,
+    "grace_seconds": 20,
+    "heartbeat_interval_seconds": 5,
+}
+
+
+def evaluate_auto_shutdown(
+    *,
+    enabled: bool,
+    ever_seen: bool,
+    last_heartbeat: Optional[float],
+    now: float,
+    grace_seconds: float,
+    job_running: bool,
+) -> bool:
+    """Decide whether the local web server should auto-shut-down.
+
+    Pure function (no I/O) so the policy is unit-testable.
+
+    Args:
+        enabled: Whether auto-shutdown is turned on.
+        ever_seen: True once at least one browser heartbeat has arrived. Until
+            then we never shut down (headless / pre-browser launch stays up).
+        last_heartbeat: Monotonic timestamp of the most recent heartbeat, or
+            ``None`` if none has been received.
+        now: Current monotonic timestamp.
+        grace_seconds: Seconds of heartbeat silence tolerated before shutdown.
+        job_running: True if any report/health/one-shot/advanced-ops job is
+            active. Shutdown is always deferred while a job runs.
+
+    Returns:
+        True if the server should shut itself down now.
+    """
+    if not enabled:
+        return False
+    if not ever_seen or last_heartbeat is None:
+        return False
+    if job_running:
+        return False
+    return (now - last_heartbeat) >= grace_seconds
+
 
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
@@ -143,6 +194,68 @@ def _rewrite_doc_links_in_html(html: str) -> str:
     return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
 
 
+def _merge_report_overrides(base_config: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """Deep-merge Results-tab Regenerate-PDF form overrides into the
+    YAML-loaded base config.
+
+    The v1.5.8 Results-tab regenerator used a shallow ``update()`` that
+    replaced ``report.template`` with the form's empty ``template: {}``,
+    wiping out YAML's ``template.margin_top: 0.5`` etc. and falling
+    back to ``ReportConfig`` defaults of 1.0" margins — which produced
+    visibly wider borders in the regenerated PDF than in the original.
+
+    This helper deep-merges nested ``template`` and ``pdf`` blocks so:
+
+    - Empty / partial overrides preserve YAML's nested keys (e.g. an
+      empty ``template: {}`` leaves ``margin_*`` and ``page_size``
+      intact).
+    - Explicit override values still take precedence (e.g. an explicit
+      ``template.margin_top: 0.75`` replaces YAML's ``0.5``).
+    - The flat ``organization`` override and the wholesale ``sections``
+      override (where the form is the canonical source) replace
+      YAML's values directly.
+    - The caller's ``base_config`` is NOT mutated; the function
+      returns a deep copy so subsequent merges from the same source
+      stay deterministic.
+
+    Args:
+        base_config: Parsed YAML config dict (typically the result of
+            ``_load_yaml(app.config['CONFIG_PATH'])``).
+        overrides: Form payload with optional keys ``organization``,
+            ``template``, ``pdf``, ``sections``.
+
+    Returns:
+        New config dict with overrides deep-merged in.
+    """
+    import copy
+
+    merged = copy.deepcopy(base_config) if base_config else {}
+    if not overrides:
+        return merged
+
+    report = merged.setdefault("report", {})
+
+    if "organization" in overrides and overrides["organization"] is not None:
+        report["organization"] = overrides["organization"]
+
+    if "template" in overrides and isinstance(overrides["template"], dict):
+        tmpl = report.setdefault("template", {})
+        for k, v in overrides["template"].items():
+            if v is not None:
+                tmpl[k] = v
+
+    if "pdf" in overrides and isinstance(overrides["pdf"], dict):
+        pdf = report.setdefault("pdf", {})
+        for k, v in overrides["pdf"].items():
+            if v is not None:
+                pdf[k] = v
+
+    if "sections" in overrides and isinstance(overrides["sections"], dict):
+        merged.setdefault("data_collection", {})["sections"] = overrides["sections"]
+
+    return merged
+
+
 # ---------------------------------------------------------------------------
 # Flask application factory
 # ---------------------------------------------------------------------------
@@ -185,6 +298,18 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["BUNDLE_DIR"] = str(bundle_dir)
     app.config["DEFAULT_OUTPUT_DIR"] = str(reports_dir)
     app.config["OUTPUT_DIRS"] = {str(reports_dir)}
+    # QP-2: surface any existing per-cluster reports dirs so the /reports
+    # listing keeps working across segmented runs (the read side extends
+    # discovery further; this keeps the flat listing complete).
+    try:
+        from utils.cluster_paths import iter_cluster_roots
+
+        for _root in iter_cluster_roots(data_dir):
+            _cluster_reports = _root / "reports"
+            if _cluster_reports.is_dir():
+                app.config["OUTPUT_DIRS"].add(str(_cluster_reports))
+    except Exception:  # noqa: BLE001 — discovery is best-effort at startup
+        pass
     app.config["CONFIG_PATH"] = str(config_path)
     app.config["CONFIG_TEMPLATE"] = str(bundle_dir / "config" / "config.yaml.template")
     app.config["PROFILES_PATH"] = str(config_dir / "cluster_profiles.json")
@@ -224,6 +349,18 @@ def create_flask_app(config: Optional[Dict[str, Any]] = None) -> Flask:
     app.config["ONESHOT_LAST_BUNDLE"] = {}
     app.config["ONESHOT_LAST_BUNDLE_LOCK"] = threading.Lock()
     app.config["ONESHOT_LAST_BUNDLE_REHYDRATED"] = False
+
+    # QP-3 (3): auto-shutdown state.  ``AUTO_SHUTDOWN`` merges template
+    # defaults with the operator config; ``LAST_HEARTBEAT`` / ``BROWSER_SEEN``
+    # are updated by the heartbeat route and consumed by the watchdog thread
+    # (started in ``run_gui`` so test/headless app instances never self-exit).
+    _shutdown_cfg = dict(AUTO_SHUTDOWN_DEFAULTS)
+    if config and isinstance(config.get("auto_shutdown"), dict):
+        _shutdown_cfg.update(config["auto_shutdown"])
+    app.config["AUTO_SHUTDOWN"] = _shutdown_cfg
+    app.config["LAST_HEARTBEAT"] = None
+    app.config["BROWSER_SEEN"] = False
+    app.config["SHUTDOWN_REQUESTED"] = False
 
     # Developer Mode - enables Advanced Operations page
     # Set via --dev-mode flag or VAST_DEV_MODE environment variable
@@ -360,6 +497,11 @@ def _register_routes(app: Flask) -> None:
             "switch_placement": form.get("switch_placement", "auto"),
             "proxy_jump": form.get("proxy_jump") == "on",
             "tech_port": form.get("tech_port") == "on",
+            # Teleport (tsh) connection mode: app launches a tsh tunnel that
+            # forwards the CNode's API (443) and SSH (22) to local ports.
+            "teleport": form.get("teleport") == "on",
+            "teleport_node": form.get("teleport_node", "").strip(),
+            "teleport_user": form.get("teleport_user", "vastdata").strip() or "vastdata",
             "run_vnetmap": form.get("run_vnetmap") == "1",
             # RM-13: mirror the Test Suite tile so the Reporter tile also
             # honours "Advanced -> Autofill Password".  When ticked, the
@@ -376,6 +518,9 @@ def _register_routes(app: Flask) -> None:
                 params["manual_placements"] = json.loads(raw_mp)
             except (json.JSONDecodeError, TypeError):
                 return jsonify({"error": "Invalid manual_placements JSON"}), 400
+
+        if params["teleport"] and not params["teleport_node"]:
+            return jsonify({"error": "Teleport node target is required for Teleport mode"}), 400
 
         app.config["JOB_CANCEL"].clear()
         thread = threading.Thread(target=_run_report_job, args=(app, params), daemon=True)
@@ -419,6 +564,26 @@ def _register_routes(app: Flask) -> None:
         else:
             threading.Thread(target=lambda: os._exit(0), daemon=True).start()
         return jsonify({"status": "shutting_down"})
+
+    @app.route("/api/heartbeat", methods=["POST"])
+    def heartbeat():
+        """Record a browser liveness ping for the auto-shutdown watchdog.
+
+        The page posts here on an interval and via ``navigator.sendBeacon``
+        on unload.  Once any heartbeat is seen, the watchdog will auto-shut
+        the local server down after the configured grace period of silence
+        (unless a job is running).  Not Developer-gated.
+        """
+        app.config["LAST_HEARTBEAT"] = time.monotonic()
+        app.config["BROWSER_SEEN"] = True
+        cfg = app.config.get("AUTO_SHUTDOWN", AUTO_SHUTDOWN_DEFAULTS)
+        return jsonify(
+            {
+                "status": "ok",
+                "auto_shutdown": bool(cfg.get("enabled", True)),
+                "interval": cfg.get("heartbeat_interval_seconds", 5),
+            }
+        )
 
     # -- SSE log stream -----------------------------------------------------
 
@@ -708,6 +873,111 @@ def _register_routes(app: Flask) -> None:
 
         results = tool_manager.update_all_tools()
         return jsonify(results)
+
+    @app.route("/api/tools/status")
+    def api_tools_status():
+        """Deployment-tool readiness summary for the global nav indicator.
+
+        Returns the per-tool list plus aggregate counts and a
+        ``needs_attention`` flag (any tool missing or >= warn-days old), so the
+        nav can render an orange attention dot on any page.
+        """
+        from tool_manager import ToolManager
+
+        return jsonify(ToolManager().get_tools_status())
+
+    @app.route("/api/tools/update", methods=["POST"])
+    def api_tools_update():
+        """Refresh all deployment tools in the local cache (global nav action).
+
+        Mirrors ``/advanced-ops/tools/update`` but streams progress to the
+        Advanced Ops console when available so the action is observable from any
+        page. Returns the update result plus the refreshed status summary.
+        """
+        from tool_manager import ToolManager
+        from advanced_ops import get_advanced_ops_manager
+
+        tools_log = get_logger("tool_manager")
+        level_map = {"info": 20, "warn": 30, "warning": 30, "error": 40, "success": 20, "debug": 10}
+
+        try:
+            ops_manager = get_advanced_ops_manager()
+        except Exception:
+            ops_manager = None
+
+        def emit(level: str, message: str, details: Optional[str] = None) -> None:
+            # Mirror progress to BOTH the Advanced Ops console buffer and the
+            # logger-backed SSE stream so the action is visible in the
+            # "Output Results" console on any page (not just Advanced Ops).
+            if ops_manager is not None:
+                try:
+                    ops_manager._emit_output(level, message, details)
+                except Exception:  # noqa: BLE001 — console mirror must not break the update
+                    pass
+            if message:
+                tools_log.log(level_map.get(level, 20), message)
+
+        manager = ToolManager(output_callback=emit)
+        results = manager.update_all_tools()
+        results["status"] = manager.get_tools_status()
+        return jsonify(results)
+
+    # -- Usage metrics / ROI (QP-3 item 4) ----------------------------------
+
+    @app.route("/api/telemetry/status")
+    def api_telemetry_status():
+        """Local, anonymous ROI summary + opt-in state for the dashboard.
+
+        Local-only in this release (``transmitted`` is always False); nothing
+        is sent anywhere.  Not Developer-gated.
+        """
+        from usage_metrics import get_usage_metrics
+
+        return jsonify(get_usage_metrics(APP_VERSION).roi_summary())
+
+    @app.route("/api/telemetry/consent", methods=["POST"])
+    def api_telemetry_consent():
+        """Record the operator's opt-in / opt-out choice for usage metrics."""
+        from usage_metrics import get_usage_metrics
+
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get("enabled", False))
+        metrics = get_usage_metrics(APP_VERSION)
+        metrics.set_consent(enabled)
+        return jsonify(metrics.roi_summary())
+
+    # -- In-app update check (QP-3 item 2 — notify only) --------------------
+
+    @app.route("/api/update/status")
+    def api_update_status():
+        """Report whether a newer release is available (notify-only, cached).
+
+        Reads the ``updates`` config for the enable flag and channel.  Pass
+        ``?force=1`` to bypass the in-process cache.  Never Developer-gated and
+        never raises — a failed check returns ``update_available: false``.
+        """
+        cfg = app.config.get("REPORT_CONFIG") or {}
+        upd_cfg = cfg.get("updates") if isinstance(cfg.get("updates"), dict) else {}
+        # The running build is a pre-release if its version carries a suffix
+        # (e.g. ``-beta``); used by the nav pill's PRE-RELEASE state.
+        is_prerelease = "-" in APP_VERSION
+        if not upd_cfg.get("enabled", True):
+            return jsonify(
+                {
+                    "update_available": False,
+                    "current_version": APP_VERSION,
+                    "is_prerelease": is_prerelease,
+                    "enabled": False,
+                }
+            )
+        from updater import get_update_status
+
+        include_pre = bool(upd_cfg.get("include_prereleases", False))
+        force = request.args.get("force") in ("1", "true", "yes")
+        status = get_update_status(APP_VERSION, include_prereleases=include_pre, force=force)
+        status["enabled"] = True
+        status["is_prerelease"] = is_prerelease
+        return jsonify(status)
 
     @app.route("/advanced-ops/tools/deploy", methods=["POST"])
     def advanced_ops_tools_deploy():
@@ -1243,18 +1513,12 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"error": f"Failed to load JSON: {exc}"}), 400
 
         base_config = _load_yaml(app.config["CONFIG_PATH"])
-        if overrides:
-            base_config.setdefault("report", {}).update(
-                {k: v for k, v in overrides.items() if k in ("organization", "template", "pdf")}
-            )
-            if "template" in overrides:
-                base_config["report"].setdefault("template", {}).update(overrides["template"])
-            if "pdf" in overrides:
-                base_config["report"].setdefault("pdf", {}).update(overrides["pdf"])
-            if "sections" in overrides:
-                base_config.setdefault("data_collection", {})["sections"] = overrides["sections"]
+        # Deep-merge so empty/partial form overrides do NOT wipe out
+        # YAML keys (e.g. template.margin_top). See _merge_report_overrides
+        # for the full v1.5.8 follow-up rationale.
+        merged_config = _merge_report_overrides(base_config, overrides)
 
-        report_config = ReportConfig.from_yaml(base_config)
+        report_config = ReportConfig.from_yaml(merged_config)
         builder = create_report_builder(
             config=report_config,
             library_path=app.config.get("LIBRARY_PATH"),
@@ -1330,6 +1594,10 @@ def _register_routes(app: Flask) -> None:
             "manual_switch_ips": [],
             "proxy_jump": True,
             "tech_port": False,
+            "conn_mode": "tech_port",
+            "teleport": False,
+            "teleport_node": "",
+            "teleport_user": "vastdata",
             "rpt_pre_validation": True,
             "rpt_run_reporter": True,
             "rpt_health_check": True,
@@ -1377,24 +1645,28 @@ def _register_routes(app: Flask) -> None:
             return jsonify({"error": "Cluster IP is required"}), 400
 
         is_tech_port = bool(data.get("tech_port"))
+        is_teleport = bool(data.get("teleport"))
         probe_port = 22 if is_tech_port else 443
 
         # --- Fast reachability probe before any API work ---
-        try:
-            sock = socket.create_connection((cluster_ip, probe_port), timeout=CONNECT_PROBE_TIMEOUT)
-            sock.close()
-        except OSError:
-            label = "SSH (Tech Port)" if is_tech_port else "HTTPS"
-            return (
-                jsonify(
-                    {
-                        "error": f"Unable to reach {cluster_ip}:{probe_port} — {label} connection "
-                        f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
-                        f"the cluster IP is correct and reachable."
-                    }
-                ),
-                504,
-            )
+        # Teleport mode reaches the cluster only through a tsh tunnel that is
+        # not up yet, so the direct cluster_ip probe is skipped.
+        if not is_teleport:
+            try:
+                sock = socket.create_connection((cluster_ip, probe_port), timeout=CONNECT_PROBE_TIMEOUT)
+                sock.close()
+            except OSError:
+                label = "SSH (Tech Port)" if is_tech_port else "HTTPS"
+                return (
+                    jsonify(
+                        {
+                            "error": f"Unable to reach {cluster_ip}:{probe_port} — {label} connection "
+                            f"timed out after {CONNECT_PROBE_TIMEOUT}s. Verify "
+                            f"the cluster IP is correct and reachable."
+                        }
+                    ),
+                    504,
+                )
 
         username = password = token = None
         if data.get("auth_method") == "token":
@@ -1402,6 +1674,12 @@ def _register_routes(app: Flask) -> None:
         else:
             username = data.get("username")
             password = data.get("password")
+
+        # Auto-fill VAST default VMS credentials when use_default_creds is
+        # active and the form didn't supply explicit username/password.
+        if data.get("use_default_creds") and not username and not password and not token:
+            username = "support"
+            password = "654321"
 
         tunnel = None
         try:
@@ -1411,6 +1689,7 @@ def _register_routes(app: Flask) -> None:
             config["api"]["max_retries"] = 0
 
             tunnel_address = None
+            tunnel_host = None
             if data.get("tech_port"):
                 from utils.vms_tunnel import VMSTunnel
 
@@ -1421,6 +1700,21 @@ def _register_routes(app: Flask) -> None:
                 )
                 tunnel.connect()
                 tunnel_address = tunnel.local_bind_address
+                tunnel_host = tunnel.vms_management_ip
+            elif is_teleport:
+                from utils.teleport_tunnel import TeleportTunnel, options_from_config
+
+                node = (data.get("teleport_node") or "").strip()
+                if not node:
+                    return jsonify({"error": "Teleport node target is required for Teleport mode"}), 400
+                tunnel = TeleportTunnel(
+                    node,
+                    data.get("teleport_user", "vastdata"),
+                    api_remote_host=_teleport_api_remote_host(cluster_ip),
+                    **options_from_config(config),
+                )
+                tunnel.connect()
+                tunnel_address = tunnel.api_local_address
 
             handler = create_vast_api_handler(
                 cluster_ip=cluster_ip,
@@ -1429,6 +1723,7 @@ def _register_routes(app: Flask) -> None:
                 token=token,
                 config=config,
                 tunnel_address=tunnel_address,
+                tunnel_host=tunnel_host,
             )
             if not handler.authenticate():
                 return jsonify({"error": "Authentication failed"}), 401
@@ -1456,9 +1751,17 @@ def _register_routes(app: Flask) -> None:
                         "name": sw.get("name", "Unknown"),
                         "model": model,
                         "serial": sw.get("serial", ""),
+                        "mgmt_ip": sw.get("mgmt_ip", ""),
                         "height_u": rd._get_device_height_units(model),
                     }
                 )
+            # Assign a stable unique ``switch_id`` (mgmt_ip) and disambiguated
+            # ``display_name`` (e.g. "Spine-B (a)"/"(b)") so two switches that
+            # share a name (different IPs) remain distinct in the placement
+            # dropdown and downstream report/diagrams.
+            from utils.switch_identity import assign_switch_designators
+
+            assign_switch_designators(switches)
 
             return jsonify({"racks": racks, "switches": switches})
         except Exception as exc:
@@ -1606,13 +1909,28 @@ def _register_routes(app: Flask) -> None:
         }
 
         try:
-            vnetmap_file = _find_latest_vnetmap_output(cluster_ip)
+            reports = _find_report_jsons_for_cluster(cluster_ip, app.config["DEFAULT_OUTPUT_DIR"])
+
+            # QP-2: scope the vnetmap lookup to this cluster's folder first.
+            # The connection IP is shared across tech-port clusters, so resolve
+            # the segmentation key from the newest report JSON's identity.
+            cluster_key = None
+            if reports:
+                import json as _json
+                from utils.cluster_paths import resolve_cluster_key_from_summary
+
+                try:
+                    with open(reports[0]) as f:
+                        cluster_key = resolve_cluster_key_from_summary(_json.load(f))
+                except Exception:  # noqa: BLE001 - advisory only
+                    cluster_key = None
+
+            vnetmap_file = _find_latest_vnetmap_output(cluster_ip, cluster_key=cluster_key)
             if vnetmap_file and vnetmap_file.exists():
                 result["exists"] = True
                 result["filename"] = vnetmap_file.name
                 result["created_at"] = _parse_vnetmap_timestamp(vnetmap_file.name)
 
-            reports = _find_report_jsons_for_cluster(cluster_ip, app.config["DEFAULT_OUTPUT_DIR"])
             if len(reports) >= 2:
                 import json as _json
 
@@ -1742,6 +2060,9 @@ def _extract_oneshot_credentials(data: Dict[str, Any]) -> Dict[str, Any]:
         "manual_placements": data.get("manual_placements", []),
         "manual_switch_ips": data.get("manual_switch_ips", []),
         "tech_port": data.get("tech_port", False),
+        "teleport": data.get("teleport", False),
+        "teleport_node": (data.get("teleport_node", "") or "").strip(),
+        "teleport_user": (data.get("teleport_user", "vastdata") or "vastdata").strip() or "vastdata",
     }
 
 
@@ -1888,6 +2209,92 @@ class _JobCancelled(Exception):
     """Raised when the user cancels a running report job."""
 
 
+def _teleport_api_remote_host(cluster_ip: str) -> str:
+    """Resolve the host the Teleport API ``-L`` forward should terminate on.
+
+    In Teleport mode the operator enters the VMS the report targets in the
+    Cluster IP field. A routable VMS management IP/VIP is forwarded directly
+    (``-L <port>:<vip>:443``) so the VMS is reachable from *any* node, not just
+    the one that happens to host it. A blank or loopback value falls back to the
+    node's own loopback (``127.0.0.1``), preserving the prior node-local behavior.
+    """
+    host = (cluster_ip or "").strip()
+    if not host or host == "localhost" or host.startswith("127."):
+        return "127.0.0.1"
+    return host
+
+
+def _any_job_running(app: Flask) -> bool:
+    """True if any report/health/one-shot/advanced-ops job is active.
+
+    The auto-shutdown watchdog uses this to defer exit while work is in
+    flight even if the operator has closed every browser tab.
+    """
+    if app.config.get("JOB_RUNNING") or app.config.get("HEALTH_JOB_RUNNING") or app.config.get("ONESHOT_RUNNING"):
+        return True
+    try:
+        from advanced_ops import get_advanced_ops_manager
+
+        manager = get_advanced_ops_manager()
+        if manager is not None and getattr(manager, "is_running", None) and manager.is_running():
+            return True
+    except Exception:
+        # Advanced-ops manager is optional; never let its absence block or
+        # crash the watchdog decision.
+        pass
+    return False
+
+
+def _record_usage(event: str, properties: Optional[Dict[str, Any]] = None) -> None:
+    """Best-effort, anonymous usage event (QP-3 item 4).
+
+    No-op unless the operator has opted in.  Never raises — safe to call from
+    job completion paths.
+    """
+    try:
+        from usage_metrics import get_usage_metrics
+
+        get_usage_metrics(APP_VERSION).record_event(event, properties)
+    except Exception:  # pragma: no cover - telemetry must never break a job
+        pass
+
+
+def _auto_shutdown_watchdog(app: Flask, server: Any) -> None:
+    """Background loop that stops ``server`` after the browser goes away.
+
+    Polls the heartbeat state on a short interval and, once the page has
+    been seen and then goes silent past the grace window (with no job
+    running), triggers a graceful server shutdown.  Intended to run as a
+    daemon thread started from :func:`main.run_gui`.
+    """
+    cfg = app.config.get("AUTO_SHUTDOWN", AUTO_SHUTDOWN_DEFAULTS)
+    if not cfg.get("enabled", True):
+        return
+    grace = float(cfg.get("grace_seconds", 20))
+    poll = max(1.0, float(cfg.get("heartbeat_interval_seconds", 5)) / 2.0)
+    log = get_logger(__name__)
+    while True:
+        time.sleep(poll)
+        if app.config.get("SHUTDOWN_REQUESTED"):
+            return
+        should = evaluate_auto_shutdown(
+            enabled=bool(cfg.get("enabled", True)),
+            ever_seen=bool(app.config.get("BROWSER_SEEN")),
+            last_heartbeat=app.config.get("LAST_HEARTBEAT"),
+            now=time.monotonic(),
+            grace_seconds=grace,
+            job_running=_any_job_running(app),
+        )
+        if should:
+            app.config["SHUTDOWN_REQUESTED"] = True
+            log.info("Auto-shutdown: browser closed and idle for %.0fs; stopping server.", grace)
+            try:
+                server.shutdown()
+            except Exception as exc:  # pragma: no cover - defensive
+                log.warning("Auto-shutdown server.shutdown() failed: %s", exc)
+            return
+
+
 def _check_cancel(app: Flask) -> None:
     """Raise _JobCancelled if the cancel event has been set."""
     if app.config["JOB_CANCEL"].is_set():
@@ -1907,6 +2314,7 @@ def _preprobe_switch_passwords_for_job(
     switch_password_candidates: List[str],
     has_vnetmap: bool,
     has_health_switch: bool,
+    logger: Optional[Any] = None,
 ) -> Dict[str, str]:
     """RM-15: pre-probe every switch once to build a ``{ip: password}`` map.
 
@@ -1958,7 +2366,15 @@ def _preprobe_switch_passwords_for_job(
     """
     if not (has_vnetmap or has_health_switch):
         return {}
-    if not switch_password_candidates or len(switch_password_candidates) < 2:
+    # Engage with a single candidate too: even on a homogeneous fleet,
+    # probing validates the operator's Switch Password against every switch
+    # *before* vnetmap runs and lets ``vnetmap.py --multiple-passwords``
+    # target each switch with its verified password.  More importantly, a
+    # failed probe here surfaces a clear, actionable credential error in the
+    # operator log instead of letting vnetmap fail later with the opaque
+    # "Unable to determine suitable switch API".  Only a truly empty
+    # candidate list (autofill off, no password typed) short-circuits.
+    if not switch_password_candidates:
         return {}
 
     try:
@@ -1971,7 +2387,22 @@ def _preprobe_switch_passwords_for_job(
         return {}
 
     jump_kwargs: Dict[str, Any] = {}
-    if params.get("proxy_jump", True):
+    teleport_ssh_host = params.get("ssh_host")
+    if teleport_ssh_host:
+        # Teleport mode: the switches (and the real cluster mgmt IP) are not
+        # reachable from the operator's machine — switch SSH must proxy-jump
+        # through the CNode whose sshd is forwarded to 127.0.0.1:<ssh_port>.
+        # Jumping through ``cluster_ip`` here (the legacy path below) would
+        # fail every probe, leaving ``switch_password_by_ip`` empty and
+        # forcing vnetmap onto its single-``-p`` candidate sweep, which can
+        # never satisfy a heterogeneous fleet.
+        jump_kwargs = {
+            "jump_host": teleport_ssh_host,
+            "jump_user": params.get("node_user", "vastdata"),
+            "jump_password": params.get("node_password", ""),
+            "jump_port": int(params.get("ssh_port", 22) or 22),
+        }
+    elif params.get("proxy_jump", True):
         jump_kwargs = {
             "jump_host": params.get("cluster_ip", ""),
             "jump_user": params.get("node_user", "vastdata"),
@@ -1985,6 +2416,7 @@ def _preprobe_switch_passwords_for_job(
             switch_ips=switch_ips,
             switch_user=params.get("switch_user", "cumulus"),
             candidates=list(switch_password_candidates),
+            logger=logger,
             **jump_kwargs,
         )
         return result
@@ -2094,6 +2526,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
 
         # Tech Port tunnel (auto-discover VMS and forward API traffic)
         tunnel_address = None
+        tunnel_host = None
         if params.get("tech_port"):
             from utils.vms_tunnel import VMSTunnel
 
@@ -2105,11 +2538,35 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             )
             tunnel.connect()
             tunnel_address = tunnel.local_bind_address
+            tunnel_host = tunnel.vms_management_ip
             job_logger.info(
                 "VMS discovered: internal=%s, management=%s, tunnel=%s",
                 tunnel.vms_internal_ip,
                 tunnel.vms_management_ip,
                 tunnel_address,
+            )
+        elif params.get("teleport"):
+            from utils.teleport_tunnel import TeleportTunnel, options_from_config
+
+            job_logger.info("Teleport mode: launching tsh tunnel to %s ...", params.get("teleport_node"))
+            tunnel = TeleportTunnel(
+                params["teleport_node"],
+                params.get("teleport_user", "vastdata"),
+                api_remote_host=_teleport_api_remote_host(params["cluster_ip"]),
+                **options_from_config(config),
+            )
+            tunnel.connect()
+            tunnel_address = tunnel.api_local_address
+            # SSH consumers (vnetmap deploy/run, switch proxy-jump) target the
+            # forwarded local SSH endpoint instead of cluster_ip:22.
+            ssh_host, ssh_port = tunnel.ssh_endpoint
+            params["ssh_host"] = ssh_host
+            params["ssh_port"] = ssh_port
+            job_logger.info(
+                "Teleport tunnel active: API %s, SSH %s:%d",
+                tunnel_address,
+                ssh_host,
+                ssh_port,
             )
 
         # Build components
@@ -2120,6 +2577,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             token=token,
             config=config,
             tunnel_address=tunnel_address,
+            tunnel_host=tunnel_host,
         )
         data_extractor = create_data_extractor(config)
         report_config = ReportConfig.from_yaml(config)
@@ -2136,6 +2594,17 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         if not api_handler.authenticate():
             raise RuntimeError("Authentication failed")
         job_logger.info("Authentication successful")
+
+        # QP-2: resolve the per-cluster paths/key now (post-auth) so the
+        # optional vnetmap workflow's output is segmented and the vnetmap
+        # finder searches this cluster's folder, never another tech-port
+        # cluster sharing 192.168.2.2.  Gated on output.segment_by_cluster.
+        seg_cp: Optional[Any] = None
+        seg_key: Optional[str] = None
+        try:
+            seg_cp, seg_key = _resolve_early_cluster_paths(api_handler, config, params["cluster_ip"])
+        except Exception as seg_exc:  # noqa: BLE001 - never block the job
+            job_logger.warning("QP-2 early identity resolution failed (%s)", seg_exc)
 
         # RM-15: pre-probe switches once so the Fast path of
         # ``VnetmapWorkflow`` (``vnetmap.py --multiple-passwords``) can
@@ -2156,10 +2625,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             switch_password_candidates=switch_password_candidates,
             has_vnetmap=has_vnetmap,
             has_health_switch=has_health_switch_preprobe,
+            logger=job_logger,
         )
         if switch_password_by_ip:
             job_logger.info(
-                "RM-15: pre-probed %d switch(es); vnetmap --multiple-passwords fast path will engage",
+                "Pre-probed %d switch(es); vnetmap --multiple-passwords fast path will engage",
                 len(switch_password_by_ip),
             )
 
@@ -2178,6 +2648,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         getattr(_logging, level.upper(), _logging.INFO), msg
                     )
                 )
+                # QP-2: segment vnetmap script output under clusters/<key>/.
+                # hasattr-guarded to match the one-shot wiring and tolerate
+                # duck-typed workflow doubles in tests.
+                if seg_cp is not None and hasattr(vnetmap_wf, "set_output_dir"):
+                    vnetmap_wf.set_output_dir(seg_cp.scripts)
                 vnetmap_creds: Dict[str, Any] = {
                     "cluster_ip": params["cluster_ip"],
                     "node_user": params.get("node_user", "vastdata"),
@@ -2199,6 +2674,11 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                 # docs/issues/SR-1/01-summary.md for full repro.
                 if tunnel_address:
                     vnetmap_creds["tunnel_address"] = tunnel_address
+                # Teleport mode: SSH targets the forwarded local endpoint
+                # (127.0.0.1:<sshPort>) rather than cluster_ip:22.
+                if params.get("ssh_host"):
+                    vnetmap_creds["ssh_host"] = params["ssh_host"]
+                    vnetmap_creds["ssh_port"] = params.get("ssh_port", 22)
                 # RM-13: feed the resolved candidate list so
                 # ``vnetmap.py --multiple-passwords`` gets every published
                 # default when Autofill Password is active.
@@ -2286,10 +2766,12 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         switch_ssh_config["password_by_ip"] = dict(switch_password_by_ip)
                     if params.get("proxy_jump", True):
                         switch_ssh_config["proxy_jump"] = {
-                            "host": params["cluster_ip"],
+                            "host": params.get("ssh_host") or params["cluster_ip"],
                             "username": params.get("node_user", "vastdata"),
                             "password": params.get("node_password", ""),
                         }
+                        if params.get("ssh_host"):
+                            switch_ssh_config["proxy_jump"]["port"] = params.get("ssh_port", 22)
 
                     checker = HealthChecker(
                         api_handler=api_handler,
@@ -2322,7 +2804,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         )
         use_vnetmap = False
         if params.get("enable_port_mapping"):
-            vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"])
+            vnetmap_file = _find_latest_vnetmap_output(params["cluster_ip"], cluster_key=seg_key)
             if vnetmap_file:
                 job_logger.info("Found vnetmap output: %s — using as port mapping source", vnetmap_file.name)
                 try:
@@ -2382,6 +2864,27 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
         cluster_ip = params["cluster_ip"]
         processed_data["cluster_ip"] = cluster_ip
 
+        # QP-2: segment all artifacts under clusters/<key>/ once the cluster
+        # identity is known (post-extraction).  Gated on output.segment_by_cluster
+        # so the flag-off path is byte-for-byte the legacy flat layout.
+        from utils.cluster_output import build_marker_identity, cluster_paths_if_enabled
+        from utils.cluster_paths import write_cluster_marker
+
+        # Reuse the early-resolved paths so the report lands in the same folder
+        # as any vnetmap output written above; only re-resolve if early
+        # resolution was skipped (e.g. segmentation toggled mid-flight).
+        cp = seg_cp if seg_cp is not None else cluster_paths_if_enabled(config, processed_data)
+        if cp is not None:
+            cp.ensure_all()
+            output_dir = cp.reports
+            app.config["OUTPUT_DIRS"].add(str(output_dir.resolve()))
+            report_builder.segment_by_cluster = True
+            write_cluster_marker(
+                cp.root,
+                build_marker_identity(processed_data, cluster_ip=cluster_ip, version=APP_VERSION),
+            )
+            job_logger.info("QP-2 segmentation active: writing under %s", cp.root)
+
         _update_progress(app, "JOB_PROGRESS", "json_save", phase_start["json_save"], "Saving JSON data...")
         json_path = output_dir / f"vast_data_{cluster_name}_{timestamp}.json"
         data_extractor.save_processed_data(processed_data, str(json_path))
@@ -2414,6 +2917,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     "json": json_path.name,
                     "cluster": cluster_name,
                 }
+                _record_usage("report_generated", {"operation": "report", "success": True})
 
     except _JobCancelled:
         job_logger = get_logger("job")
@@ -2527,23 +3031,70 @@ def _parse_vnetmap_timestamp(filename: str) -> str:
     return ""
 
 
-def _find_latest_vnetmap_output(cluster_ip: str) -> Optional[Path]:
+def _resolve_early_cluster_paths(
+    api_handler: Any, config: Dict[str, Any], cluster_ip: str
+) -> Tuple[Optional[Any], Optional[str]]:
+    """QP-2: resolve the per-cluster paths + key early (post-auth, pre-vnetmap).
+
+    The optional vnetmap workflow runs before full data collection, so its
+    output would otherwise leak to the flat dir.  Fetching the cluster
+    identity right after authentication lets us segment that output and scope
+    the vnetmap finder to this cluster's folder.  Returns ``(None, None)``
+    when segmentation is disabled.  A provisional IP-based key is used when the
+    identity fetch yields nothing, so artifacts still segment coherently.
+    """
+    from utils import get_data_dir
+    from utils.cluster_paths import cluster_paths, resolve_cluster_key, segment_enabled
+
+    if not segment_enabled(config):
+        return None, None
+
+    name = psnt = guid = None
+    try:
+        info = api_handler.get_cluster_info()
+        if info is not None:
+            name = getattr(info, "name", None)
+            guid = getattr(info, "guid", None)
+            psnt = getattr(info, "psnt", None)
+    except Exception:  # noqa: BLE001 - identity is best-effort
+        pass
+
+    name = None if name in (None, "", "Unknown") else name
+    guid = None if guid in (None, "", "Unknown") else guid
+    psnt = None if psnt in (None, "", "Unknown") else psnt
+
+    key = resolve_cluster_key(name=name, psnt=psnt, guid=guid, cluster_ip=cluster_ip)
+    cp = cluster_paths(get_data_dir(), key)
+    cp.ensure_all()
+    return cp, key
+
+
+def _find_latest_vnetmap_output(cluster_ip: str, cluster_key: Optional[str] = None) -> Optional[Path]:
     """Find the most recent vnetmap output file for a given cluster IP.
 
-    Scans ``output/scripts/`` for files matching
-    ``vnetmap_output_{cluster_ip}_*.txt``.  Does NOT fall back to
-    files from other clusters to avoid cross-contamination of port
-    mapping data.
+    With QP-2 segmentation, searches the current cluster's
+    ``clusters/<key>/output/scripts`` dir first (when ``cluster_key`` is
+    given), then falls back to the legacy flat ``output/scripts`` so files
+    written before segmentation still resolve.  Matches only
+    ``vnetmap_output_{cluster_ip}_*.txt`` to avoid cross-cluster
+    contamination of port mapping data.
     """
     from utils import get_data_dir
 
-    scripts_dir = get_data_dir() / "output" / "scripts"
-    if not scripts_dir.is_dir():
-        return None
+    data_dir = get_data_dir()
+    search_dirs: List[Path] = []
+    if cluster_key:
+        from utils.cluster_paths import cluster_paths
 
-    exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
-    if exact:
-        return Path(exact[0])
+        search_dirs.append(cluster_paths(data_dir, cluster_key).scripts)
+    search_dirs.append(data_dir / "output" / "scripts")
+
+    for scripts_dir in search_dirs:
+        if not scripts_dir.is_dir():
+            continue
+        exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
+        if exact:
+            return Path(exact[0])
 
     logger.info("No vnetmap output file found for cluster %s", cluster_ip)
     return None
@@ -2603,6 +3154,16 @@ def _collect_port_mapping_web(
             if cnode_ips:
                 logger.info(f"Found {len(cnode_ips)} CNode IPs from hardware data: {cnode_ips}")
 
+        # Teleport mode: the tsh tunnel lands on a single CNode reachable at
+        # the forwarded local SSH endpoint.  Pin the CNode list to that
+        # endpoint (mirrors the Tech-Port one-shot ``cnode_ips = [cluster_ip]``
+        # pattern) so clush runs over the tunnel instead of unreachable
+        # cluster-internal CNode IPs.
+        teleport_ssh_host = params.get("ssh_host")
+        teleport_ssh_port = int(params.get("ssh_port", 22) or 22)
+        if teleport_ssh_host:
+            cnode_ips = [teleport_ssh_host]
+
         if not cnode_ips:
             logger.warning("No CNode management IP found — cannot collect port mapping")
             return None
@@ -2649,6 +3210,8 @@ def _collect_port_mapping_web(
                     tunnel_address=tunnel_addr,
                     switch_hostname_map=switch_hostname_map or None,
                     spine_ips=spine_ips_web or None,
+                    ssh_host=teleport_ssh_host or None,
+                    ssh_port=teleport_ssh_port,
                 )
                 result = mapper.collect_port_mapping()
                 if result.get("available"):
@@ -2761,6 +3324,47 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
         _update_progress(app, "HEALTH_JOB_PROGRESS", "save", 96, "Saving results...")
 
         output_dir = config.get("output", {}).get("directory", "output")
+        # QP-2: segment standalone health output under the per-cluster tree.
+        # The report-embedded HealthChecker has no PSNT/GUID here, so the key
+        # is resolved from the report's name + IP (write_cluster_marker records
+        # full identity).  Gated on output.segment_by_cluster.
+        from utils.cluster_output import cluster_paths_if_enabled
+        from utils.cluster_paths import write_cluster_marker
+
+        # QP-2: include PSNT/GUID so the standalone health job shares ONE
+        # folder with the report path (clusters/<name>__<psnt>/), instead of
+        # producing a name-only clusters/<name>/ sibling.  In tech-port mode
+        # the connection IP is identical across clusters, so PSNT is the only
+        # distinguishing identity.
+        hc_psnt = hc_guid = None
+        try:
+            hc_info = api_handler.get_cluster_info()
+            if hc_info is not None:
+                hc_psnt = getattr(hc_info, "psnt", None)
+                hc_guid = getattr(hc_info, "guid", None)
+        except Exception:  # noqa: BLE001 - identity is best-effort
+            pass
+        hc_psnt = None if hc_psnt in (None, "", "Unknown") else hc_psnt
+        hc_guid = None if hc_guid in (None, "", "Unknown") else hc_guid
+
+        health_identity = {
+            "cluster_summary": {"name": report.cluster_name, "psnt": hc_psnt, "guid": hc_guid},
+            "cluster_ip": report.cluster_ip,
+        }
+        cp = cluster_paths_if_enabled(config, health_identity)
+        if cp is not None:
+            cp.ensure("health")
+            output_dir = str(cp.output)
+            write_cluster_marker(
+                cp.root,
+                {
+                    "name": report.cluster_name,
+                    "psnt": hc_psnt,
+                    "guid": hc_guid,
+                    "cluster_ip": report.cluster_ip,
+                    "version": APP_VERSION,
+                },
+            )
         json_path = checker.save_json(report, output_dir)
         remediation_path = checker.generate_remediation_report(report, output_dir)
 
@@ -2774,6 +3378,7 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
                 "remediation_path": remediation_path,
                 "cluster": report.cluster_name,
             }
+        _record_usage("health_check", {"operation": "health", "success": True})
         job_logger.info("Health check completed successfully")
 
     except Exception as exc:

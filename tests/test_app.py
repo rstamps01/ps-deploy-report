@@ -16,7 +16,32 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from app import create_flask_app, _list_reports, _read_config, _write_config, APP_VERSION
+from app import (
+    create_flask_app,
+    _list_reports,
+    _read_config,
+    _write_config,
+    APP_VERSION,
+    evaluate_auto_shutdown,
+    _any_job_running,
+    _teleport_api_remote_host,
+)
+
+
+class TestTeleportApiRemoteHost(unittest.TestCase):
+    """_teleport_api_remote_host resolves the API forward target for Teleport."""
+
+    def test_routable_vip_is_forwarded_directly(self):
+        self.assertEqual(_teleport_api_remote_host("10.84.214.5"), "10.84.214.5")
+
+    def test_loopback_falls_back_to_node_loopback(self):
+        self.assertEqual(_teleport_api_remote_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("127.0.0.2"), "127.0.0.1")
+
+    def test_blank_and_localhost_fall_back(self):
+        self.assertEqual(_teleport_api_remote_host(""), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("localhost"), "127.0.0.1")
+        self.assertEqual(_teleport_api_remote_host("  "), "127.0.0.1")
 
 
 class TestFlaskAppFactory(unittest.TestCase):
@@ -244,15 +269,23 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
         mock_build.assert_not_called()
         handler.get_switches_detail.assert_not_called()
 
-    def test_skipped_when_single_candidate(self):
-        # One candidate = nothing to probe; the legacy single-``-p``
-        # path is trivially correct for homogeneous fleets and runs
-        # per-switch SSH anyway.  Skipping here also saves a full
-        # ``/api/switches/`` call on clusters that don't use Autofill.
+    def test_probes_with_single_candidate(self):
+        # A single candidate now engages the probe (changed from the earlier
+        # ``< 2`` short-circuit).  Even on a homogeneous fleet this validates
+        # the operator's Switch Password against every switch *before*
+        # vnetmap runs, lets ``vnetmap.py --multiple-passwords`` target each
+        # switch with its verified password, and — critically — surfaces a
+        # clear credential error in the operator log when the switch rejects
+        # the password, instead of vnetmap later failing with the opaque
+        # "Unable to determine suitable switch API".
         from app import _preprobe_switch_passwords_for_job
 
-        handler = self._make_api_handler(["10.0.0.1"])
-        with patch("utils.switch_ssh_probe.build_switch_password_by_ip") as mock_build:
+        handler = self._make_api_handler(["10.0.0.1", "10.0.0.2"])
+        fake_map = {"10.0.0.1": "only-one-pw", "10.0.0.2": "only-one-pw"}
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
             result = _preprobe_switch_passwords_for_job(
                 api_handler=handler,
                 params={"switch_user": "cumulus"},
@@ -260,8 +293,9 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
                 has_vnetmap=True,
                 has_health_switch=True,
             )
-        self.assertEqual(result, {})
-        mock_build.assert_not_called()
+        self.assertEqual(result, fake_map)
+        mock_build.assert_called_once()
+        self.assertEqual(list(mock_build.call_args.kwargs["candidates"]), ["only-one-pw"])
 
     def test_skipped_when_empty_candidates(self):
         from app import _preprobe_switch_passwords_for_job
@@ -400,6 +434,46 @@ class TestRM15SwitchPreProbe(unittest.TestCase):
 
         call_kwargs = mock_build.call_args.kwargs
         self.assertNotIn("jump_host", call_kwargs)
+
+    def test_teleport_mode_jumps_through_forwarded_local_ssh_endpoint(self):
+        # Teleport mode: the real cluster mgmt IP and the switches are NOT
+        # reachable from the operator's machine — the only path to the
+        # switches is a proxy-jump through the CNode whose sshd is forwarded
+        # to 127.0.0.1:<ssh_port>.  If the probe jumped through ``cluster_ip``
+        # (the legacy path) every probe would fail, leaving the map empty and
+        # forcing vnetmap onto its single-``-p`` sweep — exactly the PDX02
+        # "Unable to determine suitable switch API" failure.
+        from app import _preprobe_switch_passwords_for_job
+
+        handler = self._make_api_handler(["10.84.214.26", "10.84.214.27"])
+        fake_map = {"10.84.214.26": "Vastdata1!", "10.84.214.27": "VastData1!"}
+        with patch(
+            "utils.switch_ssh_probe.build_switch_password_by_ip",
+            return_value=fake_map,
+        ) as mock_build:
+            result = _preprobe_switch_passwords_for_job(
+                api_handler=handler,
+                params={
+                    "cluster_ip": "10.84.214.5",
+                    "switch_user": "cumulus",
+                    "node_user": "vastdata",
+                    "node_password": "node-pw",
+                    "proxy_jump": True,
+                    # Teleport tunnel set these to the forwarded local endpoint.
+                    "ssh_host": "127.0.0.1",
+                    "ssh_port": 49585,
+                },
+                switch_password_candidates=["Vastdata1!", "VastData1!"],
+                has_vnetmap=True,
+                has_health_switch=False,
+            )
+
+        self.assertEqual(result, fake_map)
+        call_kwargs = mock_build.call_args.kwargs
+        self.assertEqual(call_kwargs.get("jump_host"), "127.0.0.1")
+        self.assertEqual(call_kwargs.get("jump_port"), 49585)
+        self.assertEqual(call_kwargs.get("jump_user"), "vastdata")
+        self.assertEqual(call_kwargs.get("jump_password"), "node-pw")
 
     def test_api_handler_failure_returns_empty_map(self):
         # /api/switches/ can fail for a host of reasons (VMS still
@@ -762,9 +836,53 @@ class TestApiDiscover(unittest.TestCase):
         self.assertIn("switches", body)
         self.assertEqual(len(body["racks"]), 2)
         self.assertEqual(len(body["switches"]), 2)
+        # Each switch carries a stable id, mgmt_ip, and disambiguated display_name.
+        for sw in body["switches"]:
+            self.assertIn("mgmt_ip", sw)
+            self.assertIn("switch_id", sw)
+            self.assertIn("display_name", sw)
         mock_handler.get_racks.assert_called_once()
         mock_handler.get_switch_inventory.assert_called_once()
         mock_handler.close.assert_called_once()
+
+    @patch("socket.create_connection")
+    @patch("rack_diagram.RackDiagram")
+    @patch("api_handler.create_vast_api_handler")
+    def test_api_discover_duplicate_named_switches_get_distinct_ids(
+        self, mock_create_handler, mock_rack_diagram, mock_socket
+    ):
+        """Two switches sharing a name remain distinct (by mgmt_ip) with (a)/(b) labels."""
+        mock_socket.return_value = MagicMock()
+        mock_handler = MagicMock()
+        mock_handler.authenticate.return_value = True
+        mock_handler.get_racks.return_value = [{"id": 1, "name": "Rack-A", "number_of_units": 42}]
+        mock_handler.get_switch_inventory.return_value = {
+            "switches": [
+                {"name": "Spine-B", "model": "msn3700", "serial": "S1", "mgmt_ip": "10.84.214.29"},
+                {"name": "Spine-B", "model": "msn3700", "serial": "S2", "mgmt_ip": "10.84.214.28"},
+            ],
+        }
+        mock_create_handler.return_value = mock_handler
+
+        mock_rd_instance = MagicMock()
+        mock_rd_instance._get_device_height_units.side_effect = lambda m: 1
+        mock_rack_diagram.return_value = mock_rd_instance
+
+        resp = self.client.post(
+            "/api/discover",
+            json={"cluster_ip": "10.0.0.1", "username": "u", "password": "p"},
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        switches = body["switches"]
+        self.assertEqual(len(switches), 2)
+        ids = {sw["switch_id"] for sw in switches}
+        self.assertEqual(ids, {"10.84.214.28", "10.84.214.29"})
+        displays = {sw["switch_id"]: sw["display_name"] for sw in switches}
+        # (a) goes to the lower mgmt_ip (.28), (b) to .29.
+        self.assertEqual(displays["10.84.214.28"], "Spine-B (a)")
+        self.assertEqual(displays["10.84.214.29"], "Spine-B (b)")
 
 
 class TestProfilesRoutes(unittest.TestCase):
@@ -1215,6 +1333,97 @@ class TestAdvancedOpsToolRoutes(unittest.TestCase):
         body = json.loads(resp.data)
         self.assertEqual(body["updated"], 3)
         mock_tm.update_all_tools.assert_called_once()
+
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_status_returns_summary(self, mock_tm_cls):
+        mock_tm = MagicMock()
+        mock_tm.get_tools_status.return_value = {
+            "tools": [],
+            "total": 4,
+            "cached": 0,
+            "missing": 4,
+            "stale": 0,
+            "needs_attention": True,
+            "warn_days": 10,
+        }
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.get("/api/tools/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["needs_attention"])
+        self.assertEqual(body["total"], 4)
+        self.assertEqual(body["warn_days"], 10)
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_update_runs_and_returns_status(self, mock_tm_cls, mock_get_mgr):
+        mock_get_mgr.return_value = MagicMock()
+        mock_tm = MagicMock()
+        mock_tm.update_all_tools.return_value = {"success": True, "updated": 4, "failed": 0, "tools": {}}
+        mock_tm.get_tools_status.return_value = {"needs_attention": False, "missing": 0, "stale": 0}
+        mock_tm_cls.return_value = mock_tm
+        resp = self.client.post("/api/tools/update")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertEqual(body["updated"], 4)
+        self.assertIn("status", body)
+        self.assertFalse(body["status"]["needs_attention"])
+        mock_tm.update_all_tools.assert_called_once()
+
+    @patch("advanced_ops.get_advanced_ops_manager")
+    @patch("tool_manager.ToolManager")
+    def test_api_tools_update_mirrors_output_to_sse_log(self, mock_tm_cls, mock_get_mgr):
+        """Regression: nav 'Update Tools' progress must reach the SSE log queue
+        so it shows in the 'Output Results' console (not only Advanced Ops)."""
+        import logging
+
+        from utils.logger import enable_sse_logging, get_sse_queue
+
+        # GUI launch calls setup_logging() which sets the root level to INFO;
+        # mirror that here so INFO-level tool progress is not filtered out.
+        logging.getLogger().setLevel(logging.INFO)
+        enable_sse_logging()
+        log_queue = get_sse_queue()
+        while not log_queue.empty():
+            log_queue.get_nowait()
+
+        mock_get_mgr.return_value = MagicMock()
+
+        def make_tm(output_callback=None):
+            tm = MagicMock()
+
+            def _update():
+                # Simulate ToolManager emitting progress via the callback.
+                output_callback("info", "Updating Deployment Tools", None)
+                return {"success": True, "updated": 4, "failed": 0, "tools": {}}
+
+            tm.update_all_tools.side_effect = _update
+            tm.get_tools_status.return_value = {"needs_attention": False}
+            return tm
+
+        mock_tm_cls.side_effect = make_tm
+
+        resp = self.client.post("/api/tools/update")
+        self.assertEqual(resp.status_code, 200)
+
+        messages = []
+        while not log_queue.empty():
+            messages.append(log_queue.get_nowait().get("message", ""))
+        self.assertTrue(
+            any("Updating Deployment Tools" in m for m in messages),
+            "tool update progress should be mirrored to the SSE log queue",
+        )
+
+    def test_api_tools_status_not_dev_gated(self):
+        """Nav indicator must work on non-developer installs too."""
+        app = create_flask_app(config={"DEVELOPER_MODE": False})
+        client = app.test_client()
+        with patch("tool_manager.ToolManager") as mock_tm_cls:
+            mock_tm = MagicMock()
+            mock_tm.get_tools_status.return_value = {"needs_attention": False, "total": 4}
+            mock_tm_cls.return_value = mock_tm
+            resp = client.get("/api/tools/status")
+        self.assertEqual(resp.status_code, 200)
 
     @patch("result_bundler.get_result_bundler")
     def test_bundle_list_empty(self, mock_get_bundler):
@@ -1902,6 +2111,286 @@ class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
             "Without Tech-Port mode tunnel_address must be absent or None "
             "so VnetmapWorkflow falls back to cluster_ip",
         )
+
+
+class TestTuneReportOverrideMerge(unittest.TestCase):
+    """v1.5.8 follow-up: ``/config/advanced/tune-report`` (Results-tab
+    Regenerate PDF) used to do a SHALLOW ``update()`` that replaced
+    ``report.template`` with the form's empty ``template: {}``, which
+    wiped out YAML's ``template.margin_top: 0.5`` etc. and fell back to
+    ``ReportConfig`` defaults of 1.0" margins. That is why regenerated
+    reports had wider borders than the originals.
+
+    Fix surface (pure helper, easy to unit-test):
+
+    - ``_merge_report_overrides(base_config: dict, overrides: dict)
+      -> dict`` — DEEP-merges ``overrides`` into ``base_config`` so an
+      empty (or partial) ``template``/``pdf`` override does not blow
+      away keys the YAML provided. Replaces the buggy shallow-update
+      block in the route handler.
+    """
+
+    def _merger(self):
+        from app import _merge_report_overrides
+
+        return _merge_report_overrides
+
+    def _yaml_like_config(self):
+        return {
+            "report": {
+                "organization": "VAST Professional Services",
+                "template": {
+                    "page_size": "A4",
+                    "margin_top": 0.5,
+                    "margin_bottom": 0.5,
+                    "margin_left": 0.5,
+                    "margin_right": 0.5,
+                },
+                "pdf": {
+                    "font_size": 10,
+                    "include_toc": True,
+                    "include_page_numbers": True,
+                },
+            },
+            "data_collection": {
+                "sections": {"executive_summary": True, "hardware_inventory": True},
+            },
+        }
+
+    def test_empty_overrides_preserves_yaml_margins(self):
+        """Form sends no template inputs -> overrides['template'] is {}.
+        YAML margins must NOT be wiped."""
+        base = self._yaml_like_config()
+        overrides = {
+            "organization": "VAST Professional Services",
+            "template": {},
+            "pdf": {},
+            "sections": {"executive_summary": True},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_bottom"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_left"], 0.5)
+        self.assertEqual(merged["report"]["template"]["margin_right"], 0.5)
+        self.assertEqual(merged["report"]["template"]["page_size"], "A4")
+
+    def test_partial_template_override_merges_with_yaml(self):
+        """Override sets a single template key (e.g. organization
+        toggle) -> other YAML template keys must be preserved."""
+        base = self._yaml_like_config()
+        overrides = {
+            "template": {"page_size": "letter"},
+            "pdf": {},
+            "sections": {},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["page_size"], "letter")
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5, "YAML margin_top must survive partial merge")
+
+    def test_partial_pdf_override_merges_with_yaml(self):
+        """Override sets pdf.include_toc -> other pdf keys (font_size)
+        from YAML must survive."""
+        base = self._yaml_like_config()
+        overrides = {"template": {}, "pdf": {"include_toc": False}, "sections": {}}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["pdf"]["include_toc"], False)
+        self.assertEqual(merged["report"]["pdf"]["font_size"], 10, "YAML pdf.font_size must survive partial merge")
+
+    def test_organization_override_replaces_yaml(self):
+        """A flat organization override replaces YAML's value."""
+        base = self._yaml_like_config()
+        overrides = {"organization": "Acme Inc.", "template": {}, "pdf": {}, "sections": {}}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["organization"], "Acme Inc.")
+
+    def test_sections_override_replaces_yaml(self):
+        """Form sends complete sections state -> replace YAML's sections
+        wholesale (form is the canonical source for section toggles)."""
+        base = self._yaml_like_config()
+        overrides = {
+            "template": {},
+            "pdf": {},
+            "sections": {"executive_summary": False, "hardware_inventory": False},
+        }
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["data_collection"]["sections"]["executive_summary"], False)
+        self.assertEqual(merged["data_collection"]["sections"]["hardware_inventory"], False)
+
+    def test_missing_overrides_do_not_drop_yaml_keys(self):
+        """If the form omits a key entirely (not even an empty dict),
+        the YAML value must be untouched."""
+        base = self._yaml_like_config()
+        overrides = {}
+        merged = self._merger()(base, overrides)
+        self.assertEqual(merged["report"]["template"]["margin_top"], 0.5)
+        self.assertEqual(merged["report"]["organization"], "VAST Professional Services")
+
+    def test_does_not_mutate_caller_base_config(self):
+        """Helper must return a NEW dict; caller's base_config stays
+        intact so subsequent merges from the same source are deterministic."""
+        base = self._yaml_like_config()
+        original_margin = base["report"]["template"]["margin_top"]
+        overrides = {"template": {"margin_top": 1.0}, "pdf": {}, "sections": {}}
+        self._merger()(base, overrides)
+        self.assertEqual(
+            base["report"]["template"]["margin_top"],
+            original_margin,
+            "Helper must not mutate base_config in place",
+        )
+
+
+class TestAutoShutdownPolicy(unittest.TestCase):
+    """QP-3 (3): pure auto-shutdown decision policy."""
+
+    def _kwargs(self, **over):
+        base = dict(
+            enabled=True,
+            ever_seen=True,
+            last_heartbeat=100.0,
+            now=130.0,
+            grace_seconds=20.0,
+            job_running=False,
+        )
+        base.update(over)
+        return base
+
+    def test_disabled_never_shuts_down(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(enabled=False)))
+
+    def test_never_seen_browser_stays_up(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(ever_seen=False, last_heartbeat=None)))
+
+    def test_within_grace_stays_up(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(now=110.0)))
+
+    def test_stale_and_idle_shuts_down(self):
+        self.assertTrue(evaluate_auto_shutdown(**self._kwargs(now=125.0)))
+
+    def test_exact_grace_boundary_shuts_down(self):
+        self.assertTrue(evaluate_auto_shutdown(**self._kwargs(now=120.0)))
+
+    def test_job_running_defers_shutdown(self):
+        self.assertFalse(evaluate_auto_shutdown(**self._kwargs(now=200.0, job_running=True)))
+
+
+class TestHeartbeatRoute(unittest.TestCase):
+    """QP-3 (3): heartbeat route updates liveness state."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+
+    def test_heartbeat_marks_browser_seen_and_returns_ok(self):
+        # Auto-shutdown is OFF by default, so use an opt-in app to exercise the
+        # "browser seen" + auto_shutdown:true path.
+        app = create_flask_app(config={"auto_shutdown": {"enabled": True}})
+        self.assertFalse(app.config["BROWSER_SEEN"])
+        resp = app.test_client().post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertEqual(body["status"], "ok")
+        self.assertTrue(body["auto_shutdown"])
+        self.assertTrue(app.config["BROWSER_SEEN"])
+        self.assertIsNotNone(app.config["LAST_HEARTBEAT"])
+
+    def test_heartbeat_disabled_by_default(self):
+        # The feature is opt-in: the default app reports auto_shutdown:false so
+        # the client stops pinging after the first ping.
+        resp = self.client.post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.get_json()["auto_shutdown"])
+
+    def test_heartbeat_not_dev_gated(self):
+        # No --dev-mode: heartbeat must still work on every page.
+        self.assertFalse(self.app.config.get("DEVELOPER_MODE", False))
+        resp = self.client.post("/api/heartbeat")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_heartbeat_reports_disabled_when_turned_off(self):
+        app = create_flask_app(config={"auto_shutdown": {"enabled": False}})
+        resp = app.test_client().post("/api/heartbeat")
+        self.assertFalse(resp.get_json()["auto_shutdown"])
+
+
+class TestAnyJobRunning(unittest.TestCase):
+    """QP-3 (3): job-running guard for the watchdog."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+
+    def test_idle_when_no_jobs(self):
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertFalse(_any_job_running(self.app))
+
+    def test_report_job_blocks(self):
+        self.app.config["JOB_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_health_job_blocks(self):
+        self.app.config["HEALTH_JOB_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_oneshot_job_blocks(self):
+        self.app.config["ONESHOT_RUNNING"] = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=None):
+            self.assertTrue(_any_job_running(self.app))
+
+    def test_advanced_ops_running_blocks(self):
+        mgr = MagicMock()
+        mgr.is_running.return_value = True
+        with patch("advanced_ops.get_advanced_ops_manager", return_value=mgr):
+            self.assertTrue(_any_job_running(self.app))
+
+
+class TestUpdateStatusRoute(unittest.TestCase):
+    """QP-3 item 2: in-app update-check route (notify only)."""
+
+    def test_update_status_reports_available(self):
+        app = create_flask_app(config={"updates": {"enabled": True, "include_prereleases": False}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            mock_status.return_value = {
+                "update_available": True,
+                "current_version": "1.5.8-beta",
+                "latest_version": "1.6.0",
+                "latest_url": "http://x/1.6.0",
+                "channel": "stable",
+                "error": None,
+            }
+            resp = client.get("/api/update/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["update_available"])
+        self.assertEqual(body["latest_version"], "1.6.0")
+        self.assertTrue(body["enabled"])
+
+    def test_update_status_disabled_skips_check(self):
+        app = create_flask_app(config={"updates": {"enabled": False}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            resp = client.get("/api/update/status")
+            mock_status.assert_not_called()
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["enabled"])
+        self.assertFalse(body["update_available"])
+
+    def test_update_status_not_dev_gated(self):
+        app = create_flask_app(config={"DEVELOPER_MODE": False, "updates": {"enabled": True}})
+        client = app.test_client()
+        with patch("updater.get_update_status") as mock_status:
+            mock_status.return_value = {
+                "update_available": False,
+                "current_version": "1.5.8-beta",
+                "latest_version": None,
+                "latest_url": None,
+                "channel": "stable",
+                "error": None,
+            }
+            resp = client.get("/api/update/status")
+        self.assertEqual(resp.status_code, 200)
 
 
 if __name__ == "__main__":

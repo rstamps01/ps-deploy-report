@@ -192,6 +192,7 @@ class VastApiHandler:
         token: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
         tunnel_address: Optional[str] = None,
+        tunnel_host: Optional[str] = None,
     ):
         """
         Initialize the VAST API handler.
@@ -206,10 +207,15 @@ class VastApiHandler:
                 (e.g. ``127.0.0.1:54321``).  When provided, all API requests
                 are routed through this address instead of *cluster_ip*.
                 *cluster_ip* is preserved for metadata / reporting.
+            tunnel_host (str, optional): VMS management IP to use as the HTTP
+                ``Host`` header when tunnelling.  Required for VAST clusters
+                where nginx uses virtual-host routing: without a correct Host
+                the S3 gateway intercepts the request.
         """
         self.logger = get_logger(__name__)
         self.cluster_ip = cluster_ip
         self._api_host = tunnel_address or cluster_ip
+        self._tunnel_host = tunnel_host
         self.username = username
         self.password = password
         self.token = token
@@ -275,13 +281,14 @@ class VastApiHandler:
         session.mount("https://", adapter)
 
         # Set default headers
-        session.headers.update(
-            {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "User-Agent": "VAST-As-Built-Report-Generator/1.0",
-            }
-        )
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "VAST-As-Built-Report-Generator/1.0",
+        }
+        if self._tunnel_host:
+            headers["Host"] = self._tunnel_host
+        session.headers.update(headers)
 
         # Configure SSL verification
         session.verify = self.verify_ssl
@@ -307,6 +314,10 @@ class VastApiHandler:
 
         self.logger.info("Detecting highest supported API version...")
 
+        # Track what each probe returned so a total failure can be diagnosed
+        # by the operator (auth vs routing) instead of silently falling back.
+        seen_status: Dict[str, Any] = {}
+        last_body = ""
         for version in api_versions:
             try:
                 # Test the version by making a simple API call
@@ -324,14 +335,61 @@ class VastApiHandler:
                     self.logger.info(f"Successfully detected API version: {version}")
                     return version
                 else:
+                    seen_status[version] = response.status_code
+                    last_body = (response.text or "")[:200]
                     self.logger.debug(f"API version {version} not supported: {response.status_code}")
 
             except Exception as e:
+                seen_status[version] = f"error: {e}"
                 self.logger.debug(f"API version {version} test failed: {e}")
                 continue
 
-        # Fallback to v1 if no version works
-        self.logger.warning("No API version detected, falling back to v1")
+        # No version returned 200: this is the true point of failure (the
+        # downstream "Failed to create new API token" is only a symptom).
+        # Surface the status codes at operator level so the cause is clear.
+        codes = {str(v) for v in seen_status.values()}
+        self.logger.warning(
+            "API version detection failed — no version (v7..v1) returned HTTP 200. Per-version responses: %s",
+            seen_status,
+        )
+        # Classify the failure so the operator gets an actionable cause rather
+        # than a cryptic downstream "Failed to create API token / SSL EOF".
+        joined = " ".join(str(v) for v in seen_status.values())
+        is_transport = any(
+            marker in joined
+            for marker in ("SSL", "EOF", "Max retries", "Connection", "ConnectionError", "timed out", "refused")
+        )
+        if is_transport and self._api_host != self.cluster_ip:
+            self.logger.warning(
+                "The forwarded API endpoint (%s) did not complete a TLS/HTTP exchange. This usually means "
+                "the tunnel target is not serving the VMS API. In Teleport mode the API is forwarded to the "
+                "selected node's loopback (127.0.0.1:443), which only works if that node hosts the VMS. "
+                "Fix: target the node that runs the VMS management UI, or set the Cluster/VMS IP to the VMS "
+                "management VIP (reachable from the node) so the tunnel forwards there instead.",
+                self._api_host,
+            )
+        elif is_transport:
+            self.logger.warning(
+                "Could not complete a TLS/HTTP exchange with %s. Verify the cluster IP is reachable and "
+                "serving HTTPS on 443.",
+                self._api_host,
+            )
+        elif codes & {"401", "403"}:
+            hint = (
+                "The cluster API rejected the request (HTTP 401/403). The most likely cause is an "
+                "incorrect VMS username/password for this cluster. "
+            )
+            if self._api_host != self.cluster_ip and not self._tunnel_host:
+                hint += (
+                    "You are connected through a tunnel (e.g. Teleport) with no Host header set; if the "
+                    "credentials are correct, this cluster's nginx may require virtual-host routing "
+                    "(a Host header matching the VMS management IP). "
+                )
+            self.logger.warning("%sResponse snippet: %s", hint, last_body or "<empty>")
+        elif last_body:
+            self.logger.warning("Last response snippet: %s", last_body)
+
+        self.logger.warning("Falling back to v1 (authentication will likely fail).")
         return "v1"
 
     def _set_api_version(self, version: str) -> None:
@@ -2265,7 +2323,8 @@ class VastApiHandler:
                     }
 
                 port_aggregation[switch_str]["total_ports"] += 1
-                if port.get("state", "").lower() == "up":
+                # IB ports report "Active"; Ethernet ports report "up".
+                if str(port.get("state", "")).strip().lower() in ("up", "active"):
                     port_aggregation[switch_str]["active_ports"] += 1
 
                 speed = port.get("speed") or "unconfigured"
@@ -2282,6 +2341,17 @@ class VastApiHandler:
                         "mtu": port.get("mtu", "Unknown"),
                     }
                 )
+
+            def _derive_switch_mtu(switch_ports: List[Dict[str, Any]]) -> str:
+                """Most common non-zero port MTU for a switch, or 'Unknown'."""
+                from collections import Counter
+
+                counts: Counter = Counter()
+                for sp in switch_ports or []:
+                    mtu_val = str(sp.get("mtu", "")).strip()
+                    if mtu_val and mtu_val not in ("0", "Unknown"):
+                        counts[mtu_val] += 1
+                return counts.most_common(1)[0][0] if counts else "Unknown"
 
             # Build comprehensive switch list by merging detailed info with port data
             switches = []
@@ -2311,7 +2381,7 @@ class VastApiHandler:
                     "total_ports": port_data["total_ports"] if port_data else 0,
                     "active_ports": port_data["active_ports"] if port_data else 0,
                     "port_speeds": port_data["port_speeds"] if port_data else {},
-                    "mtu": port_data["mtu"] if port_data else "Unknown",
+                    "mtu": _derive_switch_mtu(port_data["ports"]) if port_data else "Unknown",
                     "ports": port_data["ports"] if port_data else [],
                 }
                 switches.append(switch_entry)
@@ -2656,6 +2726,7 @@ def create_vast_api_handler(
     token: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
     tunnel_address: Optional[str] = None,
+    tunnel_host: Optional[str] = None,
 ) -> VastApiHandler:
     """
     Create and return a configured VastApiHandler instance.
@@ -2668,11 +2739,12 @@ def create_vast_api_handler(
         config (Dict[str, Any], optional): Configuration dictionary
         tunnel_address (str, optional): Local tunnel endpoint (``host:port``)
             when using Tech Port mode
+        tunnel_host (str, optional): VMS management IP for the HTTP Host header
 
     Returns:
         VastApiHandler: Configured API handler instance
     """
-    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address)
+    return VastApiHandler(cluster_ip, username, password, token, config, tunnel_address, tunnel_host)
 
 
 if __name__ == "__main__":

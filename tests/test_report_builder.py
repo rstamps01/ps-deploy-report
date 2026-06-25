@@ -336,105 +336,19 @@ class TestReportGenerationError(unittest.TestCase):
         self.assertIsInstance(error, Exception)
 
 
-class TestSpinePortTables(unittest.TestCase):
-    """Coverage for the SP1 Port-to-Device Mapping table emitted when spine
-    switches have LLDP-discovered (or inferred) uplinks.
-
-    Regression guard for the "spine switch missing from port mapping tables"
-    bug reported against the Logical Network Diagram.
+class TestSpinePortTablesRemoved(unittest.TestCase):
+    """Regression guard: the per-spine "SPx (...) Port-to-Device Mapping"
+    tables (and the leaf-leaf IPL/uplink inference behind them) were removed.
+    Spine-to-leaf connectivity is now shown only as leaf->spine ISLs in the
+    Logical Network Diagram, never as deprecated port-mapping tables.
     """
 
-    def setUp(self):
-        self.builder = VastReportBuilder()
-        self.switches = [
-            {"mgmt_ip": "10.0.0.153", "hostname": "leaf-a", "role": "leaf"},
-            {"mgmt_ip": "10.0.0.154", "hostname": "leaf-b", "role": "leaf"},
-            {"mgmt_ip": "10.0.0.156", "hostname": "spine-1", "role": "spine"},
-        ]
-        self.headers = ["Switch Port", "Node Connection", "Network", "Speed", "Notes"]
-
-    def _capture_table_data(self, content):
-        """Pull the raw table rows we built by inspecting the brand-compliance call."""
-        captured = {}
-
-        def _fake_create_vast_table(data, title, headers):
-            captured.setdefault("calls", []).append({"data": data, "title": title})
-            return ["<table-flowable>"]
-
-        with patch.object(self.builder.brand_compliance, "create_vast_table", side_effect=_fake_create_vast_table):
-            result = self.builder._create_spine_port_tables(
-                port_mapping_data=content,
-                switches=self.switches,
-                leaf_switch_ips={"10.0.0.153", "10.0.0.154"},
-                headers=self.headers,
-            )
-        return captured.get("calls", []), result
-
-    def test_returns_empty_when_no_spine_uplinks(self):
-        port_mapping_data = {
-            "ipl_connections": [
-                {
-                    "switch1_ip": "10.0.0.153",
-                    "switch2_ip": "10.0.0.154",
-                    "connection_type": "ipl",
-                    "switch_designation": "SWA",
-                    "node_designation": "SWB",
-                }
-            ]
-        }
-        calls, content = self._capture_table_data(port_mapping_data)
-        self.assertEqual(calls, [])
-        self.assertEqual(content, [])
-
-    def test_emits_spine_table_with_uplink_rows(self):
-        port_mapping_data = {
-            "ipl_connections": [
-                {
-                    "switch1_ip": "10.0.0.156",
-                    "switch2_ip": "10.0.0.153",
-                    "connection_type": "spine_uplink",
-                    "switch_designation": "SP1",
-                    "node_designation": "SWA",
-                    "notes": "Spine uplink",
-                },
-                {
-                    "switch1_ip": "10.0.0.156",
-                    "switch2_ip": "10.0.0.154",
-                    "connection_type": "spine_uplink",
-                    "switch_designation": "SP1",
-                    "node_designation": "SWB",
-                    "notes": "Spine uplink (inferred)",
-                },
-            ]
-        }
-        calls, _content = self._capture_table_data(port_mapping_data)
-
-        self.assertEqual(len(calls), 1, "Exactly one spine table expected for a single spine")
-        call = calls[0]
-        self.assertIn("SP1", call["title"], "Title should surface the spine designation")
-        self.assertIn("spine-1", call["title"], "Title should also show the hostname")
-
-        rows = call["data"]
-        self.assertEqual(len(rows), 2)
-        self.assertEqual({rows[0][0], rows[1][0]}, {"SP1"})
-        self.assertEqual({rows[0][1], rows[1][1]}, {"SWA", "SWB"})
-        for row in rows:
-            self.assertEqual(row[2], "Uplink")
-
-    def test_leaf_ips_excluded_from_spine_candidates(self):
-        """Even if a leaf appears in a spine_uplink endpoint, it must not get a spine table."""
-        port_mapping_data = {
-            "ipl_connections": [
-                {
-                    "switch1_ip": "10.0.0.156",
-                    "switch2_ip": "10.0.0.153",
-                    "connection_type": "spine_uplink",
-                },
-            ]
-        }
-        calls, _content = self._capture_table_data(port_mapping_data)
-        self.assertEqual(len(calls), 1)
-        self.assertNotIn("leaf-a", calls[0]["title"], "Leaf must not be promoted to a spine table")
+    def test_spine_port_table_builder_is_gone(self):
+        builder = VastReportBuilder()
+        self.assertFalse(
+            hasattr(builder, "_create_spine_port_tables"),
+            "_create_spine_port_tables must be removed; spine uplinks render in the diagram only",
+        )
 
 
 class TestSR5FormatMacCell(unittest.TestCase):
@@ -514,6 +428,277 @@ class TestSR5FormatMacCell(unittest.TestCase):
         eight_byte = "00:11:22:33:44:55:66:77"
         result = fn(eight_byte, self.style, group_size=7)
         self.assertIsInstance(result, self.Paragraph)
+
+
+class TestRPT6ManualSwitchUPosition(unittest.TestCase):
+    """RPT-6: convert Discovery UI top-U convention to rack diagram bottom-U.
+
+    The Discovery UI (frontend/templates/reporter.html) stores ``u_position``
+    as the TOP of the device occupied (highest U). Example: a 2U switch at
+    U35 means span U34-U35, ``u_position=35``. The rack diagram renderer
+    (src/rack_diagram.py ``_create_device_representation``) treats the same
+    value as the BOTTOM of the device. Without conversion, 2U+ manual switch
+    placements render one U too high in the rack diagram.
+
+    Fix: ``_manual_switch_bottom_u(top_u, height_u)`` returns the lowest U
+    occupied. For 1U devices top == bottom; for 2U+ bottom = top - (h - 1).
+    """
+
+    def _helper(self):
+        return VastReportBuilder._manual_switch_bottom_u
+
+    def test_1u_switch_returns_top_unchanged(self):
+        """1U at U35: top equals bottom, no conversion needed."""
+        self.assertEqual(self._helper()(35, 1), 35)
+
+    def test_2u_switch_returns_top_minus_one(self):
+        """2U at U35: spans U34-U35, bottom is U34."""
+        self.assertEqual(self._helper()(35, 2), 34)
+
+    def test_4u_switch_returns_top_minus_three(self):
+        """4U at U33: spans U30-U33, bottom is U30."""
+        self.assertEqual(self._helper()(33, 4), 30)
+
+    def test_2u_switch_at_top_of_42u_rack(self):
+        """2U at U42 (top of 42U rack): spans U41-U42, bottom is U41."""
+        self.assertEqual(self._helper()(42, 2), 41)
+
+    def test_height_zero_treated_as_1u(self):
+        """Defensive: height=0 should not corrupt the position."""
+        self.assertEqual(self._helper()(10, 0), 10)
+
+
+class TestRPT6ManualSwitchBridge(unittest.TestCase):
+    """RPT-6: ``_build_diagram_switch_entry`` is the bridge between
+    ``manual_switch_placements`` (top-U convention) and the rack diagram
+    renderer (bottom-U convention). The bridge MUST apply the U conversion
+    so manual 2U+ switches render at the operator-intended position.
+    """
+
+    def _builder(self):
+        return VastReportBuilder._build_diagram_switch_entry
+
+    def test_1u_manual_placement_produces_top_u_unchanged(self):
+        """1U switch: bridge emits rack_unit equal to the operator's input."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "height_u": 1,
+            "model": "msn4600c_1u_variant",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["rack_unit"], "U35")
+
+    def test_2u_manual_placement_emits_bottom_u(self):
+        """2U switch at top-U=35: bridge MUST emit rack_unit='U34' (the bottom)."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "height_u": 2,
+            "model": "msn4600c",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(
+            entry["rack_unit"],
+            "U34",
+            "RPT-6: 2U switch at top-U=35 must produce rack_unit='U34' "
+            "(bottom-U), not 'U35' (top-U). The Discovery UI top-U "
+            "convention is one slot higher than the rack diagram bottom-U "
+            "convention; without conversion 2U switches render one U too high.",
+        )
+
+    def test_height_u_missing_defaults_to_1u(self):
+        """When the placement omits height_u, treat as 1U (top == bottom)."""
+        placement = {
+            "switch_name": "sw1",
+            "u_position": 35,
+            "model": "switch",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["rack_unit"], "U35")
+
+    def test_bridge_preserves_id_model_state(self):
+        """Bridge must preserve id (switch name), model, state for the diagram."""
+        placement = {
+            "switch_name": "sw1",
+            "name": "sw1",
+            "u_position": 35,
+            "height_u": 2,
+            "model": "msn4600c",
+            "state": "ACTIVE",
+        }
+        entry = self._builder()(placement)
+        self.assertEqual(entry["id"], "sw1")
+        self.assertEqual(entry["model"], "msn4600c")
+        self.assertEqual(entry["state"], "ACTIVE")
+
+
+def _flowable_text(content):
+    """Recursively collect plain text from a list of ReportLab flowables/cells."""
+    out = []
+
+    def walk(obj):
+        if obj is None:
+            return
+        if isinstance(obj, str):
+            out.append(obj)
+            return
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                walk(item)
+            return
+        # ReportLab Paragraph
+        get_plain = getattr(obj, "getPlainText", None)
+        if callable(get_plain):
+            try:
+                out.append(get_plain())
+                return
+            except Exception:
+                pass
+        text_attr = getattr(obj, "text", None)
+        if isinstance(text_attr, str):
+            out.append(text_attr)
+            return
+        # ReportLab Table stores rows in _cellvalues
+        cells = getattr(obj, "_cellvalues", None)
+        if cells is not None:
+            walk(cells)
+            return
+        # Wrappers like KeepTogether hold child flowables in _content
+        children = getattr(obj, "_content", None)
+        if isinstance(children, (list, tuple)):
+            walk(children)
+
+    walk(content)
+    return "\n".join(out)
+
+
+class TestNodeManagementMap(unittest.TestCase):
+    """QP-1: Node Management Map tables (Device Name (VMS) | Hostname | Mgmt IP)."""
+
+    def _data(self):
+        return {
+            "metadata": {"enhanced_features": {}},
+            "cluster_summary": {"name": "LAMBDA-VAST-LAX-01", "psnt": "VA2553454"},
+            "hardware_inventory": {
+                "cnodes": [
+                    {
+                        "id": "1",
+                        "name": "cnode-128-1",
+                        "hostname": "RackP01C01-CB6-U22-CN1",
+                        "mgmt_ip": "10.208.59.22",
+                        "ipmi_ip": "192.168.3.1",
+                    }
+                ],
+                "dnodes": [
+                    {
+                        "id": "5",
+                        "name": "dnode-128-104",
+                        "hostname": "RackP01C01-DB2-U4-DN1",
+                        "mgmt_ip": "10.208.59.106",
+                        "ipmi_ip": "192.168.3.21",
+                    }
+                ],
+            },
+            "sections": {},
+        }
+
+    def test_management_map_tables_present(self):
+        """Both CNode and DNode Management Map tables render with their titles."""
+        builder = VastReportBuilder()
+        text = _flowable_text(builder._create_comprehensive_network_configuration(self._data()))
+        self.assertIn("CNode Management Map", text)
+        self.assertIn("DNode Management Map", text)
+        self.assertIn("Device Name (VMS)", text)
+
+    def test_management_map_maps_name_hostname_mgmt_ip(self):
+        """Each node row carries VMS name, hostname, and external mgmt IP together."""
+        builder = VastReportBuilder()
+        text = _flowable_text(builder._create_comprehensive_network_configuration(self._data()))
+        # Hostname appears only in the new map (existing node tables show name, not hostname)
+        self.assertIn("RackP01C01-CB6-U22-CN1", text)
+        self.assertIn("cnode-128-1", text)
+        self.assertIn("10.208.59.22", text)
+        self.assertIn("RackP01C01-DB2-U4-DN1", text)
+        self.assertIn("dnode-128-104", text)
+
+
+class TestVnetmapTopologySwitchIdentity(unittest.TestCase):
+    """QP-1: Port Mapping tables resolve switch GUID -> hostname -> mgmt IP."""
+
+    def _args(self):
+        from reportlab.lib.styles import getSampleStyleSheet
+
+        port_map = [
+            {
+                "node_hostname": "RackP01C01-CB6-U22-CN1",
+                "node_ip": "172.16.128.5",
+                "interface": "ib0",
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "network": "A",
+                "switch_ip": "0xa088c203007860bc",
+                "switch_hostname": "SW-LF-03",
+                "port": "24",
+            }
+        ]
+        switches = [{"name": "SW-LF-03", "hostname": "SW-LF-03", "mgmt_ip": "10.208.59.15", "model": "MQM8700-HS2F"}]
+        return port_map, switches, getSampleStyleSheet()
+
+    def test_full_topology_shows_mgmt_ip_not_guid(self):
+        builder = VastReportBuilder()
+        port_map, switches, styles = self._args()
+        text = _flowable_text(builder._create_vnetmap_topology_tables(port_map, switches, styles))
+        self.assertIn("Switch Mgmt IP", text)
+        self.assertIn("10.208.59.15", text)
+
+    def test_per_switch_title_has_name_guid_mgmt_ip(self):
+        builder = VastReportBuilder()
+        port_map, switches, styles = self._args()
+        text = _flowable_text(builder._create_vnetmap_topology_tables(port_map, switches, styles))
+        self.assertIn("SW-LF-03", text)
+        self.assertIn("0xa088c203007860bc", text)
+        self.assertIn("10.208.59.15", text)
+
+
+class TestSwitchConfigActivePortsMtu(unittest.TestCase):
+    """QP-1: Active Ports + Port MTU recomputed from ports[] for replayed JSON."""
+
+    def _ports(self):
+        ports = [{"name": f"IB1/{i}", "state": "Active", "speed": "200G", "mtu": "4096"} for i in range(1, 39)]
+        ports += [{"name": "IB1/39", "state": "Down", "speed": "-", "mtu": "0"}]
+        ports += [{"name": "IB1/40", "state": "Down", "speed": "-", "mtu": "0"}]
+        return ports
+
+    def test_count_active_ports_counts_up_and_active(self):
+        self.assertEqual(VastReportBuilder._count_active_ports(self._ports()), 38)
+
+    def test_derive_port_mtu_picks_most_common_nonzero(self):
+        self.assertEqual(VastReportBuilder._derive_port_mtu(self._ports()), "4096")
+
+    def test_switch_config_recomputes_blank_active_ports_and_mtu(self):
+        builder = VastReportBuilder()
+        data = {
+            "hardware_inventory": {
+                "switches": [
+                    {
+                        "name": "SW-LF-03",
+                        "hostname": "SW-LF-03",
+                        "mgmt_ip": "10.208.59.15",
+                        "total_ports": 40,
+                        "active_ports": 0,
+                        "mtu": 0,
+                        "ports": self._ports(),
+                    }
+                ]
+            }
+        }
+        text = _flowable_text(builder._create_switch_configuration(data))
+        self.assertIn("Active Ports", text)
+        self.assertIn("38", text)
+        self.assertIn("4096", text)
 
 
 if __name__ == "__main__":
