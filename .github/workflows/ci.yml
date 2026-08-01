@@ -20,7 +20,7 @@ jobs:
   todo-list-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate TODO-ROADMAP exists and has required structure
         run: |
           ROADMAP=docs/TODO-ROADMAP.md
@@ -49,7 +49,7 @@ jobs:
     needs: todo-list-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check version synchronization
         run: bash scripts/check-version-sync.sh
@@ -97,7 +97,7 @@ jobs:
       matrix:
         python-version: ${{ (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main') && fromJSON('["3.11", "3.12"]') || fromJSON('["3.12"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -142,7 +142,7 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -175,7 +175,7 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -204,7 +204,7 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -235,7 +235,7 @@ jobs:
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -284,7 +284,7 @@ jobs:
             script: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -359,7 +359,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
