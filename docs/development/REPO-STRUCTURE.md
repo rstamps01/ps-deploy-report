@@ -2,7 +2,7 @@
 
 The canonical, streamlined layout for this repository. The enforcing rule is [`.cursor/rules/repo-structure-17.mdc`](../../.cursor/rules/repo-structure-17.mdc); this document is the detailed reference (rationale, the layered `src/` map, and the runtime convention).
 
-Status: the standard is **defined** here. The one-time consolidation that moves existing files into this layout (release notes → `docs/releases/`, CHANGELOG split, untrack `.archive/`, etc.) is tracked as a separate cleanup step in the pipeline plan (§11 structural-consolidation) and is applied as its own reviewable change.
+Status: the standard is **defined** here and the one-time consolidation is **applied** (M4). Release notes now live in `docs/releases/`, the CHANGELOG is split (`docs/CHANGELOG-ARCHIVE.md` holds v1.4.7 and earlier), the roadmap history is archived (`docs/ROADMAP-ARCHIVE.md`), and `.archive/` is untracked + gitignored. New work should follow this layout by default.
 
 ## Top-level layout
 

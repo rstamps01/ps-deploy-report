@@ -11,7 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vnetmap authenticated to Onyx switches as the wrong user.** `vnetmap.py` talks to Onyx/MLNX-OS switches over their HTTP/HTTPS web (JSON) API, which rejects the Cumulus default `cumulus` and requires `admin`. The vnetmap workflow always passed the static `switch_user` (default `cumulus`) as `-u`, even after pre-validation had already discovered the switches authenticate as `admin`. The workflow now propagates a uniform discovered switch user (from `switch_user_by_ip`) into the generated `-u` flag — for both the `--multiple-passwords` run and the candidate-sweep retries — so the web-API login succeeds instead of failing with "Unable to determine suitable switch API" / "Please add switches". Falls back to the configured user when the discovered map is empty or non-uniform.
 - **Teleport mode: VMS Log Bundle and vperfsanity SSH now route through the tunnel.** Both workflows dialed the real cluster IP directly (and never set the forwarded SSH port on their `ScriptRunner`), so under Teleport they timed out with "SSH command timed out after 10s". They now resolve the SSH target from `ssh_host`/`ssh_port` (falling back to the cluster IP on port 22 for Tech Port/direct modes) and thread the tunnel port into every remote SSH/SCP call. vperfsanity keeps using the real cluster VMS IP for on-CNode API calls (`VAST_VMS`, `curl https://<vms>/api/…`) while sending the SSH transport through the forwarded endpoint.
 
-## [1.6.0] - 2026-07-21
+## [1.6.0] - Unreleased
+
+> Staged on `develop` and version-stamped (`APP_VERSION = 1.6.0`) but **not yet
+> tagged/released**. The date is assigned by `prepare-release`/`ship-release`
+> when the `v1.6.0` tag is cut; the `[Unreleased]` fixes above fold in at that
+> point.
 
 ### Added
 - **Teleport `tsh` auto-discovery.** The app now locates the Teleport CLI on `PATH` and in well-known install locations (macOS/Windows/Linux), so packaged builds launched from Finder/Explorer no longer fail with "tsh not found on PATH".

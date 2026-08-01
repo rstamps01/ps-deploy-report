@@ -39,6 +39,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-07-31 — M4 tracking & docs consolidation (`c89172d`, pushed)
+- Recovered from a tool-backend outage: the pre-outage chained move command had actually executed (errors were false negatives). Verified real repo state before proceeding.
+- Roadmap restructured: `TODO-ROADMAP.md` trimmed 400→~260 lines (narrative header stripped, work-item state machine added), ~160 lines of Done history → `docs/ROADMAP-ARCHIVE.md`.
+- CHANGELOG split: v1.5.0+ live; v1.4.7↓ → `docs/CHANGELOG-ARCHIVE.md`. Release notes → `docs/releases/`. Added `AGENTIC-CICD-PIPELINE.md` (master doc) + `PIPELINE-METRICS.md` + `PLANS-INDEX.md` (scaffold). `docs/README.md` re-indexed (0 dangling links).
+- Hygiene: `.archive/` untracked + gitignored; `logs/*.out`, `.cursor/settings.json` gitignored; `scripts/clean-workspace.sh` added; workspace file renamed.
+- **Docs-accuracy audit:** fixed `.vscode/README.md` workspace name, marked CHANGELOG `[1.6.0]` as **Unreleased** (no `v1.6.0` tag exists), updated `REPO-STRUCTURE.md` status to "applied". In-app docs-viewer paths + packaging spec verified intact after moves.
+- **Open:** full prior-plan reconciliation (174 plan files) running via subagent → `PLANS-INDEX.md`; deletion batch will be surfaced for approval before any plan file is removed.
+
 ### 2026-07-31 — M3 orchestration in progress
 - notifier.py + tests green (20/20); `notifications:` config + README/rule docs added.
 - Skills authored: `remediate-failure`, `deliver-autonomously`, `project-manager`; global `~/.cursor/pm/projects.md` seeded.
