@@ -39,6 +39,11 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-07-31 — Prior-plan reconciliation + approved deletion batch
+- Reconciled 173 prior Cursor plans → `docs/PLANS-INDEX.md` (this-repo: 82 shipped-stale, 13 superseded/empty, 4 minor-tail, 4 open; 70 belong to other projects). Commits `cf0a391`.
+- **Approver:** user approved the conservative 12-file deletion batch. Deleted from `~/.cursor/plans/` (173 → 161); `pywebview_native_window` retained by design.
+- Promoted 2 genuinely-open in-scope items to the roadmap: **SEC-2** (branch protection on `main`), **OPS-1** (Windows netsh portproxy remote access).
+
 ### 2026-07-31 — M4 tracking & docs consolidation (`c89172d`, pushed)
 - Recovered from a tool-backend outage: the pre-outage chained move command had actually executed (errors were false negatives). Verified real repo state before proceeding.
 - Roadmap restructured: `TODO-ROADMAP.md` trimmed 400→~260 lines (narrative header stripped, work-item state machine added), ~160 lines of Done history → `docs/ROADMAP-ARCHIVE.md`.

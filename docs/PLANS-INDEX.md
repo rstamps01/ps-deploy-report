@@ -101,4 +101,4 @@ ui_and_software_mgmt_enhancements_e6c62c5d
 vnetmap_port_mapping_9b18693e
 ```
 
-Status: **buckets populated; deletion batch pending human approval.** On approval, the batch is removed and the action recorded in [`DECISIONS.md`](DECISIONS.md).
+Status: **deletion batch approved and executed 2026-07-31** — all 12 files removed from `~/.cursor/plans/` (173 → 161 plan files). `pywebview_native_window` was retained by design. Recorded in [`DECISIONS.md`](DECISIONS.md).
