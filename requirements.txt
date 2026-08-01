@@ -24,7 +24,7 @@ svgwrite>=1.4.0
 cairosvg>=2.7.0
 
 # CLI argument parsing
-click>=8.1.0
+click>=8.4.2
 
 # Logging enhancements
 colorlog>=6.7.0
