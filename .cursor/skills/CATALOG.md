@@ -18,10 +18,16 @@ Routing index of every repo-local skill under `.cursor/skills/`. `AGENTS.md` and
 | [`update-tracker`](update-tracker/SKILL.md) | A work item changes state; session end | Tracking | `todo-tracking-09` |
 | [`codebase-health`](codebase-health/SKILL.md) | Periodic anti-bloat / structure sweep | Hygiene | `repo-structure-17`, `architecture-03` |
 
+## Orchestration & failure handling
+
+| Skill | Invoke when | Role | Enforces |
+| --- | --- | --- | --- |
+| [`project-manager`](project-manager/SKILL.md) | Any `PM:` command; drive multi-item work end-to-end | Orchestrator | `agentic-workflow-16`, `todo-tracking-09` |
+| [`deliver-autonomously`](deliver-autonomously/SKILL.md) | An approved item is cleared for hands-off delivery | Delivery loop | all pipeline rules |
+| [`remediate-failure`](remediate-failure/SKILL.md) | A gate fails and needs bounded auto-remediation + escalation | Failure handling | `ci-pipeline-13`, `config-security-11` |
+
 ## Planned (later milestones)
 
-- `remediate-failure` (M3) — bounded assess→fix→re-run loop + SMTP/Slack escalation.
-- `project-manager` / `PM:` commands (M3) — cross-project orchestrator (global skill).
 - `hotfix` / rollback (M5); `bootstrap-pipeline`, `new-project`, `adopt-existing`, `update-framework`, `framework-doctor` (M6/ADF).
 
 ## Skill-authoring standard

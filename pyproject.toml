@@ -9,6 +9,7 @@ markers = [
     "integration: full pipeline integration tests",
     "ui: browser-based UI tests (require Playwright)",
     "slow: tests that take more than 5 seconds",
+    "flaky: quarantined nondeterministic tests; excluded from the blocking gate and tracked as a BUG to fix (pipeline test-reliability policy, §21)",
 ]
 
 [tool.coverage.run]

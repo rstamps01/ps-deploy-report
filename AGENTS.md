@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M2):** the foundation (rules, hooks, GitHub scaffolding, repo-structure standard) and the 11 repo-local lifecycle **skills** under `.cursor/skills/` (indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md), CI-validated) are in place. The cross-project **PM orchestrator**, autonomous delivery loop, and `remediate-failure` land in M3. See `.cursor/plans/` for the pipeline plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M3):** the foundation + 11 lifecycle skills (M1/M2) and now the **orchestration layer** are in place — `project-manager` (PM commands), `deliver-autonomously` (the intake→ship loop), and `remediate-failure` (bounded auto-debug + SMTP/Slack escalation via `src/utils/notifier.py`), plus `docs/DECISIONS.md` (decisions + memlog) and autonomy budgets/kill-switch. All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. Tracking/docs consolidation (M4), release hardening (M5), and ADF extraction (M6) remain. See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
 
 ## How this fits together
 
@@ -72,9 +72,9 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 
 ## Pipeline Menu (invokable options)
 
-Grouped by function. Skills marked *(M3)* are not yet authored; all others are live under `.cursor/skills/`.
+Grouped by function. All skills below are live under `.cursor/skills/`.
 
-- **Intake & planning:** `intake-feature`, `brainstorming`, `writing-plans`, `PM: intake <request>` *(M3)*, `PM: status` *(M3)*, `PM: next` *(M3)*.
+- **Intake & planning:** `intake-feature`, `brainstorming`, `writing-plans`, `PM: intake <request>`, `PM: status`, `PM: next`.
 - **Develop:** `start-work`, `implement-change` (TDD), `using-git-worktrees`, parallel `explore` research.
 - **Validate & QA:** `functional-validate`, `quality-gate`, coverage ratchet, `verification-before-completion`.
 - **Review & change-control:** `open-pr`, `review-bugbot`, `review-security`, `requesting/receiving-code-review`, branch protection.
@@ -82,8 +82,8 @@ Grouped by function. Skills marked *(M3)* are not yet authored; all others are l
 - **Docs & consistency:** `publish-docs`, docs-drift audit, `generate-status-report`.
 - **Tracking:** `update-tracker`, `triage-issue`, `spec-to-backlog`, plan-inventory reconciliation.
 - **Hygiene & health:** `codebase-health`, `continual-learning` (AGENTS.md refresh).
-- **Failure handling:** `remediate-failure` *(M3)* + SMTP/Slack escalation.
-- **Orchestration:** `PM: run <item>` *(M3)*, `orchestrating-subagents`, `dispatching-parallel-agents`, `subagent-driven-development`.
+- **Failure handling:** `remediate-failure` (bounded loop) + SMTP/Slack escalation.
+- **Orchestration:** `project-manager` (`PM:` commands), `deliver-autonomously`, `orchestrating-subagents`, `dispatching-parallel-agents`, `subagent-driven-development`.
 
 ## Leveraged resources
 

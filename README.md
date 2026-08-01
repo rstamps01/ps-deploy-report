@@ -175,7 +175,9 @@ cp config/config.yaml.template config/config.yaml
 
 **Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`.
 
-**Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping.
+**Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping; `SMTP_USERNAME` / `SMTP_PASSWORD` for pipeline escalation email (see below).
+
+**Pipeline escalation notifications (optional, off by default):** the agentic CI/CD pipeline can email a structured escalation when automated remediation is exhausted, configured under the `notifications:` block in `config.yaml`. SMTP credentials are read only from the `SMTP_USERNAME` / `SMTP_PASSWORD` environment variables — never stored in the config file. Slack replies are handled by the agent via the Slack MCP. See `docs/development/AGENTIC-CICD-PIPELINE.md` for the full pipeline.
 
 ---
 

@@ -299,6 +299,31 @@ security:
   sanitize_logs: true
   mask_sensitive_data: true
 
+# Pipeline escalation notifications (agentic CI/CD, pipeline §16)
+# When the bounded `remediate-failure` loop exhausts its 3 attempts on a single
+# issue, the pipeline escalates to a human with a structured report (failure
+# description, root-cause assessment, actions taken, up to 4 ranked options).
+# Email is the formal record; Slack is the interactive reply channel (the agent
+# posts via the Slack MCP and reads the threaded reply to drive a 2nd loop).
+# OFF by default.
+#
+# SECURITY (config-security-11): SMTP username/password are read ONLY from the
+# SMTP_USERNAME / SMTP_PASSWORD environment variables — never put them in this
+# file. Use a provider app-password (Gmail/O365), not your account password.
+notifications:
+  enabled: false
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587          # 587 = STARTTLS (use_tls: true); 465 = implicit SSL (use_tls: false)
+    use_tls: true
+    from_addr: ""           # e.g. "pipeline-bot@example.com"
+    to_addrs: []            # e.g. ["you@example.com"]
+    # username / password come from SMTP_USERNAME / SMTP_PASSWORD env vars.
+  slack:
+    enabled: false
+    channel: ""             # e.g. "#vast-reporter-pipeline"; posted via the Slack MCP by the agent.
+
 # Auto-shutdown (Web UI)
 # QP-3 (3): OPT-IN and OFF by default.  When enabled, the local web server
 # exits automatically a short time after the operator closes the browser so a
