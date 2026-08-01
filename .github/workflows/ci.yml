@@ -59,7 +59,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-quality-${{ hashFiles('requirements-dev.txt') }}
@@ -104,7 +104,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements-dev.txt') }}
@@ -149,7 +149,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-health-${{ hashFiles('requirements-dev.txt') }}
@@ -182,7 +182,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-advops-${{ hashFiles('requirements-dev.txt') }}
@@ -211,7 +211,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-integration-${{ hashFiles('requirements-dev.txt') }}
@@ -242,7 +242,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-ui-${{ hashFiles('requirements-dev.txt') }}
@@ -291,7 +291,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || '~/Library/Caches/pip' }}
           key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements.txt') }}
@@ -366,7 +366,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || (runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip') }}
           key: ${{ runner.os }}-pip-qa-${{ hashFiles('requirements-dev.txt') }}
