@@ -128,7 +128,9 @@ Maps to the plan items in `agentic_cicd_pipeline_2eb2e257`.
 | **D. Pilot brownfield** | ✅ `rollout-sequence` (pilot) | L1 adopt-existing on **[`planalyzer`](https://github.com/rstamps01/planalyzer)** (Node/Next): dry-run → apply (33 create / 1 skip), Node manifest, GH Actions alongside GitLab; PR [#1](https://github.com/rstamps01/planalyzer/pull/1) | ✅ no instance files clobbered; validate/conformance/version-sync/lint/typecheck/test green |
 | **E. Portfolio rollout** | ✅ `conformance-doctor`, `rollout-sequence` | ADF v0.3.0: `framework_doctor.py` + skill, `PM: doctor`/`PM: portfolio`, `docs/PORTFOLIO.md`; vast/planalyzer/ADF all **100/100** | ✅ Per-project compliance tracked |
 
-**Done:** Phases A–E — **M6 complete.** Optional follow-ups: planalyzer L2 upgrade; richer `update-framework` merge.
+**Done:** Phases A–E — **M6 complete.** The pilot then ran to completion: planalyzer was promoted **L1 → L2 → L3** (PRs [#1](https://github.com/rstamps01/planalyzer/pull/1), [#2](https://github.com/rstamps01/planalyzer/pull/2), [#3](https://github.com/rstamps01/planalyzer/pull/3)) with a JS coverage ratchet (`@vitest/coverage-v8`, floor 60 vs measured 64.53%) wired **through the manifest alone** — the GH Actions gate adopted `test_cov` with no workflow edit, confirming the adapter indirection holds outside Python. All three projects score 100/100 at L3.
+
+Remaining ADF follow-ups (tracked in the framework's own roadmap): language-aware bootstrap (stop copying `python-standards-04.mdc` into non-Python adopters), per-language `check-version-sync` templates, a doctor check for "L3 with `coverage_floor: 0`", and richer `update-framework` merge.
 
 ## 10. HANDBOOK.md outline (to author in Phase B)
 

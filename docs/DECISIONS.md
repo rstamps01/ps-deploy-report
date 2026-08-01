@@ -39,6 +39,13 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — planalyzer promoted to L3 + coverage ratchet (pilot complete)
+
+- Merged [`planalyzer` PR #3](https://github.com/rstamps01/planalyzer/pull/3): `adopt-existing --tier L3` (4 created — `deliver-autonomously`, `remediate-failure`, `docs/PIPELINE-METRICS.md`; 41 existing files preserved) plus the coverage ratchet L3 assumes.
+- **Coverage wired for a non-Python adopter:** `@vitest/coverage-v8` over `src/lib/**`, thresholds in `vitest.config.ts` (lines/functions 60, branches 70), `npm run test:coverage`; manifest `coverage_floor: 60` and blocking gate `test` → `test_cov`. Baseline **64.53% lines** (165 tests). Threshold proven blocking (99% → exit 1) before merge.
+- **Manifest-driven CI validated:** the GH Actions gate picked up `test_cov` with **no workflow edit** — the adapter indirection works as designed across stacks.
+- **Portfolio:** all three projects now **L3 / ADF 0.3.0 / doctor 100** (`docs/PORTFOLIO.md` refreshed). The brownfield pilot is complete end-to-end: L1 → L2 → L3 on a Node/Next repo with zero framework changes required.
+
 ### 2026-08-01 — planalyzer L1 merged + L2 promoted
 - Merged [`planalyzer` PR #1](https://github.com/rstamps01/planalyzer/pull/1) (ADF L1) and PR #2 (L2 promote).
 - Portfolio: planalyzer now **L2 / ADF 0.3.0 / doctor 100**. Optional remaining: L3, coverage floor, GitLab switch-over.
