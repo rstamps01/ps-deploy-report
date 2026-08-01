@@ -39,6 +39,10 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — planalyzer L1 merged + L2 promoted
+- Merged [`planalyzer` PR #1](https://github.com/rstamps01/planalyzer/pull/1) (ADF L1) and PR #2 (L2 promote).
+- Portfolio: planalyzer now **L2 / ADF 0.3.0 / doctor 100**. Optional remaining: L3, coverage floor, GitLab switch-over.
+
 ### 2026-08-01 — M6 Phase E executed: framework-doctor + portfolio (ADF v0.3.0)
 - **Shipped [`agentic-dev-framework` v0.3.0](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0)** — `framework_doctor.py` (score + remediations, `--target`/`--portfolio`), `framework-doctor` skill, `PM: doctor`/`PM: portfolio`, `docs/PORTFOLIO.md`.
 - **Portfolio (all green):** vast-asbuilt-reporter L3 **100**, planalyzer L1 **100**, ADF L3 **100**.
