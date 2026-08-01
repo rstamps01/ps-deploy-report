@@ -85,6 +85,11 @@ jobs:
       - name: Validate agentic skill conformance
         run: python3 scripts/check-skill-conformance.py
 
+      - name: Validate project manifest (.cursor/pipeline.yml)
+        run: |
+          pip install PyYAML
+          python3 scripts/pipeline_manifest.py validate --strict
+
   # -------------------------------------------------------------------
   # Job 2: Unit tests
   #   - Feature/fix branches: Python 3.12 only (lowest cost)

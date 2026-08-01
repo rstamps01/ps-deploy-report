@@ -8,6 +8,15 @@ disable-model-invocation: true
 
 Mirrors `.github/workflows/ci.yml` locally so nothing reaches a PR red. Enforces `ci-pipeline-13`.
 
+## Command source of truth
+
+The concrete commands and the blocking-gate order are declared in the project manifest [`.cursor/pipeline.yml`](../../pipeline.yml) (`commands:` + `quality.blocking_gate`), so this skill is portable across projects. Resolve them via the adapter rather than assuming a stack:
+
+- `python3 scripts/pipeline_manifest.py gate` — prints the blocking-gate commands in order (run each; stop on first failure).
+- `python3 scripts/pipeline_manifest.py get <name>` — one command (e.g. `test_cov`, `format_fix`).
+
+The steps below are the resolved commands for **this** (Python) repo; if they ever drift from the manifest, the manifest wins (CI validates it with `pipeline_manifest.py validate --strict`).
+
 ## Steps (run in order; stop and fix on first failure)
 
 1. **Version sync:** `bash scripts/check-version-sync.sh` (canonical = `src/app.py` `APP_VERSION`).

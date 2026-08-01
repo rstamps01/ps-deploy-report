@@ -45,6 +45,7 @@ docs/
 │   └── uninstall-windows.ps1       # Automated Windows uninstall
 ├── development/                     # Developer references and active guides
 │   ├── AGENTIC-CICD-PIPELINE.md     # End-to-end pipeline map + invocation guide
+│   ├── ADF-EXTRACTION.md            # Portable-framework extraction spec + handbook outline (M6)
 │   ├── QA-TEST-PLAN.md              # Cross-OS (mac/win/linux) pre-ship QA plan
 │   ├── PIPELINE-SECRETS.md          # Secrets & credentials registry (stores + consumers)
 │   ├── REPO-STRUCTURE.md            # Canonical repository structure standard
@@ -104,6 +105,7 @@ docs/
 | Document | Purpose |
 |----------|---------|
 | [Agentic CI/CD Pipeline](development/AGENTIC-CICD-PIPELINE.md) | How work flows intake→ship via rules, skills, hooks, and the PM |
+| [ADF Extraction Spec](development/ADF-EXTRACTION.md) | Plan to extract the portable framework core (M6): inventory, tiers, phases |
 | [QA Test Plan](development/QA-TEST-PLAN.md) | Cross-OS (mac/win/linux) pre-ship QA + update-pill validation |
 | [Pipeline Secrets Registry](development/PIPELINE-SECRETS.md) | Every secret, its store (.env/env/Actions/MCP), and its consumer |
 | [Repository Structure](development/REPO-STRUCTURE.md) | Where new files/modules/docs belong by default |
