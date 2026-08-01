@@ -1,0 +1,35 @@
+---
+description: Agentic CI/CD pipeline entry point — how to run lifecycle work through AGENTS.md, repo-local skills, hooks, and the PM orchestrator
+alwaysApply: true
+---
+
+# Agentic Workflow
+
+This repository runs an agent-driven, user-invokable end-to-end CI/CD pipeline. The standards in the other rules (`architecture-03`, `change-control-07`, `documentation-08`, `todo-tracking-09`, `config-security-11`, `release-packaging-12`, `ci-pipeline-13`, `repo-structure-17`) define WHAT must be true; this rule defines HOW work is executed so every lifecycle stage runs the same way each time.
+
+## Entry point
+
+- **[AGENTS.md](../../AGENTS.md)** (repo root) is the single discoverable entry point. It indexes the lifecycle, the golden path, canonical file locations, and the Pipeline Menu. Read it at the start of non-trivial work.
+- Lifecycle procedures live as repo-local **Skills** under `.cursor/skills/<name>/SKILL.md`. Skills are the repeatable steps; rules are the standards they enforce; hooks are hard guardrails.
+
+## Golden path (intake → ship)
+
+`intake-feature` → `start-work` → `implement-change` → `functional-validate` → `quality-gate` → `open-pr` → `prepare-release` → `ship-release` → `publish-docs` → `update-tracker`.
+
+Prefer invoking the relevant skill over improvising. For multi-task plans, dispatch parallel subagents (`explore`/`bugbot`/`security-review`/`ci-investigator`) where work is independent.
+
+## Non-negotiables
+
+- **Never commit to `main` directly.** Work on `feature/*` or `fix/*` off `develop`; releases merge `develop → main` (see `change-control-07`).
+- **Gate before you claim done.** Run the local `quality-gate` (version-sync, black, flake8, mypy, pytest with the coverage floor) before opening a PR or releasing.
+- **Canonical version source is `src/app.py` `APP_VERSION`** (see `release-packaging-12`); `scripts/check-version-sync.sh` enforces it.
+- **Deterministic guardrails** in `.cursor/hooks.json` (secrets, version-sync, main-commit warning) are not bypassed.
+- **Pause for approval** before destructive/irreversible actions: merging to `main`, tagging/releasing, deleting files, and any force/destructive git operation.
+
+## Precedence (to prevent drift)
+
+Instructions: user > `AGENTS.md` > `.cursor/rules/*` > skills > defaults.
+
+Project state: `docs/TODO-ROADMAP.md` (live register) + `docs/issues/<ID>/` (per-item detail); `CHANGELOG.md` (shipped history); `docs/PROJECT-STATUS.md` (status snapshot); `docs/PLANS-INDEX.md` (plan reconciliation). Each has one owner.
+
+> The pipeline governs itself: changes to rules, skills, hooks, and `AGENTS.md` go through the same branch → PR → review → gate flow as any other code.

@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a defect in the VAST As-Built Report Generator
+title: "bug: <short summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A confirmed bug becomes a tracker item (BUG) and its fix requires a **failing-first regression test**.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the bug and the impact.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: From the UI footer / `--version` (canonical is src/app.py APP_VERSION).
+      placeholder: "1.6.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - report / PDF
+        - data extraction / API
+        - port mapping / vnetmap
+        - health checks
+        - web UI
+        - advanced ops / test suite
+        - Teleport / SSH connectivity
+        - packaging / install
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / evidence
+      description: Paste relevant logs (redact any credentials/tokens).
+      render: shell

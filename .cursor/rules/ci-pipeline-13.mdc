@@ -30,7 +30,7 @@ Three GitHub Actions workflows enforce quality at different stages:
 
 ## Coverage Requirements
 
-- Minimum **49% line coverage** enforced in CI and build-release via `--cov-fail-under=49` (aligned with pyproject.toml); raise toward 80% as tests expand (see docs/TODO-ROADMAP.md TSE-8–TSE-10).
+- Minimum **60% line coverage** enforced in CI and build-release via `--cov-fail-under=60` (matches `pyproject.toml` and `.github/workflows/ci.yml`); the floor ratchets **upward only**, never downward — raise toward 80% as tests expand (see docs/TODO-ROADMAP.md TSE-8–TSE-10).
 - Coverage report uploaded as artifact on every CI run (Python 3.12 matrix job).
 - New features and bug fixes should include corresponding tests where practical.
 

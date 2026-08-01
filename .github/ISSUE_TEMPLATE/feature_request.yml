@@ -1,0 +1,46 @@
+name: Feature request
+description: Propose a feature or enhancement
+title: "feat: <short summary>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Approved requests become tracker items (FEAT) and run through the autonomous delivery loop (intake -> implement -> validate -> QA -> review -> release -> docs).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation (Why)
+      description: What problem does this solve and for whom?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed capability (What)
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Testable GIVEN/WHEN/THEN outcomes that define "done".
+      placeholder: |
+        GIVEN ... WHEN ... THEN ...
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0 (critical)
+        - P1 (high)
+        - P2 (medium)
+        - P3 (low)
+    validations:
+      required: true
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: Non-goals / constraints

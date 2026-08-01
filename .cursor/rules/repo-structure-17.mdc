@@ -1,0 +1,35 @@
+---
+description: Repository structure standard — canonical layout, fixed homes for pipeline artifacts, layered src map for new modules, and archival/runtime conventions
+alwaysApply: true
+---
+
+# Repository Structure Standard
+
+Defines the canonical, streamlined layout so new files, docs, and modules land in the right place by default and the working tree stays clean. Full rationale and the layered `src/` map are in [docs/development/REPO-STRUCTURE.md](../../docs/development/REPO-STRUCTURE.md).
+
+## Canonical layout
+
+- **Repo root** holds only config + entry docs: `README.md`, `CHANGELOG.md`, `AGENTS.md`, `requirements*.txt`, `pyproject.toml`, and dotfiles. **No** release notes, logs, generated artifacts, or ad-hoc scratch files at root.
+- `src/` — application code. New modules follow the layered map in `REPO-STRUCTURE.md` (pipeline / portmap / diagrams / advanced / web / utils). **Existing flat `src/` modules stay as-is** — the layered map is enforced for NEW modules only; a subpackage refactor of existing modules is a deferred backlog item.
+- `tests/` — mirrors `src/`.
+- `docs/` — all documentation, in its sub-homes: `deployment/`, `development/`, `api/`, `confluence/`, `marketing/`, `issues/<ID>/`, `releases/`.
+- `config/` — runtime config (gitignored actuals; `*.template` committed).
+- `packaging/`, `scripts/`, `frontend/`, `assets/`, `.github/`, `.cursor/` — as named.
+
+## Fixed homes for pipeline artifacts
+
+- `AGENTS.md` → repo root.
+- Skills → `.cursor/skills/<name>/SKILL.md`; hooks → `.cursor/hooks.json`; rules → `.cursor/rules/*.mdc`.
+- Under `docs/`: `PROJECT-STATUS.md`, `TODO-ROADMAP.md`, `ROADMAP-ARCHIVE.md`, `PLANS-INDEX.md`, `DECISIONS.md`, `PIPELINE-METRICS.md`, `CHANGELOG-ARCHIVE.md`, `releases/RELEASE_NOTES_v*.md`, `development/AGENTIC-CICD-PIPELINE.md`, `development/REPO-STRUCTURE.md`.
+
+## Runtime / generated convention
+
+- One documented, **gitignored** set: `logs/ output/ clusters/ reports/ import/ telemetry/ build/ dist/ test_output/ tracer-output/ archive/`.
+- `scripts/clean-workspace.sh` purges them. No generated artifact is ever committed.
+- `.archive/` (or `archive/`) is **gitignored and local-only** — content is retired here, never pushed.
+
+## Enforcement
+
+- `codebase-health` skill runs the recurring orphan / dead-file / duplication / drift sweep, proposing archival or consolidation with a diff for approval.
+- A `.cursor/hooks.json` warning fires when a new file lands outside this standard (e.g. a new top-level file or a release note outside `docs/releases/`).
+- New skills, agents, workflows, and docs adhere to this layout by default; `AGENTS.md` and the master pipeline doc reference it.

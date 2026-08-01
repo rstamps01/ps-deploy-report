@@ -1,0 +1,17 @@
+# Code ownership — reviewers auto-requested on PRs.
+# See https://docs.github.com/articles/about-code-owners
+
+# Default owner for everything.
+*                           @rstamps01
+
+# Pipeline governance (rules/skills/hooks/AGENTS.md go through review like code).
+/AGENTS.md                  @rstamps01
+/.cursor/rules/             @rstamps01
+/.cursor/skills/            @rstamps01
+/.cursor/hooks.json         @rstamps01
+/.cursor/hooks/             @rstamps01
+
+# CI/CD + packaging.
+/.github/                   @rstamps01
+/packaging/                 @rstamps01
+/scripts/                   @rstamps01

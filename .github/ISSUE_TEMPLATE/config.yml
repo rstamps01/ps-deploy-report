@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap and planned work
+    url: https://github.com/rstamps01/ps-deploy-report/blob/develop/docs/TODO-ROADMAP.md
+    about: Check the live register before filing — the item may already be tracked.
+  - name: Documentation
+    url: https://github.com/rstamps01/ps-deploy-report/blob/develop/README.md
+    about: Installation, usage, and configuration.

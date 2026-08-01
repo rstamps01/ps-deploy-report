@@ -30,7 +30,7 @@ Do not batch unrelated fixes indefinitely. Ship small, frequent releases.
 
 ## Version Source of Truth
 
-`src/app.py` → `APP_VERSION` is the canonical version. All other locations derive from it.
+`src/app.py` → `APP_VERSION` is the canonical version. All other locations derive from it. `scripts/check-version-sync.sh` reads `APP_VERSION` from `src/app.py` as the canonical value and validates every other location against it (CI-enforced).
 
 ### All Version Locations (must stay in sync)
 
