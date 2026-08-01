@@ -62,6 +62,19 @@ class VperfsanityWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _ssh_host(self) -> str:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else ""
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -104,6 +117,8 @@ class VperfsanityWorkflow:
 
         if self._script_runner is None:
             self._script_runner = ScriptRunner(output_callback=self._output_callback, local_dir=self._output_dir)
+        # Route SSH/SCP through the Teleport-forwarded port when active.
+        self._script_runner.set_ssh_port(self._ssh_port())
 
         try:
             return method()
@@ -116,6 +131,8 @@ class VperfsanityWorkflow:
         from tool_manager import ToolManager
 
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -136,8 +153,10 @@ class VperfsanityWorkflow:
 
         tool_manager = ToolManager(output_callback=self._output_callback)
 
-        # Deploy the package
-        success, message = tool_manager.deploy_tool_to_cnode(self.PACKAGE_NAME, host, user, password)
+        # Deploy the package. In Teleport mode the SSH target is the forwarded
+        # local endpoint; the cluster VMS IP (``host``) is used only for
+        # display and remote API calls that run on the CNode itself.
+        success, message = tool_manager.deploy_tool_to_cnode(self.PACKAGE_NAME, ssh_host, user, password, port=ssh_port)
 
         if not success:
             self.emit("error", f"Deployment failed: {message}")
@@ -150,6 +169,8 @@ class VperfsanityWorkflow:
     def _step_extract_package(self) -> Dict[str, Any]:
         """Step 2: Extract tarball to working directory."""
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -163,7 +184,7 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {extract_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, extract_cmd, timeout=60)
+        rc, stdout, stderr = run_ssh_command(ssh_host, user, password, extract_cmd, timeout=60, port=ssh_port)
 
         if rc != 0:
             self.emit("error", f"Extraction failed: {stderr}")
@@ -172,7 +193,7 @@ class VperfsanityWorkflow:
         # Verify extraction
         self.emit("info", "Verifying extraction...")
         verify_cmd = f"ls -la {self.VPERF_DIR}/"
-        rc, stdout, stderr = run_ssh_command(host, user, password, verify_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(ssh_host, user, password, verify_cmd, timeout=30, port=ssh_port)
 
         if rc != 0:
             self.emit("error", f"Verification failed - vperfsanity directory not found")
@@ -193,6 +214,8 @@ class VperfsanityWorkflow:
         password: str,
         admin_user: str,
         admin_pass: str,
+        ssh_host: Optional[str] = None,
+        ssh_port: int = 22,
     ) -> None:
         """Delete any 'vperfsanity' views that exist in OTHER tenants.
 
@@ -207,8 +230,9 @@ class VperfsanityWorkflow:
         """
         self.emit("info", "Checking for stale vperfsanity views across all tenants...")
 
+        _ssh_host = ssh_host or host
         find_cmd = f"curl -s -k -u '{admin_user}:{admin_pass}' " f"'https://{host}/api/views/' 2>/dev/null"
-        rc, stdout, _ = run_ssh_command(host, user, password, find_cmd, timeout=30)
+        rc, stdout, _ = run_ssh_command(_ssh_host, user, password, find_cmd, timeout=30, port=ssh_port)
 
         if rc != 0 or not stdout.strip():
             self.emit("warn", "  Could not query views API; skipping cross-tenant cleanup")
@@ -241,7 +265,7 @@ class VperfsanityWorkflow:
             del_cmd = (
                 f"curl -s -k -u '{admin_user}:{admin_pass}' " f"-X DELETE 'https://{host}/api/views/{vid}/' 2>/dev/null"
             )
-            rc_d, out_d, err_d = run_ssh_command(host, user, password, del_cmd, timeout=30)
+            rc_d, out_d, err_d = run_ssh_command(_ssh_host, user, password, del_cmd, timeout=30, port=ssh_port)
             if rc_d == 0:
                 self.emit("success", f"  Deleted view {vid}")
             else:
@@ -262,6 +286,8 @@ class VperfsanityWorkflow:
         does not fall back to defaults that may not match this cluster.
         """
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -277,7 +303,9 @@ class VperfsanityWorkflow:
         self.emit("info", "")
 
         # --- Cross-tenant API cleanup: delete vperfsanity views in ANY tenant ---
-        self._api_cleanup_cross_tenant_views(host, user, password, admin_user, admin_pass)
+        self._api_cleanup_cross_tenant_views(
+            host, user, password, admin_user, admin_pass, ssh_host=ssh_host, ssh_port=ssh_port
+        )
         self.emit("info", "")
 
         # --- Script-based cleanup: remove current-tenant resources ---
@@ -293,12 +321,13 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ cd {vperf_dir} && ./vperfsanity_prepare.sh -c {vip_pool}")
 
         rc_clean, stdout_clean, stderr_clean = run_ssh_command(
-            host,
+            ssh_host,
             user,
             password,
             cleanup_cmd,
             timeout=120,
             force_tty=True,
+            port=ssh_port,
         )
         clean_out = stdout_clean + stderr_clean
         for line in clean_out.strip().split("\n"):
@@ -325,12 +354,13 @@ class VperfsanityWorkflow:
         self.emit("info", "This may take several minutes...")
 
         rc, stdout, stderr = run_ssh_command(
-            host,
+            ssh_host,
             user,
             password,
             prepare_cmd,
             timeout=600,
             force_tty=True,
+            port=ssh_port,
         )
 
         output = stdout + stderr
@@ -370,6 +400,8 @@ class VperfsanityWorkflow:
     def _step_run_tests(self) -> Dict[str, Any]:
         """Step 4: Run vperfsanity write and read tests."""
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -389,7 +421,9 @@ class VperfsanityWorkflow:
         self.emit("info", "")
 
         # Long timeout for performance tests, force_tty for interactive output
-        rc, stdout, stderr = run_ssh_command(host, user, password, run_cmd, timeout=3600, force_tty=True)
+        rc, stdout, stderr = run_ssh_command(
+            ssh_host, user, password, run_cmd, timeout=3600, force_tty=True, port=ssh_port
+        )
 
         output = stdout + stderr
         for line in output.strip().split("\n"):
@@ -427,6 +461,8 @@ class VperfsanityWorkflow:
     def _step_collect_results(self) -> Dict[str, Any]:
         """Step 5: Run vperfsanity_results.sh to generate summary."""
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -439,7 +475,9 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {results_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, results_cmd, timeout=120, force_tty=True)
+        rc, stdout, stderr = run_ssh_command(
+            ssh_host, user, password, results_cmd, timeout=120, force_tty=True, port=ssh_port
+        )
 
         output = stdout + stderr
 
@@ -469,6 +507,8 @@ class VperfsanityWorkflow:
     def _step_upload_results(self) -> Dict[str, Any]:
         """Step 6: Upload results if cluster has internet access."""
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -483,7 +523,9 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {upload_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, upload_cmd, timeout=120, force_tty=True)
+        rc, stdout, stderr = run_ssh_command(
+            ssh_host, user, password, upload_cmd, timeout=120, force_tty=True, port=ssh_port
+        )
 
         output = stdout + stderr
 
@@ -502,6 +544,8 @@ class VperfsanityWorkflow:
     def _step_cleanup(self) -> Dict[str, Any]:
         """Step 7: Clean up test data and infrastructure."""
         host = self._credentials.get("cluster_ip")
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -519,12 +563,13 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ {cleanup_run_cmd}")
 
         rc1, stdout1, stderr1 = run_ssh_command(
-            host,
+            ssh_host,
             user,
             password,
             cleanup_run_cmd,
             timeout=300,
             force_tty=True,
+            port=ssh_port,
         )
 
         output1 = stdout1 + stderr1
@@ -545,12 +590,13 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ cd {vperf_dir} && ./vperfsanity_prepare.sh -c {vip_pool}")
 
         rc2, stdout2, stderr2 = run_ssh_command(
-            host,
+            ssh_host,
             user,
             password,
             cleanup_prep_cmd,
             timeout=300,
             force_tty=True,
+            port=ssh_port,
         )
 
         output2 = stdout2 + stderr2
@@ -559,7 +605,9 @@ class VperfsanityWorkflow:
                 self.emit("info", line)
 
         # Cross-tenant API cleanup (catch stale views left in other tenants)
-        self._api_cleanup_cross_tenant_views(host, user, password, admin_user, admin_pass)
+        self._api_cleanup_cross_tenant_views(
+            host, user, password, admin_user, admin_pass, ssh_host=ssh_host, ssh_port=ssh_port
+        )
 
         # Remove package files
         self.emit("info", "")
@@ -567,7 +615,7 @@ class VperfsanityWorkflow:
         rm_cmd = f"rm -rf {self.REMOTE_DIR}/{self.PACKAGE_NAME} {vperf_dir}"
         self.emit("info", f"$ {rm_cmd}")
 
-        run_ssh_command(host, user, password, rm_cmd, timeout=30)
+        run_ssh_command(ssh_host, user, password, rm_cmd, timeout=30, port=ssh_port)
 
         overall_success = rc1 == 0 and rc2 == 0
 

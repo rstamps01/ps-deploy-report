@@ -569,6 +569,25 @@ class VnetmapWorkflow:
         switch_user = self._credentials.get("switch_user", "cumulus")
         switch_password = self._credentials.get("switch_password", "")
 
+        # Pre-validation (OneShotRunner) probes each switch and records the
+        # winning login user per IP in ``switch_user_by_ip``.  Onyx/MLNX-OS
+        # switches reject the Cumulus default (``cumulus``) and require
+        # ``admin`` for the web (JSON) management API that vnetmap.py speaks.
+        # vnetmap.py accepts only a single ``-u``, so when every discovered
+        # switch shares the same user we use it; otherwise we keep the
+        # operator-configured ``switch_user``.
+        raw_user_by_ip = self._credentials.get("switch_user_by_ip") or {}
+        discovered_users = {str(u) for u in raw_user_by_ip.values() if u}
+        if len(discovered_users) == 1:
+            resolved_user = discovered_users.pop()
+            if resolved_user and resolved_user != switch_user:
+                self.emit(
+                    "info",
+                    f"Using switch user '{resolved_user}' discovered during pre-validation "
+                    f"(overriding configured '{switch_user}').",
+                )
+            switch_user = resolved_user
+
         # Ordered list of switch passwords to try — populated by OneShotRunner when
         # autofill is enabled to handle clusters with mixed factory defaults
         # (e.g. ``Vastdata1!`` on one Cumulus pair vs ``Cumu1usLinux!`` on a
@@ -871,6 +890,7 @@ class VnetmapWorkflow:
             self._step_data["vnetmap_command"] = display_cmd
             if not self._is_auth_failure(result.stdout, result.stderr):
                 self.emit("error", f"vnetmap exited with return code: {result.returncode}")
+                self._emit_switch_api_hint(result.stdout, result.stderr)
                 return {
                     "success": False,
                     "message": f"vnetmap failed with rc={result.returncode}",
@@ -951,6 +971,7 @@ class VnetmapWorkflow:
                 f"Authentication failed on all {len(candidates)} candidate switch password(s). "
                 "Verify the correct password in Connection Settings.",
             )
+        self._emit_switch_api_hint(result.stdout, result.stderr)
         # Even on failure, never persist the real password.  Replace the
         # ``-p '<pw>'`` argument in whatever form we last tried.  RM-1.
         self._step_data["vnetmap_command"] = self._rebuild_vnetmap_cmd(last_vnetmap_cmd, "<switch-password>")
@@ -964,6 +985,29 @@ class VnetmapWorkflow:
         """Return True if the combined output matches known auth/connect failure patterns."""
         combined = f"{stdout or ''}\n{stderr or ''}".lower()
         return any(token in combined for token in self._VNETMAP_AUTH_INDICATORS)
+
+    def _emit_switch_api_hint(self, stdout: str, stderr: str) -> None:
+        """Emit one clear, actionable hint for the Onyx web-API failure mode.
+
+        ``vnetmap.py`` talks to NVIDIA Onyx / MLNX-OS switches over their
+        HTTP/HTTPS JSON *web* management API (not SSH), and prints the cryptic
+        ``Unable to determine suitable switch API`` followed by a Python
+        traceback when that API is unreachable or rejects the credentials.
+        Operators shouldn't have to decode a traceback, so surface a single
+        plain-language explanation of what to check.
+        """
+        combined = f"{stdout or ''}\n{stderr or ''}".lower()
+        if "unable to determine suitable switch api" not in combined:
+            return
+        self.emit(
+            "warn",
+            "Onyx switch web API unavailable: vnetmap talks to Onyx/MLNX-OS switches over their "
+            "HTTP/HTTPS web (JSON) management API, not SSH. 'Unable to determine suitable switch API' "
+            "means that web API refused the connection or rejected the credentials — even when SSH to "
+            "the switch works. Verify: (1) the web API is enabled ('show web' — HTTP or HTTPS reachable), "
+            "(2) the Switch User/Password in Connection Settings are the switch's *web* login (Onyx "
+            "default is admin/admin), and (3) no firewall blocks ports 80/443 from the cluster to the switch.",
+        )
 
     @staticmethod
     def _rebuild_vnetmap_cmd(base_cmd: str, new_password: str) -> str:

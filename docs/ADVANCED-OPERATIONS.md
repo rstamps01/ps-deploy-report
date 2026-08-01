@@ -64,6 +64,23 @@ Validates network topology using VAST's vnetmap.py script.
 | 6 | Validate Output | Parse and validate vnetmap results |
 | 7 | Save Results | Save output to local laptop |
 
+> **NVIDIA Onyx / MLNX-OS switches — web API requirement.** `vnetmap.py` reaches
+> Onyx/MLNX-OS switches over their **HTTP/HTTPS web (JSON) management API**, not
+> over SSH. If vnetmap logs `Unable to determine suitable switch API` (often
+> followed by `Failed to connect to switch` and a Python traceback), the web API
+> is unreachable or is rejecting the supplied credentials — this can happen even
+> when SSH to the switch works fine. To resolve:
+> 1. Confirm the web server is enabled on the switch (`show web`) and that HTTP
+>    (port 80) or HTTPS (port 443) is reachable from the cluster.
+> 2. Set the **Switch User / Switch Password** in Connection Settings to the
+>    switch's *web* login (the Onyx factory default is `admin` / `admin`); the
+>    web password can differ from the SSH password.
+> 3. Ensure no firewall blocks ports 80/443 from the cluster nodes to the switch
+>    management IPs.
+>
+> When this signature is detected the Reporter now surfaces a single
+> plain-language hint in the log instead of the raw traceback.
+
 ### VAST Support Tools (5 steps)
 
 Runs VAST's diagnostic script inside the cluster container.
@@ -169,11 +186,15 @@ tsh ssh -L <apiPort>:127.0.0.1:443 -L <sshPort>:127.0.0.1:22 -l <user> <node> <k
 This exposes the VMS REST API (443) and the CNode's SSH (22) on local ephemeral ports at the same time — the single-port limitation that broke earlier manual `socat` attempts. The forwarded local API port feeds the API handler; the forwarded local SSH endpoint is used by all SSH-dependent workflows (vnetmap deploy/run, `clush`, and the switch proxy-jump).
 
 **Prerequisites:**
-- The Teleport CLI (`tsh`) must be installed and on `PATH`.
+- The Teleport CLI (`tsh`) must be installed. It no longer has to be on `PATH`: the app auto-discovers `tsh` on `PATH` **and** in well-known install locations (e.g. `/usr/local/bin/tsh`, `/opt/homebrew/bin/tsh`, or the Windows Teleport directory).
 - You must already be logged in: `tsh login --proxy=<proxy>` (SSO/MFA is handled by `tsh`, not this tool).
 - Your Teleport role must permit local port forwarding.
 
+**tsh discovery & status.** A status pill appears above the Teleport Mode option on the Reporter page: green **tsh Installed** when the CLI is found, or yellow **Install tsh** when it is not. Manage the path under **Advanced Configuration -> Teleport Settings**, where you can view the discovered path, enter a custom path, and click **Run Discovery** to validate and save it. The saved path is reused for future Teleport connections.
+
 The tool runs a preflight check (`tsh` present + active session) before launching and reports an actionable error if either is missing. Configurable via the `teleport` block in `config/config.yaml` (`enabled`, `ssh_user`, `tsh_path`).
+
+For the full guide, see [Teleport Mode (Beta)](TELEPORT-MODE.md).
 
 ### Starting a Workflow
 

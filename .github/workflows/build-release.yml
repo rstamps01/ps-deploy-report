@@ -23,11 +23,11 @@ permissions:
 jobs:
   # -------------------------------------------------------------------
   # Quality gate: lint, format check, type check (Linux only).
-  # Does not block build/release — every tag must produce .dmg/.zip (see rule).
+  # BLOCKING (pipeline §5): artifacts build only after this passes. Branch
+  # protection keeps `main` green, so a release tag off `main` rarely trips it.
   # -------------------------------------------------------------------
   quality-gate:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -56,11 +56,10 @@ jobs:
 
   # -------------------------------------------------------------------
   # Run full test suite with coverage enforcement (Linux only).
-  # Does not block build/release — every tag must produce .dmg/.zip (see rule).
+  # BLOCKING (pipeline §5): artifacts build only after this passes.
   # -------------------------------------------------------------------
   test:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -90,11 +89,12 @@ jobs:
 
   # -------------------------------------------------------------------
   # Build platform-specific bundles from the tagged release code (checkout at tag).
-  #   Every release MUST produce VAST-Reporter-vX.Y.Z-mac.dmg and -win.zip (no exception).
-  #   Runs on every tag push; not blocked by quality-gate or test.
+  #   Every release MUST produce VAST-Reporter-vX.Y.Z-mac.dmg and -win.zip.
+  #   BLOCKING gates first (pipeline §5): only builds after quality-gate + test pass.
   #   macOS = 10x Linux cost, Windows = 2x — pip cache added to both
   # -------------------------------------------------------------------
   build:
+    needs: [quality-gate, test]
     strategy:
       fail-fast: false  # Run all platforms; one failure does not cancel the others
       matrix:
@@ -240,9 +240,12 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VER="${TAG#v}"
-          NOTES_FILE="RELEASE_NOTES_${TAG}.md"
-          if [ -f "$NOTES_FILE" ]; then
-            echo "body_path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          # Release notes live in docs/releases/ (pipeline §11); fall back to
+          # the repo-root legacy location, then the CHANGELOG.
+          if [ -f "docs/releases/RELEASE_NOTES_${TAG}.md" ]; then
+            echo "body_path=docs/releases/RELEASE_NOTES_${TAG}.md" >> "$GITHUB_OUTPUT"
+          elif [ -f "RELEASE_NOTES_${TAG}.md" ]; then
+            echo "body_path=RELEASE_NOTES_${TAG}.md" >> "$GITHUB_OUTPUT"
           else
             echo "body_path=CHANGELOG.md" >> "$GITHUB_OUTPUT"
           fi

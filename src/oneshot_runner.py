@@ -1311,6 +1311,13 @@ class OneShotRunner:
                 # switch on a different default password).
                 if self._switch_password_by_ip:
                     switch_ssh_config["password_by_ip"] = dict(self._switch_password_by_ip)
+                # Also propagate the winning per-IP *user*.  On Onyx the
+                # working combo is ``admin/admin`` while the operator default
+                # is ``cumulus``; without this the checks re-auth as the wrong
+                # user and MLAG/NTP/config-readability fail with SSH auth
+                # errors even though pre-validation connected successfully.
+                if self._switch_user_by_ip:
+                    switch_ssh_config["user_by_ip"] = dict(self._switch_user_by_ip)
                 if self._teleport_ssh_host:
                     switch_ssh_config["proxy_jump"] = {
                         "host": self._teleport_ssh_host,
@@ -1639,6 +1646,10 @@ class OneShotRunner:
                         # the same one-shot run.
                         if self._switch_password_by_ip:
                             sw_cfg["password_by_ip"] = dict(self._switch_password_by_ip)
+                        # Propagate the winning per-IP user (Onyx=admin) so the
+                        # report-embedded checks authenticate as the right user.
+                        if self._switch_user_by_ip:
+                            sw_cfg["user_by_ip"] = dict(self._switch_user_by_ip)
                         if self._switch_password_candidates:
                             sw_cfg["password_candidates"] = list(self._switch_password_candidates)
                         if self._teleport_ssh_host:
@@ -1727,18 +1738,26 @@ class OneShotRunner:
             )
             if vnetmap_file:
                 try:
-                    from vnetmap_parser import VNetMapParser
+                    from vnetmap_parser import VNetMapParser, vnetmap_matches_cluster
 
                     self._emit("info", f"Found vnetmap output: {vnetmap_file.name} — using as port mapping source")
                     parser = VNetMapParser(str(vnetmap_file))
                     vnetmap_result = parser.parse()
                     if vnetmap_result.get("available") and vnetmap_result.get("topology"):
-                        raw_data["port_mapping_vnetmap"] = vnetmap_result
-                        use_vnetmap = True
-                        self._emit(
-                            "info",
-                            f"Vnetmap data parsed: {len(vnetmap_result['topology'])} connections",
-                        )
+                        matches, reason = vnetmap_matches_cluster(vnetmap_result, raw_data)
+                        if not matches:
+                            self._emit(
+                                "warn",
+                                f"Ignoring vnetmap output {vnetmap_file.name} — {reason}. "
+                                "Skipping vnetmap port mapping.",
+                            )
+                        else:
+                            raw_data["port_mapping_vnetmap"] = vnetmap_result
+                            use_vnetmap = True
+                            self._emit(
+                                "info",
+                                f"Vnetmap data parsed: {len(vnetmap_result['topology'])} connections",
+                            )
                     else:
                         self._emit(
                             "warn",
@@ -1976,10 +1995,16 @@ class OneShotRunner:
                 include_prior_vperfsanity=include_prior_vperf,
                 include_prior_vnetmap=include_prior_vnet,
             )
+            # Prefer the version resolved from the live cluster during early
+            # identity fetch; fall back to any operator-supplied value, then
+            # "Unknown".  Previously this only read ``credentials`` (which never
+            # carries the detected version), leaving the bundle SUMMARY's
+            # ``**Version:**`` line blank even when the run detected it.
+            resolved_version = self._resolved_cluster_version or self._credentials.get("cluster_version") or "Unknown"
             bundler.set_metadata(
                 cluster_name=resolved_name,
                 cluster_ip=cluster_ip or "Unknown",
-                cluster_version=self._credentials.get("cluster_version", "Unknown"),
+                cluster_version=resolved_version,
             )
 
             since: Optional[datetime] = None
@@ -2060,11 +2085,17 @@ class OneShotRunner:
     def _find_latest_vnetmap_output(self, cluster_ip: str, cluster_key: Optional[str] = None) -> Optional[Path]:
         """Return the most recent vnetmap output file for ``cluster_ip``.
 
-        With QP-2 segmentation, searches the per-cluster
-        ``clusters/<key>/output/scripts`` dir first (when ``cluster_key`` is
-        given), then the legacy flat ``output/scripts``.  Scoped strictly by
-        cluster IP to prevent cross-cluster contamination of port-mapping
-        topology.  Returns ``None`` when no match exists.
+        With QP-2 segmentation active (``cluster_key`` given), searches ONLY
+        the per-cluster ``clusters/<key>/output/scripts`` dir. The flat
+        ``output/scripts`` fallback is intentionally NOT used in that case:
+        with a shared Tech Port IP the ``vnetmap_output_{ip}_*.txt`` filename
+        is identical across clusters, so falling back would return a DIFFERENT
+        cluster's topology when this cluster has no vnetmap of its own (e.g.
+        after a switch-auth failure). Returning ``None`` lets the caller
+        degrade gracefully instead of embedding another cluster's data.
+
+        When segmentation is disabled (``cluster_key`` is ``None``), the flat
+        ``output/scripts`` dir is searched, preserving legacy behavior.
         """
         if not cluster_ip:
             return None
@@ -2072,16 +2103,14 @@ class OneShotRunner:
             from utils import get_data_dir
 
             data_dir = get_data_dir()
-            search_dirs: List[Path] = []
             if cluster_key:
                 from utils.cluster_paths import cluster_paths
 
-                search_dirs.append(cluster_paths(data_dir, cluster_key).scripts)
-            search_dirs.append(data_dir / "output" / "scripts")
+                scripts_dir = cluster_paths(data_dir, cluster_key).scripts
+            else:
+                scripts_dir = data_dir / "output" / "scripts"
 
-            for scripts_dir in search_dirs:
-                if not scripts_dir.is_dir():
-                    continue
+            if scripts_dir.is_dir():
                 matches = sorted(
                     scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"),
                     reverse=True,

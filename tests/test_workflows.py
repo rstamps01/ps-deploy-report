@@ -2428,3 +2428,145 @@ class TestAlarmLineClassifier:
 
         line = "2026-04-21 06:11:37 | MAJOR | Time sync issue"
         assert _classify_alarm_line(line) == "warn"
+
+
+# ===================================================================
+# TestVnetmapDiscoveredSwitchUser
+# ===================================================================
+
+
+class TestVnetmapDiscoveredSwitchUser:
+    """vnetmap.py speaks the Onyx/MLNX-OS web (JSON) API, which rejects the
+    Cumulus default ``cumulus`` and requires ``admin``.  Pre-validation
+    records the winning login user per switch in ``switch_user_by_ip``;
+    ``_step_generate_export_commands`` must propagate a uniform discovered
+    user into the generated ``-u`` flag instead of the static default.
+    """
+
+    LOCAL_CFG = (
+        "cnodesub0: 172.245.128.[1-3]\n"
+        "dnodesub0: 172.245.128.[100-101]\n"
+        "cnodes: @cnodesub0\n"
+        "dnodes: @dnodesub0\n"
+        "all: @cnodes,@dnodes\n"
+    )
+
+    def _make_workflow(self, user_by_ip):
+        workflow = WorkflowRegistry.get("vnetmap")
+        workflow.set_credentials(
+            {
+                "cluster_ip": "10.6.160.5",
+                "node_user": "vastdata",
+                "node_password": "nodepass",
+                "switch_user": "cumulus",
+                "switch_password": "admin",
+                "switch_password_by_ip": {"10.6.160.7": "admin", "10.6.160.8": "admin"},
+                "switch_user_by_ip": user_by_ip,
+            }
+        )
+        workflow._step_data = {"remote_dir": "/tmp/vast_scripts"}
+        workflow._script_runner = MagicMock(DEFAULT_REMOTE_DIR="/tmp/vast_scripts")
+        return workflow
+
+    def _generate(self, workflow, mock_ssh):
+        mock_ssh["vnetmap"].return_value = (0, self.LOCAL_CFG, "")
+        with patch.object(
+            workflow, "_get_switch_ips_from_api", return_value=["10.6.160.7", "10.6.160.8"]
+        ), patch.object(workflow, "_resolve_network_type", return_value="ETH"):
+            return workflow._step_generate_export_commands()
+
+    def test_uniform_discovered_admin_user_propagates_to_minus_u(self, mock_ssh):
+        wf = self._make_workflow({"10.6.160.7": "admin", "10.6.160.8": "admin"})
+        result = self._generate(wf, mock_ssh)
+        assert result["success"] is True
+        assert wf._step_data["switch_user"] == "admin"
+        assert "-u admin" in wf._step_data["vnetmap_command"]
+        assert "-u cumulus" not in wf._step_data["vnetmap_command"]
+
+    def test_empty_map_falls_back_to_configured_user(self, mock_ssh):
+        wf = self._make_workflow({})
+        result = self._generate(wf, mock_ssh)
+        assert result["success"] is True
+        assert wf._step_data["switch_user"] == "cumulus"
+        assert "-u cumulus" in wf._step_data["vnetmap_command"]
+
+    def test_mixed_discovered_users_keep_configured_user(self, mock_ssh):
+        # vnetmap.py accepts a single -u; a non-uniform map is not a reliable
+        # signal, so the operator-configured user is retained.
+        wf = self._make_workflow({"10.6.160.7": "admin", "10.6.160.8": "cumulus"})
+        result = self._generate(wf, mock_ssh)
+        assert result["success"] is True
+        assert wf._step_data["switch_user"] == "cumulus"
+
+
+# ===================================================================
+# TestWorkflowTeleportSSHRouting
+# ===================================================================
+
+
+class TestWorkflowTeleportSSHRouting:
+    """Log Bundle and vperfsanity must route node SSH/SCP through the
+    Teleport-forwarded local endpoint (``ssh_host``/``ssh_port``) instead of
+    dialing the cluster IP directly, which is unreachable from the laptop in
+    Teleport mode.
+    """
+
+    def test_log_bundle_ssh_host_prefers_tunnel(self):
+        wf = WorkflowRegistry.get("log_bundle")
+        wf.set_credentials({"cluster_ip": "10.6.160.5", "ssh_host": "127.0.0.1", "ssh_port": 65469})
+        assert wf._ssh_host() == "127.0.0.1"
+        assert wf._ssh_port() == 65469
+
+    def test_log_bundle_ssh_host_falls_back_to_cluster_ip(self):
+        wf = WorkflowRegistry.get("log_bundle")
+        wf.set_credentials({"cluster_ip": "10.6.160.5"})
+        assert wf._ssh_host() == "10.6.160.5"
+        assert wf._ssh_port() == 22
+
+    def test_log_bundle_run_step_sets_ssh_port(self, mock_ssh):
+        wf = WorkflowRegistry.get("log_bundle")
+        wf.set_credentials(
+            {
+                "cluster_ip": "10.6.160.5",
+                "ssh_host": "127.0.0.1",
+                "ssh_port": 65469,
+                "node_user": "vastdata",
+                "node_password": "pass",
+            }
+        )
+        mock_runner = MagicMock()
+        mock_runner.check_prerequisites.return_value = (True, "OK")
+        mock_runner.execute_remote.return_value = MagicMock(success=True, stdout="500M\t/var/log/vast")
+        wf._script_runner = mock_runner
+        wf.run_step(1)
+        mock_runner.set_ssh_port.assert_called_with(65469)
+
+    def test_vperfsanity_ssh_host_prefers_tunnel(self):
+        wf = WorkflowRegistry.get("vperfsanity")
+        wf.set_credentials({"cluster_ip": "10.6.160.5", "ssh_host": "127.0.0.1", "ssh_port": 65469})
+        assert wf._ssh_host() == "127.0.0.1"
+        assert wf._ssh_port() == 65469
+
+    def test_vperfsanity_ssh_host_falls_back_to_cluster_ip(self):
+        wf = WorkflowRegistry.get("vperfsanity")
+        wf.set_credentials({"cluster_ip": "10.6.160.5"})
+        assert wf._ssh_host() == "10.6.160.5"
+        assert wf._ssh_port() == 22
+
+    def test_vperfsanity_extract_uses_tunnel_endpoint(self, mock_ssh):
+        wf = WorkflowRegistry.get("vperfsanity")
+        wf.set_credentials(
+            {
+                "cluster_ip": "10.6.160.5",
+                "ssh_host": "127.0.0.1",
+                "ssh_port": 65469,
+                "node_user": "vastdata",
+                "node_password": "pass",
+            }
+        )
+        wf._step_data = {"vperf_dir": "/tmp/vast_scripts/vperfsanity"}
+        wf._step_extract_package()
+        # First positional arg is the SSH host; port kwarg is the tunnel port.
+        first_call = mock_ssh["vperfsanity"].call_args_list[0]
+        assert first_call.args[0] == "127.0.0.1"
+        assert first_call.kwargs.get("port") == 65469

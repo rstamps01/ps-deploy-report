@@ -16,20 +16,30 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== Version Synchronization Check ==="
 
-# Extract canonical version from src/__init__.py (supports prerelease suffixes like -beta, -rc1)
-CANONICAL_VERSION=$(grep -E '^__version__\s*=' "$PROJECT_ROOT/src/__init__.py" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)".*/\1/')
+# Extract canonical version from src/app.py APP_VERSION (the single source of
+# truth per release-packaging-12; supports prerelease suffixes like -beta, -rc1).
+CANONICAL_VERSION=$(grep -E '^APP_VERSION\s*=' "$PROJECT_ROOT/src/app.py" | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?)".*/\1/')
 BASE_VERSION=$(echo "$CANONICAL_VERSION" | sed -E 's/-.*//')
 
 if [ -z "$CANONICAL_VERSION" ]; then
-    echo "ERROR: Could not extract version from src/__init__.py"
+    echo "ERROR: Could not extract APP_VERSION from src/app.py"
     exit 1
 fi
 
-echo "Canonical version (src/__init__.py): $CANONICAL_VERSION"
+echo "Canonical version (src/app.py APP_VERSION): $CANONICAL_VERSION"
 echo "Base version (numeric only): $BASE_VERSION"
 echo ""
 
 ERRORS=0
+
+# Check src/__init__.py __version__
+INIT_VERSION=$(grep -E '^__version__\s*=' "$PROJECT_ROOT/src/__init__.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' || echo "")
+if [ "$INIT_VERSION" != "$CANONICAL_VERSION" ]; then
+    echo "MISMATCH: src/__init__.py __version__ has '$INIT_VERSION', expected '$CANONICAL_VERSION'"
+    ERRORS=$((ERRORS + 1))
+else
+    echo "OK: src/__init__.py __version__"
+fi
 
 # Check src/__init__.py docstring
 INIT_DOCSTRING=$(grep -E 'Version:\s*[0-9]' "$PROJECT_ROOT/src/__init__.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' || echo "")
@@ -38,15 +48,6 @@ if [ "$INIT_DOCSTRING" != "$CANONICAL_VERSION" ]; then
     ERRORS=$((ERRORS + 1))
 else
     echo "OK: src/__init__.py docstring"
-fi
-
-# Check src/app.py APP_VERSION
-APP_VERSION=$(grep -E '^APP_VERSION\s*=' "$PROJECT_ROOT/src/app.py" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?')
-if [ "$APP_VERSION" != "$CANONICAL_VERSION" ]; then
-    echo "MISMATCH: src/app.py APP_VERSION has '$APP_VERSION', expected '$CANONICAL_VERSION'"
-    ERRORS=$((ERRORS + 1))
-else
-    echo "OK: src/app.py APP_VERSION"
 fi
 
 # Check src/main.py APP_VERSION (the argparse --version output derives from it
@@ -91,10 +92,10 @@ echo ""
 if [ $ERRORS -gt 0 ]; then
     echo "=== FAILED: $ERRORS version mismatch(es) found ==="
     echo ""
-    echo "To fix, update all version references to match src/__init__.py __version__"
+    echo "To fix, update all version references to match src/app.py APP_VERSION (canonical)"
     echo "Files to check:"
+    echo "  - src/app.py (APP_VERSION) — canonical source, update first"
     echo "  - src/__init__.py (docstring and __version__)"
-    echo "  - src/app.py (APP_VERSION)"
     echo "  - src/main.py (--version argument)"
     echo "  - packaging/vast-reporter.spec (CFBundleShortVersionString, CFBundleVersion)"
     echo "  - README.md (version badge)"

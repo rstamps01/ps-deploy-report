@@ -15,7 +15,17 @@ docs/
 ├── API-REFERENCE.md                 # VAST REST API endpoints reference
 ├── POST-INSTALL-VALIDATION.md       # Post-install validation procedures
 ├── PRE-RELEASE-QA-GAP-ANALYSIS.md   # Pre-release QA checklist
-├── TODO-ROADMAP.md                  # Canonical roadmap and task tracking
+├── TELEPORT-MODE.md                 # Teleport (tsh) connection mode guide
+│
+│   # Pipeline & tracking (agentic CI/CD)
+├── TODO-ROADMAP.md                  # Canonical live roadmap / work register
+├── ROADMAP-ARCHIVE.md               # Completed roadmap items (archive)
+├── PROJECT-STATUS.md                # Point-in-time status snapshots (PM-owned)
+├── DECISIONS.md                     # Append-only decisions (ADR-lite) + memlog
+├── PLANS-INDEX.md                   # Reconciliation of prior Cursor plans
+├── PIPELINE-METRICS.md              # DORA-style pipeline metrics
+├── CHANGELOG-ARCHIVE.md             # Release history v1.4.7 and earlier
+│
 ├── api/                             # API discovery documentation
 │   └── EBOX_API_V7_DISCOVERY.md
 ├── confluence/                      # Internal only — not published to GitHub
@@ -33,15 +43,24 @@ docs/
 │   ├── install-windows.ps1         # Automated Windows installation
 │   ├── uninstall-mac.sh            # Automated macOS uninstall
 │   └── uninstall-windows.ps1       # Automated Windows uninstall
-└── development/                     # Developer references and active guides
-    ├── HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md
-    ├── READ_ONLY_VAST_API_POLICY.md
-    └── TELEMETRY.md
+├── development/                     # Developer references and active guides
+│   ├── AGENTIC-CICD-PIPELINE.md     # End-to-end pipeline map + invocation guide
+│   ├── QA-TEST-PLAN.md              # Cross-OS (mac/win/linux) pre-ship QA plan
+│   ├── REPO-STRUCTURE.md            # Canonical repository structure standard
+│   ├── HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md
+│   ├── READ_ONLY_VAST_API_POLICY.md
+│   ├── TELEMETRY.md
+│   └── IPv6-Cluster-Deployment-Findings*.{md,txt}   # field working notes (local)
+├── issues/                          # Per-work-item detail (spec/plan/tasks/evidence)
+│   └── <ID>/
+└── releases/                        # Release notes (RELEASE_NOTES_vX.Y.Z.md)
+    └── RELEASE_NOTES_v1.5.0.md … v1.5.8.md
 ```
 
 > Historical implementation notes, RCA write-ups, and completed-issue evidence
 > were retired in the v1.5.8 pre-release cleanup; their content remains in git
-> history (see the `pre-1.5.8-cleanup` tag).
+> history (see the `pre-1.5.8-cleanup` tag). Local-only retirement storage lives
+> in the gitignored `.archive/` (never pushed).
 
 ---
 
@@ -52,9 +71,21 @@ docs/
 | Document | Purpose |
 |----------|---------|
 | [Advanced Operations](ADVANCED-OPERATIONS.md) | Developer-mode workflows (vnetmap, support tools, vperfsanity, log bundle, switch/network config) |
+| [Teleport Mode](TELEPORT-MODE.md) | Connect via Teleport (`tsh`) tunnel — setup, discovery, node selection |
 | [Post-Install Validation](POST-INSTALL-VALIDATION.md) | Post-install validation procedures and One-Shot mode |
 | [API Reference](API-REFERENCE.md) | VAST REST API endpoints used by the app (v7 and v1) |
-| [TODO Roadmap](TODO-ROADMAP.md) | Canonical roadmap and task tracking |
+| [TODO Roadmap](TODO-ROADMAP.md) | Canonical live roadmap and work register |
+
+### Pipeline & Project Tracking (Agentic CI/CD)
+
+| Document | Purpose |
+|----------|---------|
+| [Agentic CI/CD Pipeline](development/AGENTIC-CICD-PIPELINE.md) | End-to-end lifecycle map, golden path, and skill invocation guide |
+| [Repository Structure](development/REPO-STRUCTURE.md) | Canonical layout standard and runtime conventions |
+| [Project Status](PROJECT-STATUS.md) | Point-in-time status snapshots (baseline/release/milestone) |
+| [Decisions & Memlog](DECISIONS.md) | Append-only decisions (ADR-lite) + working-memory ledger |
+| [Plans Index](PLANS-INDEX.md) | Reconciliation of prior Cursor plans vs shipped state |
+| [Pipeline Metrics](PIPELINE-METRICS.md) | DORA-style lead time, change-failure rate, MTTR, coverage trend |
 
 ### For End Users / PS Engineers
 
@@ -71,6 +102,9 @@ docs/
 
 | Document | Purpose |
 |----------|---------|
+| [Agentic CI/CD Pipeline](development/AGENTIC-CICD-PIPELINE.md) | How work flows intake→ship via rules, skills, hooks, and the PM |
+| [QA Test Plan](development/QA-TEST-PLAN.md) | Cross-OS (mac/win/linux) pre-ship QA + update-pill validation |
+| [Repository Structure](development/REPO-STRUCTURE.md) | Where new files/modules/docs belong by default |
 | [Health Check Module Guide](development/HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md) | Tier 1 + Tier 3 health check architecture and implementation |
 | [Read-Only API Policy](development/READ_ONLY_VAST_API_POLICY.md) | GET-only API access policy rationale |
 | [Telemetry](development/TELEMETRY.md) | Opt-in usage metrics and future central-receiver contract |
@@ -81,5 +115,5 @@ docs/
 
 ---
 
-**Last Updated**: June 25, 2026
+**Last Updated**: July 31, 2026
 **Maintained By**: VAST Professional Services

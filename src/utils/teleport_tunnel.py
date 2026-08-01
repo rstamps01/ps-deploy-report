@@ -36,10 +36,13 @@ Usage::
 
 import json
 import logging
+import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,97 @@ _KEEPALIVE_CMD = "sleep 315360000"
 
 class TeleportError(Exception):
     """Raised when the Teleport tunnel cannot be established."""
+
+
+def _tsh_binary_name() -> str:
+    """``tsh.exe`` on Windows, ``tsh`` elsewhere."""
+    return "tsh.exe" if sys.platform.startswith("win") else "tsh"
+
+
+def _known_tsh_locations() -> List[Path]:
+    """Well-known absolute paths where ``tsh`` is commonly installed.
+
+    GUI apps launched from Finder / Explorer inherit a restricted ``PATH``
+    that usually omits ``/usr/local/bin`` (macOS Homebrew / pkg installer)
+    and the Windows Teleport install dir, so ``shutil.which('tsh')`` fails
+    even though the binary is present.  Scanning these fallbacks lets the
+    packaged app find ``tsh`` without the operator editing ``PATH``.
+    """
+    home = Path.home()
+    if sys.platform == "darwin":
+        return [
+            Path("/usr/local/bin/tsh"),
+            Path("/opt/homebrew/bin/tsh"),
+            Path("/opt/teleport/bin/tsh"),
+            home / ".local/bin/tsh",
+        ]
+    if sys.platform.startswith("win"):
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local_app_data = os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local"))
+        return [
+            Path(program_files) / "Teleport" / "tsh.exe",
+            Path(program_files_x86) / "Teleport" / "tsh.exe",
+            Path(local_app_data) / "Programs" / "teleport" / "tsh.exe",
+            home / "scoop" / "shims" / "tsh.exe",
+        ]
+    # Linux / other POSIX (development environments).
+    return [
+        Path("/usr/local/bin/tsh"),
+        Path("/usr/bin/tsh"),
+        home / ".local/bin/tsh",
+    ]
+
+
+def _is_executable_file(path: Path) -> bool:
+    """True if *path* is an existing file the OS can execute."""
+    try:
+        if not path.is_file():
+            return False
+        if sys.platform.startswith("win"):
+            return True
+        return os.access(str(path), os.X_OK)
+    except OSError:
+        return False
+
+
+def discover_tsh(explicit: Optional[str] = None) -> Optional[str]:
+    """Locate the ``tsh`` binary, returning an absolute path or ``None``.
+
+    Resolution order:
+
+    1. *explicit* (a configured/edited path): accepted if it resolves via
+       :func:`shutil.which` (bare name or on PATH) or is an executable file.
+    2. ``tsh`` on the current ``PATH`` (benefits from the startup PATH
+       augmentation in ``main.augment_process_path``).
+    3. Well-known install locations for the current platform
+       (see :func:`_known_tsh_locations`).
+
+    Args:
+        explicit: Optional user-provided path or command name to try first.
+
+    Returns:
+        Absolute path to a usable ``tsh`` binary, or ``None`` if not found.
+    """
+    if explicit:
+        candidate = explicit.strip()
+        if candidate:
+            hit = shutil.which(candidate)
+            if hit:
+                return str(Path(hit).resolve())
+            as_path = Path(candidate).expanduser()
+            if _is_executable_file(as_path):
+                return str(as_path.resolve())
+
+    on_path = shutil.which(_tsh_binary_name()) or shutil.which("tsh")
+    if on_path:
+        return str(Path(on_path).resolve())
+
+    for location in _known_tsh_locations():
+        if _is_executable_file(location):
+            return str(location.resolve())
+
+    return None
 
 
 def options_from_config(config: Optional[dict]) -> dict:
@@ -126,6 +220,11 @@ class TeleportTunnel:
     ):
         self.node = node
         self.ssh_user = ssh_user or "vastdata"
+        # Keep the configured value verbatim ("tsh" when unset). preflight()
+        # runs discover_tsh() before the tunnel launches and rewrites this to
+        # an absolute path, so the packaged GUI app self-heals even when
+        # started with a restricted PATH — without making construction depend
+        # on the local filesystem.
         self.tsh_path = tsh_path or "tsh"
         # Remote host the API ``-L`` forward terminates on, as seen from the
         # Teleport node. Defaults to the node's own loopback (only works when
@@ -262,10 +361,15 @@ class TeleportTunnel:
                 failed (so the operator gets an actionable message instead
                 of a generic connection failure later).
         """
-        if not shutil.which(self.tsh_path):
+        # Re-resolve in case PATH changed or the configured path is bare;
+        # discover_tsh also validates an absolute path is executable.
+        resolved = discover_tsh(self.tsh_path)
+        if resolved:
+            self.tsh_path = resolved
+        else:
             raise TeleportError(
-                f"Teleport CLI '{self.tsh_path}' not found on PATH. Install Teleport "
-                "(tsh) and ensure it is on your PATH, then try again."
+                f"Teleport CLI '{self.tsh_path}' not found. Install Teleport (tsh), then set or "
+                "validate its location in Advanced Configuration -> Teleport Settings -> Run Discovery."
             )
 
         rc, detail = self._status()

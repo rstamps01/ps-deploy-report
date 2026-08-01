@@ -42,6 +42,7 @@ Usage::
 import logging
 import os
 import platform
+import re
 import subprocess
 from typing import List, Optional, Tuple
 
@@ -230,7 +231,7 @@ def run_interactive_ssh(
     CNode's SSH is forwarded to a local port).
     """
     if jump_host:
-        return _paramiko_shell(
+        rc, out, err = _paramiko_shell(
             host,
             username,
             password,
@@ -241,9 +242,14 @@ def run_interactive_ssh(
             jump_password=jump_password,
             jump_port=jump_port,
         )
-    if IS_WINDOWS:
-        return _paramiko_shell(host, username, password, command, timeout, port=port)
-    return _pexpect_interactive(host, username, password, command, timeout, known_hosts_file, port=port)
+    elif IS_WINDOWS:
+        rc, out, err = _paramiko_shell(host, username, password, command, timeout, port=port)
+    else:
+        rc, out, err = _pexpect_interactive(host, username, password, command, timeout, known_hosts_file, port=port)
+
+    # Onyx/MLNX-OS shells prepend terminal-mode escapes; strip them so the
+    # caller receives clean text for hostname/filename/parse use.
+    return rc, strip_terminal_escapes(out), strip_terminal_escapes(err)
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +261,35 @@ def _wrap_login_shell(command: str) -> str:
     """Wrap *command* in ``bash -l -c '...'`` for full login-shell environment."""
     escaped = command.replace("'", "'\\''")
     return "bash -l -c '" + escaped + "'"
+
+
+# ANSI / terminal control sequences emitted by switch CLIs.  NVIDIA Onyx (and
+# other MLNX-OS restricted shells) send terminal-mode setup on shell entry
+# (e.g. ``\x1b[?1h\x1b=``), which otherwise pollutes captured output — poisoning
+# derived hostnames/filenames (``switch_^[[?1h^[=_...txt``) and breaking parsers.
+_ANSI_ESCAPE_RE = re.compile(
+    r"\x1b\[[0-?]*[ -/]*[@-~]"  # CSI sequences (e.g. \x1b[?1h, \x1b[0m)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences terminated by BEL or ST
+    r"|\x1b[()][0-9A-Za-z]"  # charset selection (e.g. \x1b(B)
+    r"|\x1b[=>]"  # keypad application / normal mode
+    r"|\x1b[@-Z\\^_]"  # other single-char escapes (e.g. \x1bM)
+)
+
+
+def strip_terminal_escapes(text: str) -> str:
+    """Remove ANSI/terminal control sequences from captured shell output.
+
+    Applied to interactive-SSH output so downstream consumers (hostname
+    derivation, filename slugs, config parsing) see clean text even when a
+    switch emits terminal-mode setup sequences on shell entry.
+    """
+    if not text:
+        return text
+    cleaned = _ANSI_ESCAPE_RE.sub("", text)
+    # Drop any orphaned ESC and non-printable control chars, preserving the
+    # usual whitespace (tab, newline, carriage-return).
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", cleaned)
+    return cleaned
 
 
 def _augmented_env(password=None):

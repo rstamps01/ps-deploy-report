@@ -24,7 +24,42 @@ import pytest
 from utils.switch_ssh_probe import (
     build_switch_password_by_ip,
     probe_switch_password,
+    probe_switch_credentials,
 )
+
+
+class TestProbeSwitchCredentials:
+    """The credential-returning probe preserves the winning *user*, which
+    matters on Onyx where ``admin``/``admin`` wins but the operator default
+    user is ``cumulus``."""
+
+    def test_returns_none_for_empty_candidates(self):
+        assert probe_switch_credentials("10.0.0.1", "cumulus", []) is None
+
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_primary_user_password_pair_returned(self, mock_ssh):
+        mock_ssh.return_value = (0, "leaf-1\n", "")
+        winner = probe_switch_credentials("10.0.0.1", "cumulus", ["Vastdata1!"])
+        assert winner == ("cumulus", "Vastdata1!")
+
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_onyx_admin_admin_user_preserved(self, mock_ssh, mock_pty):
+        # cumulus/<candidate> is denied; admin/admin (appended by the combo
+        # builder) wins — the returned user must be 'admin', not 'cumulus'.
+        mock_ssh.side_effect = [
+            (255, "", "Permission denied"),  # cumulus / Vastdata1!
+            (0, "onyx-leaf\n", ""),  # admin / admin
+        ]
+        winner = probe_switch_credentials("10.0.0.1", "cumulus", ["Vastdata1!"])
+        assert winner == ("admin", "admin")
+
+    @patch("utils.switch_ssh_probe.run_interactive_ssh")
+    @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_probe_switch_password_delegates_to_credentials(self, mock_ssh, mock_pty):
+        mock_ssh.return_value = (0, "leaf-1\n", "")
+        assert probe_switch_password("10.0.0.1", "cumulus", ["Vastdata1!"]) == "Vastdata1!"
+
 
 # =========================================================================
 # probe_switch_password

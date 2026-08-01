@@ -175,7 +175,9 @@ cp config/config.yaml.template config/config.yaml
 
 **Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`.
 
-**Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping.
+**Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping; `SMTP_USERNAME` / `SMTP_PASSWORD` for pipeline escalation email (see below).
+
+**Pipeline escalation notifications (optional, off by default):** the agentic CI/CD pipeline can email a structured escalation when automated remediation is exhausted, configured under the `notifications:` block in `config.yaml`. SMTP credentials are read only from the `SMTP_USERNAME` / `SMTP_PASSWORD` environment variables — never stored in the config file. Slack replies are handled by the agent via the Slack MCP. See `docs/development/AGENTIC-CICD-PIPELINE.md` for the full pipeline.
 
 ---
 
@@ -212,11 +214,12 @@ The Reporter's Connection Settings tile offers three ways to reach a cluster:
 |------|------|-------|
 | **Tech Port Mode** | SSH tunnel via the CBox Tech Port (`192.168.2.2`) | Auto-discovers the VMS and tunnels API calls through SSH. |
 | **VMS Mgmt Mode** | Direct HTTPS to the VMS management IP | No SSH tunnel. |
-| **Teleport Mode** | Teleport (`tsh`) proxy | **Beta.** Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires `tsh` on PATH and an authenticated session (the app auto-runs `tsh login` on expiry). |
+| **Teleport Mode** | Teleport (`tsh`) proxy | **Beta.** Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires an authenticated `tsh` session (the app auto-runs `tsh login` on expiry). `tsh` is auto-discovered on PATH and in well-known install locations; manage the path under Advanced Configuration -> Teleport Settings. |
 
-> **Teleport Mode is a Beta feature** in v1.5.8 — functional and shipped, but
-> still undergoing field validation. The UI flags it with a "Beta Feature"
-> badge above the Teleport Mode option.
+> **Teleport Mode is a Beta feature** — functional and shipped, but still
+> undergoing field validation. The UI flags it with a "Beta Feature" badge and
+> shows a green/yellow tsh install-status pill above the Teleport Mode option.
+> See [docs/TELEPORT-MODE.md](docs/TELEPORT-MODE.md).
 
 ### Command-line interface
 
@@ -573,4 +576,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.5.8 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1279 passing, 60%+ coverage threshold
+**Version:** 1.6.0 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1279 passing, 60%+ coverage threshold

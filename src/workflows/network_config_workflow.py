@@ -55,6 +55,19 @@ class NetworkConfigWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _ssh_host(self) -> str:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else ""
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -109,11 +122,18 @@ class NetworkConfigWorkflow:
     # -- Helpers --
 
     def _gateway_ssh(self, cmd: str, timeout: int = 30) -> Tuple[int, str, str]:
-        """SSH to the gateway CNode (the externally reachable cluster_ip)."""
-        host = self._step_data.get("host", self._credentials.get("cluster_ip"))
+        """SSH to the gateway CNode.
+
+        The connection targets the Teleport-forwarded local endpoint
+        (``ssh_host``/``ssh_port``) when Teleport mode is active, falling back
+        to the externally reachable ``cluster_ip`` for Tech Port / direct
+        modes.
+        """
+        ssh_host = self._step_data.get("ssh_host") or self._ssh_host()
+        ssh_port = int(self._step_data.get("ssh_port") or self._ssh_port())
         user = self._step_data.get("user", self._credentials.get("node_user", "vastdata"))
         password = self._step_data.get("password", self._credentials.get("node_password"))
-        result = run_ssh_command(host, user, password, cmd, timeout=timeout)
+        result = run_ssh_command(ssh_host, user, password, cmd, timeout=timeout, port=ssh_port)
         return (int(result[0]), str(result[1]), str(result[2]))
 
     def _parse_local_cfg(self, cfg_text: str) -> Dict[str, List[str]]:
@@ -168,7 +188,13 @@ class NetworkConfigWorkflow:
         build the per-node results dictionary.
         """
         nodes = self._step_data.get("all_nodes", {})
+        # ``gateway_ip`` is the *logical* cluster IP used to separate the
+        # gateway CNode from internal (172.16.x) nodes and for display.  The
+        # actual SSH connection targets ``ssh_host``/``ssh_port`` which point
+        # at the Teleport-forwarded local endpoint when Teleport mode is active.
         gateway_ip = self._step_data.get("host", self._credentials.get("cluster_ip"))
+        ssh_host = self._step_data.get("ssh_host") or self._ssh_host()
+        ssh_port = int(self._step_data.get("ssh_port") or self._ssh_port())
         user = self._step_data.get("user")
         password = self._step_data.get("password")
         results: Dict[str, str] = {}
@@ -187,12 +213,13 @@ class NetworkConfigWorkflow:
             self.emit("info", f'    clush -w {node_ips} "{cmd}"')
 
             rc, stdout, stderr = run_ssh_command(
-                gateway_ip,
+                ssh_host,
                 user,
                 password,
                 clush_cmd,
                 timeout=max(timeout, 60),
                 login_shell=True,
+                port=ssh_port,
             )
 
             # Parse clush output: each line is "<ip>: <content>"
@@ -229,11 +256,12 @@ class NetworkConfigWorkflow:
         if gateway_name:
             self.emit("info", f"  $ ssh {user}@{gateway_ip} '{cmd}'")
             rc, stdout, stderr = run_ssh_command(
-                gateway_ip,
+                ssh_host,
                 user,
                 password,
                 cmd,
                 timeout=timeout,
+                port=ssh_port,
             )
             if rc == 0 and stdout and stdout.strip():
                 results[gateway_name] = stdout.strip()
@@ -252,6 +280,11 @@ class NetworkConfigWorkflow:
         host = self._credentials.get("cluster_ip")
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
+        # SSH connection target: the Teleport-forwarded local endpoint when
+        # active, otherwise the cluster IP.  ``host`` remains the logical
+        # cluster IP for display and node-map bookkeeping.
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
 
         if not host:
             self.emit("error", "Cluster IP is required.")
@@ -262,7 +295,7 @@ class NetworkConfigWorkflow:
 
         self.emit("info", "Connecting to CNode...")
         self.emit("info", f"$ ssh {user}@{host} hostname")
-        rc, stdout, stderr = run_ssh_command(host, user, password, "hostname", timeout=15)
+        rc, stdout, stderr = run_ssh_command(ssh_host, user, password, "hostname", timeout=15, port=ssh_port)
         if rc != 0:
             error_msg = stderr.strip().split("\n")[-1] if stderr else "Connection failed"
             self.emit("error", f"SSH connection failed: {error_msg}")
@@ -271,11 +304,22 @@ class NetworkConfigWorkflow:
         hostname = stdout.strip()
         self.emit("success", f"Connected to {hostname} ({host})")
 
-        self._step_data.update({"host": host, "hostname": hostname, "user": user, "password": password})
+        self._step_data.update(
+            {
+                "host": host,
+                "hostname": hostname,
+                "user": user,
+                "password": password,
+                "ssh_host": ssh_host,
+                "ssh_port": ssh_port,
+            }
+        )
 
         # OS info
         self.emit("info", f"$ ssh {user}@{host} 'cat /etc/os-release | head -2'")
-        rc, stdout, _ = run_ssh_command(host, user, password, "cat /etc/os-release | head -2", timeout=10)
+        rc, stdout, _ = run_ssh_command(
+            ssh_host, user, password, "cat /etc/os-release | head -2", timeout=10, port=ssh_port
+        )
         if rc == 0 and stdout:
             for line in stdout.strip().split("\n"):
                 self.emit("info", f"  {line}")
@@ -286,11 +330,12 @@ class NetworkConfigWorkflow:
         self.emit("info", f"$ ssh {user}@{host} 'cat /etc/clustershell/groups.d/local.cfg'")
 
         rc, stdout, stderr = run_ssh_command(
-            host,
+            ssh_host,
             user,
             password,
             "cat /etc/clustershell/groups.d/local.cfg 2>/dev/null",
             timeout=15,
+            port=ssh_port,
         )
 
         all_nodes: Dict[str, str] = {}

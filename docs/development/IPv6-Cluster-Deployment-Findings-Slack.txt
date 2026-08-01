@@ -1,0 +1,161 @@
+:vast: *VAST Cluster IPv6 Deployment — Requirements & Cluster-Create Flags*
+_Compiled from VAST internal Confluence · 2026-07-24_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*1. Context — what "IPv6" means for VAST*
+
+IPv6 is driven by *service providers* and *Federal customers*. The USGv6 certification validates *only the server management interfaces — nothing else*.
+
+Two supported deployment models (pick one up front):
+```
+Model                        On IPv6                                   Notes
+---------------------------  ----------------------------------------  ------------------------------------------
+Full IPv6 (Taiga Cloud)      All data + mgmt; LDAP, DNS, NFSv3/v4      KRB5 uses IP6.ARPA for rDNS; needs IPv6
+                             + KRB5 AD, SMB, S3                        DNS delegation + round-robin in VIPPool
+Partial IPv6 (Genesis)       VIPPool + view-policy (data path)         Driven by scale (1000s of IPs in
+                             only; management stays IPv4               host-based access rules)
+```
+Source: <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/3907452951/IPv6+FRD|IPv6 FRD>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*2. Hard constraints / technical gaps* (get these right at install time)
+
+•  *BMC/IPMI must be back-to-back (B2B)* — IPMI is not part of IPv6 support.
+•  *No IPv4 → IPv6 conversion in place* — VAST will NOT convert configured services (VMS-VIP, DNS) or the data network from v4 to v6. Deploy IPv6 from the start; do not migrate later.
+•  *IPv4 and IPv6 must live in the SAME VIPPool* — dual CIDR/GW entries. VastDNS can only be one version at a time.
+•  All protocols (NFSv3/v4/SMB/S3) + auth (AD/LDAP/NIS/DNS) must be validated for the chosen IP version; HTTPS/SSL must work over IPv6 for S3 and the VMS VIP.
+
+Source: <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/3907452951/IPv6+FRD|IPv6 FRD>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*3. Cluster-create flags* (`vcli cluster create`)
+
+```
+Flag                       Purpose
+-------------------------  ---------------------------------------------
+--cnode_ipv6_addresses     Comma-separated list of CNode IPv6 addresses
+--dnode_ipv6_addresses     Comma-separated list of DNode IPv6 addresses
+--ipv6-mgmt-vip            IPv6 management VIP address
+--ipv6-external-gateway    IPv6 external gateway
+--ipv6-prefix              IPv6 prefix length (integer)
+```
+:warning: Naming is inconsistent — node-address flags use *underscores*, VIP/gateway/prefix flags use *hyphens*. Use exactly as written.
+
+Example command stanza:
+```
+export cnodes_ips=`echo 172.16.128.{1..12} | sed 's/ /,/g'`
+export dnodes_ips=`echo 172.16.128.{100..105} | sed 's/ /,/g'`
+
+# add IPv6 addressing to the optional flags
+export flags=' --cnode-cores 20 --enable-encryption --enable-pfc \
+  --cnode_ipv6_addresses 2001:db8:30::1,2001:db8:30::2,... \
+  --dnode_ipv6_addresses 2001:db8:30::100,2001:db8:30::101,... \
+  --ipv6-mgmt-vip 2001:db8:30::100 \
+  --ipv6-external-gateway 2001:db8:30::1 \
+  --ipv6-prefix 64'
+
+./vman.sh $branch_tag $pem_file vcli $VMAN_USER_PASSWORD -c cluster create \
+  --build ${branch_tag} --cnode-ips ${cnodes_ips} --dnode-ips ${dnodes_ips} \
+  --name $cluster_name --psnt $cluster_label ${flags}
+```
+:warning: *Approval required* — these are "Other Flags": explicit approval from VAST Engineering, vForce, or Customer Support before production. IPv6 marked *"possibly not GA yet."* Confirm GA for your target VAST OS version.
+
+Source: <https://vastdata.atlassian.net/wiki/spaces/FIELD/pages/6915293324/Legacy+Install+-+vcli+cluster+create+flags|Legacy Install - vcli cluster create flags> (against 5.4.0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*4. Node/network config* (`configure_network.py`)
+
+```
+Flag                                        Purpose
+------------------------------------------  ------------------------------------------------
+--ext-ip-ipv6 <IPv6>                        External IPv6 address
+--ext-prefix-ipv6 <PREFIX>                  IPv6 prefix length
+--ext-gateway-ipv6 <IPv6>                   IPv6 default gateway
+--mgmt-vip-ipv6 <IPv6>                      Floating IPv6 mgmt VIP (identical on all nodes)
+--mgmt-data-vip-ipv6 / -prefix / -gateway   Optional mgmt-data IPv6 VIP (must differ from VIP)
+--ext-dns / --ntp                           Accept IPv6 servers (up to 3 DNS)
+```
+Dual-stack example:
+```
+configure_network.py 3 \
+  --ext-interface ens3f0 \
+  --ext-ip 10.20.30.13 --ext-netmask 255.255.255.0 --ext-gateway 10.20.30.1 \
+  --ext-ip-ipv6 2001:db8:30::13 --ext-prefix-ipv6 64 --ext-gateway-ipv6 2001:db8:30::1 \
+  --mgmt-vip 10.20.30.100 --mgmt-vip-ipv6 2001:db8:30::100
+```
+Source: <https://vastdata.atlassian.net/wiki/spaces/~712020c7509c510ac042989c457d8f45eadd11/pages/7673577506/configure_network.py|configure_network.py>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*5. Management-plane items that must be IPv6-aware*
+
+•  Node mgmt IPs, node IPMI IPs
+•  Gateway, DNS, callhome proxy
+•  Switch mgmt IPs
+•  VIP pools (ranges, gateway, CIDR, polling VIPs)
+•  VastDNS service IP
+•  Replication peer VIPs
+•  Data-flow / top-actor filters
+•  SMTP / syslog / callhome hosts
+•  Mgmt IPv6 VIP must expose GUI/REST on the IPv6 endpoint
+
+Source: <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/3872194640/IPv6+-+Management+changes|IPv6 - Management changes>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*6. Special case — true "IPv6-only" (L3 northband) installs*
+
+•  DNodes configured normally as a b2b cluster; CNodes marked for L3 on the north ports with mgmt interface on the north ports.
+•  Flags: `--auto-ports-ext-iface northband`, `--mgmt-vip-ipv6`, `--ext-ip-ipv6`, `--ext-prefix-ipv6 128`, `--nb-eth-mtu 9000 9000`, plus `--l3-northband-asn <customer ASN>` and `--l3-northband-router-id <unique IPv4 per node>`.
+•  *All VIP Pools must be L3-enabled* and *all IPv6 VIP-pool CIDRs must be /128*; VMS expects the mgmt VIP IPv6 interface at /128.
+•  Verify north-port BGP/FRR peers are up before proceeding (risk of losing access):
+```
+sudo vtysh -c "show bgp summary"
+```
+Source: <https://vastdata.atlassian.net/wiki/spaces/do/pages/7901839482/L3+northband+Install|L3 northband | Install> (release/5.4.3-sp3-hf9)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*7. Operational access tip*
+
+Reach node ports over IPv6 during bring-up:
+```
+ssh -6 vastdata@fe80::4911:69e:feaf:6ee9%ens1f0
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*8. Requirements checklist*
+
+1.  *Decide the model* up front: Full vs Partial IPv6 — cannot convert later.
+2.  *IPMI/BMC on back-to-back* networking.
+3.  *Provision IPv6 for every mgmt-plane object* (node mgmt, switches, VIP pools, DNS, NTP, callhome, replication).
+4.  *vcli cluster create*: `--cnode_ipv6_addresses`, `--dnode_ipv6_addresses`, `--ipv6-mgmt-vip`, `--ipv6-external-gateway`, `--ipv6-prefix` (with approval).
+5.  *configure_network.py*: `--ext-ip-ipv6`, `--ext-prefix-ipv6`, `--ext-gateway-ipv6`, `--mgmt-vip-ipv6`; identical mgmt VIP on all nodes.
+6.  *Same VIPPool for IPv4 + IPv6*, dual CIDR/GW entries.
+7.  *Validate protocols + auth + HTTPS* over the chosen IP version.
+8.  *IPv6-only (L3 northband)*: /128 prefixes, L3-enabled VIP pools, north-port BGP/FRR verified.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*9. Gaps / caveats*
+
+•  IPv6 FRD (2024) predates the L3-northband IPv6-only flow (2026) — use FRD for policy/constraints, L3 northband + configure_network.py for current mechanics.
+•  cluster-create flags page is against *5.4.0* — flag set & GA status may differ on your target release; cross-check release notes + install template.
+•  IPv6 create flags gated as "Other Flags" + "possibly not GA yet" — get Engineering/vForce/CS approval before production.
+•  FRD lists NFSv3 as MVP with SMB/others following — confirm protocol coverage against target release notes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*Sources*
+•  <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/3907452951/IPv6+FRD|IPv6 FRD>
+•  <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/3872194640/IPv6+-+Management+changes|IPv6 - Management changes>
+•  <https://vastdata.atlassian.net/wiki/spaces/DEV/pages/4540006444/IPv6+only+-+mgmt|IPv6 only - mgmt>
+•  <https://vastdata.atlassian.net/wiki/spaces/FIELD/pages/6915293324/Legacy+Install+-+vcli+cluster+create+flags|Legacy Install - vcli cluster create flags>
+•  <https://vastdata.atlassian.net/wiki/spaces/~712020c7509c510ac042989c457d8f45eadd11/pages/7673577506/configure_network.py|configure_network.py>
+•  <https://vastdata.atlassian.net/wiki/spaces/do/pages/7901839482/L3+northband+Install|L3 northband | Install>
+•  <https://vastdata.atlassian.net/wiki/spaces/~7120200e1c43a9b6f741eca536d39491156fa8/pages/5752586248/Deployments+-+Tools+Tips+and+Tricks|Deployments - Tools, Tips, and Tricks>

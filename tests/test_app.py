@@ -537,6 +537,83 @@ class TestConfigRoutes(unittest.TestCase):
         self.assertIn("timeout: 60", saved)
 
 
+class TestTeleportEndpoints(unittest.TestCase):
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.config_path = os.path.join(self.tmpdir, "config.yaml")
+        Path(self.config_path).write_text("teleport:\n  tsh_path: ''\n")
+        self.app.config["CONFIG_PATH"] = self.config_path
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def test_status_installed_via_config(self):
+        with patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh"):
+            Path(self.config_path).write_text("teleport:\n  tsh_path: /usr/local/bin/tsh\n")
+            resp = self.client.get("/api/teleport/status")
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["installed"])
+        self.assertEqual(body["source"], "config")
+        self.assertEqual(body["tsh_path"], "/usr/local/bin/tsh")
+
+    def test_status_installed_via_auto(self):
+        # No configured path; auto-discovery finds one.
+        def _disc(explicit=None):
+            return None if explicit else "/opt/homebrew/bin/tsh"
+
+        with patch("utils.teleport_tunnel.discover_tsh", side_effect=_disc):
+            resp = self.client.get("/api/teleport/status")
+        body = json.loads(resp.data)
+        self.assertTrue(body["installed"])
+        self.assertEqual(body["source"], "auto")
+
+    def test_status_not_installed(self):
+        with patch("utils.teleport_tunnel.discover_tsh", return_value=None):
+            resp = self.client.get("/api/teleport/status")
+        body = json.loads(resp.data)
+        self.assertFalse(body["installed"])
+        self.assertEqual(body["source"], "none")
+        self.assertEqual(body["tsh_path"], "")
+
+    def test_discover_found_persists_to_config(self):
+        with patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh"):
+            resp = self.client.post("/api/teleport/discover", json={})
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertTrue(body["installed"])
+        self.assertEqual(body["tsh_path"], "/usr/local/bin/tsh")
+        saved = Path(self.config_path).read_text()
+        self.assertIn("/usr/local/bin/tsh", saved)
+
+    def test_discover_custom_path(self):
+        def _disc(explicit=None):
+            return "/custom/tsh" if explicit else None
+
+        with patch("utils.teleport_tunnel.discover_tsh", side_effect=_disc):
+            resp = self.client.post("/api/teleport/discover", json={"tsh_path": "/custom/tsh"})
+        body = json.loads(resp.data)
+        self.assertTrue(body["installed"])
+        self.assertEqual(body["source"], "custom")
+        self.assertEqual(body["tsh_path"], "/custom/tsh")
+
+    def test_discover_not_found_does_not_persist_blank(self):
+        Path(self.config_path).write_text("teleport:\n  tsh_path: /existing/tsh\n")
+        with patch("utils.teleport_tunnel.discover_tsh", return_value=None):
+            resp = self.client.post("/api/teleport/discover", json={})
+        self.assertEqual(resp.status_code, 200)
+        body = json.loads(resp.data)
+        self.assertFalse(body["installed"])
+        # Existing saved value must remain untouched.
+        saved = Path(self.config_path).read_text()
+        self.assertIn("/existing/tsh", saved)
+
+
 class TestReportsRoutes(unittest.TestCase):
 
     def setUp(self):
@@ -576,6 +653,68 @@ class TestReportsRoutes(unittest.TestCase):
     def test_reports_delete_missing_returns_404(self):
         resp = self.client.post("/reports/delete/nonexistent.pdf")
         self.assertEqual(resp.status_code, 404)
+
+
+class TestVnetmapStatusEndpoint(unittest.TestCase):
+    """GET /api/vnetmap-status must degrade gracefully and never 500.
+
+    Regression guard for the "not all arguments converted during string
+    formatting" warning observed in the field: the endpoint is a UI status
+    probe and must always return a well-formed 200 JSON body regardless of the
+    reports on disk (0, 1, or 2+ for the cluster).
+    """
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.client = self.app.test_client()
+        self.tmpdir = tempfile.mkdtemp()
+        self.app.config["DEFAULT_OUTPUT_DIR"] = self.tmpdir
+        self.app.config["OUTPUT_DIRS"] = {self.tmpdir}
+
+    def tearDown(self):
+        import shutil
+
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _write_report(self, name: str, cluster_ip: str, counts: Dict[str, int]) -> None:
+        payload = {
+            "cluster_ip": cluster_ip,
+            "cluster_summary": {"name": "VAST-PI-01", "psnt": "VA24129237"},
+            "hardware_inventory": {
+                "cnodes": [{"mgmt_ip": f"10.0.0.{i}"} for i in range(counts.get("cnode_count", 0))],
+                "dnodes": [{"mgmt_ip": f"10.0.1.{i}"} for i in range(counts.get("dnode_count", 0))],
+                "switches": [{"mgmt_ip": f"10.0.2.{i}"} for i in range(counts.get("switch_count", 0))],
+            },
+        }
+        (Path(self.tmpdir) / name).write_text(json.dumps(payload))
+
+    def test_requires_cluster_ip(self):
+        resp = self.client.get("/api/vnetmap-status")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_no_reports_returns_wellformed_200(self):
+        resp = self.client.get("/api/vnetmap-status?cluster_ip=10.6.160.5")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        for key in ("exists", "filename", "created_at", "hardware_changed", "change_summary", "recommended"):
+            self.assertIn(key, data)
+        self.assertFalse(data["exists"])
+        self.assertFalse(data["hardware_changed"])
+
+    def test_two_reports_hardware_change_detected(self):
+        # Older then newer report for the same cluster IP with differing counts.
+        self._write_report("vast_data_a_20260101_120000.json", "10.6.160.5", {"cnode_count": 14})
+        self._write_report("vast_data_b_20260102_120000.json", "10.6.160.5", {"cnode_count": 15})
+        resp = self.client.get("/api/vnetmap-status?cluster_ip=10.6.160.5")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["hardware_changed"])
+        self.assertTrue(any("CNode" in s for s in data["change_summary"]))
+
+    def test_cluster_ip_with_percent_is_safe(self):
+        # A stray '%' in the query must not trip string formatting anywhere.
+        resp = self.client.get("/api/vnetmap-status?cluster_ip=10.6.160.5%25")
+        self.assertEqual(resp.status_code, 200)
 
 
 class TestLibraryRoutes(unittest.TestCase):

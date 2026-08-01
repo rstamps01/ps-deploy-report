@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from utils.teleport_tunnel import TeleportTunnel, TeleportError, options_from_config
+from utils.teleport_tunnel import TeleportTunnel, TeleportError, discover_tsh, options_from_config
 
 
 class TestOptionsFromConfig(unittest.TestCase):
@@ -41,17 +41,49 @@ class TestOptionsFromConfig(unittest.TestCase):
         self.assertEqual(options_from_config(cfg), {})
 
 
-class TestPreflight(unittest.TestCase):
+class TestDiscoverTsh(unittest.TestCase):
     @patch("utils.teleport_tunnel.shutil.which", return_value=None)
-    def test_missing_tsh_raises(self, _which):
+    @patch("utils.teleport_tunnel._known_tsh_locations", return_value=[])
+    def test_returns_none_when_not_found(self, _locs, _which):
+        self.assertIsNone(discover_tsh())
+
+    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
+    def test_found_on_path(self, _which):
+        result = discover_tsh()
+        self.assertTrue(result.endswith("tsh"))
+
+    @patch("utils.teleport_tunnel.shutil.which", return_value=None)
+    def test_explicit_valid_file_accepted(self, _which):
+        with patch("utils.teleport_tunnel._is_executable_file", return_value=True):
+            result = discover_tsh("/custom/path/tsh")
+            self.assertTrue(result.endswith("tsh"))
+
+    @patch("utils.teleport_tunnel.shutil.which", return_value=None)
+    @patch("utils.teleport_tunnel._known_tsh_locations", return_value=[])
+    def test_explicit_invalid_falls_through_to_none(self, _locs, _which):
+        with patch("utils.teleport_tunnel._is_executable_file", return_value=False):
+            self.assertIsNone(discover_tsh("/does/not/exist/tsh"))
+
+    @patch("utils.teleport_tunnel.shutil.which", return_value=None)
+    def test_found_in_known_location(self, _which):
+        fake = Path("/opt/homebrew/bin/tsh")
+        with patch("utils.teleport_tunnel._known_tsh_locations", return_value=[fake]):
+            with patch("utils.teleport_tunnel._is_executable_file", return_value=True):
+                result = discover_tsh()
+                self.assertTrue(result.endswith("tsh"))
+
+
+class TestPreflight(unittest.TestCase):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value=None)
+    def test_missing_tsh_raises(self, _discover):
         tunnel = TeleportTunnel("PDX02-Vast01-c-128-4")
         with self.assertRaises(TeleportError) as ctx:
             tunnel.preflight()
-        self.assertIn("not found on PATH", str(ctx.exception))
+        self.assertIn("not found", str(ctx.exception))
 
     @patch("utils.teleport_tunnel.subprocess.run")
-    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
-    def test_no_active_session_raises_when_auto_login_disabled(self, _which, mock_run):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh")
+    def test_no_active_session_raises_when_auto_login_disabled(self, _discover, mock_run):
         # auto_login off => fail fast with an actionable message, no tsh login.
         mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="ERROR: Not logged in")
         tunnel = TeleportTunnel("node", auto_login=False)
@@ -63,15 +95,15 @@ class TestPreflight(unittest.TestCase):
             self.assertNotIn("login", call.args[0])
 
     @patch("utils.teleport_tunnel.subprocess.run")
-    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
-    def test_active_session_passes(self, _which, mock_run):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh")
+    def test_active_session_passes(self, _discover, mock_run):
         mock_run.return_value = MagicMock(returncode=0, stdout="Profile URL: ...", stderr="")
         tunnel = TeleportTunnel("node")
         tunnel.preflight()  # should not raise
 
     @patch("utils.teleport_tunnel.subprocess.run")
-    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
-    def test_expired_session_triggers_tsh_login_then_succeeds(self, _which, mock_run):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh")
+    def test_expired_session_triggers_tsh_login_then_succeeds(self, _discover, mock_run):
         # The motivating case: an expired profile.  preflight must run
         # `tsh login` (which opens the SSO browser), then re-check status and
         # proceed once the operator completes login.
@@ -97,8 +129,8 @@ class TestPreflight(unittest.TestCase):
         self.assertEqual(run_side_effect.status_calls, 2, "expected a post-login status re-check")
 
     @patch("utils.teleport_tunnel.subprocess.run")
-    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
-    def test_login_uses_proxy_when_configured(self, _which, mock_run):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh")
+    def test_login_uses_proxy_when_configured(self, _discover, mock_run):
         def run_side_effect(cmd, *a, **kw):
             if "status" in cmd:
                 return MagicMock(returncode=1, stdout="", stderr="expired")
@@ -115,8 +147,8 @@ class TestPreflight(unittest.TestCase):
         self.assertIn("--proxy=teleport.vastdata.com:443", login_calls[0])
 
     @patch("utils.teleport_tunnel.subprocess.run")
-    @patch("utils.teleport_tunnel.shutil.which", return_value="/usr/local/bin/tsh")
-    def test_login_failure_still_raises(self, _which, mock_run):
+    @patch("utils.teleport_tunnel.discover_tsh", return_value="/usr/local/bin/tsh")
+    def test_login_failure_still_raises(self, _discover, mock_run):
         # tsh login fails (operator cancels / SSO error) => preflight still
         # raises the actionable error, including the latest status detail.
         def run_side_effect(cmd, *a, **kw):

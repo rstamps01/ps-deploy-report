@@ -63,7 +63,7 @@ Code snippets for common Python patterns:
 
 ## Workspace File
 
-The project also includes a `ps-deploy-report.code-workspace` file that can be opened directly in VSCode to load the entire project with all configurations.
+The project also includes a `vast-asbuilt-reporter.code-workspace` file that can be opened directly in VSCode to load the entire project with all configurations.
 
 ## Usage
 

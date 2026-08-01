@@ -45,7 +45,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.6.0"
 
 # QP-3 (3): auto-shutdown when the operator closes the browser.
 # OPT-IN and OFF by default.  When enabled, the page sends a lightweight
@@ -135,6 +135,12 @@ _DOC_REGISTRY = [
         "title": "Advanced Operations Guide",
         "category": "Using the Tool",
         "path": "docs/ADVANCED-OPERATIONS.md",
+    },
+    {
+        "id": "teleport-mode",
+        "title": "Teleport Mode (Beta)",
+        "category": "Using the Tool",
+        "path": "docs/TELEPORT-MODE.md",
     },
     {
         "id": "post-install-validation",
@@ -1481,6 +1487,85 @@ def _register_routes(app: Flask) -> None:
         """Return the default template config as a JSON object."""
         return jsonify(_load_yaml(app.config["CONFIG_TEMPLATE"]))
 
+    # -- Teleport (tsh) discovery -------------------------------------------
+
+    @app.route("/api/teleport/status", methods=["GET"])
+    def teleport_status():
+        """Report whether the Teleport ``tsh`` CLI is installed/discoverable.
+
+        Read-only: resolves the configured ``teleport.tsh_path`` first, then
+        falls back to auto-discovery.  Never writes to ``config.yaml``.
+
+        Returns JSON: ``{installed, tsh_path, source}`` where ``source`` is
+        one of ``"config"`` (matched the saved path), ``"auto"`` (found via
+        PATH / known locations), or ``"none"`` (not found).
+        """
+        from utils.teleport_tunnel import discover_tsh
+
+        cfg = _load_yaml(app.config["CONFIG_PATH"])
+        configured = str((cfg.get("teleport") or {}).get("tsh_path") or "").strip()
+
+        if configured:
+            resolved = discover_tsh(configured)
+            if resolved:
+                return jsonify({"installed": True, "tsh_path": resolved, "source": "config"})
+
+        resolved = discover_tsh()
+        if resolved:
+            return jsonify({"installed": True, "tsh_path": resolved, "source": "auto"})
+
+        return jsonify({"installed": False, "tsh_path": "", "source": "none"})
+
+    @app.route("/api/teleport/discover", methods=["POST"])
+    def teleport_discover():
+        """Run ``tsh`` discovery and persist the result to ``config.yaml``.
+
+        Optional JSON body ``{tsh_path: "<custom>"}`` is tried first (lets an
+        operator validate a custom path when auto-discovery fails).  On a
+        successful find the absolute path is written to ``teleport.tsh_path``;
+        on failure the existing saved value is left untouched.
+        """
+        import yaml
+
+        from utils.teleport_tunnel import discover_tsh
+
+        payload = request.get_json(silent=True) or {}
+        custom = str(payload.get("tsh_path") or "").strip()
+
+        resolved = discover_tsh(custom) if custom else discover_tsh()
+
+        if not resolved:
+            return jsonify(
+                {
+                    "installed": False,
+                    "tsh_path": "",
+                    "source": "none",
+                    "message": (
+                        "tsh not found. Install Teleport (tsh), or enter the full path to the "
+                        "tsh binary above and click Run Discovery again."
+                    ),
+                }
+            )
+
+        cfg = _load_yaml(app.config["CONFIG_PATH"])
+        if not isinstance(cfg.get("teleport"), dict):
+            cfg["teleport"] = {}
+        cfg["teleport"]["tsh_path"] = resolved
+        try:
+            text = yaml.dump(cfg, default_flow_style=False, sort_keys=False, allow_unicode=True)
+            _write_config(app.config["CONFIG_PATH"], text)
+        except Exception as exc:  # noqa: BLE001 - surface persistence failure to the UI
+            return jsonify({"error": f"Discovered {resolved} but failed to save: {exc}"}), 500
+
+        return jsonify(
+            {
+                "installed": True,
+                "tsh_path": resolved,
+                "source": "custom" if custom else "auto",
+                "message": f"tsh discovered and saved: {resolved}",
+            }
+        )
+
     @app.route("/config/advanced/json-files", methods=["GET"])
     def config_json_files():
         """List available vast_data_*.json report files for the tuning tool."""
@@ -1945,7 +2030,12 @@ def _register_routes(app: Flask) -> None:
                 result["change_summary"] = summary
                 result["recommended"] = changed
         except Exception as exc:
-            logger.warning("Error checking vnetmap status: %s", exc)
+            # Log with a full traceback: this path previously surfaced a bare
+            # "not all arguments converted during string formatting" with no
+            # location, making the offending call impossible to pin down.  The
+            # endpoint still degrades gracefully (returns the partial ``result``
+            # below) so a status probe never breaks the Reporter page.
+            logger.warning("Error checking vnetmap status: %s", exc, exc_info=True)
 
         return jsonify(result)
 
@@ -2808,14 +2898,22 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
             if vnetmap_file:
                 job_logger.info("Found vnetmap output: %s — using as port mapping source", vnetmap_file.name)
                 try:
-                    from vnetmap_parser import VNetMapParser
+                    from vnetmap_parser import VNetMapParser, vnetmap_matches_cluster
 
                     parser = VNetMapParser(str(vnetmap_file))
                     vnetmap_result = parser.parse()
                     if vnetmap_result.get("available") and vnetmap_result.get("topology"):
-                        raw_data["port_mapping_vnetmap"] = vnetmap_result
-                        use_vnetmap = True
-                        job_logger.info("Vnetmap data parsed: %d connections", len(vnetmap_result["topology"]))
+                        matches, reason = vnetmap_matches_cluster(vnetmap_result, raw_data)
+                        if not matches:
+                            job_logger.warning(
+                                "Ignoring vnetmap output %s — %s. Skipping vnetmap port mapping.",
+                                vnetmap_file.name,
+                                reason,
+                            )
+                        else:
+                            raw_data["port_mapping_vnetmap"] = vnetmap_result
+                            use_vnetmap = True
+                            job_logger.info("Vnetmap data parsed: %d connections", len(vnetmap_result["topology"]))
                     else:
                         job_logger.warning(
                             "Vnetmap file found but parsing failed: %s — falling back to SSH",
@@ -3072,31 +3170,41 @@ def _resolve_early_cluster_paths(
 def _find_latest_vnetmap_output(cluster_ip: str, cluster_key: Optional[str] = None) -> Optional[Path]:
     """Find the most recent vnetmap output file for a given cluster IP.
 
-    With QP-2 segmentation, searches the current cluster's
-    ``clusters/<key>/output/scripts`` dir first (when ``cluster_key`` is
-    given), then falls back to the legacy flat ``output/scripts`` so files
-    written before segmentation still resolve.  Matches only
-    ``vnetmap_output_{cluster_ip}_*.txt`` to avoid cross-cluster
-    contamination of port mapping data.
+    With QP-2 segmentation active (``cluster_key`` given), searches ONLY the
+    current cluster's ``clusters/<key>/output/scripts`` dir. The legacy flat
+    ``output/scripts`` fallback is intentionally NOT used in that case: with a
+    shared Tech Port IP (e.g. ``192.168.2.2``) the ``vnetmap_output_{ip}_*.txt``
+    filename is identical across every cluster, so falling back would return a
+    DIFFERENT cluster's topology whenever this cluster's own vnetmap is missing
+    (e.g. after a switch-auth failure). Returning ``None`` instead lets the
+    caller degrade gracefully (SSH fallback / no port mapping) rather than
+    embedding another cluster's data.
+
+    When segmentation is disabled (``cluster_key`` is ``None``) the flat
+    ``output/scripts`` dir is searched, preserving legacy behavior.
     """
     from utils import get_data_dir
 
     data_dir = get_data_dir()
-    search_dirs: List[Path] = []
     if cluster_key:
         from utils.cluster_paths import cluster_paths
 
-        search_dirs.append(cluster_paths(data_dir, cluster_key).scripts)
-    search_dirs.append(data_dir / "output" / "scripts")
+        scripts_dir = cluster_paths(data_dir, cluster_key).scripts
+    else:
+        scripts_dir = data_dir / "output" / "scripts"
 
-    for scripts_dir in search_dirs:
-        if not scripts_dir.is_dir():
-            continue
+    if scripts_dir.is_dir():
         exact = sorted(scripts_dir.glob(f"vnetmap_output_{cluster_ip}_*.txt"), reverse=True)
         if exact:
             return Path(exact[0])
 
-    logger.info("No vnetmap output file found for cluster %s", cluster_ip)
+    # NOTE: avoid the literal ``key=%s`` here — the log SensitiveDataFilter
+    # treats ``key=<value>`` as a credential and redacts it to
+    # ``KEY_[REDACTED]``, which silently deletes the ``%s`` placeholder and
+    # makes ``msg % args`` raise "not all arguments converted during string
+    # formatting" (surfaced via the SSE handler as the /api/vnetmap-status
+    # warning).  Use ``cluster_key=%s`` (no ``\bkey\b`` word boundary) instead.
+    logger.info("No vnetmap output file found for cluster %s (cluster_key=%s)", cluster_ip, cluster_key or "-")
     return None
 
 

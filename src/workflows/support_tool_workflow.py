@@ -106,6 +106,19 @@ class SupportToolWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _ssh_host(self) -> str:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else ""
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -281,7 +294,11 @@ class SupportToolWorkflow:
 
         tool_manager = ToolManager(output_callback=self._output_callback)
 
-        success, message = tool_manager.deploy_tool_to_cnode("vast_support_tools.py", host, user, password)
+        # Target the Teleport-forwarded local endpoint when Teleport mode is
+        # active; otherwise this resolves to the cluster IP on port 22.
+        success, message = tool_manager.deploy_tool_to_cnode(
+            "vast_support_tools.py", self._ssh_host(), user, password, port=self._ssh_port()
+        )
 
         if not success:
             self.emit("error", f"Deployment failed: {message}")
@@ -298,6 +315,10 @@ class SupportToolWorkflow:
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         vms_internal_ip = self._credentials.get("vms_internal_ip")
+        # SSH connection target for direct CNode commands (Teleport tunnel
+        # endpoint when active, else the cluster IP on port 22).
+        ssh_host = self._ssh_host()
+        ssh_port = self._ssh_port()
 
         # Intentional [B108]: default path is on the remote VAST CNode (under /tmp/vast_scripts), not local.
         remote_script = self._step_data.get(
@@ -317,7 +338,7 @@ class SupportToolWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {copy_cmd}")
 
-        rc, stdout, stderr = run_ssh_command(host, user, password, copy_cmd, timeout=30)
+        rc, stdout, stderr = run_ssh_command(ssh_host, user, password, copy_cmd, timeout=30, port=ssh_port)
         if rc != 0:
             self.emit("error", f"Copy failed: {stderr}")
             hint = ""
@@ -400,14 +421,14 @@ class SupportToolWorkflow:
             chmod_cmd = f"sudo chmod +x {self.CONTAINER_SCRIPT_PATH}"
             self.emit("info", f"$ {chmod_cmd}")
 
-            rc, stdout, stderr = run_ssh_command(host, user, password, chmod_cmd, timeout=30)
+            rc, stdout, stderr = run_ssh_command(ssh_host, user, password, chmod_cmd, timeout=30, port=ssh_port)
             if rc != 0:
                 self.emit("error", f"chmod failed: {stderr}")
                 return {"success": False, "message": f"Failed to set permissions: {stderr}"}
 
             # Verify
             verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
-            rc, stdout, _ = run_ssh_command(host, user, password, verify_cmd, timeout=10)
+            rc, stdout, _ = run_ssh_command(ssh_host, user, password, verify_cmd, timeout=10, port=ssh_port)
             if stdout:
                 self.emit("info", stdout.strip())
 
@@ -449,7 +470,9 @@ class SupportToolWorkflow:
             self.emit("info", f"$ {run_cmd}")
             self.emit("info", "")
 
-            rc, stdout, stderr = run_ssh_command(host, user, password, run_cmd, timeout=600, force_tty=True)
+            rc, stdout, stderr = run_ssh_command(
+                self._ssh_host(), user, password, run_cmd, timeout=600, force_tty=True, port=self._ssh_port()
+            )
 
         # Show output
         output = stdout + stderr
@@ -491,16 +514,21 @@ class SupportToolWorkflow:
         # Step 3 runs inside the VMS container. In Tech Port mode the output
         # lives on the VMS host, not on the CNode tech port. Route SSH to the
         # VMS via jump host when vms_internal_ip is set.
-        jump_kwargs: Dict[str, Any] = {}
+        conn_kwargs: Dict[str, Any] = {}
         target_host = host
         if vms_internal_ip:
             target_host = vms_internal_ip
-            jump_kwargs = {"jump_host": host, "jump_user": user, "jump_password": password}
+            conn_kwargs = {"jump_host": host, "jump_user": user, "jump_password": password}
+        else:
+            # Direct CNode connection: route through the Teleport-forwarded
+            # local endpoint when active, else the cluster IP on port 22.
+            target_host = self._ssh_host()
+            conn_kwargs = {"port": self._ssh_port()}
 
         self.emit("info", "Creating archive of support tools output...")
 
         # Get hostname for archive name
-        rc, hostname, _ = run_ssh_command(target_host, user, password, "hostname", timeout=10, **jump_kwargs)
+        rc, hostname, _ = run_ssh_command(target_host, user, password, "hostname", timeout=10, **conn_kwargs)
         hostname = hostname.strip() if rc == 0 else "cnode"
 
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -525,7 +553,7 @@ class SupportToolWorkflow:
         output_dir = None
         for dir_path in possible_dirs:
             check_cmd = f"test -d {dir_path} && echo 'exists'"
-            rc, stdout, _ = run_ssh_command(target_host, user, password, check_cmd, timeout=10, **jump_kwargs)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, check_cmd, timeout=10, **conn_kwargs)
             if "exists" in stdout:
                 output_dir = dir_path
                 self.emit("info", f"Found output directory: {output_dir}")
@@ -535,7 +563,7 @@ class SupportToolWorkflow:
         if not output_dir:
             self.emit("info", "Searching for support tool output...")
             find_cmd = "find /vast/data /tmp /userdata -maxdepth 2 -type d -name '*support*' 2>/dev/null | head -5"
-            rc, stdout, _ = run_ssh_command(target_host, user, password, find_cmd, timeout=30, **jump_kwargs)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, find_cmd, timeout=30, **conn_kwargs)
 
             if stdout.strip():
                 for line in stdout.strip().split("\n"):
@@ -551,7 +579,7 @@ class SupportToolWorkflow:
 
             # List what's in /vast/data
             list_cmd = "ls -la /vast/data/ 2>/dev/null | head -20"
-            rc, stdout, _ = run_ssh_command(target_host, user, password, list_cmd, timeout=10, **jump_kwargs)
+            rc, stdout, _ = run_ssh_command(target_host, user, password, list_cmd, timeout=10, **conn_kwargs)
             if stdout:
                 self.emit("info", "/vast/data/ contents:")
                 for line in stdout.strip().split("\n"):
@@ -570,7 +598,7 @@ class SupportToolWorkflow:
         self.emit("info", f"$ {tar_cmd}")
         self.emit("info", "")
 
-        rc, stdout, stderr = run_ssh_command(target_host, user, password, tar_cmd, timeout=120, **jump_kwargs)
+        rc, stdout, stderr = run_ssh_command(target_host, user, password, tar_cmd, timeout=120, **conn_kwargs)
 
         # Show files being archived (filter out tar noise)
         file_count = 0
@@ -590,7 +618,7 @@ class SupportToolWorkflow:
 
         # Verify archive exists and get size
         verify_cmd = f"ls -lh {archive_path}"
-        rc, stdout, _ = run_ssh_command(target_host, user, password, verify_cmd, timeout=10, **jump_kwargs)
+        rc, stdout, _ = run_ssh_command(target_host, user, password, verify_cmd, timeout=10, **conn_kwargs)
 
         if rc == 0 and stdout:
             self.emit("info", "")
@@ -651,7 +679,15 @@ class SupportToolWorkflow:
                 # Intentional [B507]: CNode SCP target; AutoAddPolicy is required for first-contact
                 # post-install archive downloads where host keys are not yet known.
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507
-                ssh.connect(host, username=user, password=password, timeout=30)
+                # Route through the Teleport-forwarded local endpoint when
+                # active; otherwise this is the cluster IP on port 22.
+                ssh.connect(
+                    self._ssh_host(),
+                    port=self._ssh_port(),
+                    username=user,
+                    password=password,
+                    timeout=30,
+                )
 
             # SCP download
             self.emit("info", f"$ scp {user}@{scp_target}:{archive_path} {local_path}")

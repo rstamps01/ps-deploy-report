@@ -7,7 +7,83 @@ including LLDP neighbor data for switch-to-switch (IPL) connections.
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set, Tuple
+
+
+def _vnetmap_identity_tokens(vnetmap_result: Dict[str, Any]) -> Tuple[Set[str], Set[str]]:
+    """Return (node_hostnames, node_ips) present in a parsed vnetmap result."""
+    hostnames: Set[str] = set()
+    ips: Set[str] = set()
+    for conn in vnetmap_result.get("topology", []) or []:
+        host = str(conn.get("node_hostname") or conn.get("hostname") or "").strip().lower()
+        if host and host != "unknown":
+            hostnames.add(host)
+        ip = str(conn.get("node_ip") or "").strip()
+        if ip:
+            ips.add(ip)
+    return hostnames, ips
+
+
+def _cluster_identity_tokens(raw_data: Dict[str, Any]) -> Tuple[Set[str], Set[str]]:
+    """Return (node_hostnames, node_ips) for the cluster being reported.
+
+    Pulls from the pre-extraction ``raw_data`` shape produced by
+    ``api_handler.get_all_data()`` (``hardware.cnodes`` / ``hardware.dnodes``
+    for hostnames/names, and the ``*_network`` sections for data-fabric IPs).
+    """
+    hostnames: Set[str] = set()
+    ips: Set[str] = set()
+
+    hardware = raw_data.get("hardware") or {}
+    for group in ("cnodes", "dnodes"):
+        for node in hardware.get(group, []) or []:
+            if not isinstance(node, dict):
+                continue
+            for field in ("hostname", "name"):
+                val = str(node.get(field) or "").strip().lower()
+                if val and val != "unknown":
+                    hostnames.add(val)
+
+    for section in ("cnodes_network", "dnodes_network"):
+        for node in raw_data.get(section, []) or []:
+            if not isinstance(node, dict):
+                continue
+            for field in ("ip", "node_ip", "data_ip", "ip_address", "ib0_ip", "ib1_ip"):
+                val = str(node.get(field) or "").strip()
+                if val:
+                    ips.add(val)
+
+    return hostnames, ips
+
+
+def vnetmap_matches_cluster(vnetmap_result: Dict[str, Any], raw_data: Dict[str, Any]) -> Tuple[bool, str]:
+    """Verify a parsed vnetmap result belongs to the cluster being reported.
+
+    Defense-in-depth against cross-cluster contamination (e.g. a shared Tech
+    Port IP means ``vnetmap_output_192.168.2.2_*.txt`` files from different
+    clusters are indistinguishable by filename). Compares node hostnames and
+    node IPs between the vnetmap output and the cluster inventory.
+
+    Returns ``(matches, reason)``. Rejects ONLY on positive evidence of a
+    different cluster (comparable tokens exist on both sides with zero
+    overlap); when identity data is insufficient to compare, it accepts and
+    says so, so a legitimate run is never dropped on missing metadata.
+    """
+    v_hosts, v_ips = _vnetmap_identity_tokens(vnetmap_result)
+    c_hosts, c_ips = _cluster_identity_tokens(raw_data)
+
+    if (v_hosts & c_hosts) or (v_ips & c_ips):
+        return True, "vnetmap identity matches cluster inventory"
+
+    comparable = bool(v_hosts and c_hosts) or bool(v_ips and c_ips)
+    if comparable:
+        sample = ", ".join(sorted(v_hosts)[:3]) or ", ".join(sorted(v_ips)[:3])
+        return False, (
+            "vnetmap output does not match this cluster's node inventory "
+            f"(no overlapping hostnames/IPs; vnetmap nodes e.g. {sample})"
+        )
+
+    return True, "insufficient identity data to validate vnetmap ownership (accepted)"
 
 
 class VNetMapParser:
