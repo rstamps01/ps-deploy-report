@@ -1,10 +1,11 @@
 # Agentic Dev Framework (ADF) — Extraction Spec & Handbook Outline
 
-**Status:** spec / plan-of-record (M6). This repo is the **reference implementation**;
-the portable core has **not** yet been extracted into a standalone repo. This document
-defines *what* is portable, *how* the framework and a project instance separate, and the
-*phased plan* to extract it — so the extraction is a mechanical, reviewable step rather
-than a redesign.
+**Status:** Phase B **executed** (2026-08-01). The portable core has been extracted into
+[`rstamps01/agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework)
+(private) at **v0.1.0** — core skills/hooks/adapter/conformance + templates + `HANDBOOK.md`,
+dogfooding its own gate. This repo remains the **reference implementation** and ADF's first
+adopter. This document defines *what* is portable, *how* the framework and a project instance
+separate, and the *phased plan*; Phases C–E (bootstrap/adopt/doctor) remain.
 
 Related: [`AGENTIC-CICD-PIPELINE.md`](AGENTIC-CICD-PIPELINE.md) (end-to-end map),
 [`.cursor/pipeline.yml`](../../.cursor/pipeline.yml) (this repo's manifest),
@@ -123,14 +124,14 @@ Maps to the plan items in `agentic_cicd_pipeline_2eb2e257`.
 | Phase | Item(s) | Deliverable | Gate to proceed |
 | --- | --- | --- | --- |
 | **A. Reference impl** | *(done, M0–M5)* | This repo runs the full pipeline; adapter proves the manifest seam | ✅ v1.6.0 shipped through the pipeline |
-| **B. Extract core** | `adf-core-repo`, `framework-versioning`, `methodology-handbook` | `agentic-dev-framework` repo: core skills/rules/hooks/adapter/doctor + `templates/` + `HANDBOOK.md` + ADF's own semver/CHANGELOG/CI | Handbook + inventory reviewed; ADF self-gates green |
+| **B. Extract core** | ✅ `adf-core-repo`, `framework-versioning`, `methodology-handbook` | [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) v0.1.0: 18 core skills (+`update-framework`), hooks, location-independent adapter, conformance check, `templates/`, `HANDBOOK.md`, own semver/CHANGELOG + dogfood CI | ✅ ADF self-gate green (format/lint/conformance/manifest-validate/tests) |
 | **C. Bootstrap + tiers** | `bootstrap-installer`, `maturity-tiers`, `adoption-flows` | `bootstrap-pipeline`, `new-project`, `adopt-existing` (dry-run-first) | Adopt in **one** sibling project cleanly |
 | **D. Pilot brownfield** | `rollout-sequence` (Phase C) | Adopt-existing on **VAST Plan Analyzer**, non-destructive | Pilot green + no instance files clobbered |
 | **E. Portfolio rollout** | `conformance-doctor`, `rollout-sequence` (Phase D) | Roll out to all projects + portfolio dashboard | Per-project compliance tracked |
 
-**Guardrail:** creating the ADF repo (Phase B) is an approved-but-not-yet-executed step —
-target **`github.com/rstamps01/agentic-dev-framework` (private)**. No new repo is created
-until Phase B is explicitly kicked off.
+**Done:** the ADF repo was created (Phase B, 2026-08-01) at
+**`github.com/rstamps01/agentic-dev-framework` (private)**, v0.1.0. Next up is Phase C
+(bootstrap + adoption flows + tiers), then Phase D pilot on VAST Plan Analyzer.
 
 ## 10. HANDBOOK.md outline (to author in Phase B)
 

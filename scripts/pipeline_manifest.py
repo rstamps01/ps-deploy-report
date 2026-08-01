@@ -27,13 +27,30 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
-# Repo root = parent of this scripts/ directory; manifest lives at .cursor/pipeline.yml.
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_MANIFEST = REPO_ROOT / ".cursor" / "pipeline.yml"
+
+def find_manifest(start: Optional[Path] = None) -> Path:
+    """Locate ``.cursor/pipeline.yml`` by walking up from *start* (default cwd).
+
+    Falls back to walking up from this file's location, so the adapter works
+    whether it lives at ``<repo>/scripts/`` (an adopting project) or
+    ``<repo>/core/scripts/`` (the framework repo). Returns a best-effort path
+    even if nothing is found (``PipelineManifest.load`` then raises clearly).
+    """
+    searched: List[Path] = []
+    base = (start or Path.cwd()).resolve()
+    searched.append(base)
+    searched.extend(base.parents)
+    searched.extend(Path(__file__).resolve().parents)
+    for d in searched:
+        candidate = d / ".cursor" / "pipeline.yml"
+        if candidate.exists():
+            return candidate
+    return base / ".cursor" / "pipeline.yml"
+
 
 # Commands every adapter instance must define (skills depend on these keys).
 REQUIRED_COMMANDS = ("install", "lint", "format_check", "typecheck", "test", "test_cov")
@@ -51,11 +68,16 @@ class PipelineManifest:
 
     def __init__(self, data: Dict[str, Any], path: Path) -> None:
         self.data = data or {}
-        self.path = path
+        self.path = Path(path)
+        # Repo root = the directory that contains the .cursor/ folder holding the
+        # manifest, so strict path checks resolve regardless of where the adapter
+        # script itself lives.
+        self.repo_root = self.path.resolve().parent.parent
 
     # -- loading -----------------------------------------------------------
     @classmethod
-    def load(cls, path: Path = DEFAULT_MANIFEST) -> "PipelineManifest":
+    def load(cls, path: Optional[Path] = None) -> "PipelineManifest":
+        path = Path(path) if path is not None else find_manifest()
         if not path.exists():
             raise ManifestError(f"manifest not found: {path}")
         try:
@@ -160,13 +182,13 @@ class PipelineManifest:
     def _validate_paths(self, version: Dict[str, Any]) -> List[str]:
         problems: List[str] = []
         source_file = version.get("source_file")
-        if source_file and not (REPO_ROOT / source_file).exists():
+        if source_file and not (self.repo_root / source_file).exists():
             problems.append(f"`version.source_file` does not exist: {source_file}")
         release_dir = (self.data.get("release", {}) or {}).get("release_notes_dir")
-        if release_dir and not (REPO_ROOT / release_dir).exists():
+        if release_dir and not (self.repo_root / release_dir).exists():
             problems.append(f"`release.release_notes_dir` does not exist: {release_dir}")
         register = (self.data.get("tracking", {}) or {}).get("register")
-        if register and not (REPO_ROOT / register).exists():
+        if register and not (self.repo_root / register).exists():
             problems.append(f"`tracking.register` does not exist: {register}")
         return problems
 
@@ -208,8 +230,12 @@ def _cmd_validate(m: PipelineManifest, strict: bool) -> int:
         for err in errors:
             print(f"  - {err}", file=sys.stderr)
         return 1
+    try:
+        shown: Any = m.path.relative_to(m.repo_root)
+    except ValueError:
+        shown = m.path
     print(
-        f"Manifest OK ({m.path.relative_to(REPO_ROOT)}): {len(m.commands)} commands, "
+        f"Manifest OK ({shown}): {len(m.commands)} commands, "
         f"coverage floor {m.coverage_floor}, gate [{', '.join(m.blocking_gate)}]"
     )
     return 0
@@ -217,7 +243,7 @@ def _cmd_validate(m: PipelineManifest, strict: bool) -> int:
 
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Read the .cursor/pipeline.yml project manifest.")
-    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST, help="path to pipeline.yml")
+    parser.add_argument("--manifest", type=Path, default=None, help="path to pipeline.yml (default: auto-discover)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="list defined command names")
     p_get = sub.add_parser("get", help="print one resolved command string")

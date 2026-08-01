@@ -12,11 +12,13 @@ _SCRIPTS = Path(__file__).parent.parent / "scripts"
 sys.path.insert(0, str(_SCRIPTS))
 
 from pipeline_manifest import (  # noqa: E402
-    DEFAULT_MANIFEST,
     ManifestError,
     PipelineManifest,
+    find_manifest,
     main,
 )
+
+REAL_MANIFEST = find_manifest(Path(__file__).parent.parent)
 
 
 def _manifest(data) -> PipelineManifest:
@@ -41,11 +43,11 @@ _VALID = {
 
 class TestRealManifestLoads(unittest.TestCase):
     def test_real_manifest_is_valid(self):
-        m = PipelineManifest.load(DEFAULT_MANIFEST)
+        m = PipelineManifest.load(REAL_MANIFEST)
         self.assertEqual(m.validate(), [])
 
     def test_real_manifest_strict_paths_exist(self):
-        m = PipelineManifest.load(DEFAULT_MANIFEST)
+        m = PipelineManifest.load(REAL_MANIFEST)
         # source_file / release_notes_dir / register all exist in this repo.
         self.assertEqual(m.validate(strict=True), [])
 
