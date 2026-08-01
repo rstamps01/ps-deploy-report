@@ -5,6 +5,9 @@ Provides reusable mock API data, configuration, and temporary directory
 helpers used across unit, integration, and UI tests.
 """
 
+import errno
+import os
+import socket
 import sys
 import tempfile
 from pathlib import Path
@@ -13,6 +16,67 @@ from typing import Any, Dict
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+
+# ---------------------------------------------------------------------------
+# Network guard (prevents hung test runs on networked machines)
+# ---------------------------------------------------------------------------
+# Several unit tests exercise code paths that would otherwise open real TCP
+# sockets (e.g. ``oneshot_runner`` building a live ``VastApiHandler`` or SSHing
+# to a node/switch).  In CI those targets are unreachable-fast (immediate
+# connection refusal), so the tests complete in milliseconds.  On a developer
+# machine attached to a routable ``10.0.0.0/8`` fabric, the same SYNs are
+# silently dropped and each connect blocks for its full timeout — which made
+# the full suite appear to "hang" for minutes.
+#
+# This autouse guard makes non-loopback outbound connects fail *fast* with
+# ``ConnectionRefusedError`` (mirroring CI), so any test that leaks a real
+# connection surfaces immediately instead of stalling the run.  Loopback
+# traffic (Flask test server, SSE) and AF_UNIX sockets are always allowed, and
+# tests marked ``integration`` — or runs with ``VAST_TEST_ALLOW_NETWORK=1`` —
+# opt out entirely.
+
+_ALLOWED_INET_FAMILIES = (socket.AF_INET, socket.AF_INET6)
+
+
+def _is_loopback_address(address: Any) -> bool:
+    """True when *address* targets loopback / a non-inet socket (always allowed)."""
+    host = address[0] if isinstance(address, (tuple, list)) and address else address
+    if not isinstance(host, str):
+        # AF_UNIX paths, fds, or anything non-inet — leave untouched.
+        return True
+    host = host.strip("[]")  # strip IPv6 brackets
+    return host in ("::1", "localhost", "") or host.startswith("127.")
+
+
+@pytest.fixture(autouse=True)
+def _block_external_network(request, monkeypatch):
+    """Fail non-loopback socket connects fast so leaked network I/O can't hang the suite."""
+    if request.node.get_closest_marker("integration") or os.environ.get("VAST_TEST_ALLOW_NETWORK"):
+        yield
+        return
+
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def _guarded_connect(self, address, *args, **kwargs):
+        if getattr(self, "family", None) in _ALLOWED_INET_FAMILIES and not _is_loopback_address(address):
+            raise ConnectionRefusedError(
+                errno.ECONNREFUSED,
+                f"[test-guard] blocked outbound connection to {address!r}; unit tests must mock "
+                "network I/O. Mark the test @pytest.mark.integration or set VAST_TEST_ALLOW_NETWORK=1 "
+                "to allow real network access (see tests/conftest.py).",
+            )
+        return real_connect(self, address, *args, **kwargs)
+
+    def _guarded_connect_ex(self, address, *args, **kwargs):
+        if getattr(self, "family", None) in _ALLOWED_INET_FAMILIES and not _is_loopback_address(address):
+            return errno.ECONNREFUSED
+        return real_connect_ex(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", _guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _guarded_connect_ex)
+    yield
 
 
 @pytest.fixture

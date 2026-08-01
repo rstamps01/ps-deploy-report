@@ -39,6 +39,11 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — Test-suite network guard (fixes local "hung agent")
+- **Root cause of the recurring local hang:** several unit tests (`test_oneshot_runner`) exercise paths that open **real TCP sockets** to `10.0.0.1` (VMS API `:443`, node/switch SSH `:22`) — the switch-SSH safety-net probe in `run_all()` and `_validate_node_ssh`/`_validate_switch_ssh` build a live `VastApiHandler`. In CI those targets refuse instantly (tests pass in ms); on a dev Mac attached to a routable `10.0.0.0/8` fabric the SYNs are silently dropped, so each connect blocks its full timeout × retries × API-version probes → the suite ran for minutes and, without `--timeout`, looked like a hung agent (aborted shell `669564`). No process was actually stuck — all PIDs were dead on inspection.
+- **Fix:** added an autouse network guard in `tests/conftest.py` that makes non-loopback `socket.connect`/`connect_ex` fail fast with `ConnectionRefusedError` (mirrors CI). Loopback + AF_UNIX always allowed; `@pytest.mark.integration` and `VAST_TEST_ALLOW_NETWORK=1` opt out. Any test that leaks real network I/O now surfaces instantly instead of stalling the run.
+- **Verified:** the 3 previously-timing-out tests pass; full `test_oneshot_runner.py` 80/80 in 36s; **full unit suite 1616 passed in 2:19** (previously hung indefinitely). black + flake8 clean. Dev-only change (no runtime code touched).
+
 ### 2026-08-01 — v1.6.0 shipped + branch protection on `main`
 - **Released v1.6.0** (first run of the new `prepare-release`/`ship-release` path). CHANGELOG `[1.6.0]` folded + dated (2026-08-01); `develop`→`main` merged (`2c9368b`); annotated tag `v1.6.0` pushed → `build-release.yml` (run `30703978929`) with the now-**blocking** quality-gate + test gates, then mac-arm64/mac-x64 `.dmg` + win `.zip` build and GitHub Release publish. Back-merged `main`→`develop` (both at `2c9368b`).
 - **Quality gate:** develop CI green on the release content (full suite on ubuntu). Local run showed 69% coverage / 1611 passed; the only 5 failures were the documented env-sensitive `test_oneshot_runner` SSH-timeout cases (pass on CI), not regressions.
