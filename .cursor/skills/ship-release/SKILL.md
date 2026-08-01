@@ -20,9 +20,10 @@ Final release stage. Merges to `main`, tags, and verifies artifacts. Every step 
 3. **Tag** the release commit: `git tag -a vX.Y.Z -m "Release vX.Y.Z — <summary>"` (annotated). For pre-releases use `vX.Y.Z-beta`/`-rc1` (the build workflow marks these prerelease).
 4. **Push the tag.** `git push origin vX.Y.Z` — this triggers `.github/workflows/build-release.yml`, which checks out the tagged commit and builds from the release code.
 5. **Verify the build** via `gh`: `gh run watch` / `gh run list --workflow=build-release.yml`. Confirm the run is green.
-6. **Verify artifacts.** Confirm the GitHub Release for `vX.Y.Z` has `VAST-Reporter-vX.Y.Z-mac.dmg` and `VAST-Reporter-vX.Y.Z-win.zip` attached (`gh release view vX.Y.Z`).
-7. **Back to develop.** `git checkout develop && git merge main` (keep develop current) and push.
-8. **Announce + record.** Post the success comms (Slack + Confluence release page, draft-then-confirm); record the release in `docs/DECISIONS.md`; `update-tracker`.
+6. **Verify artifacts.** Confirm the GitHub Release for `vX.Y.Z` has both mac DMGs (`-mac-arm64.dmg`, `-mac-x64.dmg`) and the `-win.zip` attached, and is marked **latest / non-prerelease** (`gh release view vX.Y.Z`).
+7. **Live update-pill check (QA §6b).** From a real *previous-version* build on an online machine, confirm the header pill flips to **UPDATE AVAILABLE** and Download offers the OS-matched installer (`docs/development/QA-TEST-PLAN.md`).
+8. **Back to develop.** `git checkout develop && git merge main` (keep develop current) and push.
+9. **Announce + record.** Post the success comms (Slack + Confluence release page, draft-then-confirm); record the release in `docs/DECISIONS.md`; `update-tracker`.
 
 ## Failure handling
 

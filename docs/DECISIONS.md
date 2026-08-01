@@ -39,6 +39,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — Pre-ship review + cross-OS QA phase (gates 1.6.0)
+- **Pre-ship review:** v1.5.8 plan fully shipped (tag exists; devices/health/version-sync deliverables confirmed). Delta since v1.5.8 = 12 commits / 22 app files (+1217/-108): Teleport tsh discovery + settings + tunnel routing fixes, vnetmap cross-cluster guard + Onyx `admin` auth, switch-config filename sanitization, bundle SUMMARY version, plus non-app `notifier.py` + M0–M5. Working tree clean.
+- **Update-pill requirement:** verified `src/updater.py` is present at tag `v1.5.8`, so existing 1.5.8 installs already have the in-app checker → they will detect a published v1.6.0 stable release and show the header **UPDATE AVAILABLE** pill. Repo target `rstamps01/ps-deploy-report` is correct.
+- **QA decisions (user):** Linux = run-from-source only; deliver both a checklist doc AND automated tests; execution is CI-only for now; validate the pill via a staged (mocked) dry-run before the real tag; online-only update check is acceptable (documented).
+- **Delivered:** `docs/development/QA-TEST-PLAN.md` (cross-OS matrix, 1.6.0 functional cases, update-pill §6, caveats, sign-off checklist); `tests/test_update_release_readiness.py` (staged 1.5.8→1.6.0 dry-run with real v1.6.0 asset names + non-semver-tag handling + dual-mac-DMG arch caveat pinned); new `qa-cross-os` CI job (functional subset on ubuntu+macOS+windows, cost-gated). Wired into `prepare-release`/`ship-release` + `docs/README.md`.
+- **Two documented caveats (non-blocking):** (1) air-gapped machines never see the pill (by design); (2) a shipped 1.5.8 client links the first mac DMG, so an Intel user may get the arm64 link — follow-up: make `extract_download_urls` arch-aware for 1.6.0+ clients.
+- **Still paused:** actual 1.6.0 ship (merge→tag→release) + branch-protection policy await approval; ship is now gated behind this QA phase.
+
 ### 2026-07-31 — M5 release hardening
 - **Blocking release gates (§5):** removed `continue-on-error` from `build-release.yml` quality-gate + test jobs; `build` now `needs: [quality-gate, test]`, so artifacts only build after gates pass. Updated `release-packaging-12.mdc` to match (no more "does not block"). **Rationale:** a release must never ship un-gated artifacts; branch protection keeps `main` green so a proper tag still produces the `.dmg`/`.zip`.
 - **Drift fix:** the release-notes step read `RELEASE_NOTES_v*.md` from repo root, but M4 moved them to `docs/releases/`. Workflow now checks `docs/releases/` first, then root, then CHANGELOG.
