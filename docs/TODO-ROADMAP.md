@@ -40,6 +40,17 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 
 ---
 
+## Planned — Pipeline & ops follow-ups (2026-07-31)
+
+*Source: prior-plan reconciliation (see [`PLANS-INDEX.md`](PLANS-INDEX.md), Bucket D). Genuinely-open items surfaced from `~/.cursor/plans/` that are in-scope for this repo.*
+
+| ID | Item | Priority | Status | Notes |
+|------|------|----------|--------|--------|
+| SEC-2 | **Enable GitHub branch protection on `main`.** `main` is currently unprotected (confirmed via API). Add a protection rule: require PR + passing CI status checks before merge, disallow force-push/deletion. Aligns with `change-control-07` ("never push directly to `main`"). | Medium | Planned | From plan `protect_main_branch_1260e0f8`. Config-only (GitHub settings); no code change. |
+| OPS-1 | **Remote access to the reporter app (Windows `netsh portproxy`).** Document/support exposing the local Flask UI to a remote operator via a Windows port-proxy hop, for field machines where the browser runs elsewhere. | Low | Planned (confirm need) | From plan `expose_asbuilt-reporter_remotely_8b7d907f`. Confirm this is still needed before implementing. |
+
+---
+
 ## Planned — Queued implementation plans (2026-06-16)
 
 *Plans drafted and queued for execution this session. One additional plan will be generated before execution begins. Plan files live in `.cursor/plans/`.*
