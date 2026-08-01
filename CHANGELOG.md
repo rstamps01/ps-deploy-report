@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Escalation email subject hardening.** `src/utils/notifier.py` now collapses CR/LF in the generated email `Subject` line, a defense-in-depth guard against email-header injection when a gate/item identifier contains a newline (pipeline escalation surface; feature is config-gated and disabled by default).
+
+### Changed
+- **Test reliability (dev/CI).** Added a `tests/conftest.py` network guard (non-loopback socket connects fail fast, mirroring CI) and a global `pytest --timeout=300` backstop so the test suite can never hang on a networked machine; quarantined `@pytest.mark.flaky` tests are excluded from the blocking CI gate. No runtime/product behavior change.
+
 ## [1.6.0] - 2026-08-01
 
 ### Added

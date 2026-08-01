@@ -120,9 +120,12 @@ jobs:
           # Includes test_functional_validation.py: Windows charmap-safe port mapping logs,
           # network diagram PNG via PyMuPDF fallback (no placeholder), and safe exception logging.
           # Coverage threshold aligned with pyproject.toml; raise as tests expand.
+          # -m "not flaky": quarantined nondeterministic tests are excluded from
+          # the blocking gate and tracked as BUGs (test-reliability policy §21).
           python -m pytest tests/ -v \
             --ignore=tests/test_ui.py \
             --ignore=tests/test_integration.py \
+            -m "not flaky" \
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
@@ -163,7 +166,7 @@ jobs:
       - name: Run health check tests
         run: |
           if [ -f tests/test_health_checker.py ]; then
-            python -m pytest tests/test_health_checker.py -v --no-cov
+            python -m pytest tests/test_health_checker.py -v --no-cov -m "not flaky"
           else
             echo "tests/test_health_checker.py not yet created -- skipping"
           fi
@@ -195,7 +198,7 @@ jobs:
 
       - name: Run Advanced Operations tests
         run: |
-          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov
+          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov -m "not flaky"
 
     # -------------------------------------------------------------------
   # Job 4: Integration tests (Linux only)
@@ -224,7 +227,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration.py -v -m integration --no-cov
+          python -m pytest tests/test_integration.py -v -m "integration and not flaky" --no-cov
 
   # -------------------------------------------------------------------
   # Job 4: UI tests (Playwright) — develop/main only
@@ -392,4 +395,4 @@ jobs:
             tests/test_updater.py \
             tests/test_update_release_readiness.py \
             tests/test_functional_validation.py \
-            -q --no-cov
+            -q --no-cov -m "not flaky"

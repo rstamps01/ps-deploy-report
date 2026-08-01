@@ -46,6 +46,7 @@ docs/
 ├── development/                     # Developer references and active guides
 │   ├── AGENTIC-CICD-PIPELINE.md     # End-to-end pipeline map + invocation guide
 │   ├── QA-TEST-PLAN.md              # Cross-OS (mac/win/linux) pre-ship QA plan
+│   ├── PIPELINE-SECRETS.md          # Secrets & credentials registry (stores + consumers)
 │   ├── REPO-STRUCTURE.md            # Canonical repository structure standard
 │   ├── HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md
 │   ├── READ_ONLY_VAST_API_POLICY.md
@@ -104,6 +105,7 @@ docs/
 |----------|---------|
 | [Agentic CI/CD Pipeline](development/AGENTIC-CICD-PIPELINE.md) | How work flows intake→ship via rules, skills, hooks, and the PM |
 | [QA Test Plan](development/QA-TEST-PLAN.md) | Cross-OS (mac/win/linux) pre-ship QA + update-pill validation |
+| [Pipeline Secrets Registry](development/PIPELINE-SECRETS.md) | Every secret, its store (.env/env/Actions/MCP), and its consumer |
 | [Repository Structure](development/REPO-STRUCTURE.md) | Where new files/modules/docs belong by default |
 | [Health Check Module Guide](development/HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md) | Tier 1 + Tier 3 health check architecture and implementation |
 | [Read-Only API Policy](development/READ_ONLY_VAST_API_POLICY.md) | GET-only API access policy rationale |

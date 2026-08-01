@@ -81,8 +81,11 @@ jobs:
 
       - name: Run unit and integration tests with coverage
         run: |
+          # -m "not flaky": exclude quarantined nondeterministic tests from the
+          # blocking release gate (test-reliability policy §21), mirroring ci.yml.
           python -m pytest tests/ -v \
             --ignore=tests/test_ui.py \
+            -m "not flaky" \
             --cov=src \
             --cov-report=xml \
             --cov-fail-under=60

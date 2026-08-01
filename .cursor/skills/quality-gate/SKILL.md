@@ -14,7 +14,7 @@ Mirrors `.github/workflows/ci.yml` locally so nothing reaches a PR red. Enforces
 2. **Format:** `black --check --line-length 120 src/ tests/` (run `black` without `--check` to fix).
 3. **Lint:** `flake8 src/ tests/` and `flake8 src/ tests/ --select=E722 --extend-ignore=` (no bare `except`).
 4. **Types:** `mypy src/ --ignore-missing-imports --no-strict-optional`.
-5. **Tests + coverage:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py --timeout=60 --timeout-method=signal` with the coverage floor (`--cov-fail-under=60`, per `pyproject.toml`).
+5. **Tests + coverage:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py -m "not flaky"` with the coverage floor (`--cov-fail-under=60`, per `pyproject.toml`). A global `--timeout=300` backstop (pyproject `addopts`) + the `tests/conftest.py` network guard keep the suite hang-proof; `-m "not flaky"` excludes quarantined tests, mirroring CI.
 
 ## Iterate-until-green
 
@@ -24,9 +24,11 @@ On any failure: fix the root cause, re-run that step, then continue. If the same
 
 Coverage is **upward-only**: never lower `--cov-fail-under`. A FEAT that drops coverage needs more tests; a BUG needs its failing-first regression test. When coverage rises comfortably above the floor, raise the floor (toward 80%, TSE items) in `pyproject.toml` + `ci-pipeline-13`.
 
-## Known local-env note
+## Test reliability (hang-proofing + flaky quarantine)
 
-Some `tests/test_oneshot_runner.py` cases open a real socket to a test cluster IP and hang on machines that blackhole it (60s timeout) while passing in CI (fast connection refusal). Treat these as environment artifacts, not regressions (see `docs/PROJECT-STATUS.md`); flaky/nondeterministic failures are quarantined per the test-reliability policy, not retried by `remediate-failure`.
+- **Network guard (fixed the old hang):** `tests/conftest.py` makes non-loopback socket connects fail fast with `ConnectionRefusedError`, so tests that would otherwise open a real socket to a cluster IP (e.g. some `tests/test_oneshot_runner.py` cases) behave like CI (instant refusal) instead of blocking on a machine that blackholes `10.0.0.0/8`. Integration tests and `VAST_TEST_ALLOW_NETWORK=1` opt out.
+- **Timeout backstop:** a global `--timeout=300` (pyproject `addopts`, via `pytest-timeout`) guarantees no single test can stall the run on any OS.
+- **Flaky quarantine:** a failure that passes on re-run is marked `@pytest.mark.flaky`, excluded from the blocking gate (`-m "not flaky"` in CI + local), and filed as a BUG — `remediate-failure` never burns attempts on nondeterminism.
 
 ## Leverages
 

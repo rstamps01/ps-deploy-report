@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M5 in progress):** foundation + 11 lifecycle skills (M1/M2), the orchestration layer (M3: `project-manager`, `deliver-autonomously`, `remediate-failure` + SMTP/Slack escalation), and tracking/docs consolidation (M4: roadmap restructure + state machine, CHANGELOG/roadmap archives, `PLANS-INDEX`, `PIPELINE-METRICS`, master doc) are complete. **M5 (release hardening)** adds blocking release gates, the `hotfix`/`rollback`/`maintain` skills, and the [`.cursor/pipeline.yml`](.cursor/pipeline.yml) project manifest. All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. Remaining: formally ship `1.6.0`, branch protection on `main`, and ADF extraction (M6). See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M0–M5 complete; v1.6.0 shipped):** foundation + 11 lifecycle skills (M1/M2), the orchestration layer (M3: `project-manager`, `deliver-autonomously`, `remediate-failure` + SMTP/Slack escalation), tracking/docs consolidation (M4: roadmap restructure + state machine, CHANGELOG/roadmap archives, `PLANS-INDEX`, `PIPELINE-METRICS`, master doc), and release hardening (M5: blocking release gates, `hotfix`/`rollback`/`maintain` skills, [`.cursor/pipeline.yml`](.cursor/pipeline.yml) manifest, branch protection on `main`) are all done. **v1.6.0 was shipped through this pipeline** (tag `v1.6.0`). All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. **Next: M6 — ADF portability extraction.** See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
 
 ## How this fits together
 
@@ -58,6 +58,7 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 | Decisions (ADR-lite) | `docs/DECISIONS.md` |
 | Release notes | `docs/releases/RELEASE_NOTES_vX.Y.Z.md` |
 | Repo structure standard | `docs/development/REPO-STRUCTURE.md` |
+| Secrets registry | `docs/development/PIPELINE-SECRETS.md` |
 | Canonical version | `src/app.py` `APP_VERSION` (enforced by `scripts/check-version-sync.sh`) |
 
 ## Non-negotiables

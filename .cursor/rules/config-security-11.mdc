@@ -46,3 +46,7 @@ security:    # prompt_for_credentials, session_timeout, sanitize_logs
 | `VAST_NODE_USER` / `VAST_NODE_PASSWORD` | SSH node credentials |
 | `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` | SSH switch credentials |
 | `SMTP_USERNAME` / `SMTP_PASSWORD` | Pipeline escalation email (SMTP app-password); read by `src/utils/notifier.py`, never stored in config |
+
+## Secrets registry
+
+The full pipeline secrets registry — every secret, its store (local `.env` / OS env / GitHub Actions secret / MCP auth), and its consumer (app, notifier, Slack/Atlassian MCP, `gh`) — is documented in [`docs/development/PIPELINE-SECRETS.md`](../../docs/development/PIPELINE-SECRETS.md). Add any new secret there, keep the value out of git, and put only non-secret companion settings in `config.yaml.template`.

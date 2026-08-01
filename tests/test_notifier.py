@@ -59,6 +59,16 @@ class TestEscalationReport(unittest.TestCase):
         self.assertIn("quality-gate", subject)
         self.assertIn("BUG-042", subject)
 
+    def test_subject_strips_newlines_no_header_injection(self):
+        # A newline in gate/item_id must never survive into the email Subject
+        # header (defense-in-depth against header injection): it is collapsed to
+        # a single line, so the "Bcc:" text stays inert body-of-subject, not a header.
+        report = _report(gate="ci\r\nBcc: attacker@evil.test", item_id="X\n1")
+        subject = report.subject()
+        self.assertNotIn("\n", subject)
+        self.assertNotIn("\r", subject)
+        self.assertEqual(subject, " ".join(subject.split()))
+
     def test_body_has_four_numbered_sections(self):
         body = _report().as_text()
         for marker in ("1) Failure description", "2) Assessment", "3) Actions taken", "4) Recommended next steps"):

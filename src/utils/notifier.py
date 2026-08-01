@@ -100,7 +100,9 @@ class EscalationReport:
 
     def subject(self) -> str:
         item = f" [{self.item_id}]" if self.item_id else ""
-        return redact(f"[Pipeline escalation]{item} {self.gate} failed after 3 attempts")
+        line = redact(f"[Pipeline escalation]{item} {self.gate} failed after 3 attempts")
+        # Collapse CR/LF so a newline in gate/item_id can never inject an email header.
+        return " ".join(line.split())
 
     def as_text(self) -> str:
         """Render the redacted email/record body."""
