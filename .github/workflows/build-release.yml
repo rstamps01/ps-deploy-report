@@ -36,7 +36,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-release-quality-${{ hashFiles('requirements-dev.txt') }}
@@ -68,7 +68,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-release-test-${{ hashFiles('requirements-dev.txt') }}
@@ -123,7 +123,7 @@ jobs:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ matrix.pip-cache }}
           key: ${{ runner.os }}-pip-release-build-${{ hashFiles('requirements.txt') }}
