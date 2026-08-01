@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-08-01 — **v1.6.0 released**; branch protection on `main`. Pipeline tails closed. **M6 Phase D done:** brownfield pilot on [`rstamps01/planalyzer`](https://github.com/rstamps01/planalyzer) — ADF v0.2.0 L1 adopt (dry-run → apply, Node manifest, GitHub CI alongside GitLab); PR [#1](https://github.com/rstamps01/planalyzer/pull/1). Remaining M6 (Phase E): `framework-doctor` + portfolio PM. See [`PROJECT-STATUS.md`](PROJECT-STATUS.md) for the full snapshot and [`DECISIONS.md`](DECISIONS.md) for the decision log.
+**Last updated:** 2026-08-01 — **v1.6.0 released**. **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast (L3), planalyzer (L1), and ADF. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 

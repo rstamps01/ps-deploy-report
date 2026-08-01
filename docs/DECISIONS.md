@@ -39,6 +39,12 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — M6 Phase E executed: framework-doctor + portfolio (ADF v0.3.0)
+- **Shipped [`agentic-dev-framework` v0.3.0](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0)** — `framework_doctor.py` (score + remediations, `--target`/`--portfolio`), `framework-doctor` skill, `PM: doctor`/`PM: portfolio`, `docs/PORTFOLIO.md`.
+- **Portfolio (all green):** vast-asbuilt-reporter L3 **100**, planalyzer L1 **100**, ADF L3 **100**.
+- **This repo remediated:** added missing `update-framework` + `framework-doctor` skills; set `adf_version: "0.3.0"`. Doctor accepts `docs/development/` homes for PIPELINE-SECRETS / REPO-STRUCTURE.
+- **M6 complete** (Phases A–E). Remaining follow-ups are optional (planalyzer → L2, richer update-framework merge).
+
 ### 2026-08-01 — M6 Phase D executed: brownfield pilot on planalyzer (ADF L1)
 - **Pilot target:** [`rstamps01/planalyzer`](https://github.com/rstamps01/planalyzer) (formerly plan-analyzer) — Next.js/TypeScript Node sibling of this Python reference impl.
 - **Flow:** `adopt-existing` → dry-run L1 → apply create-only (**33 created, 1 skipped** `.env.example`). Project-local skills (`comparing-plan-analysis`, `tracking-change-control`) and rules (`project-standards.mdc`, `change-control.mdc`) untouched. Pruned `python-standards-04.mdc`.
