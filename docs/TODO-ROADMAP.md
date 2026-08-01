@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-08-01 — Agentic CI/CD pipeline: M5 release hardening shipped; **v1.6.0 QA gate in progress** (cross-OS QA plan + update-pill validation) before the release tag. **v1.6.0** development is segmented on `develop` (baseline commit `e48e581`) — committed + documented, **not yet released** (no `v1.6.0` tag); it will ship via the new `prepare-release`/`ship-release` path. See [`PROJECT-STATUS.md`](PROJECT-STATUS.md) for the full snapshot and [`DECISIONS.md`](DECISIONS.md) for the decision log.
+**Last updated:** 2026-08-01 — **v1.6.0 released** (tag `v1.6.0`, merge `2c9368b`) via the new prepare-release/ship-release path; branch protection enabled on `main` (SEC-2, admin bypass). Agentic CI/CD pipeline M0–M5 complete; M6 (ADF portability) is the next milestone. **v1.6.0** development is segmented on `develop` (baseline commit `e48e581`) — committed + documented, **not yet released** (no `v1.6.0` tag); it will ship via the new `prepare-release`/`ship-release` path. See [`PROJECT-STATUS.md`](PROJECT-STATUS.md) for the full snapshot and [`DECISIONS.md`](DECISIONS.md) for the decision log.
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -46,7 +46,7 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 
 | ID | Item | Priority | Status | Notes |
 |------|------|----------|--------|--------|
-| SEC-2 | **Enable GitHub branch protection on `main`.** `main` is currently unprotected (confirmed via API). Add a protection rule: require PR + passing CI status checks before merge, disallow force-push/deletion. Aligns with `change-control-07` ("never push directly to `main`"). | Medium | Planned | From plan `protect_main_branch_1260e0f8`. Config-only (GitHub settings); no code change. |
+| SEC-2 | **Enable GitHub branch protection on `main`.** Aligns with `change-control-07`. | Medium | **Done** (2026-08-01) | Applied via API (admin-bypass policy): required checks `quality-gate`, `unit-tests (3.11/3.12)`, `integration-tests`; `enforce_admins:false` keeps the `develop`→`main` release merge working for admins; force-push + deletion disabled. From plan `protect_main_branch_1260e0f8`. |
 | OPS-1 | **Remote access to the reporter app (Windows `netsh portproxy`).** Document/support exposing the local Flask UI to a remote operator via a Windows port-proxy hop, for field machines where the browser runs elsewhere. | Low | Planned (confirm need) | From plan `expose_asbuilt-reporter_remotely_8b7d907f`. Confirm this is still needed before implementing. |
 
 ---
@@ -236,9 +236,9 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 >
 > **Prior execution status (2026-07-21):** Preparing **v1.6.0**. Added robust Teleport `tsh` auto-discovery (TPM-2): the app resolves `tsh` on PATH and well-known install locations, augments `PATH` at startup, and exposes a Teleport Settings section (path field + Run Discovery + persistence) plus a green/yellow install-status pill on the Reporter tile and in Advanced Configuration. New endpoints `GET /api/teleport/status` and `POST /api/teleport/discover`, new guide `docs/TELEPORT-MODE.md`. Version bumped `1.5.8 → 1.6.0`.
 
-1. **v1.6.0 QA gate (in progress):** Work the cross-OS QA plan ([`development/QA-TEST-PLAN.md`](development/QA-TEST-PLAN.md)) — CI `qa-cross-os` (functional subset on mac/win/linux) + `build-smoke` green, release-specific functional cases, and the update-pill staged dry-run (`tests/test_update_release_readiness.py`). Release hardening (M5) shipped blocking release gates + `hotfix`/`rollback`/`maintain` skills + `.cursor/pipeline.yml`.
-2. **v1.6.0 release execution (paused for approval):** After QA passes — merge `develop → main`, tag `v1.6.0`, verify the `build-release.yml` artifacts (macOS arm64 + Intel `.dmg`, Windows `.zip`) attach to the GitHub Release.
-3. **Post-release smoke test:** On packaged macOS/Windows builds launched from Finder/Explorer, confirm the tsh pill state, Run Discovery persistence, a Teleport preflight, and — from a real 1.5.8 build online — the **UPDATE AVAILABLE** pill flips to 1.6.0 (QA §6b).
+1. **v1.6.0 released (Done, 2026-08-01):** Shipped via prepare-release/ship-release — tag `v1.6.0`, `build-release.yml` (blocking gates) builds macOS arm64/Intel `.dmg` + Windows `.zip`. QA phase (cross-OS plan, `qa-cross-os` CI, update-pill staged dry-run) complete. M5 hardening (blocking gates, `hotfix`/`rollback`/`maintain`, `.cursor/pipeline.yml`) shipped.
+2. **Post-release verification (in progress):** Confirm the `build-release` run is green and artifacts attach; then from a real 1.5.8 build online confirm the **UPDATE AVAILABLE** pill flips to 1.6.0 (QA §6b), and on packaged mac/win builds launched from Finder/Explorer confirm tsh pill state + Run Discovery persistence + Teleport preflight.
+3. **M6 — ADF portability extraction:** Extract the portable core into a new `agentic-dev-framework` repo (manifest-driven adoption). Next milestone.
 4. **Teleport beta exit (TPM-1/TPM-2 follow-up):** Complete live Teleport validation against multiple clusters before removing the Beta flag in a subsequent release.
 5. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
 6. **UI Enhancement Phase (UI-1 through UI-9):** Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9).

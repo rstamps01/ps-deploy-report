@@ -39,6 +39,13 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — v1.6.0 shipped + branch protection on `main`
+- **Released v1.6.0** (first run of the new `prepare-release`/`ship-release` path). CHANGELOG `[1.6.0]` folded + dated (2026-08-01); `develop`→`main` merged (`2c9368b`); annotated tag `v1.6.0` pushed → `build-release.yml` (run `30703978929`) with the now-**blocking** quality-gate + test gates, then mac-arm64/mac-x64 `.dmg` + win `.zip` build and GitHub Release publish. Back-merged `main`→`develop` (both at `2c9368b`).
+- **Quality gate:** develop CI green on the release content (full suite on ubuntu). Local run showed 69% coverage / 1611 passed; the only 5 failures were the documented env-sensitive `test_oneshot_runner` SSH-timeout cases (pass on CI), not regressions.
+- **Branch protection (SEC-2, decision: admin bypass):** enabled on `main` via API — required status checks (`quality-gate`, `unit-tests (3.11/3.12)`, `integration-tests`), `enforce_admins: false` (admins merge directly so the `develop`→`main` release flow keeps working), force-push + deletion disabled. Blocks accidental red merges by non-admins.
+- **Workspace-disconnect mitigation:** confirmed the disconnect is triggered by `git checkout <branch>` rewriting the watched working tree. Ran the release via ref-only ops (annotated tag on a SHA, FF ref pushes `2c9368b:develop`) to avoid checkouts; branch switches were only done between identical trees (no file changes). The one `checkout main` that disconnected had still completed server-side (false-negative spawn error).
+- **Pending:** monitor `build-release` to green + verify artifacts attach; live update-pill check from a real 1.5.8 build once the Release publishes (QA §6b).
+
 ### 2026-08-01 — Pre-ship review + cross-OS QA phase (gates 1.6.0)
 - **Pre-ship review:** v1.5.8 plan fully shipped (tag exists; devices/health/version-sync deliverables confirmed). Delta since v1.5.8 = 12 commits / 22 app files (+1217/-108): Teleport tsh discovery + settings + tunnel routing fixes, vnetmap cross-cluster guard + Onyx `admin` auth, switch-config filename sanitization, bundle SUMMARY version, plus non-app `notifier.py` + M0–M5. Working tree clean.
 - **Update-pill requirement:** verified `src/updater.py` is present at tag `v1.5.8`, so existing 1.5.8 installs already have the in-app checker → they will detect a published v1.6.0 stable release and show the header **UPDATE AVAILABLE** pill. Repo target `rstamps01/ps-deploy-report` is correct.
