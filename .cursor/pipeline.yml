@@ -1,0 +1,95 @@
+# Agentic pipeline manifest (pipeline §30).
+# Declarative capability profile for THIS repo. Skills read these keys so the
+# same skill works across projects without edits — repo-specific commands and
+# toggles live here, not hardcoded in the skills. Precedence (pipeline §25):
+# user > project overrides (this file) > framework core > defaults.
+#
+# This is the Python adapter instance; the schema is designed to be
+# stack-agnostic (a Node/Go/Docker project supplies its own commands/artifacts).
+
+schema_version: 1
+adf_version: unreleased        # adopted Agentic Dev Framework core version (§31)
+adoption_tier: L3              # L1 gates+release · L2 +PM/tracking/docs · L3 +autonomy/remediation/metrics (§33)
+
+project:
+  name: vast-asbuilt-reporter
+  language: python
+  python_version: "3.12"       # CI matrix also runs 3.11 on develop/main
+  description: VAST As-Built Report Generator
+
+# Version source of truth + all mirrored locations (enforced by version_sync cmd).
+version:
+  source_file: src/app.py
+  source_symbol: APP_VERSION
+  sync_check: bash scripts/check-version-sync.sh
+  locations:
+    - src/app.py                       # APP_VERSION (canonical)
+    - src/main.py                      # argparse version=
+    - src/__init__.py                  # __version__
+    - packaging/vast-reporter.spec     # CFBundleShortVersionString / CFBundleVersion
+    - CHANGELOG.md                     # ## [X.Y.Z] header
+    - README.md                        # **Version:** badge
+
+# Commands each lifecycle skill invokes (the "adapter"). Override per project.
+commands:
+  install: pip install -r requirements-dev.txt
+  lint: flake8 src/ tests/
+  format_check: black --check --line-length 120 src/ tests/
+  format_fix: black --line-length 120 src/ tests/
+  typecheck: mypy src/ --ignore-missing-imports --no-strict-optional
+  test: python -m pytest tests/ --ignore=tests/test_ui.py
+  test_cov: python -m pytest tests/ --ignore=tests/test_ui.py --cov=src --cov-report=term-missing --cov-fail-under=60
+  ui_test: python -m pytest tests/test_ui.py
+  build: bash packaging/build-mac.sh          # Windows: powershell -File packaging/build-windows.ps1
+  clean: bash scripts/clean-workspace.sh
+  skill_conformance: python3 scripts/check-skill-conformance.py
+
+quality:
+  coverage_floor: 60            # ratchets upward only (pipeline §14); never lower
+  coverage_target: 80
+  blocking_gate: [version_sync, format_check, lint, typecheck, test_cov]
+  no_bare_except: true          # flake8 E722 enforced separately
+
+release:
+  branch_strategy: gitflow      # feature/* & fix/* -> develop -> main; tags off main
+  main_branch: main
+  dev_branch: develop
+  tag_pattern: "vX.Y.Z"
+  prerelease_suffixes: ["-beta", "-rc", "-alpha"]
+  artifacts:                    # produced by build-release.yml, attached to the GH Release
+    - VAST-Reporter-vX.Y.Z-mac-arm64.dmg
+    - VAST-Reporter-vX.Y.Z-mac-x64.dmg
+    - VAST-Reporter-vX.Y.Z-win.zip
+  release_notes_dir: docs/releases
+  gates_block_build: true       # pipeline §5: build-release quality-gate + test are BLOCKING
+
+doc_surfaces:                   # publish-docs keeps these in sync (pipeline §10)
+  github: true                  # README.md, CHANGELOG.md, docs/
+  in_app: true                  # src/app.py DOCS list -> frontend docs viewer
+  confluence:
+    enabled: true
+    page_id: "6664028496"       # draft-then-confirm before publish
+    space: internal
+
+notifications:                  # escalation channels (pipeline §16); creds via env only
+  email:
+    enabled: true               # src/utils/notifier.py (SMTP); SMTP_USERNAME/SMTP_PASSWORD env
+  slack:
+    enabled: true               # via Slack MCP (interactive reply channel)
+
+tracking:
+  register: docs/TODO-ROADMAP.md
+  archive: docs/ROADMAP-ARCHIVE.md
+  decisions_log: docs/DECISIONS.md
+  status_snapshot: docs/PROJECT-STATUS.md
+  plans_index: docs/PLANS-INDEX.md
+  metrics: docs/PIPELINE-METRICS.md
+  issues_dir: docs/issues
+  state_machine: [draft, ready-for-dev, in-progress, in-review, done, blocked]
+
+autonomy:                       # governance + kill switch (pipeline §22)
+  max_remediation_attempts: 3   # per issue, then escalate (§16)
+  pause_before: [merge_to_main, tag_release, file_deletion, force_git]
+  flaky_marker: flaky           # quarantined tests excluded from the blocking gate (§21)
+
+mcps: [atlassian, slack, gitlens]

@@ -39,6 +39,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-07-31 — M5 release hardening
+- **Blocking release gates (§5):** removed `continue-on-error` from `build-release.yml` quality-gate + test jobs; `build` now `needs: [quality-gate, test]`, so artifacts only build after gates pass. Updated `release-packaging-12.mdc` to match (no more "does not block"). **Rationale:** a release must never ship un-gated artifacts; branch protection keeps `main` green so a proper tag still produces the `.dmg`/`.zip`.
+- **Drift fix:** the release-notes step read `RELEASE_NOTES_v*.md` from repo root, but M4 moved them to `docs/releases/`. Workflow now checks `docs/releases/` first, then root, then CHANGELOG.
+- **New skills (§18/§28):** `hotfix` (branch off the released tag, minimal failing-first fix, patch release, back-merge), `rollback` (re-point "latest" to last good tag — first option on a bad release), `maintain` (Dependabot triage, success comms, config migration). Indexed in `CATALOG.md` + `AGENTS.md`; all pass conformance.
+- **Project manifest (§30, Phase A portability):** added `.cursor/pipeline.yml` — declarative capability profile (commands, version locations, coverage floor, artifacts, doc surfaces, notification channels, tracking files, autonomy budgets) so skills read config instead of hardcoding. Python adapter instance; schema stack-agnostic.
+- **1.6.0 release PREP:** wrote `docs/releases/RELEASE_NOTES_v1.6.0.md`. Version already synced to 1.6.0; latest tag is `v1.5.8`. **Paused:** the actual merge→tag→release is a destructive/approval-gated action (PM guardrail) — awaiting explicit go-ahead.
+- **Open decisions surfaced:** (a) ship `1.6.0` now? (b) branch-protection policy on `main` (SEC-2) — interacts with the direct `develop→main` merge release flow.
+
 ### 2026-07-31 — Prior-plan reconciliation + approved deletion batch
 - Reconciled 173 prior Cursor plans → `docs/PLANS-INDEX.md` (this-repo: 82 shipped-stale, 13 superseded/empty, 4 minor-tail, 4 open; 70 belong to other projects). Commits `cf0a391`.
 - **Approver:** user approved the conservative 12-file deletion batch. Deleted from `~/.cursor/plans/` (173 → 161); `pywebview_native_window` retained by design.

@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M3):** the foundation + 11 lifecycle skills (M1/M2) and now the **orchestration layer** are in place — `project-manager` (PM commands), `deliver-autonomously` (the intake→ship loop), and `remediate-failure` (bounded auto-debug + SMTP/Slack escalation via `src/utils/notifier.py`), plus `docs/DECISIONS.md` (decisions + memlog) and autonomy budgets/kill-switch. All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. Tracking/docs consolidation (M4), release hardening (M5), and ADF extraction (M6) remain. See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M5 in progress):** foundation + 11 lifecycle skills (M1/M2), the orchestration layer (M3: `project-manager`, `deliver-autonomously`, `remediate-failure` + SMTP/Slack escalation), and tracking/docs consolidation (M4: roadmap restructure + state machine, CHANGELOG/roadmap archives, `PLANS-INDEX`, `PIPELINE-METRICS`, master doc) are complete. **M5 (release hardening)** adds blocking release gates, the `hotfix`/`rollback`/`maintain` skills, and the [`.cursor/pipeline.yml`](.cursor/pipeline.yml) project manifest. All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. Remaining: formally ship `1.6.0`, branch protection on `main`, and ADF extraction (M6). See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
 
 ## How this fits together
 
@@ -33,6 +33,9 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 | Open a PR | `open-pr` | `change-control-07` |
 | Prep a release | `prepare-release` | `release-packaging-12` |
 | Ship it | `ship-release` | `release-packaging-12` |
+| Patch a shipped release | `hotfix` | `release-packaging-12`, `testing-standards-06` |
+| Recover a bad release | `rollback` | `release-packaging-12` |
+| Routine upkeep (deps/comms/migration) | `maintain` | `ci-pipeline-13`, `config-security-11` |
 | Sync docs everywhere | `publish-docs` | `documentation-08` |
 | Keep the register current | `update-tracker` | `todo-tracking-09` |
 | Anti-bloat / structure sweep | `codebase-health` | `repo-structure-17` |
@@ -45,6 +48,7 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 | This entry point | `AGENTS.md` (repo root) |
 | Standards | `.cursor/rules/*.mdc` |
 | Procedures | `.cursor/skills/<name>/SKILL.md` |
+| Project manifest (§30) | `.cursor/pipeline.yml` (commands, gates, artifacts, toggles) |
 | Guardrails | `.cursor/hooks.json` + `.cursor/hooks/` |
 | Live work register | `docs/TODO-ROADMAP.md` |
 | Per-item detail | `docs/issues/<ID>/` (spec/plan/tasks/evidence) |
@@ -78,10 +82,10 @@ Grouped by function. All skills below are live under `.cursor/skills/`.
 - **Develop:** `start-work`, `implement-change` (TDD), `using-git-worktrees`, parallel `explore` research.
 - **Validate & QA:** `functional-validate`, `quality-gate`, coverage ratchet, `verification-before-completion`.
 - **Review & change-control:** `open-pr`, `review-bugbot`, `review-security`, `requesting/receiving-code-review`, branch protection.
-- **Release:** `prepare-release`, `ship-release`, `finishing-a-development-branch`.
+- **Release:** `prepare-release`, `ship-release`, `hotfix`, `rollback`, `finishing-a-development-branch`.
 - **Docs & consistency:** `publish-docs`, docs-drift audit, `generate-status-report`.
 - **Tracking:** `update-tracker`, `triage-issue`, `spec-to-backlog`, plan-inventory reconciliation.
-- **Hygiene & health:** `codebase-health`, `continual-learning` (AGENTS.md refresh).
+- **Hygiene & health:** `codebase-health`, `maintain` (deps/comms/migration), `continual-learning` (AGENTS.md refresh).
 - **Failure handling:** `remediate-failure` (bounded loop) + SMTP/Slack escalation.
 - **Orchestration:** `project-manager` (`PM:` commands), `deliver-autonomously`, `orchestrating-subagents`, `dispatching-parallel-agents`, `subagent-driven-development`.
 
