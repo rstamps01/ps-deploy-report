@@ -129,6 +129,7 @@
                         <span class="info-icon" title="Connect directly to the VMS management IP over HTTPS (no SSH tunnel).">&#9432;</span>
                     </label>
                     <label class="conn-mode-opt conn-mode-opt--beta">
+                        <span id="reporterTshPill" class="tsh-pill tsh-pill--warn conn-tsh-pill">Install tsh</span>
                         <span class="beta-badge">Beta Feature</span>
                         <input type="radio" name="conn_mode" value="teleport" onchange="onConnModeChange()">
                         <span>Teleport Mode</span>
@@ -803,6 +804,14 @@
     box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4);
     pointer-events: none;
 }
+/* tsh install-status pill stacked directly above the Beta Feature badge */
+.conn-tsh-pill {
+    position: absolute;
+    bottom: calc(100% + 22px);
+    left: 50%;
+    transform: translateX(-50%);
+    cursor: help;
+}
 
 /* --- Teleport target fields --- */
 .teleport-fields { margin-top: 12px; }
@@ -1130,6 +1139,30 @@ function onConnModeChange() {
     var tf = document.getElementById('teleportFields');
     if (tf) tf.style.display = (mode === 'teleport') ? '' : 'none';
     saveUIState();
+}
+
+// Reflect whether the Teleport tsh CLI is installed/discoverable on the
+// status pill above the Teleport Mode option. Manage it in Advanced
+// Configuration -> Teleport Settings.
+async function refreshTeleportStatus() {
+    var pill = document.getElementById('reporterTshPill');
+    if (!pill) return;
+    try {
+        var resp = await fetch('/api/teleport/status');
+        var data = await resp.json();
+        if (data.installed) {
+            pill.textContent = 'tsh Installed';
+            pill.className = 'tsh-pill tsh-pill--ok conn-tsh-pill';
+            pill.title = 'Teleport CLI found: ' + (data.tsh_path || '');
+        } else {
+            pill.textContent = 'Install tsh';
+            pill.className = 'tsh-pill tsh-pill--warn conn-tsh-pill';
+            pill.title = 'Teleport CLI not found. Install tsh, then run discovery in Advanced Configuration -> Teleport Settings.';
+        }
+    } catch (e) {
+        pill.textContent = 'Install tsh';
+        pill.className = 'tsh-pill tsh-pill--warn conn-tsh-pill';
+    }
 }
 
 // --- Log Tier ---
@@ -3085,6 +3118,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     await fetchProfiles();
     toggleDefaultCredentials();
     restoreLogTier();
+    refreshTeleportStatus();
 
     // Fetch live config defaults for both Reporter and Test Suite tiles
     try {

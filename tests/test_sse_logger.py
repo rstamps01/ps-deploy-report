@@ -76,6 +76,30 @@ class TestSSELogHandler(unittest.TestCase):
     def test_handler_level_defaults_to_debug(self):
         self.assertEqual(self.handler.level, logging.DEBUG)
 
+    def test_emit_never_raises_when_filter_breaks_format_string(self):
+        """Regression: the SensitiveDataFilter redacts ``key=%s`` in a *format
+        string* to ``KEY_[REDACTED]``, deleting a ``%s`` placeholder.  The
+        subsequent ``msg % args`` then raises "not all arguments converted",
+        which previously propagated out of the SSE handler into the caller
+        (surfaced as the bogus /api/vnetmap-status error).  The handler must
+        now absorb it via handleError instead of raising."""
+        self.handler.addFilter(SensitiveDataFilter())
+        record = logging.LogRecord(
+            name="t",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="No vnetmap output for cluster %s (key=%s)",
+            args=("10.6.160.5", "VAST-PI-01__VA24129237"),
+            exc_info=None,
+        )
+        # Must not raise even though the redacted format string now has one
+        # placeholder but two args.
+        try:
+            self.handler.emit(record)
+        except Exception as exc:  # pragma: no cover - the assertion is the guard
+            self.fail(f"SSELogHandler.emit must not propagate formatting errors: {exc!r}")
+
 
 class TestGetSSEQueue(unittest.TestCase):
 

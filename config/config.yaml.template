@@ -172,8 +172,11 @@ teleport:
   # Default Teleport login user for the SSH session.
   ssh_user: vastdata
 
-  # Optional explicit path to the tsh binary.  Leave blank to resolve `tsh`
-  # from PATH.
+  # Optional explicit path to the tsh binary.  Leave blank to auto-discover:
+  # the app checks PATH and well-known install locations (e.g.
+  # /usr/local/bin/tsh, /opt/homebrew/bin/tsh, or the Windows Teleport dir).
+  # Use Advanced Configuration -> Teleport Settings -> Run Discovery to detect
+  # and save the path automatically, or set/validate a custom path here.
   tsh_path: ""
 
   # When true (default), if no active Teleport session is found at launch the

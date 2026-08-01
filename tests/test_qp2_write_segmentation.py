@@ -159,13 +159,21 @@ class TestFindLatestVnetmapApp:
         assert app._find_latest_vnetmap_output(ip, cluster_key=key) == cluster
         assert app._find_latest_vnetmap_output(ip) == legacy
 
-    def test_falls_back_to_legacy_when_cluster_empty(self, tmp_path, monkeypatch):
+    def test_no_flat_fallback_when_cluster_key_given(self, tmp_path, monkeypatch):
+        """QP-2: with a cluster_key, the shared flat output/scripts is NOT used.
+
+        A legacy ``vnetmap_output_<ip>_*.txt`` in the flat dir could belong to a
+        DIFFERENT cluster reported through the same Tech Port IP, so when the
+        cluster's own segmented folder has no match the finder returns ``None``
+        (graceful degradation) instead of the flat file. This is the
+        cross-cluster contamination guard; see ``_find_latest_vnetmap_output``.
+        """
         import app
 
         monkeypatch.setattr(utils, "get_data_dir", lambda: tmp_path)
         ip = "10.0.0.5"
-        legacy = _make_vnetmap(tmp_path / "output" / "scripts", ip, "20260101_000000")
-        assert app._find_latest_vnetmap_output(ip, cluster_key="lax01__P1") == legacy
+        _make_vnetmap(tmp_path / "output" / "scripts", ip, "20260101_000000")
+        assert app._find_latest_vnetmap_output(ip, cluster_key="lax01__P1") is None
 
 
 class TestFindLatestVnetmapOneShot:

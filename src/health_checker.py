@@ -2817,6 +2817,14 @@ class HealthChecker:
         if not isinstance(raw_pw_by_ip, dict):
             raw_pw_by_ip = {}
         password_by_ip: Dict[str, str] = {str(k): str(v) for k, v in raw_pw_by_ip.items() if v}
+        # The winning per-IP *user* discovered during pre-validation.  On Onyx
+        # the working combo is ``admin``/``admin`` while the operator default
+        # is ``cumulus``; using the wrong user makes MLAG/NTP/config checks
+        # fail with SSH auth errors even though pre-validation connected.
+        raw_user_by_ip: Any = self.switch_ssh_config.get("user_by_ip") or {}
+        if not isinstance(raw_user_by_ip, dict):
+            raw_user_by_ip = {}
+        user_by_ip: Dict[str, str] = {str(k): str(v) for k, v in raw_user_by_ip.items() if v}
 
         jump_kwargs: Dict[str, Any] = {}
         if self.switch_ssh_config.get("proxy_jump"):
@@ -2853,16 +2861,26 @@ class HealthChecker:
                     len(probe_ips),
                     len(candidate_list),
                 )
+            from utils.switch_ssh_probe import probe_switch_credentials
+
             for ip in probe_ips:
-                winning_password = self._probe_switch_password(str(ip), username, candidate_list, **jump_kwargs)
-                if winning_password:
-                    password_by_ip[str(ip)] = winning_password
+                # Capture BOTH the winning user and password so Onyx switches
+                # (which authenticate as ``admin`` rather than the operator's
+                # ``cumulus`` default) run their checks with the right user.
+                winner = probe_switch_credentials(str(ip), username, candidate_list, logger=self.logger, **jump_kwargs)
+                if winner:
+                    won_user, won_password = winner
+                    password_by_ip[str(ip)] = won_password
+                    user_by_ip[str(ip)] = won_user
 
         def _password_for(switch_ip: str) -> str:
             pw = password_by_ip.get(str(switch_ip))
             if pw:
                 return pw
             return primary_password
+
+        def _user_for(switch_ip: str) -> str:
+            return user_by_ip.get(str(switch_ip)) or username
 
         checks = [
             self._check_mlag_status,
@@ -2876,19 +2894,21 @@ class HealthChecker:
         for switch_ip in switch_ips:
             self._check_cancel()
             password = _password_for(switch_ip)
-            switch_os = self._detect_switch_type(switch_ip, username, password, **jump_kwargs)
+            switch_login = _user_for(switch_ip)
+            switch_os = self._detect_switch_type(switch_ip, switch_login, password, **jump_kwargs)
             for i, fn in enumerate(checks, 1):
                 self._check_cancel()
                 ssh_idx += 1
                 self.logger.info(
-                    "Running switch SSH check %d/%d on %s (%s): %s",
+                    "Running switch SSH check %d/%d on %s (%s) as %s: %s",
                     i,
                     len(checks),
                     switch_ip,
                     switch_os,
+                    switch_login,
                     fn.__name__,
                 )
-                result = fn(switch_ip, username, password, switch_os=switch_os, **jump_kwargs)
+                result = fn(switch_ip, switch_login, password, switch_os=switch_os, **jump_kwargs)
                 results.append(result)
                 if self.progress_callback:
                     self.progress_callback(ssh_idx, total_ssh_checks, f"{fn.__name__}@{switch_ip}")

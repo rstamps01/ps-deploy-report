@@ -457,6 +457,32 @@
     </div>
 </div>
 
+<!-- Teleport Settings -->
+<div class="cfg-section" data-section="teleport">
+    <div class="cfg-section-header" onclick="toggleSection(this)">
+        <h3>Teleport Settings <span id="tshPill" class="tsh-pill tsh-pill--warn" style="margin-left:8px;">Install tsh</span></h3>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="cfg-section-body">
+        <p class="cfg-section-note" style="margin:0 0 12px;font-size:0.82rem;color:var(--text-secondary);line-height:1.5;">
+            Teleport Mode (Beta) connects through the <code>tsh</code> CLI. The app auto-discovers <code>tsh</code> on PATH and
+            in well-known install locations. If auto-discovery fails, enter the full path to the <code>tsh</code> binary below
+            and click <strong>Run Discovery</strong> to validate it. The discovered path is saved for future Teleport connections.
+        </p>
+        <div class="cfg-form-grid">
+            <div class="form-group">
+                <label>tsh Path <span class="cfg-info-icon" title="Absolute path to the tsh binary. Leave blank to auto-discover from PATH and known install locations.">&#9432;</span></label>
+                <input type="text" class="form-control" id="tshPathField" data-key="teleport.tsh_path" placeholder="Auto-discovered (leave blank) or enter full path to tsh">
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <button type="button" class="btn btn-secondary" id="btnTshDiscover" onclick="runTeleportDiscovery()">Run Discovery</button>
+            </div>
+        </div>
+        <span id="tshDiscoverStatus" class="config-status" style="display:inline-block;margin-top:4px;"></span>
+    </div>
+</div>
+
 <!-- Action Buttons -->
 <div class="cfg-actions">
     <button type="button" class="btn btn-primary" id="btnCfgSave" onclick="saveConfig()">Save</button>
@@ -598,8 +624,73 @@
         el._t = setTimeout(function(){ el.textContent = ''; }, 5000);
     }
 
+    /* ---- Teleport tsh status pill ---- */
+    function applyTshState(installed, tshPath) {
+        var pill = document.getElementById('tshPill');
+        var field = document.getElementById('tshPathField');
+        if (pill) {
+            if (installed) {
+                pill.textContent = 'tsh Installed';
+                pill.className = 'tsh-pill tsh-pill--ok';
+            } else {
+                pill.textContent = 'Install tsh';
+                pill.className = 'tsh-pill tsh-pill--warn';
+            }
+        }
+        // Populate the field with the discovered path (blank when not found),
+        // unless the user has typed a custom value that hasn't been saved yet.
+        if (field && installed && tshPath && !field.dataset.userEdited) {
+            field.value = tshPath;
+        }
+    }
+
+    window.refreshTeleportStatus = async function() {
+        try {
+            var resp = await fetch('/api/teleport/status');
+            var data = await resp.json();
+            applyTshState(!!data.installed, data.tsh_path || '');
+        } catch(e) {
+            applyTshState(false, '');
+        }
+    };
+
+    window.runTeleportDiscovery = async function() {
+        var field = document.getElementById('tshPathField');
+        var statusEl = document.getElementById('tshDiscoverStatus');
+        var custom = field ? field.value.trim() : '';
+        if (statusEl) { statusEl.textContent = 'Discovering…'; statusEl.className = 'config-status'; }
+        try {
+            var resp = await fetch('/api/teleport/discover', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(custom ? {tsh_path: custom} : {})
+            });
+            var data = await resp.json();
+            if (resp.ok && data.installed) {
+                if (field) { field.value = data.tsh_path || ''; delete field.dataset.userEdited; }
+                applyTshState(true, data.tsh_path || '');
+                if (statusEl) { statusEl.textContent = data.message || 'tsh discovered'; statusEl.className = 'config-status success'; }
+            } else {
+                applyTshState(false, '');
+                if (statusEl) { statusEl.textContent = data.message || data.error || 'tsh not found'; statusEl.className = 'config-status error'; }
+            }
+        } catch(e) {
+            if (statusEl) { statusEl.textContent = 'Network error'; statusEl.className = 'config-status error'; }
+        }
+    };
+
+    /* Track manual edits so a background status refresh doesn't clobber
+       an unsaved custom path the operator is about to validate. */
+    (function(){
+        var field = document.getElementById('tshPathField');
+        if (field) {
+            field.addEventListener('input', function(){ field.dataset.userEdited = '1'; });
+        }
+    })();
+
     /* ---- Init ---- */
     loadConfig();
+    refreshTeleportStatus();
 })();
 </script>
 {% endblock %}

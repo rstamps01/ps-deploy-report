@@ -57,6 +57,19 @@ class LogBundleWorkflow:
     def set_credentials(self, credentials: Dict[str, Any]) -> None:
         self._credentials = credentials
 
+    def _ssh_host(self) -> str:
+        """SSH target host: the Teleport-forwarded local endpoint when set,
+        otherwise the cluster IP (Tech Port / direct modes)."""
+        host = self._credentials.get("ssh_host") or self._credentials.get("cluster_ip")
+        return str(host) if host else ""
+
+    def _ssh_port(self) -> int:
+        """SSH target port: the Teleport-forwarded local port when set, else 22."""
+        try:
+            return int(self._credentials.get("ssh_port") or 22)
+        except (TypeError, ValueError):
+            return 22
+
     def emit(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -95,6 +108,8 @@ class LogBundleWorkflow:
 
         if self._script_runner is None:
             self._script_runner = ScriptRunner(output_callback=self._output_callback, local_dir=self._output_dir)
+        # Route SSH/SCP through the Teleport-forwarded port when active.
+        self._script_runner.set_ssh_port(self._ssh_port())
 
         try:
             return method()
@@ -106,7 +121,7 @@ class LogBundleWorkflow:
         """Step 1: Discover log sizes on CNode."""
         self.emit("info", "Step 1: Discovering log sizes...")
 
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -185,7 +200,7 @@ class LogBundleWorkflow:
         if not self._step_data.get("collection_confirmed"):
             return {"success": False, "message": "Collection not confirmed. Run step 2 first."}
 
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
 
@@ -234,7 +249,7 @@ class LogBundleWorkflow:
         """Step 4: Download archive to local system."""
         self.emit("info", "Step 4: Downloading archive to laptop...")
 
-        host = self._credentials.get("cluster_ip")
+        host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         archive_path = self._step_data.get("archive_path")

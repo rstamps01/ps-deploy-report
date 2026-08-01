@@ -20,7 +20,37 @@ from utils.ssh_adapter import (
     _paramiko_exec,
     _pexpect_interactive,
     build_switch_credential_combos,
+    strip_terminal_escapes,
 )
+
+
+class TestStripTerminalEscapes(unittest.TestCase):
+    """Onyx/MLNX-OS shells emit terminal-mode escapes on entry; they must be
+    stripped so hostnames/filenames/parsers see clean text."""
+
+    def test_strips_onyx_shell_entry_sequence(self):
+        # The exact sequence observed in the field: \x1b[?1h\x1b=
+        raw = "\x1b[?1h\x1b=switch-01"
+        self.assertEqual(strip_terminal_escapes(raw), "switch-01")
+
+    def test_strips_csi_color_codes(self):
+        self.assertEqual(strip_terminal_escapes("\x1b[0m\x1b[32mgreen\x1b[0m"), "green")
+
+    def test_preserves_normal_whitespace(self):
+        self.assertEqual(strip_terminal_escapes("line1\nline2\ttab"), "line1\nline2\ttab")
+
+    def test_empty_and_none_safe(self):
+        self.assertEqual(strip_terminal_escapes(""), "")
+        self.assertEqual(strip_terminal_escapes(None), None)
+
+    def test_run_interactive_ssh_sanitizes_output(self):
+        with patch(
+            "utils.ssh_adapter._pexpect_interactive",
+            return_value=(0, "\x1b[?1h\x1b=NVIDIA Onyx", ""),
+        ), patch("utils.ssh_adapter.IS_WINDOWS", False):
+            rc, out, err = run_interactive_ssh("10.0.0.1", "admin", "admin", "show version")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "NVIDIA Onyx")
 
 
 class TestBuildSwitchCredentialCombos(unittest.TestCase):

@@ -15,7 +15,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 from script_runner import ScriptRunner
 from utils.logger import get_logger
-from utils.ssh_adapter import run_ssh_command, run_interactive_ssh, build_switch_credential_combos
+from utils.ssh_adapter import (
+    run_ssh_command,
+    run_interactive_ssh,
+    build_switch_credential_combos,
+    strip_terminal_escapes,
+)
 
 logger = get_logger(__name__)
 
@@ -113,6 +118,39 @@ class SwitchConfigWorkflow:
                 "jump_password": self._credentials.get("node_password"),
             }
         return {}
+
+    @staticmethod
+    def _derive_hostname(stdout: str, ip: str) -> str:
+        """Derive a clean hostname from SSH output, falling back to the IP.
+
+        Onyx/MLNX-OS switches answer the ``hostname`` probe via an interactive
+        ``show version`` shell whose output can carry leading blank/banner
+        lines (terminal escapes are already stripped by the SSH adapter).  Pick
+        the first non-empty line and drop anything that clearly isn't a
+        hostname so it never poisons the backup filename.
+        """
+        if not stdout:
+            return ip
+        for line in strip_terminal_escapes(stdout).splitlines():
+            candidate = str(line).strip()
+            if candidate:
+                return candidate
+        return ip
+
+    @staticmethod
+    def _filename_slug(hostname: str, ip: str) -> str:
+        """Return a filesystem-safe slug for the switch backup filename.
+
+        Collapses anything that isn't ``[A-Za-z0-9._-]`` to ``_`` and falls
+        back to the IP (dotted-to-underscore) when the hostname yields no
+        usable characters — preventing corrupt names like
+        ``switch_^[[?1h^[=_10_6_160_7_...txt``.
+        """
+        cleaned = strip_terminal_escapes(hostname or "")
+        slug = re.sub(r"[^A-Za-z0-9._-]+", "_", cleaned.strip()).strip("._-")
+        if not slug:
+            return ip.replace(".", "_")
+        return slug[:64]
 
     _AUTH_FAILURE_INDICATORS = (
         "authentication failed",
@@ -374,7 +412,7 @@ class SwitchConfigWorkflow:
                     break
 
             if rc == 0:
-                hostname = stdout.strip().split("\n")[0] if stdout else ip
+                hostname = self._derive_hostname(stdout, ip)
 
                 switch_type = self._detect_switch_type(
                     ip,
@@ -636,7 +674,8 @@ class SwitchConfigWorkflow:
         # Save raw text backup files (preserves original SSH output)
         for ip, config in configs.items():
             hostname = config.get("hostname", ip)
-            filename = f"switch_{hostname}_{ip.replace('.', '_')}_{timestamp}.txt"
+            name_slug = self._filename_slug(hostname, ip)
+            filename = f"switch_{name_slug}_{ip.replace('.', '_')}_{timestamp}.txt"
             filepath = local_dir / filename
 
             cluster_ip = self._credentials.get("cluster_ip", "unknown")

@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from utils.ssh_adapter import (
     build_switch_credential_combos,
@@ -176,6 +176,27 @@ def probe_switch_password(
         against ``switch_ip``, or ``None`` if every candidate is
         rejected / the candidate list is empty.
     """
+    winner = probe_switch_credentials(switch_ip, switch_user, candidates, logger=logger, **ssh_kwargs)
+    return winner[1] if winner else None
+
+
+def probe_switch_credentials(
+    switch_ip: str,
+    switch_user: str,
+    candidates: List[str],
+    *,
+    logger: Optional[logging.Logger] = None,
+    **ssh_kwargs: Any,
+) -> Optional[Tuple[str, str]]:
+    """Probe ``switch_ip`` and return the winning ``(user, password)`` pair.
+
+    Identical probe semantics to :func:`probe_switch_password` but preserves
+    the *user* of the winning combo.  This matters on Onyx/MLNX-OS switches
+    where the working combo is ``admin``/``admin`` while the operator default
+    is ``cumulus``: callers that only kept the password would then re-issue
+    subsequent commands as ``cumulus`` and fail.  Returns ``None`` when every
+    combo is rejected or the candidate list is empty.
+    """
     log = logger or _DEFAULT_LOGGER
 
     if not candidates:
@@ -188,7 +209,7 @@ def probe_switch_password(
         try:
             rc, _stdout, stderr = _hostname_attempt(switch_ip, user, password, log, ssh_kwargs)
             if rc == 0:
-                return str(password)
+                return str(user), str(password)
             # Only fall back to interactive ``show version`` when the
             # failure looks like auth — a rc != 0 with permission-denied
             # / authentication-failed in stderr is the Onyx signature.
@@ -198,7 +219,7 @@ def probe_switch_password(
                     switch_ip, user, password, "show version", timeout=_PROBE_TIMEOUT, **ssh_kwargs
                 )
                 if rc_i == 0:
-                    return str(password)
+                    return str(user), str(password)
         except Exception as exc:  # noqa: BLE001 - defensive per-candidate trap
             log.debug("Switch %s probe raised %s; trying next candidate", switch_ip, exc)
             continue

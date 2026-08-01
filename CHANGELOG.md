@@ -7,7 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes._
+### Fixed
+- **vnetmap authenticated to Onyx switches as the wrong user.** `vnetmap.py` talks to Onyx/MLNX-OS switches over their HTTP/HTTPS web (JSON) API, which rejects the Cumulus default `cumulus` and requires `admin`. The vnetmap workflow always passed the static `switch_user` (default `cumulus`) as `-u`, even after pre-validation had already discovered the switches authenticate as `admin`. The workflow now propagates a uniform discovered switch user (from `switch_user_by_ip`) into the generated `-u` flag — for both the `--multiple-passwords` run and the candidate-sweep retries — so the web-API login succeeds instead of failing with "Unable to determine suitable switch API" / "Please add switches". Falls back to the configured user when the discovered map is empty or non-uniform.
+- **Teleport mode: VMS Log Bundle and vperfsanity SSH now route through the tunnel.** Both workflows dialed the real cluster IP directly (and never set the forwarded SSH port on their `ScriptRunner`), so under Teleport they timed out with "SSH command timed out after 10s". They now resolve the SSH target from `ssh_host`/`ssh_port` (falling back to the cluster IP on port 22 for Tech Port/direct modes) and thread the tunnel port into every remote SSH/SCP call. vperfsanity keeps using the real cluster VMS IP for on-CNode API calls (`VAST_VMS`, `curl https://<vms>/api/…`) while sending the SSH transport through the forwarded endpoint.
+
+## [1.6.0] - 2026-07-21
+
+### Added
+- **Teleport `tsh` auto-discovery.** The app now locates the Teleport CLI on `PATH` and in well-known install locations (macOS/Windows/Linux), so packaged builds launched from Finder/Explorer no longer fail with "tsh not found on PATH".
+- **Teleport Settings** section in Advanced Configuration: view the discovered `tsh` path, enter a custom path, and click **Run Discovery** to validate and persist it (`teleport.tsh_path`).
+- **tsh status pill** (green "tsh Installed" / yellow "Install tsh") on the Reporter Connection Settings tile (above the Teleport Mode Beta badge) and in Teleport Settings.
+- New API endpoints `GET /api/teleport/status` (read-only) and `POST /api/teleport/discover` (persists to `config.yaml`).
+- New docs guide `docs/TELEPORT-MODE.md`, registered in the in-app Docs viewer.
+
+### Changed
+- Startup now augments `PATH` with common bin directories (e.g. `/usr/local/bin`, `/opt/homebrew/bin`, the Windows Teleport dir) to aid resolution of `tsh`, `sshpass`, and `ssh` in packaged apps.
+- Teleport preflight re-resolves `tsh` via discovery and emits an actionable error pointing to Advanced Configuration -> Teleport Settings.
+
+### Fixed
+- **Cross-cluster vnetmap contamination via a shared Tech Port IP.** When two clusters were reported through the same Tech Port (e.g. `192.168.2.2`), a report whose own vnetmap run failed (e.g. non-default switch password) could be populated with the previous cluster's saved vnetmap topology, because `vnetmap_output_<ip>_*.txt` filenames are identical across clusters. The vnetmap finder is now authoritative per cluster: when segmentation is active it searches only that cluster's `clusters/<key>/output/scripts` folder and no longer falls back to the shared flat `output/scripts`. A defense-in-depth identity guard also rejects any parsed vnetmap whose node hostnames/IPs do not overlap the cluster being reported, so the report degrades gracefully (SSH fallback / no port mapping) instead of embedding another cluster's data.
+- **Teleport mode: Network Config and Support Tools SSH now route through the tunnel.** Both workflows dialed the real cluster IP instead of the Teleport-forwarded local endpoint, causing "SSH command timed out" failures under Teleport. They now resolve the SSH target from `ssh_host`/`ssh_port` (falling back to the cluster IP on port 22 for Tech Port/direct modes), and the port is threaded into tool deployment (`tool_manager`).
+- **Garbled switch-config backup filenames.** Onyx/MLNX-OS switches emit terminal-mode escapes (`\x1b[?1h\x1b=`) on shell entry, which leaked into derived hostnames and produced files like `switch_^[[?1h^[=_10_6_160_7_….txt`. Interactive SSH output is now stripped of ANSI/terminal control sequences centrally, and the backup filename is built from a sanitized hostname slug (falling back to the switch IP).
+- **Onyx switch health checks authenticated as the wrong user.** Health checks (MLAG/NTP/config readability) reused the operator's default `cumulus` user even when pre-validation had authenticated a switch via Onyx's `admin`/`admin`. The winning per-IP `(user, password)` is now captured during probing and propagated end-to-end, so Onyx checks connect as `admin`.
+- **Spurious `/api/vnetmap-status` error.** The log line `"…(key=%s)"` was rewritten by the credential-redaction log filter to `KEY_[REDACTED]`, deleting a `%s` placeholder and raising "not all arguments converted during string formatting", which the SSE log handler propagated to the status endpoint. The message no longer uses a `key=` token, and the SSE handler now absorbs any formatting error instead of surfacing it.
+- **Blank cluster version in the validation bundle `SUMMARY.md`.** The bundle summary read the version only from credentials (which never carry it); it now uses the version detected from the live cluster during identity resolution.
+- **Clearer messaging for Onyx vnetmap web-API failures.** `vnetmap`'s `Unable to determine suitable switch API` (Onyx talks over the HTTP/HTTPS web API, not SSH) now surfaces a single plain-language hint — verify the web API is enabled and the switch's *web* login credentials — instead of a raw Python traceback.
 
 ## [1.5.8] - 2026-06-25
 

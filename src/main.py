@@ -47,7 +47,7 @@ from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
 # Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
-APP_VERSION = "1.5.8"
+APP_VERSION = "1.6.0"
 __version__ = APP_VERSION
 
 
@@ -1171,6 +1171,58 @@ def run_from_json() -> int:
         return 1
 
 
+def augment_process_path() -> None:
+    """Prepend well-known bin directories to ``os.environ['PATH']``.
+
+    GUI apps launched from Finder (macOS) or Explorer (Windows) inherit a
+    restricted ``PATH`` that omits the directories where operator tools like
+    ``tsh`` (Teleport), ``sshpass`` and ``ssh`` are typically installed —
+    e.g. ``/usr/local/bin`` (Homebrew / pkg installers) or the Windows
+    Teleport install directory.  Augmenting ``PATH`` at startup lets every
+    subprocess spawned by the app (which runs in this same process) resolve
+    those tools without the operator manually editing their environment.
+
+    Idempotent and side-effect-light: only existing directories not already
+    on ``PATH`` are prepended.
+    """
+    home = Path.home()
+    if sys.platform == "darwin":
+        candidates = [
+            Path("/usr/local/bin"),
+            Path("/opt/homebrew/bin"),
+            Path("/opt/teleport/bin"),
+            home / ".local/bin",
+        ]
+    elif sys.platform.startswith("win"):
+        program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+        local_app_data = os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local"))
+        candidates = [
+            Path(program_files) / "Teleport",
+            Path(program_files_x86) / "Teleport",
+            Path(local_app_data) / "Programs" / "teleport",
+            home / "scoop" / "shims",
+        ]
+    else:
+        candidates = [
+            Path("/usr/local/bin"),
+            Path("/usr/bin"),
+            home / ".local/bin",
+        ]
+
+    current = os.environ.get("PATH", "")
+    parts = current.split(os.pathsep) if current else []
+    existing = {p for p in parts if p}
+    prepend = []
+    for cand in candidates:
+        cand_str = str(cand)
+        if cand_str not in existing and cand.is_dir():
+            prepend.append(cand_str)
+            existing.add(cand_str)
+    if prepend:
+        os.environ["PATH"] = os.pathsep.join(prepend + parts)
+
+
 def main() -> int:
     """
     Main entry point — routes to GUI, CLI, or offline replay mode.
@@ -1182,6 +1234,10 @@ def main() -> int:
     --dev-mode: enables Developer Mode for advanced operations.
     --port <number>: override the default GUI port (5173).
     """
+    # Ensure operator tools (tsh, sshpass, ssh) are resolvable even when the
+    # packaged app is launched from Finder/Explorer with a restricted PATH.
+    augment_process_path()
+
     # Print version and exit before the GUI/CLI router, so a bare
     # ``vast-reporter --version`` reports the version instead of falling
     # through to the default GUI launch.

@@ -40,8 +40,9 @@ class SSELogHandler(logging.Handler):
 
     def emit(self, record):
         try:
+            formatted = self.format(record)
             entry = {
-                "timestamp": self.format(record).split(" - ")[0] if " - " in self.format(record) else "",
+                "timestamp": formatted.split(" - ")[0] if " - " in formatted else "",
                 "level": record.levelname,
                 "module": record.module,
                 "message": record.getMessage(),
@@ -49,6 +50,13 @@ class SSELogHandler(logging.Handler):
             self.log_queue.put_nowait(entry)
         except queue.Full:
             pass
+        except Exception:
+            # A malformed log call (e.g. a format string whose placeholders no
+            # longer match its args after credential redaction) must never
+            # propagate out of a log statement into the caller — that once
+            # surfaced as a spurious "/api/vnetmap-status" error.  Route it
+            # through the handler's error path (stderr) instead of raising.
+            self.handleError(record)
 
 
 def get_sse_queue() -> queue.Queue:
