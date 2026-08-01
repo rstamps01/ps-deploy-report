@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M0–M5 complete; v1.6.0 shipped):** foundation + 11 lifecycle skills (M1/M2), the orchestration layer (M3: `project-manager`, `deliver-autonomously`, `remediate-failure` + SMTP/Slack escalation), tracking/docs consolidation (M4: roadmap restructure + state machine, CHANGELOG/roadmap archives, `PLANS-INDEX`, `PIPELINE-METRICS`, master doc), and release hardening (M5: blocking release gates, `hotfix`/`rollback`/`maintain` skills, [`.cursor/pipeline.yml`](.cursor/pipeline.yml) manifest, branch protection on `main`) are all done. **v1.6.0 was shipped through this pipeline** (tag `v1.6.0`). All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. **Next: M6 — ADF portability extraction.** See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M0–M6 complete; v1.6.0 shipped):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0 (bootstrap, tiers, adopt-existing pilot on planalyzer, framework-doctor + portfolio). **v1.6.0 was shipped through this pipeline**. Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
 
 ## How this fits together
 
