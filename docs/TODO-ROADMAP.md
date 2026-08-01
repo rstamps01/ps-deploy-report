@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-08-01 — **v1.6.0 released**; branch protection on `main`. Pipeline tails closed. **M6 Phase C done:** [`agentic-dev-framework` v0.2.0](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.2.0) adds the bootstrap installer (`adf_bootstrap.py` — idempotent, non-destructive, dry-run, new/adopt), adoption tiers (`core/tiers.yml`, L1/L2/L3), and the `new-project`/`adopt-existing` skills; 20 core skills, 30 ADF tests green, Framework CI green. This repo is ADF's first adopter. Remaining M6 (Phase D–E): pilot `adopt-existing` on VAST Plan Analyzer, then `framework-doctor` + portfolio PM. See [`PROJECT-STATUS.md`](PROJECT-STATUS.md) for the full snapshot and [`DECISIONS.md`](DECISIONS.md) for the decision log.
+**Last updated:** 2026-08-01 — **v1.6.0 released**; branch protection on `main`. Pipeline tails closed. **M6 Phase D done:** brownfield pilot on [`rstamps01/planalyzer`](https://github.com/rstamps01/planalyzer) — ADF v0.2.0 L1 adopt (dry-run → apply, Node manifest, GitHub CI alongside GitLab); PR [#1](https://github.com/rstamps01/planalyzer/pull/1). Remaining M6 (Phase E): `framework-doctor` + portfolio PM. See [`PROJECT-STATUS.md`](PROJECT-STATUS.md) for the full snapshot and [`DECISIONS.md`](DECISIONS.md) for the decision log.
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 

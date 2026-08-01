@@ -39,6 +39,13 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — M6 Phase D executed: brownfield pilot on planalyzer (ADF L1)
+- **Pilot target:** [`rstamps01/planalyzer`](https://github.com/rstamps01/planalyzer) (formerly plan-analyzer) — Next.js/TypeScript Node sibling of this Python reference impl.
+- **Flow:** `adopt-existing` → dry-run L1 → apply create-only (**33 created, 1 skipped** `.env.example`). Project-local skills (`comparing-plan-analysis`, `tracking-change-control`) and rules (`project-standards.mdc`, `change-control.mdc`) untouched. Pruned `python-standards-04.mdc`.
+- **Manifest:** Node commands from existing npm scripts (`lint` / `format:check` / `typecheck` / `test` / `build`); `adf_version: 0.2.0`; version sync from `package.json`; coverage floor 0 until vitest coverage is wired. GitHub Actions CI added **alongside** GitLab (switch-over deferred).
+- **Evidence:** validate --strict ✅, skill-conformance ✅, version-sync ✅, lint/typecheck/test ✅ (165 passed). Pre-existing prettier debt deferred (not introduced by adopt). PR: https://github.com/rstamps01/planalyzer/pull/1
+- **Remaining M6 (Phase E):** `framework-doctor` + portfolio PM roll-up across adopters.
+
 ### 2026-08-01 — M6 Phase C executed: ADF bootstrap installer, tiers & adoption skills (v0.2.0)
 - **Shipped [`agentic-dev-framework` v0.2.0](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.2.0)** (gitflow: develop→main→tag, Framework CI green on both, GitHub Release published). Automates adoption.
 - **Installer (`scripts/adf_bootstrap.py`):** copies the tier-appropriate core into any target repo — **idempotent + non-destructive** (create-if-absent, `--force` to overwrite, never deletes), `--dry-run` plan, `new`/`adopt` modes, post-install self-check (manifest-validate + skill-conformance), refuses to install onto itself.
