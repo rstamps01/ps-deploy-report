@@ -39,6 +39,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-08-01 — M6 Phase C executed: ADF bootstrap installer, tiers & adoption skills (v0.2.0)
+- **Shipped [`agentic-dev-framework` v0.2.0](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.2.0)** (gitflow: develop→main→tag, Framework CI green on both, GitHub Release published). Automates adoption.
+- **Installer (`scripts/adf_bootstrap.py`):** copies the tier-appropriate core into any target repo — **idempotent + non-destructive** (create-if-absent, `--force` to overwrite, never deletes), `--dry-run` plan, `new`/`adopt` modes, post-install self-check (manifest-validate + skill-conformance), refuses to install onto itself.
+- **Tiers (`core/tiers.yml`):** additive L1⊂L2⊂L3 skill+docs map. `update-framework` ships to every tier; `new-project`/`adopt-existing` are operator skills excluded from all tiers (never land in an adopter). Core is now **20 skills**.
+- **Adoption skills:** `new-project` (greenfield scaffold) + `adopt-existing` (brownfield, **dry-run-first**, reconciles existing CI/docs/structure by hand).
+- **Validated:** dry-run + real L3 install into a scratch target = 44 files; idempotent re-run skipped all 44; target manifest-validate + conformance + gate-resolution green. **30 ADF tests** (18 adapter + 12 installer) + full self-gate green.
+- **Remaining M6 (Phase D–E):** pilot `adopt-existing` on VAST Plan Analyzer (non-destructive), then `framework-doctor` + portfolio PM roll-up.
+
 ### 2026-08-01 — M6 Phase B executed: ADF core extracted to a standalone repo
 - **Created [`rstamps01/agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) (private), v0.1.0** — the portable Agentic Dev Framework, extracted from this reference implementation (gitflow: `main` + `develop`, Framework CI dogfooding its own gate).
 - **Extracted (`core/`):** 18 stack-agnostic skills (all lifecycle + orchestration + the new `update-framework`), git-guard hooks, the manifest adapter, and the skill-conformance check. **Templates (`templates/`):** genericized `pipeline.yml`, `AGENTS.md`, 10 process rules, a manifest-driven `.github/ci.yml`, `env.example`, and docs scaffolds. Plus `HANDBOOK.md` (principles→governance), README, LICENSE, ADF's own `VERSION`/`framework_version.py`/CHANGELOG and `.cursor/pipeline.yml`.

@@ -1,6 +1,7 @@
 # Agentic Dev Framework (ADF) — Extraction Spec & Handbook Outline
 
-**Status:** Phase B **executed** (2026-08-01). The portable core has been extracted into
+**Status:** Phase C **executed** (2026-08-01, ADF v0.2.0 — bootstrap installer + tiers +
+adoption skills). Phase B extracted the portable core into
 [`rstamps01/agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework)
 (private) at **v0.1.0** — core skills/hooks/adapter/conformance + templates + `HANDBOOK.md`,
 dogfooding its own gate. This repo remains the **reference implementation** and ADF's first
@@ -125,13 +126,14 @@ Maps to the plan items in `agentic_cicd_pipeline_2eb2e257`.
 | --- | --- | --- | --- |
 | **A. Reference impl** | *(done, M0–M5)* | This repo runs the full pipeline; adapter proves the manifest seam | ✅ v1.6.0 shipped through the pipeline |
 | **B. Extract core** | ✅ `adf-core-repo`, `framework-versioning`, `methodology-handbook` | [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) v0.1.0: 18 core skills (+`update-framework`), hooks, location-independent adapter, conformance check, `templates/`, `HANDBOOK.md`, own semver/CHANGELOG + dogfood CI | ✅ ADF self-gate green (format/lint/conformance/manifest-validate/tests) |
-| **C. Bootstrap + tiers** | `bootstrap-installer`, `maturity-tiers`, `adoption-flows` | `bootstrap-pipeline`, `new-project`, `adopt-existing` (dry-run-first) | Adopt in **one** sibling project cleanly |
-| **D. Pilot brownfield** | `rollout-sequence` (Phase C) | Adopt-existing on **VAST Plan Analyzer**, non-destructive | Pilot green + no instance files clobbered |
-| **E. Portfolio rollout** | `conformance-doctor`, `rollout-sequence` (Phase D) | Roll out to all projects + portfolio dashboard | Per-project compliance tracked |
+| **C. Bootstrap + tiers** | ✅ `bootstrap-installer`, `maturity-tiers`, `adoption-flows` | ADF v0.2.0: `scripts/adf_bootstrap.py` (idempotent, non-destructive, dry-run, new/adopt, self-check), `core/tiers.yml` (L1/L2/L3), `new-project` + `adopt-existing` skills, 12 installer tests | ✅ scratch-target install validated (44 files, idempotent re-run, self-check green) |
+| **D. Pilot brownfield** | `rollout-sequence` | Adopt-existing on **VAST Plan Analyzer**, non-destructive | Pilot green + no instance files clobbered |
+| **E. Portfolio rollout** | `conformance-doctor`, `rollout-sequence` | Roll out to all projects + portfolio dashboard | Per-project compliance tracked |
 
-**Done:** the ADF repo was created (Phase B, 2026-08-01) at
-**`github.com/rstamps01/agentic-dev-framework` (private)**, v0.1.0. Next up is Phase C
-(bootstrap + adoption flows + tiers), then Phase D pilot on VAST Plan Analyzer.
+**Done:** Phase B created the ADF repo (v0.1.0). Phase C shipped
+[**v0.2.0**](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.2.0) — the
+bootstrap installer, adoption tiers, and `new-project`/`adopt-existing` skills. Next is
+Phase D: pilot `adopt-existing` on VAST Plan Analyzer.
 
 ## 10. HANDBOOK.md outline (to author in Phase B)
 
