@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M1):** the foundation (rules, hooks, GitHub scaffolding, repo-structure standard) is in place. The repo-local lifecycle **skills** under `.cursor/skills/` land in M2; until a given skill exists, follow the referenced rule directly. The cross-project **PM orchestrator** and autonomous delivery loop land in M3. See `.cursor/plans/` for the pipeline plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M2):** the foundation (rules, hooks, GitHub scaffolding, repo-structure standard) and the 11 repo-local lifecycle **skills** under `.cursor/skills/` (indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md), CI-validated) are in place. The cross-project **PM orchestrator**, autonomous delivery loop, and `remediate-failure` land in M3. See `.cursor/plans/` for the pipeline plan and `docs/PROJECT-STATUS.md` for current state.
 
 ## How this fits together
 
@@ -72,16 +72,16 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 
 ## Pipeline Menu (invokable options)
 
-Grouped by function. Skills marked *(M2/M3)* are not yet authored.
+Grouped by function. Skills marked *(M3)* are not yet authored; all others are live under `.cursor/skills/`.
 
-- **Intake & planning:** `intake-feature` *(M2)*, `brainstorming`, `writing-plans`, `PM: intake <request>` *(M3)*, `PM: status` *(M3)*, `PM: next` *(M3)*.
-- **Develop:** `start-work` *(M2)*, `implement-change` *(M2, TDD)*, `using-git-worktrees`, parallel `explore` research.
-- **Validate & QA:** `functional-validate` *(M2)*, `quality-gate` *(M2)*, coverage ratchet, `verification-before-completion`.
-- **Review & change-control:** `open-pr` *(M2)*, `review-bugbot`, `review-security`, `requesting/receiving-code-review`, branch protection.
-- **Release:** `prepare-release` *(M2)*, `ship-release` *(M2)*, `finishing-a-development-branch`.
-- **Docs & consistency:** `publish-docs` *(M2)*, docs-drift audit, `generate-status-report`.
-- **Tracking:** `update-tracker` *(M2)*, `triage-issue`, `spec-to-backlog`, plan-inventory reconciliation.
-- **Hygiene & health:** `codebase-health` *(M2)*, `continual-learning` (AGENTS.md refresh).
+- **Intake & planning:** `intake-feature`, `brainstorming`, `writing-plans`, `PM: intake <request>` *(M3)*, `PM: status` *(M3)*, `PM: next` *(M3)*.
+- **Develop:** `start-work`, `implement-change` (TDD), `using-git-worktrees`, parallel `explore` research.
+- **Validate & QA:** `functional-validate`, `quality-gate`, coverage ratchet, `verification-before-completion`.
+- **Review & change-control:** `open-pr`, `review-bugbot`, `review-security`, `requesting/receiving-code-review`, branch protection.
+- **Release:** `prepare-release`, `ship-release`, `finishing-a-development-branch`.
+- **Docs & consistency:** `publish-docs`, docs-drift audit, `generate-status-report`.
+- **Tracking:** `update-tracker`, `triage-issue`, `spec-to-backlog`, plan-inventory reconciliation.
+- **Hygiene & health:** `codebase-health`, `continual-learning` (AGENTS.md refresh).
 - **Failure handling:** `remediate-failure` *(M3)* + SMTP/Slack escalation.
 - **Orchestration:** `PM: run <item>` *(M3)*, `orchestrating-subagents`, `dispatching-parallel-agents`, `subagent-driven-development`.
 

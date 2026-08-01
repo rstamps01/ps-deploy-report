@@ -82,6 +82,9 @@ jobs:
       - name: Type check with mypy
         run: mypy src/ --ignore-missing-imports --no-strict-optional
 
+      - name: Validate agentic skill conformance
+        run: python3 scripts/check-skill-conformance.py
+
   # -------------------------------------------------------------------
   # Job 2: Unit tests
   #   - Feature/fix branches: Python 3.12 only (lowest cost)
