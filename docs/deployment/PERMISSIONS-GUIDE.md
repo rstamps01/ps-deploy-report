@@ -340,5 +340,5 @@ python3 -m src.main --cluster-ip <CLUSTER_IP> --output-dir reports
 ---
 
 **Last Updated**: March 21, 2026
-**Version**: 1.5.0
+**Version**: {{APP_VERSION}}
 **Applies To**: VAST Cluster 5.3+

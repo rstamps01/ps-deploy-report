@@ -97,6 +97,10 @@ def evaluate_auto_shutdown(
     return (now - last_heartbeat) >= grace_seconds
 
 
+REPO_URL = "https://github.com/rstamps01/ps-deploy-report"
+REPO_BLOB_URL = f"{REPO_URL}/blob/main"
+RELEASES_URL = f"{REPO_URL}/releases"
+
 _DOC_REGISTRY = [
     {"id": "overview", "title": "Overview", "category": "Getting Started", "path": "README.md"},
     {
@@ -120,7 +124,7 @@ _DOC_REGISTRY = [
     {"id": "update", "title": "Update & Upgrade", "category": "Maintenance", "path": "docs/deployment/UPDATE-GUIDE.md"},
     {
         "id": "deployment",
-        "title": "Production Deployment",
+        "title": "Deployment & Operations",
         "category": "Maintenance",
         "path": "docs/deployment/DEPLOYMENT.md",
     },
@@ -149,12 +153,10 @@ _DOC_REGISTRY = [
         "path": "docs/POST-INSTALL-VALIDATION.md",
     },
     {"id": "api-reference", "title": "API Reference", "category": "Reference", "path": "docs/API-REFERENCE.md"},
-    {
-        "id": "ebox-api-discovery",
-        "title": "EBox API (v7) Discovery",
-        "category": "Reference",
-        "path": "docs/api/EBOX_API_V7_DISCOVERY.md",
-    },
+    # docs/api/EBOX_API_V7_DISCOVERY.md was retired here: it was a pre-implementation
+    # discovery note that described EBox support as unconfirmed and still to be probed,
+    # while that support shipped the day after it was written. docs/API-REFERENCE.md
+    # documents the endpoint authoritatively.
     {"id": "changelog", "title": "Changelog", "category": "Reference", "path": "CHANGELOG.md"},
 ]
 
@@ -180,13 +182,26 @@ _DOC_LINK_MAP = _build_doc_link_map()
 
 
 def _rewrite_doc_links_in_html(html: str) -> str:
-    """Rewrite internal doc .md links to /docs#<doc_id> so they open the correct in-app doc."""
+    """Point markdown-relative links at something the Docs tab can actually open.
+
+    Documents are written for the repository, where a link like
+    ``[Update Guide](UPDATE-GUIDE.md)`` resolves against the file's own
+    directory. The Docs tab serves rendered HTML from ``/docs/content/<id>``, so
+    that same href resolves to a URL that does not exist.
+
+    Registry documents become ``/docs#<doc_id>``. Everything else — repository
+    files that are deliberately not shipped in the app bundle, such as
+    ``docs/TODO-ROADMAP.md`` — becomes a link to the file on GitHub, which beats
+    the dead relative link it would otherwise stay as.
+    """
 
     def replace_href(match: re.Match) -> str:
         href = match.group(1)
         if not href or href.startswith("#") or "docs#" in href:
             return str(match.group(0))
         parsed = urlparse(unquote(href))
+        if parsed.scheme or parsed.netloc:
+            return str(match.group(0))
         path = (parsed.path or "").strip().lstrip("/")
         if path.startswith("./"):
             path = path[2:]
@@ -195,7 +210,7 @@ def _rewrite_doc_links_in_html(html: str) -> str:
         doc_id = _DOC_LINK_MAP.get(path) or _DOC_LINK_MAP.get(path.split("/")[-1])
         if doc_id:
             return f'<a href="/docs#{doc_id}"'
-        return str(match.group(0))
+        return f'<a href="{REPO_BLOB_URL}/{path}"'
 
     return re.sub(r'<a\s+href="([^"]*)"', replace_href, html)
 
@@ -3654,13 +3669,37 @@ def _build_doc_categories():
     return categories
 
 
+def doc_substitutions(version: str = APP_VERSION) -> Dict[str, str]:
+    """Build the token map applied to in-app documentation before rendering.
+
+    Docs used to hardcode version numbers and artifact filenames, which went
+    stale the moment the app was released — the Installation Guide still told
+    1.6.0 users to download a 1.5.0 DMG. Authors write these tokens instead and
+    the values follow ``APP_VERSION``.
+    """
+    return {
+        "{{APP_VERSION}}": version,
+        "{{MAC_ARM64_DMG}}": f"VAST-Reporter-v{version}-mac-arm64.dmg",
+        "{{MAC_X64_DMG}}": f"VAST-Reporter-v{version}-mac-x64.dmg",
+        "{{WIN_ZIP}}": f"VAST-Reporter-v{version}-win.zip",
+        "{{RELEASES_URL}}": RELEASES_URL,
+        "{{LATEST_RELEASE_URL}}": f"{RELEASES_URL}/latest",
+    }
+
+
+def _apply_doc_substitutions(md_text: str) -> str:
+    for token, value in doc_substitutions().items():
+        md_text = md_text.replace(token, value)
+    return md_text
+
+
 def _render_doc_markdown(bundle_dir: str, rel_path: str) -> str:
     """Read a markdown file relative to bundle_dir and return rendered HTML."""
     file_path = _find_doc_file(bundle_dir, rel_path)
     if file_path is None:
         return f'<p class="text-muted">Document not found: {rel_path}</p>'
 
-    md_text = file_path.read_text(encoding="utf-8")
+    md_text = _apply_doc_substitutions(file_path.read_text(encoding="utf-8"))
 
     try:
         import markdown as md_lib  # type: ignore[import-untyped]

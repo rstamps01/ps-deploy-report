@@ -7,6 +7,7 @@ and helper functions — all without a real cluster or browser.
 
 import json
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -25,6 +26,8 @@ from app import (
     evaluate_auto_shutdown,
     _any_job_running,
     _teleport_api_remote_host,
+    _DOC_REGISTRY,
+    _rewrite_doc_links_in_html,
 )
 
 
@@ -1153,13 +1156,32 @@ class TestDocsRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
     def test_docs_content_rewrites_internal_md_links(self):
-        # UPDATE-GUIDE.md contains [Installation Guide](INSTALLATION-GUIDE.md) -> should become /docs#installation
+        # A raw .md href would 404 in the Docs tab, which serves rendered HTML by
+        # registry id rather than by file path.
         resp = self.client.get("/docs/content/update")
         self.assertEqual(resp.status_code, 200)
-        # Rewritten link should point to in-app doc, not raw .md path
         self.assertIn(b'href="/docs#installation"', resp.data)
-        # Should not contain raw .md path as href
         self.assertNotIn(b'href="INSTALLATION-GUIDE.md"', resp.data)
+
+    def test_unregistered_md_link_falls_back_to_github(self):
+        # README links to repository files that are deliberately not bundled in
+        # the app; left alone they render as hrefs that 404 in the Docs tab.
+        html = _rewrite_doc_links_in_html('<a href="docs/TODO-ROADMAP.md">Roadmap</a>')
+        self.assertIn('href="https://github.com/rstamps01/ps-deploy-report/blob/main/docs/TODO-ROADMAP.md"', html)
+
+    def test_external_links_are_left_alone(self):
+        html = _rewrite_doc_links_in_html('<a href="https://example.com/thing.md">x</a>')
+        self.assertIn('href="https://example.com/thing.md"', html)
+
+    def test_no_registered_doc_leaves_a_dead_relative_link(self):
+        """Rewriting is only useful if it covers every doc, not just the one above."""
+        for doc in _DOC_REGISTRY:
+            resp = self.client.get(f"/docs/content/{doc['id']}")
+            with self.subTest(doc=doc["id"]):
+                self.assertEqual(resp.status_code, 200)
+                hrefs = re.findall(rb'<a\s+href="([^"]*)"', resp.data)
+                relative = [h for h in hrefs if not h.startswith((b"http", b"#", b"/docs#", b"mailto:"))]
+                self.assertEqual(relative, [], f"{doc['id']} has unresolvable relative links")
 
 
 class TestSSEStream(unittest.TestCase):

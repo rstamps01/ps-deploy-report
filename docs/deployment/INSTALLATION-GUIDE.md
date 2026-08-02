@@ -20,12 +20,12 @@
 The fastest way to get started. No Python, package managers, or terminal commands required.
 
 **macOS:**
-1. Download **[VAST-Reporter-v1.5.0-mac.dmg](https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.5.0-mac.dmg)**
+1. Download the DMG for your Mac from [GitHub Releases]({{LATEST_RELEASE_URL}}) — **{{MAC_ARM64_DMG}}** for Apple Silicon, **{{MAC_X64_DMG}}** for Intel
 2. Open the `.dmg` and drag **VAST Reporter** to **Applications**
 3. Launch from Applications
 
 **Windows:**
-1. Download **VAST-Reporter-v1.5.0-win.zip** from [GitHub Releases](https://github.com/rstamps01/ps-deploy-report/releases/latest)
+1. Download **{{WIN_ZIP}}** from [GitHub Releases]({{LATEST_RELEASE_URL}})
 2. Extract the `.zip` to a folder (e.g. `C:\Program Files\VAST Reporter`)
 3. Run `vast-reporter.exe`
 
@@ -45,11 +45,18 @@ The application opens a browser window at `http://127.0.0.1:5173` with the full 
 
 1. **Download the DMG installer:**
 
-   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.5.0-mac.dmg`.
+   Go to [GitHub Releases]({{LATEST_RELEASE_URL}}) and download the DMG matching your Mac:
+
+   | Mac | Download |
+   |-----|----------|
+   | Apple Silicon (M1/M2/M3/M4) | `{{MAC_ARM64_DMG}}` |
+   | Intel | `{{MAC_X64_DMG}}` |
+
+   Not sure which you have? Apple menu > **About This Mac**. A **Chip** line means Apple Silicon; a **Processor** line means Intel.
 
    Or from the terminal:
    ```bash
-   curl -LO https://github.com/rstamps01/ps-deploy-report/releases/latest/download/VAST-Reporter-v1.5.0-mac.dmg
+   curl -LO {{LATEST_RELEASE_URL}}/download/{{MAC_ARM64_DMG}}
    ```
 
 2. **Install the application:**
@@ -97,7 +104,7 @@ The application is fully self-contained — it bundles Python, all libraries, an
 
 1. **Download the ZIP package:**
 
-   Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest) and download `VAST-Reporter-v1.5.0-win.zip`.
+   Go to [GitHub Releases]({{LATEST_RELEASE_URL}}) and download `{{WIN_ZIP}}`.
 
 2. **Extract and install:**
 
@@ -158,11 +165,27 @@ For automated or scripted usage, credentials can be passed via environment varia
 
 ## Updating
 
-To update to the latest version:
+> **Quit the application first.** An installer cannot replace a copy that is
+> still running. On macOS the drag into **Applications** fails outright; on
+> Windows the running `.exe` is locked. This is the most common cause of a
+> failed upgrade.
 
-1. Go to [github.com/rstamps01/ps-deploy-report/releases/latest](https://github.com/rstamps01/ps-deploy-report/releases/latest)
-2. Download the latest `.dmg` (macOS) or `.zip` (Windows)
-3. Install as described above — the new version replaces the old one
+1. **Check for an update.** The app header shows a version pill reading
+   `LATEST VERSION` or `UPDATE AVAILABLE`. When an update is available, a
+   **Download** dropdown appears offering macOS — Apple Silicon, macOS — Intel,
+   and Windows.
+2. **Download** the build for your machine and wait for it to finish.
+3. **Quit the app.** Use **Exit & Upgrade** in the Download dropdown, or the
+   **Exit** button in the navbar. Closing the browser tab is not enough — the
+   local server keeps running.
+4. **Install** as described above. On macOS choose **Replace** when prompted,
+   not "Keep Both".
+5. **Relaunch** and confirm the version pill reads `LATEST VERSION`.
+
+Because the app is unsigned, macOS treats the replaced bundle as new software
+and re-runs Gatekeeper. Expect the **Open Anyway** sequence after every update,
+not just the first install. See [Update & Upgrade](UPDATE-GUIDE.md) for the
+full walkthrough.
 
 Your saved cluster profiles and configuration are stored outside the application bundle and will persist across updates.
 
@@ -301,6 +324,6 @@ rm -rf ps-deploy-report/
 
 ---
 
-**Version**: 1.5.0
+**Version**: {{APP_VERSION}}
 **Last Updated**: March 17, 2026
 **Compatibility**: macOS 11+, Windows 10+

@@ -353,8 +353,7 @@ class TestOutputTerminalExpand:
         navbar = page.query_selector(".navbar").bounding_box()
         heading = page.query_selector(".output-header").bounding_box()
         assert heading["y"] >= navbar["y"] + navbar["height"] - 1, (
-            f"Output heading at y={heading['y']} overlaps the navbar "
-            f"ending at y={navbar['y'] + navbar['height']}"
+            f"Output heading at y={heading['y']} overlaps the navbar " f"ending at y={navbar['y'] + navbar['height']}"
         )
 
     def test_escape_collapses_expanded_output(self, flask_server, page):
@@ -380,7 +379,12 @@ class TestDeploymentToolsNav:
 
     def test_reporter_has_no_duplicate_tool_controls(self, flask_server, page):
         page.goto(f"{flask_server['url']}/reporter")
-        for selector in ("#btnUpdateToolsOneshot", "#btnToolsInfoOneshot", "#toolsStatusPanelOneshot", "#toolsStatusPanel"):
+        for selector in (
+            "#btnUpdateToolsOneshot",
+            "#btnToolsInfoOneshot",
+            "#toolsStatusPanelOneshot",
+            "#toolsStatusPanel",
+        ):
             assert page.query_selector(selector) is None, f"{selector} should have been removed"
 
     def test_nav_dropdown_carries_the_per_tool_detail(self, flask_server, page):

@@ -167,9 +167,7 @@ class TestExtractDownloadUrls(unittest.TestCase):
     def test_intel_naming_variants_are_recognised(self):
         for name in ("app-mac-x86_64.dmg", "app-mac-intel.dmg", "app-mac-amd64.dmg"):
             with self.subTest(name=name):
-                out = extract_download_urls(
-                    {"assets": [{"name": name, "browser_download_url": "http://x/i.dmg"}]}
-                )
+                out = extract_download_urls({"assets": [{"name": name, "browser_download_url": "http://x/i.dmg"}]})
                 self.assertEqual(out["mac_x64"], "http://x/i.dmg")
 
 

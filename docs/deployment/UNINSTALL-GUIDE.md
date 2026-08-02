@@ -535,4 +535,4 @@ To re-install after uninstallation, follow the [Installation Guide](INSTALLATION
 ---
 
 **Last Updated**: March 21, 2026
-**Version**: 1.5.0
+**Version**: {{APP_VERSION}}
