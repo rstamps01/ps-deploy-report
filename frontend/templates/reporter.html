@@ -875,7 +875,14 @@
 .dropdown-divider { height: 1px; background: var(--border-color); margin: 4px 0; }
 .output-pane { background: #1a1a2e; color: #e0e0e0; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; line-height: 1.5; padding: 12px; overflow-y: auto; overflow-x: auto; width: 100%; min-height: 450px; max-height: calc(100vh - 260px); box-sizing: border-box; transition: max-height 0.3s ease; }
 .output-pane.creds-expanded { max-height: calc(100vh - 640px); }
-.output-pane.expanded { position: fixed; top: 60px; left: 0; right: 0; bottom: 0; width: 100vw; max-height: calc(100vh - 60px); border-radius: 0; z-index: 999; }
+/* Expanded ("full window") mode. The class lives on .output-section, not on
+   .output-pane, so the heading bar and its Menu travel into the fixed layer with
+   the pane — putting it on the pane alone left the header behind as a static,
+   unpositioned sibling that the opaque pane painted over, stranding the user
+   with no way to minimize again. Offset matches the 56px sticky navbar. */
+.output-section.expanded { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; margin: 0; border: none; border-radius: 0; z-index: 999; display: flex; flex-direction: column; background: var(--bg-primary); }
+.output-section.expanded .output-header { flex: 0 0 auto; }
+.output-section.expanded .output-pane { flex: 1 1 auto; min-height: 0; max-height: none; }
 .output-placeholder { color: var(--text-secondary); text-align: center; padding: 40px; }
 .output-line { margin: 2px 0; white-space: pre-wrap; }
 .output-line .timestamp { color: #888; margin-right: 8px; }
@@ -1436,7 +1443,10 @@ OutputPaneCtor.prototype.clear = function() {
     }
 };
 OutputPaneCtor.prototype.copyToClipboard = function() { var t = this.entries.map(function(e) { return e.timestamp + ' [' + e.level.toUpperCase() + '] ' + e.message; }).join('\n'); navigator.clipboard.writeText(t).then(function() { alert('Copied!'); }); };
-OutputPaneCtor.prototype.toggleExpand = function() { this.container.classList.toggle('expanded'); };
+OutputPaneCtor.prototype.expandTarget = function() { return this.container.closest('.output-section') || this.container; };
+OutputPaneCtor.prototype.toggleExpand = function() { this.expandTarget().classList.toggle('expanded'); };
+OutputPaneCtor.prototype.isExpanded = function() { return this.expandTarget().classList.contains('expanded'); };
+OutputPaneCtor.prototype.collapse = function() { this.expandTarget().classList.remove('expanded'); };
 
 // --- Profile management ---
 async function fetchProfiles() {
@@ -3207,6 +3217,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
     document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
     document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
+    // Escape is the safety net for expanded mode: without it a user whose menu
+    // is obscured for any reason has no way back to the normal layout.
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && outputPane.isExpanded()) outputPane.collapse();
+    });
     document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
     document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
 

@@ -310,3 +310,55 @@ class TestBrowseAPI:
         assert resp.ok
         data = resp.json()
         assert data["current"] == "/tmp" or data["current"].startswith("/private/tmp")
+
+
+# ---------------------------------------------------------------------------
+# Output Results terminal — expand / minimize
+# ---------------------------------------------------------------------------
+
+
+class TestOutputTerminalExpand:
+    """Expanding the output terminal must keep its heading, and its Menu, reachable.
+
+    Regression guard: the expand toggle used to put the fixed-position class on
+    the scrolling pane alone. The heading bar is a sibling of the pane, not a
+    parent, so it stayed behind in normal flow as a static, unpositioned element
+    and the opaque full-viewport pane painted over it. The Menu that toggles
+    expansion was inside that buried heading, leaving no way back to the normal
+    layout — there was no Escape handler either.
+    """
+
+    @staticmethod
+    def _expand(page):
+        page.click("#btnOutputMenu")
+        page.click("#menuExpand")
+        page.wait_for_selector(".output-section.expanded")
+
+    @pytest.mark.parametrize("path", ["/reporter", "/advanced-ops"])
+    def test_menu_is_still_clickable_while_expanded(self, flask_server, page, path):
+        page.goto(f"{flask_server['url']}{path}")
+        if not page.query_selector("#btnOutputMenu"):
+            pytest.skip(f"{path} has no output terminal in this build")
+        self._expand(page)
+        # Playwright refuses to click an element covered by another element, so
+        # completing this round trip *is* the assertion that the menu is
+        # genuinely reachable rather than merely present in the DOM.
+        page.click("#btnOutputMenu", timeout=3000)
+        page.click("#menuExpand", timeout=3000)
+        assert page.query_selector(".output-section.expanded") is None
+
+    def test_heading_stays_below_the_navbar(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        self._expand(page)
+        navbar = page.query_selector(".navbar").bounding_box()
+        heading = page.query_selector(".output-header").bounding_box()
+        assert heading["y"] >= navbar["y"] + navbar["height"] - 1, (
+            f"Output heading at y={heading['y']} overlaps the navbar "
+            f"ending at y={navbar['y'] + navbar['height']}"
+        )
+
+    def test_escape_collapses_expanded_output(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        self._expand(page)
+        page.keyboard.press("Escape")
+        assert page.query_selector(".output-section.expanded") is None
