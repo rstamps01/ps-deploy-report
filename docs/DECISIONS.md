@@ -11,6 +11,22 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-08-01 — v1.6.1 merged to `develop` but deliberately not tagged
+- **Decision:** the post-1.6.0 correction batch ([PR #18](https://github.com/rstamps01/ps-deploy-report/pull/18)) merges to `develop` and stops there; no version bump, tag, or release yet.
+- **Rationale:** two of the eleven requested items (Quick Start upgrade steps, Update Tools walkthrough) need screenshots the user is supplying. Tagging now would ship a release whose own documentation is still being rewritten, and would burn a version number to publish it twice. **Approver:** user (2026-08-01).
+
+### 2026-08-01 — Do not automate the macOS in-place upgrade
+- **Decision:** keep the upgrade manual; prevent the failure instead by stating the constraint in the Download dropdown and offering **Exit & Upgrade**, which reuses the existing `/shutdown` endpoint.
+- **Rationale:** an app cannot replace its own running bundle. Doing so needs a signed helper or a separate updater process outliving the app — disproportionate for an unsigned internal tool, and it introduces a code-signing requirement we do not currently have. The observed failure is a refused drag into `/Applications`, which a clean shutdown prevents outright. **Approver:** user (accepted the alternative they proposed).
+
+### 2026-08-01 — Dependabot's Pages bump taken manually, as a pair
+- **Decision:** closed Dependabot PR #10 (`upload-pages-artifact` v3→v5) and bumped `upload-pages-artifact` **and** `deploy-pages` together by hand.
+- **Rationale:** the two actions are a matched pair and the artifact format changed between v4 and v5. Merging the upload half alone leaves a mismatch whose failure mode is a Pages deploy that publishes an empty site while still reporting success — worse than the outdated version it replaces. **Approver:** agent (documented in `docs/development/GITHUB-WORKFLOW.md`).
+
+### 2026-08-01 — SEC-3 / SEC-4 documented rather than fixed
+- **Decision:** plaintext credentials in `config/cluster_profiles.json` (SEC-3) and the ungated `/validation-results` route (SEC-4) are recorded in the roadmap and left as-is.
+- **Rationale:** SEC-3 needs a key-storage decision and a migration for existing profiles; SEC-4 would withdraw access someone may depend on. Neither belongs in a patch release made of unrelated corrections. **Approver:** user (2026-08-01).
+
 ### 2026-07-31 — PM skill lives repo-local in the reference impl
 - **Decision:** the `project-manager` skill is authored as a repo-local `.cursor/skills/project-manager/SKILL.md` here (versioned + CI-conformant); the global `~/.cursor/skills/project-manager/` + `~/.cursor/pm/projects.md` promotion happens at M6/ADF extraction.
 - **Rationale:** "build in the reference repo first, then extract" (plan §29); keeps M3 self-contained and conformance-checked. **Approver:** user (M3 go-ahead).
