@@ -329,8 +329,19 @@ class TestOutputTerminalExpand:
     """
 
     @staticmethod
-    def _expand(page):
+    def _open_menu(page):
+        """Open the output dropdown, waiting for it rather than clicking blind.
+
+        Clicking straight through to #menuExpand made the failure mode a 30s
+        timeout on a hidden element, which says nothing about why the dropdown
+        never opened.
+        """
         page.click("#btnOutputMenu")
+        page.wait_for_selector("#outputDropdown", state="visible", timeout=5000)
+
+    @classmethod
+    def _expand(cls, page):
+        cls._open_menu(page)
         page.click("#menuExpand")
         page.wait_for_selector(".output-section.expanded")
 
@@ -343,7 +354,7 @@ class TestOutputTerminalExpand:
         # Playwright refuses to click an element covered by another element, so
         # completing this round trip *is* the assertion that the menu is
         # genuinely reachable rather than merely present in the DOM.
-        page.click("#btnOutputMenu", timeout=3000)
+        self._open_menu(page)
         page.click("#menuExpand", timeout=3000)
         assert page.query_selector(".output-section.expanded") is None
 
@@ -361,6 +372,23 @@ class TestOutputTerminalExpand:
         self._expand(page)
         page.keyboard.press("Escape")
         assert page.query_selector(".output-section.expanded") is None
+
+    @pytest.mark.parametrize("path", ["/reporter", "/advanced-ops"])
+    def test_menu_works_before_backend_hydration_finishes(self, flask_server, page, path):
+        """The terminal is a local widget and must not wait on the backend.
+
+        Its controls used to be bound near the end of an async initialiser, after
+        several awaited fetches. Until those resolved the Menu button was inert —
+        unnoticeable on a developer machine, plainly broken on a slow link.
+        """
+        page.route("**/config/json", lambda route: None)
+        page.route("**/profiles", lambda route: None)
+        page.route("**/advanced-ops/workflows", lambda route: None)
+
+        page.goto(f"{flask_server['url']}{path}", wait_until="domcontentloaded")
+        if not page.query_selector("#btnOutputMenu"):
+            pytest.skip(f"{path} has no output terminal in this build")
+        self._open_menu(page)
 
 
 # ---------------------------------------------------------------------------

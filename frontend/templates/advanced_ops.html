@@ -1414,9 +1414,32 @@ function renderOneShotSummary(state, finalPhase) {
     summary.style.display = '';
 }
 
+// The output terminal is a purely local widget, so its controls are wired
+// before initialisation awaits the backend. Binding them further down meant the
+// Menu button did nothing until the workflow and profile fetches had resolved —
+// brief on a developer machine, long enough to notice on a slow link.
+function wireOutputMenu() {
+    document.getElementById('btnOutputMenu').addEventListener('click', function(e) {
+        e.stopPropagation();
+        var d = document.getElementById('outputDropdown');
+        d.style.display = d.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
+    document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
+    document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
+    // Escape is the safety net for expanded mode: without it a user whose menu
+    // is obscured for any reason has no way back to the normal layout.
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && outputPane.isExpanded()) outputPane.collapse();
+    });
+    document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
+    document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
+}
+
 // --- Initialization ---
 document.addEventListener('DOMContentLoaded', async function() {
     outputPane = new OutputPaneCtor('outputPane');
+    wireOutputMenu();
     await loadWorkflows();
     await fetchProfiles();
     toggleDefaultCredentials();
@@ -1435,25 +1458,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             document.getElementById('switchPassword').value = pw;
         }
     });
-
-    // Menu toggle
-    document.getElementById('btnOutputMenu').addEventListener('click', function(e) {
-        e.stopPropagation();
-        var d = document.getElementById('outputDropdown');
-        d.style.display = d.style.display === 'none' ? 'block' : 'none';
-    });
-    document.addEventListener('click', function() { document.getElementById('outputDropdown').style.display = 'none'; });
-
-    // Menu actions
-    document.getElementById('menuCopy').addEventListener('click', function(e) { e.preventDefault(); outputPane.copyToClipboard(); });
-    document.getElementById('menuExpand').addEventListener('click', function(e) { e.preventDefault(); outputPane.toggleExpand(); });
-    // Escape is the safety net for expanded mode: without it a user whose menu
-    // is obscured for any reason has no way back to the normal layout.
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && outputPane.isExpanded()) outputPane.collapse();
-    });
-    document.getElementById('menuAutoScroll').addEventListener('click', function(e) { e.preventDefault(); outputPane.autoScroll = !outputPane.autoScroll; alert('Auto-scroll ' + (outputPane.autoScroll ? 'enabled' : 'disabled')); });
-    document.getElementById('menuClear').addEventListener('click', function(e) { e.preventDefault(); outputPane.clear(); });
 
     // Operation selection
     document.getElementById('operationSelect').addEventListener('change', function() {
