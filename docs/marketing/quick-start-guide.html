@@ -380,7 +380,7 @@ footer a:hover { text-decoration: underline; }
     <div class="brand">
         <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data">
         <span><span class="brand-white">asbuilt</span><span class="brand-blue">-reporter</span></span>
-        <span class="brand-version">v1.5.0</span>
+        <span class="brand-version" data-app-version>v1.6.0</span>
     </div>
     <h1>Quick Start Guide</h1>
     <p>Download, install, and launch the application on macOS or Windows in minutes.</p>
@@ -437,8 +437,13 @@ footer a:hover { text-decoration: underline; }
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
                     <div class="step-number-label" data-step-new="1" data-step-upgrade="2">Step</div>
-                    <h3>Download &amp; Open the DMG</h3>
-                    <p>Download the latest <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac.dmg</code> from GitHub Releases. Double-click the DMG to mount it.</p>
+                    <h3>Download &amp; Open the DMG for Your Mac</h3>
+                    <p>Download the DMG that matches your Mac from GitHub Releases, then double-click it to mount:</p>
+                    <ul style="margin: 0.5rem 0 0.75rem 1.1rem; font-size: 0.9rem; line-height: 1.7;">
+                        <li><strong>Apple Silicon</strong> (M1/M2/M3/M4) &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-arm64.dmg</code></li>
+                        <li><strong>Intel</strong> &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-x64.dmg</code></li>
+                    </ul>
+                    <div class="tip">Not sure which you have? Apple menu &rarr; <strong>About This Mac</strong>. A "Chip" line (e.g. Apple M2) means Apple Silicon; a "Processor" line means Intel.</div>
                     <p>Drag <strong>VAST Reporter.app</strong> onto the <strong>Applications</strong> folder shortcut to install.</p>
                     <p style="margin-top: 0.75rem;">
                         <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent" style="font-size: 0.82rem; padding: 0.45rem 1.25rem;">
@@ -603,7 +608,7 @@ footer a:hover { text-decoration: underline; }
 <footer>
     <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
         <span style="font-weight: 600; font-size: 0.85rem;"><span style="color: var(--text-primary);">asbuilt</span><span style="color: var(--accent);">-reporter</span></span>
-        <span class="brand-version">v1.5.0</span>
+        <span class="brand-version" data-app-version>v1.6.0</span>
     </div>
     <p>Built by PS Engineering &mdash; <a href="se-one-pager.html">View the One-Pager</a></p>
 </footer>
@@ -684,5 +689,6 @@ footer a:hover { text-decoration: underline; }
     }
 })();
 </script>
+<script src="version-badge.js" defer></script>
 </body>
 </html>
