@@ -1,680 +1,473 @@
 # VAST As-Built Report Generator - Update & Upgrade Guide
 
+**For VAST Professional Services Engineers**
+
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Update Strategies](#update-strategies)
-3. [Recommended Approach: Git Pull Update](#recommended-approach-git-pull-update)
-4. [Alternative: Clean Reinstall](#alternative-clean-reinstall)
-5. [Alternative: In-Place Upgrade](#alternative-in-place-upgrade)
-6. [Automated Update Script](#automated-update-script)
-7. [Rollback Procedures](#rollback-procedures)
-8. [Troubleshooting](#troubleshooting)
-9. [Version Compatibility](#version-compatibility)
+2. [Before You Start: Quit the App](#before-you-start-quit-the-app)
+3. [Knowing an Update Is Available](#knowing-an-update-is-available)
+4. [Updating on macOS](#updating-on-macos)
+5. [Gatekeeper After an Update](#gatekeeper-after-an-update)
+6. [Updating on Windows](#updating-on-windows)
+7. [Verifying the Update](#verifying-the-update)
+8. [What Is Preserved Across Updates](#what-is-preserved-across-updates)
+9. [Rolling Back to a Previous Version](#rolling-back-to-a-previous-version)
+10. [Troubleshooting](#troubleshooting)
+11. [Updating a Source (Git) Installation](#updating-a-source-git-installation)
 
 ---
 
 ## Overview
 
-This guide provides comprehensive instructions for updating the VAST As-Built Report Generator to the latest version while preserving your data, configuration, and generated reports.
+VAST As-Built Report Generator is a desktop application. Updating means downloading
+a new release artifact and replacing the copy you already have — there is no
+in-place auto-updater, no package manager, and no server to restart.
 
-### What Gets Updated
+Installing for the first time rather than updating? See the
+[Installation Guide](INSTALLATION-GUIDE.md) instead.
 
-During an update:
-- ✓ Application source code
-- ✓ Python dependencies
-- ✓ Templates and assets
-- ✓ Documentation
+Each release publishes exactly three artifacts:
 
-### What Gets Preserved
+| Platform | Artifact | Use when |
+|----------|----------|----------|
+| macOS (Apple Silicon) | `{{MAC_ARM64_DMG}}` | Your Mac reports a **Chip** (M-series) |
+| macOS (Intel) | `{{MAC_X64_DMG}}` | Your Mac reports a **Processor** (Intel) |
+| Windows | `{{WIN_ZIP}}` | Windows 10 or later, x64 |
 
-Your data is preserved:
-- ✓ Generated reports
-- ✓ Configuration files (config.yaml)
-- ✓ Log files
-- ✓ Output data
+All three are published on the releases page: [{{RELEASES_URL}}]({{RELEASES_URL}}).
 
----
+The whole update is four steps:
 
-## Update Strategies
+1. Confirm an update exists (the header tells you).
+2. Download the artifact that matches your machine.
+3. **Quit the application.**
+4. Replace the old copy and relaunch.
 
-### Strategy Comparison
-
-| Method | Complexity | Downtime | Risk | Best For |
-|--------|------------|----------|------|----------|
-| **Git Pull** | Low | Minimal | Low | Regular updates |
-| **Clean Reinstall** | Medium | Moderate | Low | Major version upgrades |
-| **In-Place Upgrade** | Low | Minimal | Medium | Quick updates |
-
-### Recommended Update Frequency
-
-- **Production**: Monthly or when critical fixes are released
-- **Development**: Weekly or as needed
-- **Testing**: Before each production update
+Step 3 is the one people skip, and it is the single most common cause of a
+failed upgrade. It has its own section, immediately below.
 
 ---
 
-## Recommended Approach: Git Pull Update
+## Before You Start: Quit the App
 
-This is the **recommended method** for most updates. It preserves your installation while updating code.
+**An installer cannot replace a copy of the application that is still running.**
 
-### Prerequisites
+- **macOS:** dragging the new `VAST Reporter.app` onto `/Applications` while the
+  old one is running **fails** — Finder reports that the item is in use and the
+  copy is refused. You are left on the old version even though the download
+  succeeded.
+- **Windows:** the running `vast-reporter.exe` is locked by the operating
+  system. Extracting the new ZIP over the old folder fails on that file (and
+  frequently on its supporting libraries too), leaving a half-updated folder
+  that may not start.
 
-- Git installed
-- Installation was done via `git clone`
-- Internet connectivity
+The application gives you two ways to shut down cleanly:
 
-### Update Procedure
+1. **Exit & Upgrade** — inside the **Download** dropdown in the header. This
+   button exists specifically for this situation: it stops the local server so
+   the new version can be installed. Let the download finish first, then click it.
+2. **Exit** — in the navigation bar, available on every page. Use this any time
+   you want to stop the application.
 
-#### macOS/Linux
+Both prompt for confirmation, shut down the local server, and replace the page
+with a "you may close this window" message. Once the browser tab shows that
+message, the application is stopped and it is safe to install.
 
-**Step 1: Navigate to installation directory**
+> **Note:** Closing the browser tab alone does **not** stop the application. The
+> local server keeps running in the background unless auto-shutdown has been
+> enabled in configuration (it is off by default). Always use **Exit** or
+> **Exit & Upgrade**.
+
+---
+
+## Knowing an Update Is Available
+
+The application checks GitHub Releases shortly after launch and caches the
+result. The outcome is shown as a pill next to the version number in the header:
+
+| Pill | Meaning |
+|------|---------|
+| `LATEST VERSION` | You are on the newest published stable release. |
+| `UPDATE AVAILABLE` | A newer release exists. A **Download** control appears next to the pill. |
+| `PRE-RELEASE` | You are running a beta/RC build. |
+| *(no pill)* | The check could not complete — offline, or update checks are disabled. |
+
+### The Download dropdown
+
+When the pill reads `UPDATE AVAILABLE`, a **Download** button appears in the
+header. Clicking it starts the download that matches your operating system.
+Clicking the caret next to it opens a dropdown containing:
+
+- The new version number and the version you are currently running
+- A **Release notes** link to that release on GitHub
+- Three explicit download links: **macOS — Apple Silicon**, **macOS — Intel**,
+  and **Windows**
+- A reminder that the app must be quit before installing
+- The **Exit & Upgrade** button
+
+Use the explicit links rather than the one-click **Download** button when you
+want to be certain which macOS build you get — browsers other than
+Chromium-based ones do not report CPU architecture, so the one-click button
+cannot always tell Apple Silicon from Intel on macOS.
+
+> Older releases offered a single, architecture-agnostic macOS link. Current
+> releases split macOS by architecture, so pick deliberately.
+
+### If no pill appears
+
+Update checking can be turned off (`updates.enabled: false` in `config.yaml`),
+and it fails silently when the machine has no route to GitHub — common on
+customer sites. In that case, check [{{LATEST_RELEASE_URL}}]({{LATEST_RELEASE_URL}})
+manually and compare against the version shown in the header.
+
+---
+
+## Updating on macOS
+
+### Step 1 — Identify your Mac's architecture
+
+1. Open the **Apple menu** > **About This Mac**.
+2. Read the hardware line:
+   - A line labelled **Chip** (for example, "Apple M2 Pro") means **Apple Silicon** — download `{{MAC_ARM64_DMG}}`.
+   - A line labelled **Processor** (for example, "2.6 GHz 6-Core Intel Core i7") means **Intel** — download `{{MAC_X64_DMG}}`.
+
+Downloading the wrong build is not destructive, but the app will not launch.
+
+### Step 2 — Download the DMG
+
+Use the **macOS — Apple Silicon** or **macOS — Intel** link in the update
+dropdown, or download it from [{{LATEST_RELEASE_URL}}]({{LATEST_RELEASE_URL}}).
+
+Wait for the download to finish before continuing.
+
+### Step 3 — Quit the application
+
+Click **Exit & Upgrade** in the update dropdown, or **Exit** in the navigation
+bar. Wait for the page to show that the application has stopped.
+
+### Step 4 — Install
+
+1. Double-click the downloaded `.dmg` to mount it.
+2. Drag **VAST Reporter** onto the **Applications** shortcut in the DMG window.
+3. When Finder asks what to do about the existing item, choose **Replace**.
+   Do **not** choose "Keep Both" — that leaves you with two copies and it is
+   easy to keep launching the old one.
+4. Eject the DMG once the copy completes.
+
+> **Do not run the app from the mounted DMG.** The application writes its
+> configuration and reports into the folder that contains the app bundle, and a
+> mounted DMG is read-only and disappears when ejected. Always copy to
+> `/Applications` first.
+
+### Step 5 — Launch
+
+Open **VAST Reporter** from Applications. macOS will re-run its Gatekeeper
+checks — see the next section.
+
+---
+
+## Gatekeeper After an Update
+
+**Expect Gatekeeper to challenge you on every update, not just the first
+install.**
+
+The application is not signed with an Apple Developer certificate. After you
+replace the bundle, the app on disk is new content that macOS has not approved
+before, so it re-runs the same checks it ran on first install. This is normal
+and is not a sign that the download is damaged.
+
+The sequence is:
+
+1. You launch the app and macOS shows a dialog saying the application
+   **"was not opened"** because Apple could not verify it is free of malware.
+2. Open **System Settings** > **Privacy & Security**.
+3. Scroll to the **Security** section. A message names **VAST Reporter** as
+   having been blocked, with an **Open Anyway** button. Click it.
+4. Confirm at the follow-up prompt.
+5. Authenticate with **Touch ID** or your macOS password.
+
+The application then launches and opens your browser.
+
+This approval applies to the specific copy of the app on disk. Replace that copy
+with a newer release and you will do it again. There is currently no way to
+avoid it short of Apple Developer signing and notarisation, which this project
+does not do.
+
+---
+
+## Updating on Windows
+
+### Step 1 — Download the ZIP
+
+Use the **Windows** link in the update dropdown, or download `{{WIN_ZIP}}` from
+[{{LATEST_RELEASE_URL}}]({{LATEST_RELEASE_URL}}). There is no installer — the
+release is a ZIP you extract and run.
+
+### Step 2 — Quit the application
+
+Click **Exit & Upgrade** in the update dropdown, or **Exit** in the navigation
+bar. Wait for the page to confirm the application has stopped. The running
+`vast-reporter.exe` holds a lock on itself and its libraries, so extraction will
+fail if you skip this.
+
+### Step 3 — Extract
+
+The ZIP contains a single top-level `VAST Reporter` folder. You have two
+options:
+
+- **Extract over the existing installation** (recommended). Extract to the
+  parent of your current `VAST Reporter` folder and allow the files to be
+  replaced. Your `config`, `reports`, `clusters`, and `logs` subfolders are left
+  alone because they are not in the ZIP.
+- **Extract to a new location.** This gives you a clean folder, but it starts
+  with empty configuration. See
+  [What Is Preserved Across Updates](#what-is-preserved-across-updates) for the
+  folders to copy across from the old installation.
+
+Delete or rename the old folder afterwards so you do not launch it by mistake.
+
+### Step 4 — Launch
+
+Run `vast-reporter.exe` from the updated folder.
+
+Windows Defender SmartScreen may block it with "Windows protected your PC".
+Click **More info** > **Run anyway**. As with macOS Gatekeeper, this can
+reappear after an update because the executable is new, unsigned content — it is
+not specific to first install.
+
+---
+
+## Verifying the Update
+
+1. Relaunch the application. Your browser opens the dashboard automatically.
+2. Check the version number in the header — it should read the version you just
+   installed.
+3. Check the pill beside it. Once the update check completes it should read
+   `LATEST VERSION`.
+
+If the header still shows the old version, you are almost certainly running the
+old copy:
+
+- **macOS:** confirm you chose **Replace** rather than "Keep Both", and that you
+  launched from `/Applications` rather than a copy in `~/Downloads` or a still-
+  mounted DMG.
+- **Windows:** confirm you launched `vast-reporter.exe` from the folder you just
+  extracted, not from an older copy or an old shortcut.
+
+You can also confirm the version from a terminal:
+
 ```bash
-cd ~/vast-asbuilt-reporter
-# Or your custom installation path
+# macOS
+"/Applications/VAST Reporter.app/Contents/MacOS/vast-reporter" --version
 ```
 
-**Step 2: Backup current installation (optional but recommended)**
-```bash
-# Create a backup tag
-git tag backup-$(date +%Y%m%d_%H%M%S)
-
-# Or create a full backup
-cp -r ~/vast-asbuilt-reporter ~/vast-asbuilt-reporter-backup-$(date +%Y%m%d)
-```
-
-**Step 3: Backup your configuration and data**
-```bash
-# Backup config
-cp config/config.yaml ~/config-backup.yaml
-
-# Backup reports (if not in default location)
-tar -czf ~/reports-backup-$(date +%Y%m%d).tar.gz reports/ output/ logs/
-```
-
-**Step 4: Check for local changes**
-```bash
-git status
-```
-
-If you have uncommitted changes:
-```bash
-# Stash changes
-git stash save "Pre-update backup $(date +%Y%m%d)"
-
-# Or commit them
-git add config/config.yaml
-git commit -m "Save local configuration"
-```
-
-**Step 5: Fetch latest updates**
-```bash
-# Fetch updates from remote
-git fetch origin
-
-# Check what will change
-git log HEAD..origin/develop --oneline
-```
-
-**Step 6: Apply updates**
-```bash
-# Pull latest from develop branch
-git pull origin develop
-```
-
-**Step 7: Update dependencies**
-```bash
-# Activate virtual environment
-source venv/bin/activate
-
-# Update dependencies
-pip install --upgrade -r requirements.txt
-```
-
-**Step 8: Restore configuration if needed**
-```bash
-# If config.yaml was overwritten
-cp ~/config-backup.yaml config/config.yaml
-
-# Or merge changes manually
-diff ~/config-backup.yaml config/config.yaml
-```
-
-**Step 9: Verify update**
-```bash
-# Check version
-python3 -m src.main --version
-
-# Run a test report
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
-```
-
-**Step 10: Restore stashed changes (if any)**
-```bash
-git stash pop
-```
-
-#### Windows
-
-**Step 1: Navigate to installation directory**
 ```powershell
-cd $env:USERPROFILE\vast-asbuilt-reporter
-```
-
-**Step 2: Backup current installation**
-```powershell
-# Create backup tag
-git tag "backup-$(Get-Date -Format 'yyyyMMdd_HHmmss')"
-
-# Or full backup
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-backup-$(Get-Date -Format 'yyyyMMdd')" -Recurse
-```
-
-**Step 3: Backup configuration and data**
-```powershell
-# Backup config
-Copy-Item -Path "config\config.yaml" -Destination "$env:USERPROFILE\config-backup.yaml"
-
-# Backup reports
-Compress-Archive -Path "reports\*","output\*","logs\*" -DestinationPath "$env:USERPROFILE\reports-backup-$(Get-Date -Format 'yyyyMMdd').zip"
-```
-
-**Step 4: Check for local changes**
-```powershell
-git status
-```
-
-If you have uncommitted changes:
-```powershell
-# Stash changes
-git stash save "Pre-update backup $(Get-Date -Format 'yyyyMMdd')"
-```
-
-**Step 5: Fetch and apply updates**
-```powershell
-# Fetch updates
-git fetch origin
-
-# Check what will change
-git log HEAD..origin/develop --oneline
-
-# Pull latest
-git pull origin develop
-```
-
-**Step 6: Update dependencies**
-```powershell
-# Activate virtual environment
-.\venv\Scripts\Activate
-
-# Update dependencies
-pip install --upgrade -r requirements.txt
-```
-
-**Step 7: Restore configuration**
-```powershell
-# If config.yaml was overwritten
-Copy-Item -Path "$env:USERPROFILE\config-backup.yaml" -Destination "config\config.yaml"
-```
-
-**Step 8: Verify update**
-```powershell
-# Check version
-python -m src.main --version
-
-# Run test report
-python -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
-```
-
-### Automated Git Pull Update Script
-
-**Create update script (Mac/Linux):**
-```bash
-#!/bin/bash
-# save as: update-vast-asbuilt-reporter.sh
-
-INSTALL_DIR="$HOME/vast-asbuilt-reporter"
-BACKUP_DIR="$HOME/vast-asbuilt-reporter-backups"
-DATE_STAMP=$(date +%Y%m%d_%H%M%S)
-
-cd "$INSTALL_DIR" || exit 1
-
-echo "Creating backup..."
-mkdir -p "$BACKUP_DIR"
-cp config/config.yaml "$BACKUP_DIR/config-$DATE_STAMP.yaml"
-
-echo "Stashing local changes..."
-git stash save "Auto-backup $DATE_STAMP"
-
-echo "Updating from repository..."
-git pull origin develop
-
-echo "Updating dependencies..."
-source venv/bin/activate
-pip install --upgrade -r requirements.txt
-
-echo "Restoring configuration..."
-cp "$BACKUP_DIR/config-$DATE_STAMP.yaml" config/config.yaml
-
-echo "Update complete! Version:"
-python3 -m src.main --version
-```
-
-**Make it executable:**
-```bash
-chmod +x update-vast-asbuilt-reporter.sh
-```
-
-**Run it:**
-```bash
-./update-vast-asbuilt-reporter.sh
+# Windows
+& "C:\Program Files\VAST Reporter\vast-reporter.exe" --version
 ```
 
 ---
 
-## Alternative: Clean Reinstall
+## What Is Preserved Across Updates
 
-Recommended for **major version upgrades** or when git history is corrupted.
+The application keeps all of its writable data **outside** the program itself,
+in a data directory it creates next to the application:
 
-### Procedure
+| Platform | Data directory |
+|----------|----------------|
+| macOS | The folder that contains `VAST Reporter.app` — normally `/Applications` |
+| Windows | The extracted `VAST Reporter` folder that contains `vast-reporter.exe` |
 
-**Step 1: Backup everything**
-```bash
-# Mac/Linux
-cp -r ~/vast-asbuilt-reporter ~/vast-asbuilt-reporter-old
-tar -czf ~/vast-asbuilt-reporter-complete-backup-$(date +%Y%m%d).tar.gz ~/vast-asbuilt-reporter
+Inside that directory:
 
-# Windows
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Destination "$env:USERPROFILE\vast-asbuilt-reporter-old" -Recurse
-Compress-Archive -Path "$env:USERPROFILE\vast-asbuilt-reporter" -DestinationPath "$env:USERPROFILE\vast-asbuilt-reporter-backup-$(Get-Date -Format 'yyyyMMdd').zip"
+| Path | Contents |
+|------|----------|
+| `config/config.yaml` | Your runtime configuration |
+| `config/cluster_profiles.json` | Saved cluster profiles |
+| `config/device_library.json` | Custom entries in the hardware device library |
+| `config/hardware_images/` | Hardware images you have uploaded to the library |
+| `reports/` | Generated PDF and JSON reports (flat layout) |
+| `clusters/<cluster>/` | Per-cluster reports, workflow output, and operation logs |
+| `logs/` | Application log files |
+
+### macOS
+
+Everything above survives an update. Replacing `VAST Reporter.app` in
+`/Applications` does not touch the sibling `config`, `reports`, `clusters`, and
+`logs` folders, because none of that data lives inside the app bundle.
+
+### Windows
+
+Everything above survives **if you extract over the existing folder**, because
+the ZIP contains only program files and does not include those subfolders.
+
+If you extract to a **new** folder instead, the new installation starts empty.
+Copy these from the old folder into the new one before launching:
+
+```powershell
+# Run from the parent folder containing both installations
+Copy-Item ".\VAST Reporter.old\config"   ".\VAST Reporter\" -Recurse -Force
+Copy-Item ".\VAST Reporter.old\reports"  ".\VAST Reporter\" -Recurse -Force
+Copy-Item ".\VAST Reporter.old\clusters" ".\VAST Reporter\" -Recurse -Force
 ```
 
-**Step 2: Extract important data**
-```bash
-# Mac/Linux
-mkdir -p ~/vast-data-backup
-cp -r ~/vast-asbuilt-reporter/reports ~/vast-data-backup/
-cp -r ~/vast-asbuilt-reporter/output ~/vast-data-backup/
-cp ~/vast-asbuilt-reporter/config/config.yaml ~/vast-data-backup/
+> **Windows caveat:** because the data directory *is* the installation folder,
+> deleting the old folder deletes your configuration, profiles, and generated
+> reports along with it. Copy anything you want to keep out first.
 
-# Windows
-New-Item -ItemType Directory -Path "$env:USERPROFILE\vast-data-backup" -Force
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\reports" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\output" -Destination "$env:USERPROFILE\vast-data-backup\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter\config\config.yaml" -Destination "$env:USERPROFILE\vast-data-backup\"
-```
+### First launch after an update
 
-**Step 3: Uninstall old version**
-
-Follow the [Uninstall Guide](UNINSTALL-GUIDE.md)
-
-**Step 4: Install new version**
-
-Follow the [Installation Guide](INSTALLATION-GUIDE.md)
-
-**Step 5: Restore data**
-```bash
-# Mac/Linux
-cp -r ~/vast-data-backup/reports ~/vast-asbuilt-reporter/
-cp -r ~/vast-data-backup/output ~/vast-asbuilt-reporter/
-cp ~/vast-data-backup/config.yaml ~/vast-asbuilt-reporter/config/
-
-# Windows
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\reports" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\output" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\" -Recurse
-Copy-Item -Path "$env:USERPROFILE\vast-data-backup\config.yaml" -Destination "$env:USERPROFILE\vast-asbuilt-reporter\config\"
-```
-
-**Step 6: Verify**
-```bash
-python3 -m src.main --version
-python3 -m src.main --cluster-ip <CLUSTER_IP> --username <USERNAME> --password <PASSWORD> --output-dir reports
-```
+If `config/config.yaml` is missing, the application recreates it from the
+template bundled with the new release. An existing `config.yaml` is never
+overwritten, so settings you changed are kept — but new configuration keys added
+by a release will not appear in it. To see what is new, compare your file
+against the defaults shown on the **Advanced Configuration** page.
 
 ---
 
-## Alternative: In-Place Upgrade
+## Rolling Back to a Previous Version
 
-Quick update without git. **Use only for minor updates.**
+Every published release stays available, so rolling back is just installing an
+older artifact.
 
-### Procedure
+1. Go to [{{RELEASES_URL}}]({{RELEASES_URL}}) and expand the release you want.
+2. Download the artifact for your platform and architecture from that release's
+   **Assets** list.
+3. **Quit the running application** — the same rule applies in both directions.
+4. Install it exactly as described for
+   [macOS](#updating-on-macos) or [Windows](#updating-on-windows), choosing
+   **Replace** on macOS.
+5. Expect Gatekeeper or SmartScreen to challenge the older build too; it is new
+   content on disk as far as the operating system is concerned.
 
-**Step 1: Download latest release**
-```bash
-# Mac/Linux
-cd /tmp
-curl -L https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/develop.zip -o vast-latest.zip
-unzip vast-latest.zip
-
-# Windows
-Invoke-WebRequest -Uri "https://github.com/rstamps01/ps-deploy-report/archive/refs/heads/develop.zip" -OutFile "$env:TEMP\vast-latest.zip"
-Expand-Archive -Path "$env:TEMP\vast-latest.zip" -DestinationPath "$env:TEMP"
-```
-
-**Step 2: Backup current installation**
-```bash
-# Mac/Linux
-cp config/config.yaml ~/config-backup.yaml
-
-# Windows
-Copy-Item -Path "config\config.yaml" -Destination "$env:USERPROFILE\config-backup.yaml"
-```
-
-**Step 3: Copy new files (skip data directories)**
-```bash
-# Mac/Linux
-cd ~/vast-asbuilt-reporter
-rsync -av --exclude='reports' --exclude='output' --exclude='logs' --exclude='venv' --exclude='.git' --exclude='config/config.yaml' /tmp/ps-deploy-report-develop/ ./
-
-# Windows (manual copy)
-# Copy src/, docs/, templates/, requirements.txt, README.md
-# DO NOT copy: reports/, output/, logs/, venv/, config/config.yaml
-```
-
-**Step 4: Update dependencies**
-```bash
-# Mac/Linux
-source venv/bin/activate
-pip install --upgrade -r requirements.txt
-
-# Windows
-.\venv\Scripts\Activate
-pip install --upgrade -r requirements.txt
-```
-
-**Step 5: Verify**
-```bash
-python3 -m src.main --version
-```
-
----
-
-## Automated Update Script
-
-Create a comprehensive update script:
-
-### update-vast.sh (Mac/Linux)
-
-```bash
-#!/bin/bash
-
-set -e
-
-INSTALL_DIR="${VAST_INSTALL_DIR:-$HOME/vast-asbuilt-reporter}"
-BACKUP_DIR="$HOME/vast-asbuilt-reporter-backups"
-DATE_STAMP=$(date +%Y%m%d_%H%M%S)
-
-echo "═══════════════════════════════════════════════════════════════"
-echo "  VAST Reporter Updater"
-echo "═══════════════════════════════════════════════════════════════"
-echo ""
-
-# Check installation exists
-if [ ! -d "$INSTALL_DIR" ]; then
-    echo "Error: Installation not found at $INSTALL_DIR"
-    exit 1
-fi
-
-cd "$INSTALL_DIR"
-
-# Create backup directory
-mkdir -p "$BACKUP_DIR"
-
-echo "▶ Creating backup..."
-cp config/config.yaml "$BACKUP_DIR/config-$DATE_STAMP.yaml" 2>/dev/null || true
-git tag "pre-update-$DATE_STAMP" 2>/dev/null || true
-echo "✓ Backup created"
-
-echo "▶ Checking for local changes..."
-if ! git diff-index --quiet HEAD -- 2>/dev/null; then
-    echo "  Local changes detected, stashing..."
-    git stash save "Auto-stash before update $DATE_STAMP"
-fi
-
-echo "▶ Fetching updates..."
-git fetch origin
-
-echo "▶ Current version:"
-python3 -m src.main --version 2>/dev/null || echo "  Unable to determine"
-
-echo "▶ Applying updates..."
-git pull origin develop
-
-echo "▶ Updating dependencies..."
-source venv/bin/activate
-pip install --upgrade -r requirements.txt --quiet
-
-echo "▶ Restoring configuration..."
-if [ -f "$BACKUP_DIR/config-$DATE_STAMP.yaml" ]; then
-    cp "$BACKUP_DIR/config-$DATE_STAMP.yaml" config/config.yaml
-fi
-
-echo "▶ New version:"
-python3 -m src.main --version
-
-echo ""
-echo "✓ Update complete!"
-echo ""
-echo "Backup location: $BACKUP_DIR"
-echo "To rollback: git checkout pre-update-$DATE_STAMP"
-echo ""
-```
-
-### update-vast.ps1 (Windows)
-
-```powershell
-#Requires -Version 5.1
-
-$INSTALL_DIR = if ($env:VAST_INSTALL_DIR) { $env:VAST_INSTALL_DIR } else { "$env:USERPROFILE\vast-asbuilt-reporter" }
-$BACKUP_DIR = "$env:USERPROFILE\vast-asbuilt-reporter-backups"
-$DATE_STAMP = Get-Date -Format "yyyyMMdd_HHmmss"
-
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  VAST Reporter Updater" -ForegroundColor Cyan
-Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host ""
-
-if (-not (Test-Path $INSTALL_DIR)) {
-    Write-Host "Error: Installation not found at $INSTALL_DIR" -ForegroundColor Red
-    exit 1
-}
-
-Set-Location $INSTALL_DIR
-
-# Create backup directory
-New-Item -ItemType Directory -Path $BACKUP_DIR -Force | Out-Null
-
-Write-Host "▶ Creating backup..." -ForegroundColor Cyan
-Copy-Item -Path "config\config.yaml" -Destination "$BACKUP_DIR\config-$DATE_STAMP.yaml" -ErrorAction SilentlyContinue
-git tag "pre-update-$DATE_STAMP" 2>$null
-Write-Host "✓ Backup created" -ForegroundColor Green
-
-Write-Host "▶ Checking for local changes..." -ForegroundColor Cyan
-$changes = git status --porcelain
-if ($changes) {
-    Write-Host "  Local changes detected, stashing..." -ForegroundColor Yellow
-    git stash save "Auto-stash before update $DATE_STAMP"
-}
-
-Write-Host "▶ Fetching updates..." -ForegroundColor Cyan
-git fetch origin
-
-Write-Host "▶ Current version:" -ForegroundColor Cyan
-python -m src.main --version 2>$null
-
-Write-Host "▶ Applying updates..." -ForegroundColor Cyan
-git pull origin develop
-
-Write-Host "▶ Updating dependencies..." -ForegroundColor Cyan
-.\venv\Scripts\Activate
-pip install --upgrade -r requirements.txt --quiet
-
-Write-Host "▶ Restoring configuration..." -ForegroundColor Cyan
-if (Test-Path "$BACKUP_DIR\config-$DATE_STAMP.yaml") {
-    Copy-Item -Path "$BACKUP_DIR\config-$DATE_STAMP.yaml" -Destination "config\config.yaml" -Force
-}
-
-Write-Host "▶ New version:" -ForegroundColor Cyan
-python -m src.main --version
-
-Write-Host ""
-Write-Host "✓ Update complete!" -ForegroundColor Green
-Write-Host ""
-Write-Host "Backup location: $BACKUP_DIR" -ForegroundColor Gray
-Write-Host "To rollback: git checkout pre-update-$DATE_STAMP" -ForegroundColor Gray
-Write-Host ""
-```
-
----
-
-## Rollback Procedures
-
-If an update causes issues, you can rollback to the previous version.
-
-### Using Git Tags
-
-```bash
-# Mac/Linux
-cd ~/vast-asbuilt-reporter
-
-# List available backups
-git tag | grep pre-update
-
-# Rollback to specific tag
-git checkout pre-update-20251017_143022
-
-# Restore dependencies
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-```powershell
-# Windows
-cd $env:USERPROFILE\vast-asbuilt-reporter
-
-# List available backups
-git tag | Select-String "pre-update"
-
-# Rollback to specific tag
-git checkout pre-update-20251017_143022
-
-# Restore dependencies
-.\venv\Scripts\Activate
-pip install -r requirements.txt
-```
-
-### Using Full Backup
-
-```bash
-# Mac/Linux
-rm -rf ~/vast-asbuilt-reporter
-cp -r ~/vast-asbuilt-reporter-backup-20251017 ~/vast-asbuilt-reporter
-cd ~/vast-asbuilt-reporter
-source venv/bin/activate
-```
-
-```powershell
-# Windows
-Remove-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse -Force
-Copy-Item -Path "$env:USERPROFILE\vast-asbuilt-reporter-backup-20251017" -Destination "$env:USERPROFILE\vast-asbuilt-reporter" -Recurse
-cd $env:USERPROFILE\vast-asbuilt-reporter
-.\venv\Scripts\Activate
-```
+Your configuration, profiles, and reports are untouched by a rollback. Reports
+already generated by the newer version remain readable — they are plain PDF and
+JSON files.
 
 ---
 
 ## Troubleshooting
 
-### Merge Conflicts
+### "The item cannot be moved because it is in use" (macOS)
 
-If you encounter merge conflicts during `git pull`:
+The old application is still running.
 
-```bash
-# View conflicts
-git status
-
-# Option 1: Keep your version
-git checkout --ours config/config.yaml
-git add config/config.yaml
-
-# Option 2: Keep incoming version
-git checkout --theirs config/config.yaml
-git add config/config.yaml
-
-# Option 3: Manually resolve
-nano config/config.yaml  # Edit to resolve conflicts
-git add config/config.yaml
-
-# Complete merge
-git commit
-```
-
-### Dependency Issues
-
-If dependencies fail to install:
+1. Switch to the browser tab and click **Exit** in the navigation bar.
+2. If that tab is gone or unresponsive, open **Activity Monitor**, search for
+   `VAST Reporter` (also check for `vast-reporter`), select it, and click the
+   stop button to quit the process.
+3. From a terminal, the equivalent is:
 
 ```bash
-# Clear pip cache
-pip cache purge
-
-# Reinstall all dependencies
-pip uninstall -y -r requirements.txt
-pip install -r requirements.txt
-
-# Or recreate virtual environment
-deactivate
-rm -rf venv
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+pkill -f "VAST Reporter"
 ```
 
-### Configuration Lost
+4. Retry the drag to Applications.
 
-If your configuration was overwritten:
+### "The file is open in another program" / access denied (Windows)
+
+The old `vast-reporter.exe` is still running.
+
+1. Click **Exit** in the application's navigation bar.
+2. If it is unresponsive, open **Task Manager**, find `vast-reporter.exe` on the
+   **Details** tab, and end the task.
+3. Retry the extraction.
+
+### Gatekeeper keeps asking, or Open Anyway does not appear
+
+- Make sure you are looking at **System Settings** > **Privacy & Security**,
+  scrolled to the **Security** section. The **Open Anyway** button only shows up
+  after you have attempted to launch the app and been blocked, and it can
+  disappear after a while — attempt the launch again to bring it back.
+- If you are prompted repeatedly for the *same* installed copy, confirm you are
+  launching the copy in `/Applications` each time and not a second copy left in
+  `~/Downloads` or on a mounted DMG. Each distinct copy is approved separately.
+- Being asked again after each update is expected and not a fault. See
+  [Gatekeeper After an Update](#gatekeeper-after-an-update).
+
+### The browser page is blank, spinning, or shows "connection refused"
+
+The tab is pointing at a server that is no longer running — usually a tab left
+open from the version you just replaced.
+
+1. Close the stale tab.
+2. Launch the application again. It opens a fresh browser tab itself.
+
+### "Port 5173 already in use" / the app opens on a different port
+
+The application binds a local web server on port `5173` by default. If that port
+is taken it automatically tries `5174` through `5180`, then `8080`, then `9090`,
+and opens the browser on whichever it obtained — so the URL may not be the one
+you expect. The console window prints the address it is running at.
+
+Common cause during an update: the previous version is still running and holding
+the port. Quit it first.
+
+To find and stop whatever holds the port:
 
 ```bash
-# Restore from backup
-cp ~/vast-asbuilt-reporter-backups/config-YYYYMMDD_HHMMSS.yaml config/config.yaml
-
-# Or restore from git stash
-git stash list
-git show stash@{0}:config/config.yaml > config/config.yaml
+# macOS
+lsof -ti:5173 | xargs kill
 ```
+
+```powershell
+# Windows
+netstat -ano | findstr :5173
+taskkill /PID <pid> /F
+```
+
+You can also choose a port explicitly:
+
+```bash
+vast-reporter --port 8888
+```
+
+If no port can be bound at all, the application prints the full list it tried
+and exits; on Windows this is usually a Hyper-V or WSL2 reserved port range.
+
+### The update pill never changes
+
+The update check is cached in memory for about an hour after a successful check,
+and it is skipped entirely when `updates.enabled` is `false`. Restart the
+application to force a fresh check, or check
+[{{LATEST_RELEASE_URL}}]({{LATEST_RELEASE_URL}}) directly.
 
 ---
 
-## Version Compatibility
+## Updating a Source (Git) Installation
 
-### Breaking Changes
+This section applies **only** if you run the application from a cloned
+repository rather than from a released `.dmg` or `.zip`. Most users should not
+be here.
 
-Check the changelog for breaking changes before updating:
-
-```bash
-git log --oneline | grep -i "breaking\|BREAKING"
-```
-
-### Configuration Migration
-
-Some updates may require configuration migration. Check for:
+1. Stop the running application (**Exit** in the navigation bar, or `Ctrl+C` in
+   the terminal that launched it).
+2. Pull the latest code:
 
 ```bash
-# Compare old and new config templates
-diff ~/config-backup.yaml config/config.yaml.template
+cd <repository-root>
+git pull
 ```
+
+3. Reinstall dependencies, since releases add and update packages:
+
+```bash
+source venv/bin/activate        # Windows: venv\Scripts\activate
+pip install --upgrade -r requirements.txt
+```
+
+4. Verify and relaunch:
+
+```bash
+python3 src/main.py --version
+python3 src/main.py
+```
+
+In a source checkout the data directory is the repository root, so `config/`,
+`reports/`, `clusters/`, and `logs/` are already outside anything `git pull`
+rewrites. `config/config.yaml` is not tracked by git and will not be overwritten.
 
 ---
 
-## Best Practices
-
-1. **Always backup before updating**
-2. **Test updates in development environment first**
-3. **Read release notes and changelog**
-4. **Update during maintenance windows**
-5. **Verify after update**
-6. **Keep backup for at least 30 days**
-
----
-
-**Last Updated**: March 21, 2026
-**Version**: 1.5.0
+**Version**: {{APP_VERSION}}

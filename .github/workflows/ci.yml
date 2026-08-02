@@ -8,7 +8,11 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs are cancelled on every ref except main. A release merge puts
+  # the same commit on main, develop and the tag at once, and check-suites attach
+  # to the SHA rather than the triggering ref — so a cancelled develop run would
+  # otherwise surface as a red X on the released commit's main banner.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -138,7 +142,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml
@@ -270,7 +274,7 @@ jobs:
 
       - name: Upload test screenshots on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-test-screenshots
           path: test-results/

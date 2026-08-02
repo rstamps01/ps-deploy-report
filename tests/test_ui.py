@@ -310,3 +310,178 @@ class TestBrowseAPI:
         assert resp.ok
         data = resp.json()
         assert data["current"] == "/tmp" or data["current"].startswith("/private/tmp")
+
+
+# ---------------------------------------------------------------------------
+# Output Results terminal — expand / minimize
+# ---------------------------------------------------------------------------
+
+
+class TestOutputTerminalExpand:
+    """Expanding the output terminal must keep its heading, and its Menu, reachable.
+
+    Regression guard: the expand toggle used to put the fixed-position class on
+    the scrolling pane alone. The heading bar is a sibling of the pane, not a
+    parent, so it stayed behind in normal flow as a static, unpositioned element
+    and the opaque full-viewport pane painted over it. The Menu that toggles
+    expansion was inside that buried heading, leaving no way back to the normal
+    layout — there was no Escape handler either.
+    """
+
+    @staticmethod
+    def _open_menu(page):
+        """Open the output dropdown, waiting for it rather than clicking blind.
+
+        Clicking straight through to #menuExpand made the failure mode a 30s
+        timeout on a hidden element, which says nothing about why the dropdown
+        never opened.
+        """
+        page.click("#btnOutputMenu")
+        page.wait_for_selector("#outputDropdown", state="visible", timeout=5000)
+
+    @classmethod
+    def _expand(cls, page):
+        cls._open_menu(page)
+        page.click("#menuExpand")
+        page.wait_for_selector(".output-section.expanded")
+
+    @pytest.mark.parametrize("path", ["/reporter", "/advanced-ops"])
+    def test_menu_is_still_clickable_while_expanded(self, flask_server, page, path):
+        page.goto(f"{flask_server['url']}{path}")
+        if not page.query_selector("#btnOutputMenu"):
+            pytest.skip(f"{path} has no output terminal in this build")
+        self._expand(page)
+        # Playwright refuses to click an element covered by another element, so
+        # completing this round trip *is* the assertion that the menu is
+        # genuinely reachable rather than merely present in the DOM.
+        self._open_menu(page)
+        page.click("#menuExpand", timeout=3000)
+        assert page.query_selector(".output-section.expanded") is None
+
+    def test_heading_stays_below_the_navbar(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        self._expand(page)
+        navbar = page.query_selector(".navbar").bounding_box()
+        heading = page.query_selector(".output-header").bounding_box()
+        assert heading["y"] >= navbar["y"] + navbar["height"] - 1, (
+            f"Output heading at y={heading['y']} overlaps the navbar " f"ending at y={navbar['y'] + navbar['height']}"
+        )
+
+    def test_escape_collapses_expanded_output(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        self._expand(page)
+        page.keyboard.press("Escape")
+        assert page.query_selector(".output-section.expanded") is None
+
+    @pytest.mark.parametrize("path", ["/reporter", "/advanced-ops"])
+    def test_menu_works_before_backend_hydration_finishes(self, flask_server, page, path):
+        """The terminal is a local widget and must not wait on the backend.
+
+        Its controls used to be bound near the end of an async initialiser, after
+        several awaited fetches. Until those resolved the Menu button was inert —
+        unnoticeable on a developer machine, plainly broken on a slow link.
+        """
+        page.route("**/config/json", lambda route: None)
+        page.route("**/profiles", lambda route: None)
+        page.route("**/advanced-ops/workflows", lambda route: None)
+
+        page.goto(f"{flask_server['url']}{path}", wait_until="domcontentloaded")
+        if not page.query_selector("#btnOutputMenu"):
+            pytest.skip(f"{path} has no output terminal in this build")
+        self._open_menu(page)
+
+
+# ---------------------------------------------------------------------------
+# Deployment tools — single control in the global nav
+# ---------------------------------------------------------------------------
+
+
+class TestDeploymentToolsNav:
+    """Tool status and updates live only in the global nav control.
+
+    The Reporter page used to carry its own Update Tools / Tool Status pair in
+    the Test Suite tile, hitting different endpoints and rendering detail the
+    nav dropdown lacked. The detail moved into the dropdown so removing the
+    duplicates costs nothing.
+    """
+
+    def test_reporter_has_no_duplicate_tool_controls(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        for selector in (
+            "#btnUpdateToolsOneshot",
+            "#btnToolsInfoOneshot",
+            "#toolsStatusPanelOneshot",
+            "#toolsStatusPanel",
+        ):
+            assert page.query_selector(selector) is None, f"{selector} should have been removed"
+
+    def test_nav_dropdown_carries_the_per_tool_detail(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        page.click("#navToolsBtn")
+        page.wait_for_selector(".nav-tools-row")
+        assert page.query_selector_all(".nav-tools-row"), "no tools rendered"
+        # Description is what the removed status table showed and the old
+        # dropdown did not, despite it already being in the API response.
+        assert page.query_selector(".nav-tools-desc") is not None
+
+
+# ---------------------------------------------------------------------------
+# Update pill — per-architecture download options
+# ---------------------------------------------------------------------------
+
+
+UPDATE_AVAILABLE_PAYLOAD = {
+    "update_available": True,
+    "enabled": True,
+    "is_prerelease": False,
+    "error": None,
+    "current_version": "1.6.0",
+    "latest_version": "1.6.1",
+    "latest_url": "https://gh/releases/v1.6.1",
+    "release_notes_url": "https://gh/releases/v1.6.1",
+    "download_url_mac": "https://gh/dl/mac-arm64.dmg",
+    "download_url_mac_arm64": "https://gh/dl/mac-arm64.dmg",
+    "download_url_mac_x64": "https://gh/dl/mac-x64.dmg",
+    "download_url_win": "https://gh/dl/win.zip",
+    "assets": [],
+}
+
+
+class TestUpdateDownloadDropdown:
+    """Releases ship two macOS builds, so the dropdown has to offer both.
+
+    Matching on the .dmg suffix alone used to hand an Intel Mac whichever build
+    GitHub happened to list first.
+    """
+
+    @staticmethod
+    def _open(page, flask_server):
+        page.route(
+            "**/api/update/status*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(UPDATE_AVAILABLE_PAYLOAD),
+            ),
+        )
+        page.goto(flask_server["url"])
+        page.wait_for_selector("#appUpdate:not([hidden])")
+        page.click("#appUpdateCaret")
+
+    def test_offers_apple_silicon_intel_and_windows(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.get_attribute("#appUpdateMacArm", "href") == "https://gh/dl/mac-arm64.dmg"
+        assert page.get_attribute("#appUpdateMacIntel", "href") == "https://gh/dl/mac-x64.dmg"
+        assert page.get_attribute("#appUpdateWin", "href") == "https://gh/dl/win.zip"
+        for selector in ("#appUpdateMacArm", "#appUpdateMacIntel", "#appUpdateWin"):
+            assert page.is_visible(selector), f"{selector} should be offered"
+
+    def test_shows_the_quit_before_installing_guidance(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.is_visible("#appUpdateNote")
+        assert page.is_visible("#appUpdateExit")
+        assert "running" in page.inner_text("#appUpdateNote").lower()
+
+    def test_pill_reports_update_available(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.inner_text("#appStatusPill").strip() == "UPDATE AVAILABLE"

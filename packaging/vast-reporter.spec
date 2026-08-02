@@ -66,7 +66,6 @@ a = Analysis(
         (str(ROOT / "docs" / "ADVANCED-OPERATIONS.md"), "docs"),
         (str(ROOT / "docs" / "TELEPORT-MODE.md"), "docs"),
         (str(ROOT / "docs" / "POST-INSTALL-VALIDATION.md"), "docs"),
-        (str(ROOT / "docs" / "api" / "EBOX_API_V7_DISCOVERY.md"), "docs/api"),
         (str(ROOT / "docs" / "deployment"), "docs/deployment"),
     ] + [
         (str(img), "assets/hardware_images")

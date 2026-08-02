@@ -1,530 +1,376 @@
 # VAST As-Built Report Generator - Deployment Guide
 
-This guide provides comprehensive instructions for deploying the VAST As-Built Report Generator in various environments, from development to production.
+**For VAST Professional Services Engineers**
+
+This guide describes how the application is actually deployed and operated: what
+runs where, what it stores, what it needs to reach on the network, and what its
+security posture is. For step-by-step install instructions see the
+[Installation Guide](INSTALLATION-GUIDE.md); for upgrades see the
+[Update & Upgrade Guide](UPDATE-GUIDE.md).
 
 ## Table of Contents
 
-1. [Quick Start Deployment](#quick-start-deployment)
-2. [Production Deployment](#production-deployment)
-3. [Docker Deployment](#docker-deployment)
-4. [Systemd Service Setup](#systemd-service-setup)
-5. [Monitoring and Alerting](#monitoring-and-alerting)
-6. [Security Hardening](#security-hardening)
-7. [Backup and Recovery](#backup-and-recovery)
-8. [Troubleshooting](#troubleshooting)
-
-## Quick Start Deployment
-
-### Prerequisites
-
-- Python 3.10+ installed (3.12 recommended)
-- Network access to VAST Management Service
-- Valid VAST cluster credentials
-
-### Installation Steps
-
-1. **Clone and Setup**
-   ```bash
-   git clone https://github.com/rstamps01/ps-deploy-report.git
-   cd ps-deploy-report
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-2. **Configure**
-   ```bash
-   cp config/config.yaml.template config/config.yaml
-   # Edit config/config.yaml as needed
-   ```
-
-3. **Test Installation**
-   ```bash
-   python3 src/main.py --version
-   python3 src/main.py --help
-   ```
-
-4. **Generate First Report**
-   ```bash
-   python3 src/main.py --cluster 192.168.1.100 --output ./output
-   ```
-
-## Production Deployment
-
-### System Requirements
-
-- **OS**: Ubuntu 20.04+ LTS, CentOS 8+, RHEL 8+, or equivalent
-- **CPU**: 2+ cores recommended
-- **RAM**: 1GB minimum, 2GB+ recommended
-- **Disk**: 10GB+ for logs and output files
-- **Network**: HTTPS access to VAST clusters
-
-### Installation Process
-
-1. **Create System User**
-   ```bash
-   sudo useradd -m -s /bin/bash vast-asbuilt-reporter
-   sudo mkdir -p /opt/vast-asbuilt-reporter
-   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
-   ```
-
-2. **Install Application**
-   ```bash
-   sudo -u vast-asbuilt-reporter git clone https://github.com/rstamps01/ps-deploy-report.git /opt/vast-asbuilt-reporter
-   cd /opt/vast-asbuilt-reporter
-   sudo -u vast-asbuilt-reporter python3 -m venv venv
-   sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
-   ```
-
-3. **Install System Dependencies**
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get update
-   sudo apt-get install -y libpango1.0-dev libharfbuzz-dev libffi-dev libxml2-dev libxslt1-dev
-
-   # CentOS/RHEL
-   sudo yum install -y pango-devel harfbuzz-devel libffi-devel libxml2-devel libxslt-devel
-   ```
-
-4. **Configure Application**
-   ```bash
-   sudo -u vast-asbuilt-reporter cp config/config.yaml.template config/config.yaml
-   ```
-   Use the **Advanced Configuration** page (`/config/advanced`) in the web UI for form-based settings management, or edit `config.yaml` directly. The **Report Tuning Tool** on the Results page allows PDF regeneration from saved JSON with section and formatting overrides.
-
-5. **Set Up Logging**
-   ```bash
-   sudo mkdir -p /var/log/vast-asbuilt-reporter
-   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /var/log/vast-asbuilt-reporter
-   sudo cp config/logrotate.conf /etc/logrotate.d/vast-asbuilt-reporter
-   ```
-
-6. **Create Output Directory**
-   ```bash
-   sudo mkdir -p /var/opt/vast-asbuilt-reporter/output
-   sudo chown vast-asbuilt-reporter:vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter/output
-   ```
-
-## Docker Deployment
-
-### Dockerfile
-
-Create a `Dockerfile` in the project root:
-
-```dockerfile
-FROM python:3.12-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libpango1.0-dev \
-    libharfbuzz-dev \
-    libffi-dev \
-    libxml2-dev \
-    libxslt1-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create non-root user
-RUN useradd -m -s /bin/bash vast-asbuilt-reporter && \
-    chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /app
-
-USER vast-asbuilt-reporter
-
-# Create directories
-RUN mkdir -p logs output
-
-# Set default command
-CMD ["python3", "src/main.py", "--help"]
-```
-
-### Docker Compose
-
-Create a `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-
-services:
-  vast-asbuilt-reporter:
-    build: .
-    container_name: vast-asbuilt-reporter
-    volumes:
-      - ./config:/app/config
-      - ./logs:/app/logs
-      - ./output:/app/output
-    environment:
-      - VAST_USERNAME=${VAST_USERNAME}
-      - VAST_PASSWORD=${VAST_PASSWORD}
-    command: ["python3", "src/main.py", "--cluster", "192.168.1.100", "--output", "./output"]
-    restart: unless-stopped
-```
-
-### Build and Run
-
-```bash
-# Build image
-docker build -t vast-asbuilt-reporter .
-
-# Run container
-docker run -it --rm \
-  -e VAST_USERNAME=admin \
-  -e VAST_PASSWORD=password \
-  -v $(pwd)/output:/app/output \
-  vast-asbuilt-reporter \
-  python3 src/main.py --cluster 192.168.1.100 --output ./output
-
-# Or use docker-compose
-docker-compose up -d
-```
-
-## Systemd Service Setup
-
-### Service File
-
-Create `/etc/systemd/system/vast-asbuilt-reporter.service`:
-
-```ini
-[Unit]
-Description=VAST As-Built Report Generator
-After=network.target
-
-[Service]
-Type=simple
-User=vast-asbuilt-reporter
-Group=vast-asbuilt-reporter
-WorkingDirectory=/opt/vast-asbuilt-reporter
-ExecStart=/opt/vast-asbuilt-reporter/venv/bin/python3 src/main.py --cluster 192.168.1.100 --output /var/opt/vast-asbuilt-reporter/output
-Restart=on-failure
-RestartSec=30
-StandardOutput=journal
-StandardError=journal
-
-# Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/var/log/vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter/output
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Enable and Start Service
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable vast-asbuilt-reporter
-sudo systemctl start vast-asbuilt-reporter
-sudo systemctl status vast-asbuilt-reporter
-```
-
-### Service Management
-
-```bash
-# Start service
-sudo systemctl start vast-asbuilt-reporter
-
-# Stop service
-sudo systemctl stop vast-asbuilt-reporter
-
-# Restart service
-sudo systemctl restart vast-asbuilt-reporter
-
-# View logs
-sudo journalctl -u vast-asbuilt-reporter -f
-
-# Check status
-sudo systemctl status vast-asbuilt-reporter
-```
-
-## Monitoring and Alerting
-
-### Log Monitoring
-
-Set up log monitoring with tools like:
-
-- **ELK Stack** (Elasticsearch, Logstash, Kibana)
-- **Grafana + Loki**
-- **Splunk**
-- **CloudWatch** (AWS)
-
-### Health Checks
-
-Create a health check script `/opt/vast-asbuilt-reporter/health_check.sh`:
-
-```bash
-#!/bin/bash
-
-# Check if service is running
-if ! systemctl is-active --quiet vast-asbuilt-reporter; then
-    echo "ERROR: vast-asbuilt-reporter service is not running"
-    exit 1
-fi
-
-# Check if logs are being written
-if [ ! -f /var/log/vast-asbuilt-reporter/vast_report_generator.log ]; then
-    echo "ERROR: Log file not found"
-    exit 1
-fi
-
-# Check if output directory is writable
-if [ ! -w /var/opt/vast-asbuilt-reporter/output ]; then
-    echo "ERROR: Output directory not writable"
-    exit 1
-fi
-
-echo "OK: All checks passed"
-exit 0
-```
-
-### Alerting Rules
-
-Example Prometheus alerting rules:
-
-```yaml
-groups:
-- name: vast-asbuilt-reporter
-  rules:
-  - alert: VastReporterDown
-    expr: up{job="vast-asbuilt-reporter"} == 0
-    for: 5m
-    labels:
-      severity: critical
-    annotations:
-      summary: "VAST Reporter is down"
-      description: "VAST Reporter has been down for more than 5 minutes"
-
-  - alert: VastReporterHighErrorRate
-    expr: rate(vast_reporter_errors_total[5m]) > 0.1
-    for: 2m
-    labels:
-      severity: warning
-    annotations:
-      summary: "High error rate in VAST Reporter"
-      description: "Error rate is {{ $value }} errors per second"
-```
-
-## Security Hardening
-
-### File Permissions
-
-```bash
-# Set proper permissions
-sudo chmod 755 /opt/vast-asbuilt-reporter
-sudo chmod 644 /opt/vast-asbuilt-reporter/config/config.yaml
-sudo chmod 755 /opt/vast-asbuilt-reporter/src/main.py
-sudo chmod 700 /var/log/vast-asbuilt-reporter
-sudo chmod 755 /var/opt/vast-asbuilt-reporter/output
-
-# Set ownership
-sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
-sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /var/log/vast-asbuilt-reporter
-sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /var/opt/vast-asbuilt-reporter
-```
-
-### Network Security
-
-```bash
-# Configure firewall (UFW example)
-sudo ufw allow from 192.168.1.0/24 to any port 443
-sudo ufw deny 22  # Disable SSH if not needed
-
-# Configure iptables for more granular control
-sudo iptables -A INPUT -s 192.168.1.0/24 -p tcp --dport 443 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 443 -j DROP
-```
-
-### Credential Management
-
-```bash
-# Use environment variables for credentials
-export VAST_USERNAME=admin
-export VAST_PASSWORD=$(cat /etc/vast-asbuilt-reporter/password.txt)
-
-# Or use a secrets management system
-# HashiCorp Vault, AWS Secrets Manager, etc.
-```
-
-### SSL/TLS Configuration
-
-```bash
-# For self-signed certificates
-openssl req -x509 -newkey rsa:4096 -keyout vast-asbuilt-reporter.key -out vast-asbuilt-reporter.crt -days 365 -nodes
-
-# Update configuration
-api:
-  verify_ssl: true
-  ca_cert: /path/to/ca-certificate.crt
-```
-
-## Backup and Recovery
-
-### Backup Script
-
-Create `/opt/vast-asbuilt-reporter/backup.sh`:
-
-```bash
-#!/bin/bash
-
-BACKUP_DIR="/backup/vast-asbuilt-reporter"
-DATE=$(date +%Y%m%d_%H%M%S)
-
-# Create backup directory
-mkdir -p $BACKUP_DIR
-
-# Backup configuration
-cp -r /opt/vast-asbuilt-reporter/config $BACKUP_DIR/config_$DATE
-
-# Backup logs
-tar -czf $BACKUP_DIR/logs_$DATE.tar.gz /var/log/vast-asbuilt-reporter/
-
-# Backup output files
-tar -czf $BACKUP_DIR/output_$DATE.tar.gz /var/opt/vast-asbuilt-reporter/output/
-
-# Cleanup old backups (keep 30 days)
-find $BACKUP_DIR -name "*.tar.gz" -mtime +30 -delete
-
-echo "Backup completed: $BACKUP_DIR"
-```
-
-### Automated Backups
-
-Add to crontab:
-
-```bash
-# Daily backup at 2 AM
-0 2 * * * /opt/vast-asbuilt-reporter/backup.sh >> /var/log/vast-asbuilt-reporter/backup.log 2>&1
-```
-
-### Recovery Procedures
-
-```bash
-# Restore configuration
-cp -r /backup/vast-asbuilt-reporter/config_20250927_020000/* /opt/vast-asbuilt-reporter/config/
-
-# Restore logs
-tar -xzf /backup/vast-asbuilt-reporter/logs_20250927_020000.tar.gz -C /
-
-# Restore output files
-tar -xzf /backup/vast-asbuilt-reporter/output_20250927_020000.tar.gz -C /
-```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Permission Denied**
-   ```bash
-   sudo chown -R vast-asbuilt-reporter:vast-asbuilt-reporter /opt/vast-asbuilt-reporter
-   sudo chmod +x /opt/vast-asbuilt-reporter/src/main.py
-   ```
-
-2. **Module Not Found**
-   ```bash
-   cd /opt/vast-asbuilt-reporter
-   sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
-   ```
-
-3. **SSL Certificate Errors**
-   ```bash
-   # Update config.yaml
-   api:
-     verify_ssl: false
-   ```
-
-4. **Out of Memory**
-   ```bash
-   # Increase memory limits
-   ulimit -v 2097152  # 2GB virtual memory
-   ```
-
-### Debug Mode
-
-```bash
-# Enable debug logging
-python3 src/main.py --cluster 192.168.1.100 --output ./output --verbose
-
-# Check system resources
-top -p $(pgrep -f vast-asbuilt-reporter)
-
-# Monitor network connections
-netstat -tulpn | grep python3
-```
-
-### Log Analysis
-
-```bash
-# View recent errors
-grep "ERROR" /var/log/vast-asbuilt-reporter/vast_report_generator.log | tail -20
-
-# Monitor real-time logs
-tail -f /var/log/vast-asbuilt-reporter/vast_report_generator.log
-
-# Analyze log patterns
-grep "Connection timeout" /var/log/vast-asbuilt-reporter/vast_report_generator.log | wc -l
-```
-
-## Performance Tuning
-
-### Large Cluster Optimization
-
-```yaml
-# config/config.yaml
-api:
-  timeout: 120
-  max_retries: 3
-  concurrent_requests: 10
-
-data_collection:
-  concurrent_requests: 8
-  validate_responses: true
-  graceful_degradation: true
-```
-
-### Resource Limits
-
-```bash
-# Set memory limits
-echo "vast-asbuilt-reporter soft memlock 2097152" >> /etc/security/limits.conf
-echo "vast-asbuilt-reporter hard memlock 2097152" >> /etc/security/limits.conf
-
-# Set CPU limits
-echo "vast-asbuilt-reporter soft cpu 4" >> /etc/security/limits.conf
-echo "vast-asbuilt-reporter hard cpu 4" >> /etc/security/limits.conf
-```
-
-## Maintenance
-
-### Regular Maintenance Tasks
-
-1. **Log Rotation**: Automated via logrotate
-2. **Backup Verification**: Weekly backup integrity checks
-3. **Security Updates**: Monthly dependency updates
-4. **Performance Monitoring**: Weekly resource usage review
-5. **Configuration Review**: Quarterly security configuration audit
-
-### Update Procedures
-
-```bash
-# Update application
-cd /opt/vast-asbuilt-reporter
-sudo -u vast-asbuilt-reporter git pull origin main
-sudo -u vast-asbuilt-reporter ./venv/bin/pip install -r requirements.txt
-sudo systemctl restart vast-asbuilt-reporter
-```
+1. [Deployment Model](#deployment-model)
+2. [What Runs and Where](#what-runs-and-where)
+3. [Runtime Data Locations](#runtime-data-locations)
+4. [Network Requirements](#network-requirements)
+5. [Security Posture](#security-posture)
+6. [Running from Source](#running-from-source)
+7. [Developer Mode](#developer-mode)
+8. [Multi-User and Shared Hosts](#multi-user-and-shared-hosts)
+9. [Not Supported](#not-supported)
+10. [Operational Notes](#operational-notes)
 
 ---
 
-**Last Updated**: March 29, 2026
-**Version**: 1.5.0
-**Compatibility**: VAST 5.3+, Python 3.10+
+## Deployment Model
+
+There is exactly one supported deployment model: **a desktop application, run by
+one engineer, on that engineer's own laptop or workstation.**
+
+- You download a release artifact from [{{RELEASES_URL}}]({{RELEASES_URL}}) and
+  run it. Nothing is installed system-wide — no services, no registry entries,
+  no daemons, no scheduled tasks.
+- On launch the application starts a **local** web server and opens your default
+  browser to it. The web UI is the interface; the server exists only to serve
+  that browser session.
+- All connections to the VAST cluster are **outbound** from your machine. The
+  application never listens for cluster traffic and never needs to be reachable
+  from anywhere.
+- When you are finished you click **Exit** in the navigation bar and the process
+  ends. Nothing keeps running afterwards.
+
+This is a field engineering tool, not a service. It is designed to be carried to
+a customer site on a laptop, connected to a cluster, run once or twice, and shut
+down.
+
+---
+
+## What Runs and Where
+
+### The application process
+
+A single self-contained process, packaged with PyInstaller. It bundles its own
+Python runtime, libraries, templates, and assets — there is no dependency on a
+Python installation on the host.
+
+| Platform | Executable |
+|----------|------------|
+| macOS | `/Applications/VAST Reporter.app` |
+| Windows | `vast-reporter.exe` inside the extracted `VAST Reporter` folder |
+
+### The local web server
+
+| Property | Value |
+|----------|-------|
+| Bind address | `127.0.0.1` (loopback only) |
+| Default port | `5173` |
+| Fallback ports | `5174`–`5180`, then `8080`, then `9090` |
+| Override | `--port <number>` |
+
+The server binds to loopback, so it is **not reachable from other machines** —
+this is deliberate and there is no supported way to expose it. If the default
+port is unavailable the application walks the fallback list and opens the
+browser on whichever port it obtained; the console window prints the address it
+is actually serving. If none can be bound it prints the list it tried and exits.
+
+### Shutdown
+
+Clicking **Exit** in the navigation bar (or **Exit & Upgrade** in the update
+dropdown) posts to a shutdown endpoint that stops the server. `Ctrl+C` in the
+launching console does the same.
+
+An optional auto-shutdown watchdog can stop the server shortly after the browser
+closes. It is **off by default** (`auto_shutdown.enabled` in `config.yaml`)
+because browsers throttle timers in background tabs, which can make an
+open-but-idle tab look closed. It never shuts down while a job is running.
+
+---
+
+## Runtime Data Locations
+
+The application keeps all writable data in a **data directory** that it resolves
+at startup, outside the program files themselves.
+
+| Platform | Data directory |
+|----------|----------------|
+| macOS (packaged) | The folder containing `VAST Reporter.app` — normally `/Applications` |
+| Windows (packaged) | The extracted `VAST Reporter` folder containing `vast-reporter.exe` |
+| Running from source | The repository root |
+
+Inside the data directory:
+
+| Path | Contents |
+|------|----------|
+| `config/config.yaml` | Runtime configuration |
+| `config/cluster_profiles.json` | Saved cluster connection profiles |
+| `config/device_library.json` | Custom hardware device library entries |
+| `config/hardware_images/` | Hardware images uploaded through the Library page |
+| `reports/` | Generated PDF and JSON reports (flat layout) |
+| `clusters/<cluster-key>/` | Per-cluster `reports/`, `output/`, and `logs/operations/` |
+| `logs/vast_report_generator.log` | Rotating application log (10 MB, 5 backups) |
+
+Notes:
+
+- `config/config.yaml` is created from the bundled template on first launch if it
+  does not exist. An existing file is never overwritten by an update.
+- Report artifacts are segmented per cluster by default
+  (`output.segment_by_cluster: true`). Because field clusters are frequently
+  reached over the same tech-port address, a flat shared layout would
+  intermingle artifacts from different clusters. Set the key to `false` to
+  restore the legacy flat layout.
+- Log paths in `config.yaml` are relative to the data directory unless you give
+  an absolute path.
+- On Windows the data directory *is* the installation folder. Deleting that
+  folder deletes your configuration, profiles, and reports along with the
+  program. See the [Update & Upgrade Guide](UPDATE-GUIDE.md) before replacing an
+  installation.
+
+---
+
+## Network Requirements
+
+### What the application needs to reach (all outbound)
+
+| Destination | Protocol / Port | Purpose |
+|-------------|-----------------|---------|
+| VAST Management Service | HTTPS / 443 | Cluster configuration data collection |
+| VAST CNodes / DNodes | SSH / 22 | Port mapping, health checks, script execution |
+| Fabric switches | SSH / 22 | Switch configuration and topology collection |
+| A CBox tech port | HTTPS + SSH | Tech Port mode: discovers the VMS address and tunnels API traffic over SSH |
+| A Teleport proxy | HTTPS | Teleport mode: `tsh` forwards cluster API and SSH to local ports |
+| `api.github.com` | HTTPS / 443 | Update check against the project's Releases |
+| VAST support tool hosts | HTTPS / HTTP | Downloading deployment tools (Advanced Operations) |
+
+Deployment tools (`vnetmap.py`, the Mellanox switch API helper, the VAST support
+diagnostics tool, and `vperfsanity`) are downloaded from VAST-hosted support
+storage — not from GitHub. GitHub is contacted only for the update check.
+
+### What it does not need
+
+- **No inbound network access.** Nothing connects *to* your machine.
+- **No firewall rules, port forwarding, or reverse proxy.** The web server is
+  loopback-only.
+- **No DNS entries, certificates, or load balancers.** There is no hostname to
+  publish.
+- **No server, VM, or container infrastructure.**
+
+### Working offline or air-gapped
+
+The application works without internet access. The update check fails silently
+(the version pill simply does not appear), and Advanced Operations cannot
+download deployment tools — pre-cache those on a connected network first if you
+need them on site.
+
+---
+
+## Security Posture
+
+### Read-only cluster access
+
+The application is a reporting tool and never modifies a cluster. The generic
+API request helper in `api_handler` accepts **GET only** and raises on any other
+method, so no data-collection path can issue a `POST`, `PUT`, `PATCH`, or
+`DELETE`. The only writes to the cluster API are the authentication calls needed
+to obtain a session or token. The full policy, including what is and is not
+permitted, is documented in the repository at
+`docs/development/READ_ONLY_VAST_API_POLICY.md`.
+
+### Credential handling
+
+- Credentials are supplied per run — through the web UI, environment variables
+  (`VAST_USERNAME` / `VAST_PASSWORD` / `VAST_API_TOKEN`, and the `VAST_NODE_*`
+  and `VAST_SWITCH_*` pairs for SSH), or an interactive prompt in CLI mode.
+- During a run they are held in memory and passed to the API and SSH layers.
+  They are not written into generated PDF or JSON reports.
+- **Saved cluster profiles are the exception.** If you use the profile feature,
+  the profile — including the cluster password, SSH passwords, and any API token
+  — is written in plain text to `config/cluster_profiles.json`. That file is
+  protected only by the file permissions of your user account. Treat the data
+  directory as sensitive, do not save profiles on a shared machine, and delete
+  profiles you no longer need.
+
+### Log sanitization
+
+A logging filter redacts credential-shaped content before it reaches the console
+or the log file: a recognised key (`password`, `token`, `secret`, `auth`,
+`credential`, and similar) followed by a separator and a value is replaced with a
+`KEY_[REDACTED]` marker. Narrative text that merely mentions those words is left
+readable. Sanitization is controlled by `security.sanitize_logs` and
+`security.mask_sensitive_data` in `config.yaml`.
+
+### TLS to the cluster
+
+`api.verify_ssl` controls certificate verification for cluster API calls. The
+shipped template sets it to `false`, because VAST clusters are routinely
+deployed with self-signed management certificates and verification would fail on
+most field engagements. Set it to `true` where the cluster presents a
+certificate your machine trusts.
+
+### Code signing
+
+Release artifacts are **not** signed. macOS Gatekeeper and Windows SmartScreen
+will challenge the application on first launch and again after every update.
+Approving it is expected; see the
+[Update & Upgrade Guide](UPDATE-GUIDE.md#gatekeeper-after-an-update).
+
+### Telemetry
+
+Local-only usage metrics exist for a "time saved" dashboard figure. They are
+**opt-in and off by default**, store only an anonymous install identifier and
+coarse event counts, and are not transmitted anywhere in this release.
+
+---
+
+## Running from Source
+
+For contributors, or when you need a build that is not yet released.
+
+### Prerequisites
+
+- Python 3.10 or later
+- Git
+
+### Setup
+
+1. Clone the repository and enter it:
+
+```bash
+git clone https://github.com/rstamps01/ps-deploy-report.git
+cd ps-deploy-report
+```
+
+2. Create and activate a virtual environment:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate        # Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
+
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+4. Launch the web UI:
+
+```bash
+python3 src/main.py
+```
+
+### Other entry points
+
+| Command | Behaviour |
+|---------|-----------|
+| `python3 src/main.py` | Web UI (default) |
+| `python3 src/main.py --gui` | Web UI, explicitly |
+| `python3 src/main.py --cli --cluster <ip> --output ./reports` | Command-line report generation |
+| `python3 src/main.py --from-json <path>` | Rebuild a PDF from a saved JSON intermediate, with no cluster access |
+| `python3 src/main.py --version` | Print the version and exit |
+| `python3 src/main.py --port <number>` | Override the web UI port |
+
+In a source checkout the data directory is the repository root, so `config/`,
+`reports/`, `clusters/`, and `logs/` live there. `config/config.yaml` is not
+tracked by git.
+
+---
+
+## Developer Mode
+
+Passing `--dev-mode` at launch unlocks the **Advanced Operations** surface:
+step-by-step SSH workflows, deployment-tool management and remote deployment,
+result bundling, and the one-shot orchestrator.
+
+Three pages are gated behind the flag — **Advanced Ops**, **Health Check**, and
+**Config (YAML)**. Without it they are hidden from the navigation menu and
+return `403` if requested directly.
+
+```bash
+# From source
+python3 src/main.py --dev-mode
+
+# Packaged macOS build
+"/Applications/VAST Reporter.app/Contents/MacOS/vast-reporter" --dev-mode
+```
+
+```powershell
+# Packaged Windows build
+& ".\VAST Reporter\vast-reporter.exe" --dev-mode
+```
+
+These workflows run scripts on cluster nodes over SSH. They are gated behind the
+flag deliberately — enable it only when you intend to use them.
+
+---
+
+## Multi-User and Shared Hosts
+
+The application is **single-user per machine**. It has no user accounts, no
+authentication on the web UI, and no per-user data separation: whoever can reach
+the loopback port has full access to the running instance, and everything is
+stored in one data directory owned by whoever installed it.
+
+If more than one engineer needs the tool, each installs their own copy on their
+own machine.
+
+Two consequences worth stating plainly for shared or multi-admin hosts:
+
+- Anyone with a local account on the machine that can read the data directory
+  can read saved cluster profiles, including their plaintext passwords.
+- Two instances cannot share a port. A second instance launched on the same
+  machine will fall back to the next available port rather than fail, so it is
+  easy to end up with two servers running and a browser tab pointed at the wrong
+  one.
+
+---
+
+## Not Supported
+
+These come up regularly. None of them exist today, and none are partially
+implemented:
+
+| Request | Status |
+|---------|--------|
+| Docker / container image | Not supported. There is no Dockerfile or Compose file for the application. |
+| systemd service / Windows service / launchd daemon | Not supported. There is no unit file, and the application is not designed to run headless and unattended. |
+| Hosting the web UI for a team | Not supported. The server binds loopback only and has no authentication or authorization. |
+| Multi-tenant or multi-user hosting | Not supported. No user model exists. |
+| Reverse proxy / nginx front end | Not supported and not needed. |
+| Scheduled or unattended report runs | Not supported as a product feature. CLI mode exists and can be scripted, but credential handling, prompts, and error recovery assume an operator is present. |
+| Centralized log shipping, Prometheus metrics, alerting | Not supported. Logs are local files; no metrics endpoint is exposed. |
+| Signed / notarized installers | Not currently produced. Expect Gatekeeper and SmartScreen prompts. |
+
+If you need something in this table, raise it as an enhancement request rather
+than building around it — the loopback binding and the absence of
+authentication mean the workarounds are genuinely unsafe.
+
+---
+
+## Operational Notes
+
+### Backing up
+
+Everything worth keeping is in the data directory. Copy `config/`, `reports/`,
+and `clusters/` to preserve configuration, profiles, and generated output. There
+is no database and no state outside the filesystem.
+
+### Log growth
+
+The application log rotates at 10 MB with 5 backups
+(`logging.rotation_size` and `logging.backup_count`). Advanced Operations logs
+are capped separately (`logging.ops_log_max_bytes`, default 1 GB); when the cap
+is reached the oldest are purged automatically, dropping the fraction set by
+`logging.ops_log_purge_fraction`.
+
+### Uninstalling
+
+Remove the application bundle or folder. See the
+[Uninstall Guide](UNINSTALL-GUIDE.md) — and note that on Windows the data
+directory is inside the installation folder, so save anything you want to keep
+before deleting it.
+
+---
+
+**Version**: {{APP_VERSION}}

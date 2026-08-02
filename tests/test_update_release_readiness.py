@@ -8,10 +8,12 @@ GitHub payload — including the actual v1.6.0 artifact names produced by
 .github/workflows/build-release.yml — with the network mocked, so it doubles as
 the automated "staged dry-run" for the QA phase (no live GitHub call).
 
-It also documents a known caveat: a shipped 1.5.8 client only has a single
-``download_url_mac`` slot, so with two mac DMGs (arm64 + x64) it links whichever
-DMG GitHub returns first. We can't patch already-installed clients; this test
-pins the behavior so it is intentional, not a surprise.
+It also covers the macOS architecture split. Releases publish two mac DMGs
+(arm64 + x64), which the resolver now reports under separate keys so the UI can
+offer the right one. ``download_url_mac`` survives as a single best-guess slot
+because already-installed 1.5.8/1.6.0 clients read only that field and cannot be
+patched retroactively — those clients keep getting one working DMG, and the
+per-architecture choice reaches users from 1.6.1 onward.
 """
 
 import sys
@@ -125,16 +127,24 @@ class TestReleaseSelectionRobustness(unittest.TestCase):
         self.assertFalse(is_newer("1.5.8", "1.6.0"))
 
 
-class TestMacArchDownloadCaveat(unittest.TestCase):
-    """Documents the known dual-DMG limitation for shipped single-slot clients."""
+class TestMacArchDownloads(unittest.TestCase):
+    """Each macOS architecture resolves to its own build."""
 
-    def test_first_dmg_is_selected_when_two_arches_present(self):
+    def test_each_arch_resolves_to_its_own_dmg(self):
         out = extract_download_urls({"assets": V160_ASSETS})
-        # A shipped 1.5.8 client exposes ONE mac URL; it is the first DMG listed.
-        self.assertEqual(out["mac"], "https://gh/dl/mac-arm64.dmg")
+        self.assertEqual(out["mac_arm64"], "https://gh/dl/mac-arm64.dmg")
+        self.assertEqual(out["mac_x64"], "https://gh/dl/mac-x64.dmg")
         self.assertEqual(out["win"], "https://gh/dl/win.zip")
 
-    def test_selected_mac_is_one_of_the_published_dmgs(self):
+    def test_arch_matching_is_independent_of_asset_order(self):
+        # GitHub does not promise asset ordering, and relying on it was the
+        # original defect: an Intel Mac could be handed the arm64 build.
+        out = extract_download_urls({"assets": list(reversed(V160_ASSETS))})
+        self.assertEqual(out["mac_arm64"], "https://gh/dl/mac-arm64.dmg")
+        self.assertEqual(out["mac_x64"], "https://gh/dl/mac-x64.dmg")
+
+    def test_single_slot_stays_populated_for_already_shipped_clients(self):
+        # 1.5.8/1.6.0 clients read only download_url_mac and cannot be patched.
         out = extract_download_urls({"assets": V160_ASSETS})
         self.assertIn(out["mac"], {"https://gh/dl/mac-arm64.dmg", "https://gh/dl/mac-x64.dmg"})
 

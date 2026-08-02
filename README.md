@@ -90,7 +90,7 @@ Get the latest build from [GitHub Releases](https://github.com/rstamps01/ps-depl
 
 **macOS**
 
-1. Download **VAST-Reporter-vX.Y.Z-mac.dmg** (use [latest](https://github.com/rstamps01/ps-deploy-report/releases/latest)).
+1. Download the DMG for your Mac from [the latest release]({{LATEST_RELEASE_URL}}) — **{{MAC_ARM64_DMG}}** for Apple Silicon, **{{MAC_X64_DMG}}** for Intel.
 2. Open the .dmg and drag **VAST Reporter** to **Applications**.
 3. Open **VAST Reporter** from Applications.  
    First time: if Gatekeeper blocks it, right-click the app → **Open**.
@@ -98,7 +98,7 @@ Get the latest build from [GitHub Releases](https://github.com/rstamps01/ps-depl
 
 **Windows**
 
-1. Download **VAST-Reporter-vX.Y.Z-win.zip** from the releases page.
+1. Download **{{WIN_ZIP}}** from the releases page.
 2. Extract to a folder and run **vast-reporter.exe**.
 
 No Python or package manager is required.
@@ -372,7 +372,7 @@ source venv/bin/activate
 bash packaging/build-mac.sh
 ```
 
-**Output:** `dist/VAST Reporter.app` and, if `create-dmg` is installed, `dist/VAST-Reporter-vX.Y.Z-mac.dmg`. The build script will install Cairo automatically if not already present.
+**Output:** `dist/VAST Reporter.app` and, if `create-dmg` is installed, an architecture-suffixed DMG (`dist/{{MAC_ARM64_DMG}}` on Apple Silicon, `dist/{{MAC_X64_DMG}}` on Intel). The build script will install Cairo automatically if not already present.
 
 ### Windows (.exe)
 
@@ -569,7 +569,7 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 ## Support
 
 1. Check logs and the [Troubleshooting](#troubleshooting) section.
-2. Review [docs/deployment](docs/deployment/) and [GitHub Issues](https://github.com/rstamps01/ps-deploy-report/issues).
+2. Review [docs/deployment](https://github.com/rstamps01/ps-deploy-report/tree/main/docs/deployment) and [GitHub Issues](https://github.com/rstamps01/ps-deploy-report/issues).
 3. Open an issue with version, steps, and log excerpts.
 
 **Repository:** [github.com/rstamps01/ps-deploy-report](https://github.com/rstamps01/ps-deploy-report)
