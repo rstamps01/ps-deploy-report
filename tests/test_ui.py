@@ -362,3 +362,32 @@ class TestOutputTerminalExpand:
         self._expand(page)
         page.keyboard.press("Escape")
         assert page.query_selector(".output-section.expanded") is None
+
+
+# ---------------------------------------------------------------------------
+# Deployment tools — single control in the global nav
+# ---------------------------------------------------------------------------
+
+
+class TestDeploymentToolsNav:
+    """Tool status and updates live only in the global nav control.
+
+    The Reporter page used to carry its own Update Tools / Tool Status pair in
+    the Test Suite tile, hitting different endpoints and rendering detail the
+    nav dropdown lacked. The detail moved into the dropdown so removing the
+    duplicates costs nothing.
+    """
+
+    def test_reporter_has_no_duplicate_tool_controls(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        for selector in ("#btnUpdateToolsOneshot", "#btnToolsInfoOneshot", "#toolsStatusPanelOneshot", "#toolsStatusPanel"):
+            assert page.query_selector(selector) is None, f"{selector} should have been removed"
+
+    def test_nav_dropdown_carries_the_per_tool_detail(self, flask_server, page):
+        page.goto(f"{flask_server['url']}/reporter")
+        page.click("#navToolsBtn")
+        page.wait_for_selector(".nav-tools-row")
+        assert page.query_selector_all(".nav-tools-row"), "no tools rendered"
+        # Description is what the removed status table showed and the old
+        # dropdown did not, despite it already being in the API response.
+        assert page.query_selector(".nav-tools-desc") is not None

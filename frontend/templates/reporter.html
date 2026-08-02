@@ -232,16 +232,6 @@
                 </div>
             </div>
 
-            <!-- Tools Status Panel -->
-            <div id="toolsStatusPanel" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatus()" style="padding: 2px 8px;">&times;</button>
-                </div>
-                <div id="toolsStatusContent" style="font-size: 12px;">
-                    <span style="color: #888;">Loading...</span>
-                </div>
-            </div>
           </div><!-- /.panel-flex-left -->
           <div class="panel-flex-right" id="reporterProgressColumn">
             <div id="reporterProgress" class="vast-progress-container"></div>
@@ -319,16 +309,6 @@
                 <div class="progress-detail" id="oneShotProgressDetail"></div>
             </div>
 
-            <!-- One-Shot Tools Status Panel -->
-            <div id="toolsStatusPanelOneshot" style="display: none; margin-top: 10px; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 6px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <strong style="color: #00d4ff;">Deployment Tools Status</strong>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideToolsStatusOneshot()" style="padding: 2px 8px;">&times;</button>
-                </div>
-                <div id="toolsStatusContentOneshot" style="font-size: 12px;">
-                    <span style="color: #888;">Loading...</span>
-                </div>
-            </div>
 
           </div><!-- /.panel-flex-left -->
           <div class="panel-flex-right" id="oneShotProgressColumn">
@@ -347,21 +327,6 @@
                   <button type="button" class="btn btn-accent btn-sm" onclick="downloadResults()">Download Bundle</button>
               </div>
               <div class="bar-spacer"></div>
-              <div class="bar-right">
-                  <button type="button" class="btn btn-secondary" id="btnUpdateToolsOneshot" onclick="updateDeploymentTools()" title="Download latest versions of deployment scripts">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">
-                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-                      </svg>
-                      Update Tools
-                  </button>
-                  <button type="button" class="btn btn-outline-secondary" id="btnToolsInfoOneshot" onclick="showToolsStatusOneshot()" title="View deployment tools status">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align: middle;">
-                          <circle cx="12" cy="12" r="10"/>
-                          <line x1="12" y1="16" x2="12" y2="12"/>
-                          <line x1="12" y1="8" x2="12.01" y2="8"/>
-                      </svg>
-                  </button>
-              </div>
           </div>
         </div>
     </div>
@@ -3242,99 +3207,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('useDefaultCreds').addEventListener('change', function() { saveUIState(); });
     window.addEventListener('beforeunload', function() { saveUIState(); });
 
-    // Update Deployment Tools helpers
-    function formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-    function formatDate(isoDate) {
-        if (!isoDate) return 'Never';
-        var d = new Date(isoDate);
-        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
-    }
-    function _renderToolsTable(contentEl) {
-        contentEl.innerHTML = '<span style="color: #888;">Loading...</span>';
-        fetch('/advanced-ops/tools')
-            .then(function(response) { return response.json(); })
-            .then(function(data) {
-                var html = '<table style="width: 100%; border-collapse: collapse; color: #ccc;">';
-                html += '<tr style="border-bottom: 1px solid #444;"><th style="text-align: left; padding: 4px 8px;">Tool</th><th style="text-align: left; padding: 4px 8px;">Status</th><th style="text-align: left; padding: 4px 8px;">Size</th><th style="text-align: left; padding: 4px 8px;">Last Updated</th></tr>';
-                data.tools.forEach(function(tool) {
-                    var st = tool.cached ? '<span style="color: #4ade80;">Cached</span>' : '<span style="color: #f87171;">Not Downloaded</span>';
-                    var sz = tool.cached ? formatFileSize(tool.cached_size) : '-';
-                    var dt = tool.cached ? formatDate(tool.cached_date) : '-';
-                    html += '<tr style="border-bottom: 1px solid #333;"><td style="padding: 6px 8px;"><strong>' + tool.name + '</strong><br><small style="color: #888;">' + tool.description + '</small></td><td style="padding: 6px 8px;">' + st + '</td><td style="padding: 6px 8px;">' + sz + '</td><td style="padding: 6px 8px;">' + dt + '</td></tr>';
-                });
-                html += '</table>';
-                contentEl.innerHTML = html;
-            })
-            .catch(function(err) { contentEl.innerHTML = '<span style="color: #f87171;">Failed to load tools status: ' + err + '</span>'; });
-    }
-    function _showToolsStatus() {
-        var panel = document.getElementById('toolsStatusPanel');
-        panel.style.display = 'block';
-        _renderToolsTable(document.getElementById('toolsStatusContent'));
-    }
-    function _hideToolsStatus() { document.getElementById('toolsStatusPanel').style.display = 'none'; }
-    function _showToolsStatusOneshot() {
-        var panel = document.getElementById('toolsStatusPanelOneshot');
-        panel.style.display = 'block';
-        _renderToolsTable(document.getElementById('toolsStatusContentOneshot'));
-    }
-    function _hideToolsStatusOneshot() { document.getElementById('toolsStatusPanelOneshot').style.display = 'none'; }
-    function _updateDeploymentTools() {
-        var btn = document.getElementById('btnUpdateToolsOneshot') || document.getElementById('btnUpdateToolsHeader');
-        if (!btn) return;
-        var originalText = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Updating...';
-        outputPane.append('info', 'Updating Deployment Tools');
-        fetch('/advanced-ops/tools/update', { method: 'POST', headers: { 'Content-Type': 'application/json' } })
-        .then(function(response) { return response.json(); })
-        .then(function(data) {
-            btn.disabled = false;
-            btn.innerHTML = originalText;
-            if (data.success) {
-                outputPane.append('success', 'All ' + data.updated + ' tools updated successfully!');
-                outputPane.append('info', 'Tools cached locally: output/tools/');
-                Object.keys(data.tools).forEach(function(toolName) {
-                    var tool = data.tools[toolName];
-                    if (tool.success) { outputPane.append('success', '  ' + tool.message); }
-                    else { outputPane.append('error', '  ' + toolName + ': ' + tool.message); }
-                });
-            } else {
-                outputPane.append('warn', 'Some tools failed to update (' + data.updated + '/' + (data.updated + data.failed) + ' succeeded)');
-            }
-            var panel = document.getElementById('toolsStatusPanel');
-            if (panel.style.display !== 'none') { _showToolsStatus(); }
-            var panelOs = document.getElementById('toolsStatusPanelOneshot');
-            if (panelOs.style.display !== 'none') { _showToolsStatusOneshot(); }
-        })
-        .catch(function(err) { btn.disabled = false; btn.innerHTML = originalText; outputPane.append('error', 'Update failed: ' + err); });
-    }
-    function _hideAllToolsPanels() {
-        _hideToolsStatus();
-        _hideToolsStatusOneshot();
-    }
 
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
-            _hideAllToolsPanels();
             var modal = document.getElementById('placementModal');
             if (modal && !modal.classList.contains('hidden')) cancelPlacementModal();
         }
     });
 
     document.addEventListener('click', function(e) {
-        var panel = document.getElementById('toolsStatusPanel');
-        var panelOs = document.getElementById('toolsStatusPanelOneshot');
-        if (panel.style.display !== 'none' && !panel.contains(e.target) && !e.target.closest('#btnToolsInfo')) {
-            _hideToolsStatus();
-        }
-        if (panelOs.style.display !== 'none' && !panelOs.contains(e.target) && !e.target.closest('#btnToolsInfoOneshot')) {
-            _hideToolsStatusOneshot();
-        }
         var modal = document.getElementById('placementModal');
         if (modal && !modal.classList.contains('hidden') && e.target === modal) {
             cancelPlacementModal();
@@ -3345,11 +3226,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 
-    window.showToolsStatus = _showToolsStatus;
-    window.hideToolsStatus = _hideToolsStatus;
-    window.showToolsStatusOneshot = _showToolsStatusOneshot;
-    window.hideToolsStatusOneshot = _hideToolsStatusOneshot;
-    window.updateDeploymentTools = _updateDeploymentTools;
 });
 
 function rptUpdateHealthTierHint() {

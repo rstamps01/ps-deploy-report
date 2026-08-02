@@ -168,6 +168,35 @@
             return { cls: "ok", label: "Ready" };
         }
 
+        function formatSize(bytes) {
+            if (typeof bytes !== "number" || bytes < 0) return null;
+            const units = ["B", "KB", "MB", "GB"];
+            let n = bytes;
+            let i = 0;
+            while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+            return (i === 0 ? n : n.toFixed(1)) + " " + units[i];
+        }
+
+        function formatDate(iso) {
+            if (!iso) return null;
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return null;
+            return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+        }
+
+        // Size and cache date used to be visible only in a duplicate panel on the
+        // Reporter page. That panel is gone, so the nav dropdown carries the
+        // detail — the fields were already in this payload, just unrendered.
+        function metaLine(tool) {
+            if (!tool.cached) return null;
+            const parts = [];
+            const size = formatSize(tool.cached_size);
+            const when = formatDate(tool.cached_date);
+            if (size) parts.push(size);
+            if (when) parts.push("updated " + when);
+            return parts.length ? parts.join(" \u00b7 ") : null;
+        }
+
         function render(status) {
             const tools = (status && status.tools) || [];
             const attention = !!(status && status.needs_attention);
@@ -188,14 +217,34 @@
                 const st = stateFor(t);
                 const row = document.createElement("div");
                 row.className = "nav-tools-row";
+
+                const head = document.createElement("div");
+                head.className = "nav-tools-main";
                 const name = document.createElement("span");
                 name.className = "tn";
                 name.textContent = t.name;
                 const tag = document.createElement("span");
                 tag.className = "nav-tools-state " + st.cls;
                 tag.textContent = st.label;
-                row.appendChild(name);
-                row.appendChild(tag);
+                head.appendChild(name);
+                head.appendChild(tag);
+                row.appendChild(head);
+
+                if (t.description) {
+                    const desc = document.createElement("div");
+                    desc.className = "nav-tools-desc";
+                    desc.textContent = t.description;
+                    row.appendChild(desc);
+                }
+
+                const meta = metaLine(t);
+                if (meta) {
+                    const metaEl = document.createElement("div");
+                    metaEl.className = "nav-tools-meta";
+                    metaEl.textContent = meta;
+                    row.appendChild(metaEl);
+                }
+
                 list.appendChild(row);
             });
         }
