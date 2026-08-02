@@ -194,6 +194,32 @@ body {
     text-decoration: none;
 }
 .app-update-dl-btn:hover { background: var(--accent-hover); }
+.app-update-note {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+.app-update-note[hidden] { display: none; }
+.app-update-exit {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.app-update-exit:hover { background: rgba(255, 255, 255, 0.06); }
+.app-update-exit[hidden] { display: none; }
 .nav-links {
     display: flex;
     gap: 0.25rem;

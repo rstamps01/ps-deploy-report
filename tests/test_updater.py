@@ -124,7 +124,53 @@ class TestExtractDownloadUrls(unittest.TestCase):
 
     def test_no_assets(self):
         out = extract_download_urls({})
-        self.assertEqual(out, {"assets": [], "mac": None, "win": None})
+        self.assertEqual(
+            out,
+            {"assets": [], "mac": None, "mac_arm64": None, "mac_x64": None, "win": None},
+        )
+
+    def test_separates_the_two_mac_architectures(self):
+        release = {
+            "assets": [
+                {"name": "VAST-Reporter-v1.6.1-mac-x64.dmg", "browser_download_url": "http://x/x64.dmg"},
+                {"name": "VAST-Reporter-v1.6.1-mac-arm64.dmg", "browser_download_url": "http://x/arm64.dmg"},
+                {"name": "VAST-Reporter-v1.6.1-win.zip", "browser_download_url": "http://x/win.zip"},
+            ]
+        }
+        out = extract_download_urls(release)
+        self.assertEqual(out["mac_arm64"], "http://x/arm64.dmg")
+        self.assertEqual(out["mac_x64"], "http://x/x64.dmg")
+        self.assertEqual(out["win"], "http://x/win.zip")
+
+    def test_unlabelled_dmg_is_not_claimed_by_either_architecture(self):
+        release = {
+            "assets": [
+                {"name": "VAST-Reporter-v1.5.0-mac.dmg", "browser_download_url": "http://x/mac.dmg"},
+            ]
+        }
+        out = extract_download_urls(release)
+        self.assertIsNone(out["mac_arm64"])
+        self.assertIsNone(out["mac_x64"])
+        self.assertEqual(out["mac"], "http://x/mac.dmg")
+
+    def test_universal_dmg_wins_the_single_slot_over_arch_builds(self):
+        release = {
+            "assets": [
+                {"name": "VAST-Reporter-mac-arm64.dmg", "browser_download_url": "http://x/arm64.dmg"},
+                {"name": "VAST-Reporter-mac.dmg", "browser_download_url": "http://x/universal.dmg"},
+            ]
+        }
+        out = extract_download_urls(release)
+        self.assertEqual(out["mac"], "http://x/universal.dmg")
+        self.assertEqual(out["mac_arm64"], "http://x/arm64.dmg")
+
+    def test_intel_naming_variants_are_recognised(self):
+        for name in ("app-mac-x86_64.dmg", "app-mac-intel.dmg", "app-mac-amd64.dmg"):
+            with self.subTest(name=name):
+                out = extract_download_urls(
+                    {"assets": [{"name": name, "browser_download_url": "http://x/i.dmg"}]}
+                )
+                self.assertEqual(out["mac_x64"], "http://x/i.dmg")
 
 
 class TestCheckForUpdate(unittest.TestCase):

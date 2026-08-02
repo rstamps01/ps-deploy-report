@@ -9,19 +9,34 @@
 
     // -- Exit button (available on every page) ----------------------------
 
+    // Shared with the update dropdown's "Exit & Upgrade": an installer cannot
+    // replace a copy that is still running, so quitting is part of the upgrade
+    // path rather than something the user is left to work out afterwards.
+    function shutdownApp(trigger, confirmMessage, doneMessage) {
+        if (!confirm(confirmMessage)) return;
+        if (trigger) {
+            trigger.disabled = true;
+            trigger.textContent = "Exiting…";
+        }
+        fetch("/shutdown", { method: "POST" }).catch(function () {});
+        setTimeout(function () {
+            const banner = document.createElement("div");
+            banner.setAttribute(
+                "style",
+                "display:flex;align-items:center;justify-content:center;height:100vh;" +
+                    "background:#0f1724;color:#94a3b8;font-family:sans-serif;font-size:1.1rem;" +
+                    "text-align:center;padding:0 2rem;"
+            );
+            banner.textContent = doneMessage;
+            document.body.innerHTML = "";
+            document.body.appendChild(banner);
+        }, 500);
+    }
+
     const btnExit = document.getElementById("btnExit");
     if (btnExit) {
         btnExit.addEventListener("click", function () {
-            if (!confirm("Exit the application?")) return;
-            btnExit.disabled = true;
-            btnExit.textContent = "Exiting…";
-            fetch("/shutdown", { method: "POST" }).catch(function () {});
-            setTimeout(function () {
-                document.body.innerHTML =
-                    '<div style="display:flex;align-items:center;justify-content:center;' +
-                    'height:100vh;background:#0f1724;color:#94a3b8;font-family:sans-serif;' +
-                    'font-size:1.1rem;">Application stopped. You may close this window.</div>';
-            }, 500);
+            shutdownApp(btnExit, "Exit the application?", "Application stopped. You may close this window.");
         });
     }
 
@@ -78,8 +93,11 @@
         const drop = document.getElementById("appUpdateDropdown");
         const verEl = document.getElementById("appUpdateVersion");
         const notesEl = document.getElementById("appUpdateNotes");
-        const macEl = document.getElementById("appUpdateMac");
+        const macArmEl = document.getElementById("appUpdateMacArm");
+        const macIntelEl = document.getElementById("appUpdateMacIntel");
         const winEl = document.getElementById("appUpdateWin");
+        const noteEl = document.getElementById("appUpdateNote");
+        const exitEl = document.getElementById("appUpdateExit");
 
         function isWindows() {
             const p = (navigator.userAgentData && navigator.userAgentData.platform) ||
@@ -87,9 +105,44 @@
             return /win/i.test(p);
         }
 
+        // Chromium exposes CPU architecture behind the high-entropy UA API;
+        // Safari and Firefox do not. When it resolves we can point the one-click
+        // button at the right macOS build, and when it doesn't the explicit
+        // per-architecture links in the dropdown carry the choice instead.
+        function detectArch() {
+            const uad = navigator.userAgentData;
+            if (!uad || typeof uad.getHighEntropyValues !== "function") {
+                return Promise.resolve(null);
+            }
+            return uad.getHighEntropyValues(["architecture"])
+                .then(function (v) { return (v && v.architecture) || null; })
+                .catch(function () { return null; });
+        }
+
+        function setLink(el, url, label) {
+            if (!el) return;
+            el.hidden = !url;
+            if (url) {
+                el.href = url;
+                if (label) el.textContent = label;
+            }
+        }
+
         function setPill(cls, text) {
             pill.className = "app-status-pill " + cls;
             pill.textContent = text;
+        }
+
+        if (exitEl) {
+            exitEl.addEventListener("click", function (e) {
+                e.stopPropagation();
+                shutdownApp(
+                    exitEl,
+                    "Exit the application so the update can be installed?\n\n" +
+                        "Make sure the download has finished first.",
+                    "Application stopped. You can now install the update, then launch the new version."
+                );
+            });
         }
 
         if (caret && drop) {
@@ -113,15 +166,34 @@
                     if (verEl) verEl.textContent = "Version " + data.latest_version +
                         " (you have " + data.current_version + ")";
                     if (notesEl) notesEl.href = data.release_notes_url || data.latest_url || "#";
-                    const mac = data.download_url_mac;
+                    const arm = data.download_url_mac_arm64;
+                    const intel = data.download_url_mac_x64;
                     const win = data.download_url_win;
-                    if (macEl) { macEl.hidden = !mac; if (mac) macEl.href = mac; }
-                    if (winEl) { winEl.hidden = !win; if (win) winEl.href = win; }
+                    if (arm || intel) {
+                        setLink(macArmEl, arm, "macOS — Apple Silicon");
+                        setLink(macIntelEl, intel, "macOS — Intel");
+                    } else {
+                        // Older releases published a single architecture-agnostic
+                        // DMG; offer it as one plain macOS link rather than
+                        // labelling it with an architecture it does not have.
+                        setLink(macArmEl, data.download_url_mac, "Download for macOS");
+                        setLink(macIntelEl, null);
+                    }
+                    setLink(winEl, win, "Windows");
+                    if (noteEl) noteEl.hidden = false;
+                    if (exitEl) exitEl.hidden = false;
+                    update.hidden = false;
+
                     // Primary button auto-picks the OS-matched installer; falls
                     // back to the release page if no matching asset is published.
-                    const preferred = isWindows() ? (win || mac) : (mac || win);
-                    if (btn) btn.href = preferred || data.release_notes_url || data.latest_url || "#";
-                    update.hidden = false;
+                    const anyMac = arm || intel || data.download_url_mac;
+                    const fallback = data.release_notes_url || data.latest_url || "#";
+                    if (btn) btn.href = (isWindows() ? (win || anyMac) : (anyMac || win)) || fallback;
+                    if (btn && !isWindows() && arm && intel) {
+                        detectArch().then(function (architecture) {
+                            btn.href = architecture === "x86" ? intel : arm;
+                        });
+                    }
                 } else if (data.is_prerelease) {
                     setPill("prerelease", "PRE-RELEASE");
                 } else if (data.enabled !== false && data.error == null) {

@@ -391,3 +391,65 @@ class TestDeploymentToolsNav:
         # Description is what the removed status table showed and the old
         # dropdown did not, despite it already being in the API response.
         assert page.query_selector(".nav-tools-desc") is not None
+
+
+# ---------------------------------------------------------------------------
+# Update pill — per-architecture download options
+# ---------------------------------------------------------------------------
+
+
+UPDATE_AVAILABLE_PAYLOAD = {
+    "update_available": True,
+    "enabled": True,
+    "is_prerelease": False,
+    "error": None,
+    "current_version": "1.6.0",
+    "latest_version": "1.6.1",
+    "latest_url": "https://gh/releases/v1.6.1",
+    "release_notes_url": "https://gh/releases/v1.6.1",
+    "download_url_mac": "https://gh/dl/mac-arm64.dmg",
+    "download_url_mac_arm64": "https://gh/dl/mac-arm64.dmg",
+    "download_url_mac_x64": "https://gh/dl/mac-x64.dmg",
+    "download_url_win": "https://gh/dl/win.zip",
+    "assets": [],
+}
+
+
+class TestUpdateDownloadDropdown:
+    """Releases ship two macOS builds, so the dropdown has to offer both.
+
+    Matching on the .dmg suffix alone used to hand an Intel Mac whichever build
+    GitHub happened to list first.
+    """
+
+    @staticmethod
+    def _open(page, flask_server):
+        page.route(
+            "**/api/update/status*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(UPDATE_AVAILABLE_PAYLOAD),
+            ),
+        )
+        page.goto(flask_server["url"])
+        page.wait_for_selector("#appUpdate:not([hidden])")
+        page.click("#appUpdateCaret")
+
+    def test_offers_apple_silicon_intel_and_windows(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.get_attribute("#appUpdateMacArm", "href") == "https://gh/dl/mac-arm64.dmg"
+        assert page.get_attribute("#appUpdateMacIntel", "href") == "https://gh/dl/mac-x64.dmg"
+        assert page.get_attribute("#appUpdateWin", "href") == "https://gh/dl/win.zip"
+        for selector in ("#appUpdateMacArm", "#appUpdateMacIntel", "#appUpdateWin"):
+            assert page.is_visible(selector), f"{selector} should be offered"
+
+    def test_shows_the_quit_before_installing_guidance(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.is_visible("#appUpdateNote")
+        assert page.is_visible("#appUpdateExit")
+        assert "running" in page.inner_text("#appUpdateNote").lower()
+
+    def test_pill_reports_update_available(self, flask_server, page):
+        self._open(page, flask_server)
+        assert page.inner_text("#appStatusPill").strip() == "UPDATE AVAILABLE"
