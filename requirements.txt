@@ -33,7 +33,7 @@ colorlog>=6.7.0
 python-dateutil>=2.9.0.post0
 
 # JSON schema validation
-jsonschema>=4.19.0
+jsonschema>=4.26.0
 
 # Environment variable management
 python-dotenv>=1.0.0
