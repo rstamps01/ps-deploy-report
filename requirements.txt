@@ -9,7 +9,7 @@ urllib3>=2.6.3
 PyYAML>=6.0.1
 
 # PDF generation (primary engine)
-reportlab>=4.0.0
+reportlab>=5.0.0
 
 # Dynamic diagram generation (PNG conversion)
 rl-renderPM>=4.0.3
