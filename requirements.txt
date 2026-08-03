@@ -39,7 +39,7 @@ jsonschema>=4.19.0
 python-dotenv>=1.0.0
 
 # Web UI (Flask-based GUI)
-flask>=3.0.0
+flask>=3.1.3
 
 # Markdown rendering (in-app documentation viewer)
 markdown>=3.5.0
