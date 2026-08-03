@@ -1,56 +1,61 @@
-# Screenshot Capture Guide
+# Screenshots
 
-Instructions for adding real screenshots to the SE one-pager (`../se-one-pager.html`).
+Images for the marketing site (`../index.html`, `../quick-start-guide.html`,
+`../se-one-pager.html`) and the repository README. Every page references these
+by path, so replacing a file in place updates every page that uses it.
 
-## Setup
+## Capture settings
 
-1. Launch the app: `python3 src/main.py` (or open the `.dmg` / `.exe`)
-2. Set browser window to **1440 x 900** for consistent framing
-3. Use a connected cluster with data for the best-looking captures
-4. Save all images to this `screenshots/` directory
+- Browser window at **1440 x 900**, cropped to the viewport (no address bar).
+- PNG, for crisp text.
+- Use a connected cluster where the screen has data to show.
+- For header and dropdown captures, crop tight to the relevant region — a
+  full-width capture leaves the subject too small to read.
 
-## Required Screenshots
+macOS: Cmd+Shift+4 then Space captures a single window.
+Windows: Win+Shift+S for a region capture.
 
-| Filename | Page / Route | What to Capture |
-|---|---|---|
-| `screenshot-dashboard.png` | Dashboard (`/`) | Full page showing Quick Start tiles, Results Odometer, and workflow cards |
-| `screenshot-reporter.png` | Reporter (`/reporter`) | Connection form filled in, stepper visible, discovery complete or in-progress |
-| `screenshot-results.png` | Validation Results (`/validation-results`) | Tab bar with at least 2-3 operation types populated |
-| `screenshot-library.png` | Library (`/library`) | Device table with a few entries and hardware images visible |
-| `screenshot-advanced-ops.png` | Advanced Ops (`/advanced-ops`) | Workflow list with status badges (requires `--dev-mode` launch flag) |
-| `screenshot-report-pdf.png` | PDF output | First page of a generated PDF report (open in Preview / browser) |
+## The numbered macOS upgrade sequence
 
-## Capture Tips
+`1-` through `8-` are the ordered steps in the Quick Start guide's **Upgrade
+from Earlier Version** path. The number is the step number shown in that path.
 
-- **macOS:** Cmd+Shift+4 then Space to capture the browser window, or use the Screenshot app for precise region capture.
-- **Windows:** Win+Shift+S for Snip & Sketch region capture.
-- Crop to the browser viewport (exclude browser chrome/address bar) for a cleaner look.
-- PNG format preferred for crisp text rendering.
-- Aim for roughly **16:10 aspect ratio** to match the placeholder slots.
+| File | Step |
+|---|---|
+| `1-Upgrade-Download.png` | `UPDATE AVAILABLE` pill with the Download dropdown open |
+| `2-Upgrade-Only-Exit-App-Mac.png` | Exit button in the navbar |
+| `3-Upgrade-Install-Mac.png` | Mounted DMG, app beside the Applications shortcut |
+| `4-Upgrade-Only-Replace-Mac.png` | macOS "replace existing item" dialog |
+| `5-Upgrade-Install-Done-Mac.png` | Gatekeeper "Not Opened" warning |
+| `6-Upgrade-Install-Privacy-Security-OpenAnyway-Mac.png` | Privacy & Security, Open Anyway |
+| `7-Upgrade-Install-Open-Anyway-Mac.png` | Open Anyway confirmation |
+| `8-Upgrade-Install-Use-Password-Mac.png` | Touch ID / password prompt |
 
-## Adding Screenshots to the One-Pager
+**Inserting a step** means renaming every file after it, and the `<img src>` in
+`quick-start-guide.html` along with them. Rename in descending order (8 before
+7, and so on) or `git mv` will overwrite a file that has not moved yet.
 
-In `se-one-pager.html`, each screenshot slot has a placeholder `<div>` and a commented-out `<img>` tag. To swap in a real image:
+The **New Installation** path reuses the same images and shows a subset of these
+steps, so its numbering does not match these filenames. That is expected: the
+guide assigns step numbers at runtime based on which steps are visible.
 
-1. Remove or comment out the `<div class="screenshot-placeholder">...</div>` block
-2. Uncomment the `<img>` tag below it
-3. Verify the `src` path matches your filename
+## Feature screenshots
 
-Example before:
+`Dash.png`, `Reporter.png`, `Results.png`, `Library.png`, `Adv-Config.png`,
+`Test-Suite.png`, `Update-Tools.png`, `Report-Rack-Diagram.png`,
+`Logical-Network-Diagram.png`.
 
-```html
-<div class="screenshot-placeholder">
-    <svg>...</svg>
-    <span>Dashboard Screenshot</span>
-</div>
-<!-- <img src="screenshots/screenshot-dashboard.png" alt="Dashboard" class="screenshot-img"> -->
-```
+These show product UI and go stale when the interface changes. Re-capture from a
+current build rather than adding a second copy — the filename is the reference
+used across the site.
 
-Example after:
+## Version numbers are visible in captures
 
-```html
-<!-- placeholder removed -->
-<img src="screenshots/screenshot-dashboard.png" alt="Dashboard" class="screenshot-img">
-```
+Most of these include the app header, which carries the version and the update
+pill. Two consequences worth planning around:
 
-No CSS or layout changes are needed -- the `screenshot-img` class handles sizing automatically.
+- A capture showing `UPDATE AVAILABLE` requires running a build *older* than the
+  latest release, so it will also show that older build's UI.
+- A capture showing `LATEST VERSION` should be taken from a current build.
+
+Pick the build to match what the surrounding text describes.

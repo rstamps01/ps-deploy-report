@@ -118,6 +118,9 @@ body {
 .tab-panel { display: none; padding: 3rem 0 4rem; }
 .tab-panel.active { display: block; }
 
+/* Applies to both platforms, so it sits outside the macOS/Windows tabs. */
+.post-install { padding: 1rem 0 4rem; border-top: 1px solid var(--border); }
+
 /* ---- Section structure ---- */
 .guide-intro {
     text-align: center;
@@ -153,7 +156,11 @@ body {
 /* Steps that are conditional on path */
 .install-step.step-upgrade-only { display: none; }
 .path-upgrade .install-step.step-upgrade-only { display: grid; }
+/* Content that only applies to one path but lives inside a step shared by both:
+   upgraders download in-app before they ever reach the DMG step. */
 .path-upgrade .step-new-only { display: none; }
+.step-upgrade-note { display: none; }
+.path-upgrade .step-upgrade-note { display: block; }
 
 /* ---- Step cards ---- */
 .install-step {
@@ -417,35 +424,61 @@ footer a:hover { text-decoration: underline; }
 
         <div id="mac-steps">
 
+            <!-- UPGRADE ONLY: Step — Download the update from inside the app -->
+            <div class="install-step step-upgrade-only">
+                <div class="step-content">
+                    <div class="step-badge upgrade">Upgrade Only</div>
+                    <div class="step-number-label">Step</div>
+                    <h3>Download the Update from the App</h3>
+                    <p>The app checks for new releases at launch. Look at the version pill beside the <strong>asbuilt-reporter</strong> name in the header:</p>
+                    <ul style="margin: 0.5rem 0 0.75rem 1.1rem; font-size: 0.9rem; line-height: 1.7;">
+                        <li><strong>LATEST VERSION</strong> &mdash; you are already current; no upgrade needed.</li>
+                        <li><strong>UPDATE AVAILABLE</strong> &mdash; a newer release exists, and a <strong>Download</strong> button appears next to the pill.</li>
+                    </ul>
+                    <p>Click the caret beside <strong>Download</strong> to open the dropdown. It shows the new version number, the version you are running, and a <strong>Release notes</strong> link. Choose the download for your platform and wait for it to finish before moving on.</p>
+                    <div class="tip">Running 1.6.1 or later? The dropdown lists <strong>macOS &mdash; Apple Silicon</strong> and <strong>macOS &mdash; Intel</strong> separately, plus an <strong>Exit &amp; Upgrade</strong> button that performs the next step for you. Earlier versions offer a single macOS download, as shown here.</div>
+                    <div class="tip">No pill at all? The app could not reach GitHub &mdash; common on customer sites. Download from the <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest">releases page</a> instead and compare against the version shown in the header.</div>
+                </div>
+                <div class="step-image">
+                    <img src="screenshots/1-Upgrade-Download.png" alt="App header showing the UPDATE AVAILABLE pill with the Download dropdown open">
+                </div>
+            </div>
+
             <!-- UPGRADE ONLY: Step — Exit the running app -->
             <div class="install-step step-upgrade-only">
                 <div class="step-content">
                     <div class="step-badge upgrade">Upgrade Only</div>
-                    <div class="step-number-label">Step 1</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Exit the Running Application</h3>
-                    <p>Before replacing the app, you must fully quit the current version. In the app's navbar, click the <strong>Exit</strong> button (top-right corner), or click <strong>Exit application</strong> below the navigation bar.</p>
-                    <p>Wait for the browser tab to close and the process to terminate before proceeding.</p>
+                    <p>macOS refuses to replace an app that is still running, so this step is not optional &mdash; skipping it is the most common cause of a failed upgrade. In the app's navbar, click the <strong>Exit</strong> button (top-right corner).</p>
+                    <p>Wait until the page reports that the application has stopped before continuing.</p>
+                    <div class="tip">Closing the browser tab is <em>not</em> enough &mdash; the local server keeps running. Use <strong>Exit</strong>, or <strong>Exit &amp; Upgrade</strong> in the Download dropdown on 1.6.1 and later.</div>
                     <div class="tip">If the app doesn't quit cleanly, open Activity Monitor and force-quit any "VAST Reporter" processes.</div>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/1-Upgrade-Only-Exit-App-Mac.png" alt="Step 1 — Exit the running application via the Exit button in the navbar">
+                    <img src="screenshots/2-Upgrade-Only-Exit-App-Mac.png" alt="The Exit button in the app navbar, used to quit the running application">
                 </div>
             </div>
 
             <!-- BOTH: Step — Download and open the DMG -->
-            <div class="install-step reversed">
+            <div class="install-step">
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
-                    <div class="step-number-label" data-step-new="1" data-step-upgrade="2">Step</div>
-                    <h3>Download &amp; Open the DMG for Your Mac</h3>
-                    <p>Download the DMG that matches your Mac from GitHub Releases, then double-click it to mount:</p>
-                    <ul style="margin: 0.5rem 0 0.75rem 1.1rem; font-size: 0.9rem; line-height: 1.7;">
-                        <li><strong>Apple Silicon</strong> (M1/M2/M3/M4) &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-arm64.dmg</code></li>
-                        <li><strong>Intel</strong> &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-x64.dmg</code></li>
-                    </ul>
-                    <div class="tip">Not sure which you have? Apple menu &rarr; <strong>About This Mac</strong>. A "Chip" line (e.g. Apple M2) means Apple Silicon; a "Processor" line means Intel.</div>
+                    <div class="step-number-label">Step</div>
+                    <h3>Open the DMG and Install</h3>
+                    <div class="step-new-only">
+                        <p>Download the DMG that matches your Mac from GitHub Releases, then double-click it to mount:</p>
+                        <ul style="margin: 0.5rem 0 0.75rem 1.1rem; font-size: 0.9rem; line-height: 1.7;">
+                            <li><strong>Apple Silicon</strong> (M1/M2/M3/M4) &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-arm64.dmg</code></li>
+                            <li><strong>Intel</strong> &mdash; <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">VAST-Reporter-vX.Y.Z-mac-x64.dmg</code></li>
+                        </ul>
+                        <div class="tip">Not sure which you have? Apple menu &rarr; <strong>About This Mac</strong>. A "Chip" line (e.g. Apple M2) means Apple Silicon; a "Processor" line means Intel.</div>
+                    </div>
+                    <div class="step-upgrade-note">
+                        <p>Double-click the DMG you downloaded earlier &mdash; it is in your <strong>Downloads</strong> folder unless you chose another location &mdash; to mount it.</p>
+                    </div>
                     <p>Drag <strong>VAST Reporter.app</strong> onto the <strong>Applications</strong> folder shortcut to install.</p>
-                    <p style="margin-top: 0.75rem;">
+                    <p class="step-new-only" style="margin-top: 0.75rem;">
                         <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent" style="font-size: 0.82rem; padding: 0.45rem 1.25rem;">
                             <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             GitHub Releases
@@ -453,7 +486,7 @@ footer a:hover { text-decoration: underline; }
                     </p>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/2-Upgrade-Install-Mac.png" alt="Step — DMG installer showing VAST Reporter.app and Applications folder">
+                    <img src="screenshots/3-Upgrade-Install-Mac.png" alt="Mounted DMG showing VAST Reporter.app beside the Applications folder shortcut">
                 </div>
             </div>
 
@@ -461,27 +494,27 @@ footer a:hover { text-decoration: underline; }
             <div class="install-step step-upgrade-only">
                 <div class="step-content">
                     <div class="step-badge upgrade">Upgrade Only</div>
-                    <div class="step-number-label">Step 3</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Replace the Existing Version</h3>
                     <p>Since an earlier version is already installed, macOS will ask if you want to replace it. Click <strong>Replace</strong> to overwrite the old version with the new one.</p>
                     <div class="tip">"Keep Both" will create a duplicate with a different name — always choose <strong>Replace</strong> for a clean upgrade.</div>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/3-Upgrade-Only-Replace-Mac.png" alt="Step — macOS dialog asking to Replace the existing VAST Reporter.app">
+                    <img src="screenshots/4-Upgrade-Only-Replace-Mac.png" alt="macOS dialog asking whether to replace the existing VAST Reporter.app">
                 </div>
             </div>
 
             <!-- BOTH: Step — Gatekeeper block -->
-            <div class="install-step reversed">
+            <div class="install-step">
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
-                    <div class="step-number-label" data-step-new="2" data-step-upgrade="4">Step</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Gatekeeper Warning — Click Done</h3>
                     <p>On first launch, macOS Gatekeeper will block the app because it is not signed with an Apple Developer certificate. You'll see a dialog saying <strong>"VAST Reporter.app" Not Opened</strong>.</p>
                     <p>This is expected for internal tools distributed outside the App Store. Click <strong>Done</strong> — do <em>not</em> click "Move to Trash".</p>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/4-Upgrade-Install-Done-Mac.png" alt="Step — Gatekeeper 'Not Opened' warning dialog, click Done">
+                    <img src="screenshots/5-Upgrade-Install-Done-Mac.png" alt="Gatekeeper &quot;Not Opened&quot; warning dialog with the Done button">
                 </div>
             </div>
 
@@ -489,28 +522,28 @@ footer a:hover { text-decoration: underline; }
             <div class="install-step">
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
-                    <div class="step-number-label" data-step-new="3" data-step-upgrade="5">Step</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Open System Settings &rarr; Privacy &amp; Security</h3>
                     <p>Open <strong>System Settings</strong> (Apple menu &rarr; System Settings) and navigate to <strong>Privacy &amp; Security</strong> in the left sidebar.</p>
                     <p>Scroll down to the <strong>Security</strong> section. You'll see a message: <em>"VAST Reporter.app" was blocked to protect your Mac.</em></p>
                     <p>Click the <strong>Open Anyway</strong> button next to the message.</p>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/5-Ungrade-Install-Privacy-Security-OpenAnyway-Mac.png" alt="Step — System Settings Privacy & Security showing Open Anyway button">
+                    <img src="screenshots/6-Upgrade-Install-Privacy-Security-OpenAnyway-Mac.png" alt="System Settings Privacy &amp; Security pane showing the Open Anyway button">
                 </div>
             </div>
 
             <!-- BOTH: Step — Confirm Open Anyway -->
-            <div class="install-step reversed">
+            <div class="install-step">
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
-                    <div class="step-number-label" data-step-new="4" data-step-upgrade="6">Step</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Confirm — Open Anyway</h3>
                     <p>A second confirmation dialog will appear asking if you really want to open the app. macOS includes a warning about unverified software.</p>
                     <p>Click <strong>Open Anyway</strong> to proceed. Do not click "Move to Trash" or "Done".</p>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/6-Upgrade-Install-Open-Anyway-Mac.png" alt="Step — Confirmation dialog with Open Anyway button">
+                    <img src="screenshots/7-Upgrade-Install-Open-Anyway-Mac.png" alt="Confirmation dialog with the Open Anyway button">
                 </div>
             </div>
 
@@ -518,14 +551,14 @@ footer a:hover { text-decoration: underline; }
             <div class="install-step">
                 <div class="step-content">
                     <div class="step-badge both">All Installs</div>
-                    <div class="step-number-label" data-step-new="5" data-step-upgrade="7">Step</div>
+                    <div class="step-number-label">Step</div>
                     <h3>Authenticate with Touch ID or Password</h3>
                     <p>macOS requires administrator authorization to allow the unsigned app to run. Use <strong>Touch ID</strong> or click <strong>Use Password...</strong> and enter your Mac administrator password.</p>
                     <p>After authenticating, the app will launch and your browser will open automatically to <code style="font-family: var(--font-mono); font-size: 0.82rem; background: var(--bg-elevated); padding: 2px 6px; border-radius: 3px; color: var(--cyan);">localhost:5173</code>.</p>
                     <div class="tip">You only need to complete the Gatekeeper steps once per version. Subsequent launches will open normally.</div>
                 </div>
                 <div class="step-image">
-                    <img src="screenshots/7-Upgrade-Install-Use-Password-Mac.png" alt="Step — Touch ID or password prompt to authorize the app">
+                    <img src="screenshots/8-Upgrade-Install-Use-Password-Mac.png" alt="Touch ID or administrator password prompt authorising the app">
                 </div>
             </div>
 
@@ -580,6 +613,33 @@ footer a:hover { text-decoration: underline; }
                     <p>Your default browser will open automatically to <code>localhost:5173</code>. The app is ready to use.</p>
                     <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">To upgrade, close the running app, replace the extracted folder with the new version, and relaunch. The SmartScreen step will repeat for each new version.</p>
                 </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- After Installation — Deployment Tools                             -->
+<!-- ================================================================ -->
+<section class="post-install">
+    <div class="container">
+        <div class="guide-intro">
+            <h2>After Installation: Deployment Tools</h2>
+            <p>The validation workflows do not ship inside the app. They are fetched separately and cached locally, so a fresh install &mdash; and every upgrade &mdash; is worth a quick check before you rely on them in the field.</p>
+        </div>
+
+        <div class="install-step">
+            <div class="step-content">
+                <div class="step-badge both">All Installs</div>
+                <h3>Check and Update from the Header</h3>
+                <p>Click <strong>Update Tools</strong> in the top-right of the header. The dropdown lists every tool with its description, cached size, and the date it was last updated. The heading shows how many are cached &mdash; <strong>4/4 cached</strong> means you are ready to run.</p>
+                <p>Tools older than a week carry an age badge such as <strong>12D OLD</strong>. That is a prompt, not an error: a cached tool keeps working, but validation results are only as current as the tool that produced them.</p>
+                <p>Click <strong>Update Tools</strong> at the bottom of the dropdown to fetch the latest versions. Progress appears in the <strong>Output Results</strong> terminal on the Reporter page.</p>
+                <div class="tip">This needs outbound network access. On an air-gapped customer site, update the tools before you travel &mdash; the cached copies are what you will be running on.</div>
+                <div class="tip">Earlier versions also carried Update Tools and Tool Status buttons on the Reporter page. From 1.6.1 the header dropdown is the single place this lives.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Update-Tools.png" alt="The Update Tools dropdown listing each deployment tool with its description, size, last-updated date and age badge">
             </div>
         </div>
     </div>
@@ -653,6 +713,10 @@ footer a:hover { text-decoration: underline; }
             if (isHidden) return;
             var label = step.querySelector('.step-number-label');
             if (label) label.textContent = 'Step ' + stepCounter;
+            // Alternate the image side across *visible* steps. Marking this up
+            // statically cannot work for both paths at once, because hiding the
+            // upgrade-only steps changes which steps are adjacent.
+            step.classList.toggle('reversed', stepCounter % 2 === 0);
             stepCounter++;
         });
     }
