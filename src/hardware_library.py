@@ -10,7 +10,7 @@ Usage:
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 # All built-in hardware devices with their properties
 # Keys are lowercase model identifiers used for matching
@@ -260,13 +260,44 @@ def get_builtin_devices_for_ui() -> Dict[str, Dict[str, Any]]:
     return {key: {**value, "source": "built-in"} for key, value in BUILTIN_DEVICES.items()}
 
 
+def match_device(model: str, user_library: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """
+    Find the catalog entry describing a device model.
+
+    Built-in and user devices are searched as a single namespace, longest key
+    first, so the most specific key wins. The built-in catalog carries broad
+    vendor fallbacks (``hpe``, ``arista``) that would otherwise swallow any
+    user-added device from the same vendor, making the Library unable to
+    override a vendor default. A user entry also replaces a built-in one that
+    shares its key.
+
+    Args:
+        model: Device model string (case-insensitive matching)
+        user_library: Optional user-defined library
+
+    Returns:
+        The matching device entry, or None if nothing matched.
+    """
+    if not model:
+        return None
+
+    model_lower = model.lower()
+    catalog: Dict[str, Any] = {**BUILTIN_DEVICES, **(user_library or {})}
+
+    for key in sorted(catalog, key=len, reverse=True):
+        if key in model_lower:
+            return cast(Dict[str, Any], catalog[key])
+
+    return None
+
+
 def get_device_height(model: str, user_library: Optional[Dict[str, Any]] = None) -> int:
     """
     Get the U-height for a device model.
 
     Args:
         model: Device model string (case-insensitive matching)
-        user_library: Optional user-defined library to check after built-in
+        user_library: Optional user-defined library
 
     Returns:
         Height in rack units (defaults to 1 if unknown)
@@ -280,18 +311,11 @@ def get_device_height(model: str, user_library: Optional[Dict[str, Any]] = None)
     if "ebox" in model_lower or "enclosure" in model_lower:
         return 1
 
-    # Check built-in devices (longest match first)
-    for key in sorted(BUILTIN_DEVICES, key=len, reverse=True):
-        if key in model_lower:
-            return int(BUILTIN_DEVICES[key].get("height_u", 1))
+    device = match_device(model, user_library)
+    if device is None:
+        return 1
 
-    # Check user library
-    if user_library:
-        for key in sorted(user_library, key=len, reverse=True):
-            if key in model_lower:
-                return int(user_library[key].get("height_u", 1))
-
-    return 1
+    return int(device.get("height_u", 1))
 
 
 def get_device_image_filename(model: str, user_library: Optional[Dict[str, Any]] = None) -> Optional[str]:
@@ -300,30 +324,17 @@ def get_device_image_filename(model: str, user_library: Optional[Dict[str, Any]]
 
     Args:
         model: Device model string (case-insensitive matching)
-        user_library: Optional user-defined library to check after built-in
+        user_library: Optional user-defined library
 
     Returns:
         Image filename or None if not found
     """
-    if not model:
+    device = match_device(model, user_library)
+    if device is None:
         return None
 
-    model_lower = model.lower()
-
-    # Check built-in devices (longest match first)
-    for key in sorted(BUILTIN_DEVICES, key=len, reverse=True):
-        if key in model_lower:
-            filename = BUILTIN_DEVICES[key].get("image_filename")
-            return str(filename) if filename else None
-
-    # Check user library
-    if user_library:
-        for key in sorted(user_library, key=len, reverse=True):
-            if key in model_lower:
-                filename = user_library[key].get("image_filename")
-                return str(filename) if filename else None
-
-    return None
+    filename = device.get("image_filename")
+    return str(filename) if filename else None
 
 
 def build_image_map(hardware_images_dir: Path) -> Dict[str, Path]:
