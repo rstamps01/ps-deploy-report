@@ -222,5 +222,56 @@ class TestRackDiagramGeneration(unittest.TestCase):
         self.assertIn(unique_model, unrecognized)
 
 
+class TestHpeTurinCbox(unittest.TestCase):
+    """The HPE Gen6 Turin CBox (DL325 Gen11) ships in the built-in catalog.
+
+    VMS reports these nodes as the literal string ``hpe_turin_cbox``. Before
+    they were catalogued, the bare ``hpe`` vendor fallback claimed them and
+    returned its 2U IceLake height — which drew two 1U boxes at U24 and U25
+    as overlapping 2U boxes with stretched artwork.
+    """
+
+    MODEL = "hpe_turin_cbox"
+
+    def setUp(self):
+        self.rack = RackDiagram(rack_height_u=42, library_path=None)
+
+    def test_is_one_rack_unit(self):
+        self.assertEqual(self.rack._get_device_height_units(self.MODEL), 1)
+
+    def test_does_not_fall_back_to_the_hpe_vendor_image(self):
+        path = self.rack._get_hardware_image_path(self.MODEL)
+        self.assertIsNotNone(path)
+        self.assertEqual(path.name, "hpe_turin_cbox_1u.png")
+
+    def test_artwork_is_present_in_assets(self):
+        from rack_diagram import HARDWARE_IMAGE_DIR
+
+        image = HARDWARE_IMAGE_DIR / "hpe_turin_cbox_1u.png"
+        self.assertTrue(image.exists(), f"missing bundled artwork: {image}")
+
+    def test_artwork_has_a_1u_aspect_ratio(self):
+        """A 2U image in a 1U slot is squashed, so guard the source artwork."""
+        from PIL import Image
+
+        from rack_diagram import HARDWARE_IMAGE_DIR
+
+        width, height = Image.open(HARDWARE_IMAGE_DIR / "hpe_turin_cbox_1u.png").size
+        # A 19" x 1.75" rack unit is 10.86:1; allow generous bezel/crop variance
+        # but stay clearly away from the 5.43:1 that a 2U capture would give.
+        self.assertGreater(width / height, 8.0, "artwork looks taller than 1U")
+
+    def test_adjacent_units_stay_one_apart(self):
+        """U24 and U25 are the real-world case that exposed the 2U defect."""
+        cboxes = [
+            {"id": 1, "model": self.MODEL, "rack_unit": "U25", "state": "ACTIVE"},
+            {"id": 2, "model": self.MODEL, "rack_unit": "U24", "state": "ACTIVE"},
+        ]
+        heights = {self.rack._get_device_height_units(c["model"]) for c in cboxes}
+        self.assertEqual(heights, {1}, "stacked CBoxes would overlap at any height above 1U")
+        drawing, _ = self.rack.generate_rack_diagram(cboxes, [])
+        self.assertIsNotNone(drawing)
+
+
 if __name__ == "__main__":
     unittest.main()
