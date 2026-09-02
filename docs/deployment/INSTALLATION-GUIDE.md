@@ -153,7 +153,8 @@ of the dropdown to refresh.
 #### 2. Install `tsh` if you will use Teleport Mode (optional)
 
 Only needed if you reach the cluster through Teleport. Install the Teleport
-client, then open **Advanced Configuration** > **Teleport Settings**. The pill
+client, then open the **&#9776;** menu in the header, choose **Configuration**,
+and expand **Teleport Settings**. The pill
 beside that heading reads `Install tsh` until the client is found, and
 `tsh Installed` once it is. The same pill appears next to **Teleport Mode** on
 the Reporter page. See [Teleport Mode (Beta)](../TELEPORT-MODE.md) for the full
@@ -293,7 +294,17 @@ need re-entering on each visit.
 
 ### Configuration
 
-Most settings are managed in the web UI via the **Advanced Configuration** page, which also holds **Teleport Settings**. If you run from source, `config.yaml` can be edited directly.
+Most settings are managed in the web UI via the **Advanced Configuration** page,
+which also holds **Teleport Settings**. It is not one of the main navigation
+tabs — open the **&#9776;** menu at the right of the header and choose
+**Configuration**.
+
+The page groups settings into collapsible sections: Report Formatting (open by
+default), API Settings, Logging, Output, SSH, Health Check, Advanced Operations,
+and Security. Edit what you need and click **Save**; **Reset Template** restores
+the shipped defaults.
+
+If you run from source, `config.yaml` can be edited directly.
 
 ### Environment Variables (Optional)
 

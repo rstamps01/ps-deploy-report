@@ -59,3 +59,9 @@ pill. Two consequences worth planning around:
 - A capture showing `LATEST VERSION` should be taken from a current build.
 
 Pick the build to match what the surrounding text describes.
+
+`Adv-Config.png` is the outlier: it came from a `v1.5.0` build and is the only
+capture showing the orange `PRE-RELEASE` badge rather than the green
+`LATEST VERSION` one. It is also a 2x retina capture (2584 x 1900) where the
+rest of the feature set is 1024 wide. Worth re-taking next time that page
+changes.

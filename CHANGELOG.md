@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`docs/development/GITHUB-WORKFLOW.md`** covering the develop-pushes banner, end-to-end Dependabot handling, and the release flow.
 
 ### Changed
+- **Installation Guide now says how to reach Advanced Configuration.** Both places that referenced the page named it without a route to it, and it is not one of the main navigation tabs — it lives behind the header's hamburger menu. The Configuration section also now lists the collapsible sections it contains. The SE one-pager gained a matching showcase tile.
 - **Deployment tool controls consolidated.** The Reporter tile's Update Tools / Tool Status buttons duplicated the global nav dropdown while hitting different endpoints. The per-tool detail (description, cached size, date) moved into the dropdown, and the duplicates plus their dead JavaScript were removed.
 - **CI action versions.** Cleared the Node 20 deprecation warnings. `upload-pages-artifact` and `deploy-pages` were bumped together deliberately: they are a matched pair whose artifact format changed between v4 and v5, and upgrading only one silently publishes an empty Pages site while reporting success.
 - **`main` is exempt from CI `cancel-in-progress`.** A release merge puts one commit on `main`, `develop` and the tag at once, and check-suites attach to the SHA rather than the ref — so a legitimately superseded `develop` run showed as a red X on the released commit's banner.
