@@ -21,7 +21,7 @@ black>=23.0.0
 
 # Static type checking
 mypy>=1.8.0
-types-requests>=2.31.0
+types-requests>=2.33.0.20260712
 types-PyYAML>=6.0.12
 types-paramiko>=3.0.0
 
