@@ -11,6 +11,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-09-02 — Library and built-in devices matched as one namespace
+- **Decision:** `get_device_height` / `get_device_image_filename` / `NetworkDiagramGenerator.load_hardware_image` now merge the built-in catalog and the user Library into a single namespace matched longest-key-first, instead of searching all built-ins before any user entry.
+- **Rationale:** the built-in catalog contains broad vendor fallbacks (`hpe`, `arista`, `broadwell`, `cascadelake`, `sanmina`). Under built-in-first precedence those keys swallowed any user device from the same vendor, which meant adding a device to the Library could not override a vendor default — defeating the Library's purpose. A user's 1U `hpe_turin_cbox` was claimed by the bare `hpe` key and drawn at 2U; because the rack diagram's image lookup already used merged precedence, the result was the correct artwork stretched 1.8x. Verified against all 39 catalog keys: exactly one result changes (the reported device), and vendor fallbacks still apply where nothing more specific matches. **Approver:** user (2026-09-02).
+
+### 2026-09-02 — EBox height short-circuit left unfixed for now (HWL-3)
+- **Decision:** the `ebox`/`enclosure` early return in `get_device_height` stays as-is; recorded as roadmap HWL-3 rather than folded into the precedence fix.
+- **Rationale:** it returns 1U before consulting either catalog, so the built-in `supermicro_milan_ebox` and `smc_milan_ebox` — both declaring 2U — render at 1U, and no Library entry can define a 2U EBox. Correcting it changes the rendered height of every existing Milan EBox cluster, so it needs confirmation of the true rack height first; bundling a second behavioral change into a targeted bug fix would obscure which change moved a diagram. **Approver:** agent proposal, surfaced to user.
+
 ### 2026-08-01 — v1.6.1 merged to `develop` but deliberately not tagged
 - **Decision:** the post-1.6.0 correction batch ([PR #18](https://github.com/rstamps01/ps-deploy-report/pull/18)) merges to `develop` and stops there; no version bump, tag, or release yet.
 - **Rationale:** two of the eleven requested items (Quick Start upgrade steps, Update Tools walkthrough) need screenshots the user is supplying. Tagging now would ship a release whose own documentation is still being rewritten, and would burn a version number to publish it twice. **Approver:** user (2026-08-01).
