@@ -60,6 +60,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "smc_turin_cbox_1u.png",
         "description": "SMC Gen6 Turin CBox",
     },
+    "hpe_turin_cbox": {
+        "type": "cbox",
+        "height_u": 1,
+        "image_filename": "hpe_turin_cbox_1u.png",
+        "description": "HPE Gen6 Turin CBox (DL325 Gen11)",
+    },
     "broadwell": {
         "type": "cbox",
         "height_u": 2,
