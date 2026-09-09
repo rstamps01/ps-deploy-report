@@ -47,7 +47,7 @@ from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
 # Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 __version__ = APP_VERSION
 
 
