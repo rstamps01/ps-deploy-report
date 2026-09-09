@@ -45,7 +45,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 
 # QP-3 (3): auto-shutdown when the operator closes the browser.
 # OPT-IN and OFF by default.  When enabled, the page sends a lightweight

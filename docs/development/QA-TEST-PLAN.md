@@ -61,16 +61,17 @@ Diagram rendering (Cairo/SVG) is the most platform-sensitive area — always exe
 
 ---
 
-## 4. Release-specific functional cases — v1.6.0 delta
+## 4. Release-specific functional cases — v1.6.1 delta
 
-Derived from the changes since the last full release (`git diff v1.5.8..HEAD`). Validate each on at least one OS (all OSes for anything path/OS-sensitive):
+Derived from the changes since `v1.6.0` (`git log v1.6.0..HEAD`). Validate each on at least one OS (all OSes for anything path/OS-sensitive):
 
-- **Teleport `tsh` auto-discovery:** launch a packaged build from Finder/Explorer (not a terminal); the tsh status pill resolves and no "tsh not found on PATH" error appears. In Advanced Config → Teleport Settings, **Run Discovery** validates and persists `teleport.tsh_path`.
-- **Teleport tunnel routing:** under Teleport Mode, Network Config, Support Tools, VMS Log Bundle, and vperfsanity SSH all route through the forwarded local endpoint (no "SSH command timed out"). *(requires a Teleport-reachable cluster)*
-- **vnetmap cross-cluster safety:** two clusters behind the same Tech Port IP do not cross-contaminate topology; a failed vnetmap run degrades gracefully rather than embedding another cluster's data. *(requires cluster)*
-- **Onyx/MLNX-OS auth:** vnetmap and health checks authenticate as `admin` on Onyx switches. *(requires cluster)*
-- **Switch-config backups:** backup filenames are clean (no `^[[?1h` escape-code garbage). *(requires cluster)*
-- **Bundle SUMMARY:** validation bundle `SUMMARY.md` shows the live cluster version (not blank). *(requires cluster)*
+- **HPE Turin CBox at 1U (no Library entry required):** generate a report against a cluster whose CBoxes report `model=hpe_turin_cbox` (or replay `selab-var-202`). Adjacent boxes at U24 and U25 occupy one U each with unstretched artwork. Library page lists the built-in device.
+- **Library outranks vendor fallbacks:** a user-added device whose key contains a broad built-in substring (`hpe_…`, `arista_…`) renders at the Library height, not the vendor fallback. (Covered by `tests/test_hardware_library.py`; confirm on a live Library entry if one exists.)
+- **Update dropdown architecture split:** with an update available, the dropdown lists macOS Apple Silicon, macOS Intel, and Windows as separate links, plus **Exit & Upgrade**. A 1.6.0 client still receives a single `download_url_mac`.
+- **Output Results Expand:** Expand keeps the heading (and Menu) directly under the navbar; Escape collapses. Menu is clickable before backend hydration finishes.
+- **Deployment tools live only in the nav dropdown:** Reporter tile has no Update Tools / Tool Status buttons; dropdown shows per-tool description, size, and date.
+- **In-app Docs tokens:** Installation Guide download names match `VAST-Reporter-v1.6.1-…`; no leftover `v1.5.0` artifact names. Unregistered `.md` links open on GitHub, not 404 in-app.
+- **Advanced Configuration reachable:** ☰ menu → Configuration; Installation Guide and SE one-pager describe that path.
 
 Cluster-dependent cases are validated manually against a lab cluster or a captured fixture; they are not part of CI.
 
@@ -92,22 +93,22 @@ python3 -m pytest tests/test_app.py tests/test_updater.py tests/test_update_rele
 
 ## 6. Update-notification (in-app "UPDATE AVAILABLE" pill) validation
 
-**Requirement:** an existing v1.5.8 install must detect that v1.6.0 has been released and surface the header pill with a working download link.
+**Requirement:** an existing v1.6.0 (and v1.5.8) install must detect that v1.6.1 has been released and surface the header pill with working download links.
 
-**Mechanism (already shipped in v1.5.8):** `src/updater.py` queries the GitHub Releases API for `rstamps01/ps-deploy-report`, `/api/update/status` serves the result, and `base.html` + `app.js` render the `#appStatusPill` / `#appUpdate` dropdown. Config: `updates.enabled: true` (stable channel) in `config/config.yaml.template`.
+**Mechanism (already shipped in v1.5.8):** `src/updater.py` queries the GitHub Releases API for `rstamps01/ps-deploy-report`, `/api/update/status` serves the result, and `base.html` + `app.js` render the `#appStatusPill` / `#appUpdate` dropdown. Config: `updates.enabled: true` (stable channel) in `config/config.yaml.template`. From v1.6.1 the dropdown lists per-architecture macOS links; older clients still read the single `download_url_mac` slot.
 
 ### 6a. Staged dry-run (automated — runs in CI, no network)
-`tests/test_update_release_readiness.py` feeds a realistic GitHub `/releases` payload using the **actual v1.6.0 asset names** and asserts a 1.5.8 client reports `update_available` with populated mac/win download URLs, ignores non-version tags (`pre-1.5.8-cleanup`), and excludes pre-releases on the stable channel. This is the automated proof the pill flips before the real tag exists.
+`tests/test_update_release_readiness.py` feeds a realistic GitHub `/releases` payload using the **actual v1.6.1 asset names** (and the historical v1.6.0 set) and asserts a 1.6.0 client reports `update_available` with populated mac-arm64 / mac-x64 / win download URLs, a 1.5.8 client also sees 1.6.1, ignores non-version tags (`pre-1.5.8-cleanup`), and excludes pre-releases on the stable channel. This is the automated proof the pill flips before the real tag exists.
 
 ### 6b. Live verification (manual — right after the tag is published)
 1. Ensure the GitHub Release for `vX.Y.Z` is **published, non-draft, non-prerelease, marked latest** (`build-release.yml` does this for non-pre tags).
-2. Launch a **real v1.5.8 build** on an internet-connected machine.
-3. Confirm the header pill flips to **UPDATE AVAILABLE**, the dropdown shows "Version X.Y.Z (you have 1.5.8)", the Release-notes link opens the release, and Download offers the OS-matched installer.
+2. Launch a **real v1.6.0 (or v1.5.8) build** on an internet-connected machine.
+3. Confirm the header pill flips to **UPDATE AVAILABLE**, the dropdown shows "Version X.Y.Z (you have 1.6.0)", the Release-notes link opens the release, and Download offers the OS-matched installer. A 1.6.1 client shows three architecture choices; a 1.5.8/1.6.0 client shows the single `mac` slot.
 4. Repeat on Windows (and, if desired, verify the dropdown lists both mac DMGs).
 
 ### 6c. Known caveats (document, don't block)
-- **Offline / air-gapped machines never show the pill** — the check needs outbound HTTPS to `api.github.com` and degrades silently to hidden. This is by design for v1.6.0 (online-only). An offline/manual "newer version" indicator would be a separate feature.
-- **macOS arch ambiguity:** a shipped v1.5.8 client has a single `download_url_mac` slot, so with two mac DMGs (arm64 + x64) it links whichever DMG GitHub returns first (pinned by `test_first_dmg_is_selected_when_two_arches_present`). We cannot patch already-installed clients; users can pick the correct arch from the Release page. *Follow-up (v1.6.0+ clients only): make `extract_download_urls` arch-aware so future updates auto-pick the right mac build.*
+- **Offline / air-gapped machines never show the pill** — the check needs outbound HTTPS to `api.github.com` and degrades silently to hidden. This is by design (online-only). An offline/manual "newer version" indicator would be a separate feature.
+- **macOS arch on already-shipped 1.5.8/1.6.0 clients:** those builds have a single `download_url_mac` slot, so with two mac DMGs they link whichever architecture the resolver puts in that slot. They cannot be patched. From **v1.6.1** the dropdown lists Apple Silicon and Intel separately (`download_url_mac_arm64` / `download_url_mac_x64`).
 
 ---
 
@@ -135,5 +136,5 @@ Release: vX.Y.Z            Date: ____________   Signed off by: ____________
 [ ] Version / CHANGELOG / RELEASE_NOTES consistent
 --- after tag ---
 [ ] GitHub Release published, marked latest, artifacts attached (2x .dmg + .zip)
-[ ] Live update-pill (§6b) verified from a real 1.5.8 build (online)
+[ ] Live update-pill (§6b) verified from a real 1.6.0 build (online)
 ```
