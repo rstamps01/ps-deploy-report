@@ -32,6 +32,7 @@ Routing index of every repo-local skill under `.cursor/skills/`. `AGENTS.md` and
 ## Project manifest
 
 - [`.cursor/pipeline.yml`](../pipeline.yml) — the project capability profile (§30): commands, version locations, coverage floor, release artifacts, doc surfaces, notification channels, tracking files, autonomy budgets. Skills read it so they stay stack-agnostic; keep repo-specific commands there, not hardcoded in skills.
+- **Adapter:** [`scripts/pipeline_manifest.py`](../../scripts/pipeline_manifest.py) resolves the manifest for skills/CI — `get <name>` (one command), `gate` (blocking-gate commands in order), `show`, `validate --strict` (CI-enforced). A non-Python project ships its own `commands:`/`artifacts:` under the same schema and every skill keeps working.
 
 ## Planned (later milestones)
 

@@ -75,7 +75,11 @@ class NetworkDiagramGenerator:
 
     def load_hardware_image(self, hardware_type: str) -> Optional[str]:
         """
-        Load hardware image path using cascade: built-in -> user library -> generic.
+        Load hardware image path, most specific catalog key first, then generic.
+
+        Built-in and user devices form a single namespace so a user-added device
+        outranks a broader built-in vendor fallback (e.g. ``hpe_turin_cbox`` over
+        the bare ``hpe`` key); see hardware_library.match_device.
 
         Args:
             hardware_type: Hardware type identifier
@@ -83,27 +87,25 @@ class NetworkDiagramGenerator:
         Returns:
             Path to image file or None if not found
         """
-        # Build image map from centralized hardware library
-        image_map = {key: device.get("image_filename", "") for key, device in BUILTIN_DEVICES.items()}
+        # Each candidate carries its own directory: built-in artwork ships with
+        # the app, user artwork lives in the writable data dir.
+        candidates: Dict[str, Path] = {
+            key: self.hardware_images_path / device["image_filename"]
+            for key, device in BUILTIN_DEVICES.items()
+            if device.get("image_filename")
+        }
+        if self._user_library and self.user_images_dir:
+            udir = Path(self.user_images_dir)
+            for key, entry in self._user_library.items():
+                fname = entry.get("image_filename")
+                if fname:
+                    candidates[key] = udir / fname
 
         hw_lower = hardware_type.lower()
 
-        for key in sorted(image_map, key=len, reverse=True):
-            if key in hw_lower:
-                image_path = self.hardware_images_path / image_map[key]
-                if image_path.exists():
-                    return str(image_path)
-
-        if self._user_library and self.user_images_dir:
-            udir = Path(self.user_images_dir)
-            for key in sorted(self._user_library, key=len, reverse=True):
-                entry = self._user_library[key]
-                if key in hw_lower:
-                    fname = entry.get("image_filename")
-                    if fname:
-                        img_path = udir / fname
-                        if img_path.exists():
-                            return str(img_path)
+        for key in sorted(candidates, key=len, reverse=True):
+            if key in hw_lower and candidates[key].exists():
+                return str(candidates[key])
 
         generic = self.hardware_images_path / "generic_1u.png"
         if generic.exists():

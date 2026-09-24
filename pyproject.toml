@@ -4,7 +4,10 @@ line-length = 120
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # cov-fail-under=60: raised after Test Coverage Extension Plan; target 75%+ per TSE-9
-addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=60"
+# --timeout=300: global hang backstop (pytest-timeout picks the platform method).
+# No single test should run this long; combined with the tests/conftest.py network
+# guard this keeps the suite hang-proof on any machine (test-reliability policy §21).
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=60 --timeout=300"
 markers = [
     "integration: full pipeline integration tests",
     "ui: browser-based UI tests (require Playwright)",

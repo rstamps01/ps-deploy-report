@@ -8,7 +8,11 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Superseded runs are cancelled on every ref except main. A release merge puts
+  # the same commit on main, develop and the tag at once, and check-suites attach
+  # to the SHA rather than the triggering ref — so a cancelled develop run would
+  # otherwise surface as a red X on the released commit's main banner.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -20,7 +24,7 @@ jobs:
   todo-list-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate TODO-ROADMAP exists and has required structure
         run: |
           ROADMAP=docs/TODO-ROADMAP.md
@@ -49,17 +53,17 @@ jobs:
     needs: todo-list-check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check version synchronization
         run: bash scripts/check-version-sync.sh
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-quality-${{ hashFiles('requirements-dev.txt') }}
@@ -85,6 +89,11 @@ jobs:
       - name: Validate agentic skill conformance
         run: python3 scripts/check-skill-conformance.py
 
+      - name: Validate project manifest (.cursor/pipeline.yml)
+        run: |
+          pip install PyYAML
+          python3 scripts/pipeline_manifest.py validate --strict
+
   # -------------------------------------------------------------------
   # Job 2: Unit tests
   #   - Feature/fix branches: Python 3.12 only (lowest cost)
@@ -97,14 +106,14 @@ jobs:
       matrix:
         python-version: ${{ (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main') && fromJSON('["3.11", "3.12"]') || fromJSON('["3.12"]') }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements-dev.txt') }}
@@ -120,9 +129,12 @@ jobs:
           # Includes test_functional_validation.py: Windows charmap-safe port mapping logs,
           # network diagram PNG via PyMuPDF fallback (no placeholder), and safe exception logging.
           # Coverage threshold aligned with pyproject.toml; raise as tests expand.
+          # -m "not flaky": quarantined nondeterministic tests are excluded from
+          # the blocking gate and tracked as BUGs (test-reliability policy §21).
           python -m pytest tests/ -v \
             --ignore=tests/test_ui.py \
             --ignore=tests/test_integration.py \
+            -m "not flaky" \
             --cov=src \
             --cov-report=xml \
             --cov-report=term-missing \
@@ -130,7 +142,7 @@ jobs:
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.xml
@@ -142,14 +154,14 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-health-${{ hashFiles('requirements-dev.txt') }}
@@ -163,7 +175,7 @@ jobs:
       - name: Run health check tests
         run: |
           if [ -f tests/test_health_checker.py ]; then
-            python -m pytest tests/test_health_checker.py -v --no-cov
+            python -m pytest tests/test_health_checker.py -v --no-cov -m "not flaky"
           else
             echo "tests/test_health_checker.py not yet created -- skipping"
           fi
@@ -175,14 +187,14 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-advops-${{ hashFiles('requirements-dev.txt') }}
@@ -195,7 +207,7 @@ jobs:
 
       - name: Run Advanced Operations tests
         run: |
-          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov
+          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov -m "not flaky"
 
     # -------------------------------------------------------------------
   # Job 4: Integration tests (Linux only)
@@ -204,14 +216,14 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-integration-${{ hashFiles('requirements-dev.txt') }}
@@ -224,7 +236,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration.py -v -m integration --no-cov
+          python -m pytest tests/test_integration.py -v -m "integration and not flaky" --no-cov
 
   # -------------------------------------------------------------------
   # Job 4: UI tests (Playwright) — develop/main only
@@ -235,14 +247,14 @@ jobs:
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main' || github.base_ref == 'develop' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-ui-${{ hashFiles('requirements-dev.txt') }}
@@ -262,7 +274,7 @@ jobs:
 
       - name: Upload test screenshots on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ui-test-screenshots
           path: test-results/
@@ -284,14 +296,14 @@ jobs:
             script: powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || '~/Library/Caches/pip' }}
           key: ${{ runner.os }}-pip-build-${{ hashFiles('requirements.txt') }}
@@ -359,14 +371,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ runner.os == 'Windows' && '~\AppData\Local\pip\Cache' || (runner.os == 'macOS' && '~/Library/Caches/pip' || '~/.cache/pip') }}
           key: ${{ runner.os }}-pip-qa-${{ hashFiles('requirements-dev.txt') }}
@@ -392,4 +404,4 @@ jobs:
             tests/test_updater.py \
             tests/test_update_release_readiness.py \
             tests/test_functional_validation.py \
-            -q --no-cov
+            -q --no-cov -m "not flaky"

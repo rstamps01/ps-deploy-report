@@ -8,7 +8,7 @@
 # stack-agnostic (a Node/Go/Docker project supplies its own commands/artifacts).
 
 schema_version: 1
-adf_version: unreleased        # adopted Agentic Dev Framework core version (§31)
+adf_version: "0.3.0"        # adopted Agentic Dev Framework core version (§31)
 adoption_tier: L3              # L1 gates+release · L2 +PM/tracking/docs · L3 +autonomy/remediation/metrics (§33)
 
 project:

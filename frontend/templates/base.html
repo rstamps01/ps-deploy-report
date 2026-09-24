@@ -31,9 +31,14 @@
                     <div class="app-update-version" id="appUpdateVersion"></div>
                     <a class="app-update-notes" id="appUpdateNotes" href="#" target="_blank" rel="noopener">Release notes</a>
                     <div class="app-update-dl">
-                        <a class="app-update-dl-btn" id="appUpdateMac" href="#" hidden>Download for macOS</a>
-                        <a class="app-update-dl-btn" id="appUpdateWin" href="#" hidden>Download for Windows</a>
+                        <a class="app-update-dl-btn" id="appUpdateMacArm" href="#" hidden>macOS &mdash; Apple Silicon</a>
+                        <a class="app-update-dl-btn" id="appUpdateMacIntel" href="#" hidden>macOS &mdash; Intel</a>
+                        <a class="app-update-dl-btn" id="appUpdateWin" href="#" hidden>Windows</a>
                     </div>
+                    <div class="app-update-note" id="appUpdateNote" hidden>
+                        Quit the app before installing &mdash; the installer cannot replace a copy that is still running.
+                    </div>
+                    <button type="button" class="app-update-exit" id="appUpdateExit" hidden>Exit &amp; Upgrade</button>
                 </div>
             </div>
         </div>

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-08
+
+### Fixed
+- **Library devices drawn at the wrong height, stretching their artwork.** Device lookups match a model by substring, longest key first, but the U-height lookup exhausted the entire built-in catalog before consulting the user Library. The built-in catalog carries broad vendor fallbacks (`hpe`, `arista`, `broadwell`, `cascadelake`, `sanmina`), so a Library entry whose key contained one — for example a 1U `hpe_turin_cbox` — was claimed by the bare `hpe` key and rendered at its 2U HPE IceLake height. The rack diagram's image lookup already used merged precedence and picked the correct 1U artwork, so the diagram drew the right device stretched 1.8x to fill a 2U slot. Built-in and user devices are now matched as one namespace, letting a specific Library key outrank a broader built-in one; the same fix applies to `get_device_image_filename` and the logical network diagram, which were returning the vendor fallback's artwork outright. Vendor fallbacks still apply where nothing more specific matches.
+- **Wrong macOS build offered by the update dropdown.** `extract_download_urls` matched release assets on `.dmg` alone and took whichever GitHub listed first, so an Intel Mac could be handed the Apple Silicon build. Assets are now matched by architecture marker and offered as three explicit choices (macOS Apple Silicon, macOS Intel, Windows), with Chromium's `userAgentData` preselecting the right one. The single `mac` field stays populated for already-shipped 1.5.8/1.6.0 clients, which read only that field and cannot be patched.
+- **Output Results terminal became unusable when expanded.** Expanding applied the fixed-position class to the scrolling pane alone; the heading holding the Menu is a sibling, not a parent, so it stayed in normal flow and the opaque full-viewport pane painted over it, leaving no way back. The class now goes on the wrapping section so heading and pane move together, with Escape as an additional way out.
+- **Output terminal menu was inert during page startup.** Its click handlers were bound at the end of an async initialiser, after several awaited backend fetches. The terminal is a local widget and its controls are now wired immediately.
+- **Dead links in the in-app Docs tab.** Markdown links resolve against the repository, so a target not in the doc registry (for example `docs/TODO-ROADMAP.md`) rendered as an href that 404s in the app. Unregistered `.md` targets now fall back to GitHub.
+- **Stale versions in documentation.** The Docs tab rendered hardcoded versions, so a 1.6.0 build told users to download `VAST-Reporter-v1.5.0-mac.dmg` — an artifact that no longer exists under that name. Documents now use `{{APP_VERSION}}`-style tokens resolved at render time, with tests that fail the build if a literal artifact name or version footer returns. The marketing site's version badge is likewise live on all three pages rather than two of them being frozen.
+
+### Added
+- **HPE Gen6 Turin CBox (DL325 Gen11) in the built-in hardware catalog.** VMS reports these nodes as `hpe_turin_cbox`, which was the one member of the Gen6 Turin family with no catalog entry — Dell and SMC were already covered. Uncatalogued, it fell through to the bare `hpe` vendor fallback and inherited that entry's 2U HPE IceLake height, so a pair of 1U CBoxes at U24 and U25 drew as overlapping 2U boxes with stretched artwork. It now ships at 1U with its own image, so no manual Library entry is needed. An existing user Library entry under the same key continues to take precedence.
+- **Pre-upgrade guidance and Exit & Upgrade.** An installer cannot replace a running copy: on macOS the drag into `/Applications` is refused, on Windows the executable is locked. The update dropdown now states this before you hit it and offers **Exit & Upgrade**, which stops the local server via the existing `/shutdown` endpoint.
+- **`docs/development/GITHUB-WORKFLOW.md`** covering the develop-pushes banner, end-to-end Dependabot handling, and the release flow.
+
+### Changed
+- **Installation Guide now documents the real Reporter workflow.** Post-Installation Setup covers prerequisites (Update Tools, optional `tsh`, VMS rack/switch U-height), connection modes and which IP to enter, Autofill Passwords, Discovery (including non-VMS switches and the top-U convention for 2U devices), the Reporter checklist (`vnetmap` for Port Map and Logical Network Diagram), and viewing results. Advanced Configuration is reached from the header's **☰** menu; the Configuration section lists the collapsible groups it contains. The SE one-pager gained a matching showcase tile.
+- **Quick Start upgrade path starts from the in-app download.** A new first step covers the **UPDATE AVAILABLE** pill and architecture-specific downloads, then Exit, then install. Deployment Tools are documented as a post-install step using the header dropdown.
+- **Deployment tool controls consolidated.** The Reporter tile's Update Tools / Tool Status buttons duplicated the global nav dropdown while hitting different endpoints. The per-tool detail (description, cached size, date) moved into the dropdown, and the duplicates plus their dead JavaScript were removed.
+- **CI action versions.** Cleared the Node 20 deprecation warnings. `upload-pages-artifact` and `deploy-pages` were bumped together deliberately: they are a matched pair whose artifact format changed between v4 and v5, and upgrading only one silently publishes an empty Pages site while reporting success.
+- **`main` is exempt from CI `cancel-in-progress`.** A release merge puts one commit on `main`, `develop` and the tag at once, and check-suites attach to the SHA rather than the ref — so a legitimately superseded `develop` run showed as a red X on the released commit's banner.
+- **Retired `docs/api/EBOX_API_V7_DISCOVERY.md`**, a pre-implementation note describing shipped EBox support as still to be confirmed. `docs/API-REFERENCE.md` covers it authoritatively.
+- **Test reliability (dev/CI).** Added a `tests/conftest.py` network guard (non-loopback socket connects fail fast, mirroring CI) and a global `pytest --timeout=300` backstop so the test suite can never hang on a networked machine; quarantined `@pytest.mark.flaky` tests are excluded from the blocking CI gate. No runtime/product behavior change.
+- **Dependency floors.** `scp`, `flask`, `types-requests`, and `jsonschema` lower bounds raised. ReportLab 5.x (`>=5.0.0`) is held for a dedicated branch — it is a major bump of the PDF engine.
+
+### Security
+- **Escalation email subject hardening.** `src/utils/notifier.py` now collapses CR/LF in the generated email `Subject` line, a defense-in-depth guard against email-header injection when a gate/item identifier contains a newline (pipeline escalation surface; feature is config-gated and disabled by default).
+
+### Known issues
+- Saved cluster profiles store credentials in plaintext in `config/cluster_profiles.json` (roadmap SEC-3).
+- `/validation-results` is reachable outside Developer Mode despite `architecture-03` listing it as gated (roadmap SEC-4).
+
 ## [1.6.0] - 2026-08-01
 
 ### Added

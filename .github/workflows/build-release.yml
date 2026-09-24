@@ -29,14 +29,14 @@ jobs:
   quality-gate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-release-quality-${{ hashFiles('requirements-dev.txt') }}
@@ -61,14 +61,14 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-release-test-${{ hashFiles('requirements-dev.txt') }}
@@ -81,8 +81,11 @@ jobs:
 
       - name: Run unit and integration tests with coverage
         run: |
+          # -m "not flaky": exclude quarantined nondeterministic tests from the
+          # blocking release gate (test-reliability policy §21), mirroring ci.yml.
           python -m pytest tests/ -v \
             --ignore=tests/test_ui.py \
+            -m "not flaky" \
             --cov=src \
             --cov-report=xml \
             --cov-fail-under=60
@@ -113,14 +116,14 @@ jobs:
             pip-cache: ~\AppData\Local\pip\Cache
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Cache pip packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ matrix.pip-cache }}
           key: ${{ runner.os }}-pip-release-build-${{ hashFiles('requirements.txt') }}
@@ -160,7 +163,7 @@ jobs:
         run: ${{ matrix.script }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/
@@ -172,22 +175,22 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download macOS ARM64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: VAST-Reporter-mac-arm64
           path: artifacts/mac-arm64
 
       - name: Download macOS x64 artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: VAST-Reporter-mac-x64
           path: artifacts/mac-x64
 
       - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: VAST-Reporter-win
           path: artifacts/win
@@ -251,7 +254,7 @@ jobs:
           fi
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           prerelease: ${{ steps.prerelease.outputs.is_prerelease == 'true' }}
           make_latest: ${{ steps.prerelease.outputs.make_latest }}

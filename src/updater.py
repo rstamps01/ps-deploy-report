@@ -77,20 +77,41 @@ def _release_is_prerelease(release: Dict[str, Any]) -> bool:
     return "-" in tag
 
 
+_MAC_ARM_MARKERS = ("arm64", "aarch64", "apple-silicon", "applesilicon")
+_MAC_INTEL_MARKERS = ("x64", "x86_64", "x86-64", "amd64", "intel")
+
+
+def _is_mac_asset(lower_name: str) -> bool:
+    return lower_name.endswith(".dmg") or ("mac" in lower_name and lower_name.endswith(".zip"))
+
+
+def _is_win_asset(lower_name: str) -> bool:
+    return ("win" in lower_name and lower_name.endswith(".zip")) or lower_name.endswith(".exe")
+
+
 def extract_download_urls(release: Dict[str, Any]) -> Dict[str, Any]:
     """Pull platform installer download URLs out of a release's assets.
 
-    Recognizes this project's release artifacts (``*-mac.dmg`` / ``*-win.zip``)
-    and reasonable fallbacks so the UI can offer a one-click, OS-matched
-    download without sending the user to GitHub.
+    Releases ship a per-architecture macOS DMG (``*-mac-arm64.dmg`` and
+    ``*-mac-x64.dmg``) plus ``*-win.zip``. The two DMGs are reported separately
+    so the UI can offer the right one; matching on ``.dmg`` alone used to hand
+    an Intel Mac whichever build GitHub happened to list first.
+
+    ``mac`` remains a single best-guess URL for callers that can only surface
+    one macOS link. A universal (architecture-agnostic) DMG wins it when one is
+    published, otherwise Apple Silicon, otherwise Intel.
 
     Returns:
-        ``{"assets": [{"name", "url"}, ...], "mac": <url|None>, "win": <url|None>}``
+        ``{"assets": [{"name", "url"}, ...], "mac": <url|None>,
+        "mac_arm64": <url|None>, "mac_x64": <url|None>, "win": <url|None>}``
     """
     assets_in = release.get("assets") or []
     assets: List[Dict[str, str]] = []
-    mac_url: Optional[str] = None
+    mac_arm64: Optional[str] = None
+    mac_x64: Optional[str] = None
+    mac_universal: Optional[str] = None
     win_url: Optional[str] = None
+
     for asset in assets_in:
         name = str(asset.get("name", ""))
         url = asset.get("browser_download_url")
@@ -98,11 +119,25 @@ def extract_download_urls(release: Dict[str, Any]) -> Dict[str, Any]:
             continue
         assets.append({"name": name, "url": url})
         lower = name.lower()
-        if mac_url is None and (lower.endswith(".dmg") or ("mac" in lower and lower.endswith(".zip"))):
-            mac_url = url
-        if win_url is None and (("win" in lower and lower.endswith(".zip")) or lower.endswith(".exe")):
+
+        if _is_mac_asset(lower):
+            if any(marker in lower for marker in _MAC_ARM_MARKERS):
+                mac_arm64 = mac_arm64 or url
+            elif any(marker in lower for marker in _MAC_INTEL_MARKERS):
+                mac_x64 = mac_x64 or url
+            else:
+                mac_universal = mac_universal or url
+
+        if win_url is None and _is_win_asset(lower):
             win_url = url
-    return {"assets": assets, "mac": mac_url, "win": win_url}
+
+    return {
+        "assets": assets,
+        "mac": mac_universal or mac_arm64 or mac_x64,
+        "mac_arm64": mac_arm64,
+        "mac_x64": mac_x64,
+        "win": win_url,
+    }
 
 
 def select_latest_release(
@@ -154,6 +189,8 @@ def check_for_update(
         "latest_url": None,
         "release_notes_url": None,
         "download_url_mac": None,
+        "download_url_mac_arm64": None,
+        "download_url_mac_x64": None,
         "download_url_win": None,
         "assets": [],
         "channel": "prerelease" if include_prereleases else "stable",
@@ -189,6 +226,8 @@ def check_for_update(
     downloads = extract_download_urls(latest)
     result["assets"] = downloads["assets"]
     result["download_url_mac"] = downloads["mac"]
+    result["download_url_mac_arm64"] = downloads["mac_arm64"]
+    result["download_url_mac_x64"] = downloads["mac_x64"]
     result["download_url_win"] = downloads["win"]
     return result
 

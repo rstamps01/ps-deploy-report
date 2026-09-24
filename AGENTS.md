@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M5 in progress):** foundation + 11 lifecycle skills (M1/M2), the orchestration layer (M3: `project-manager`, `deliver-autonomously`, `remediate-failure` + SMTP/Slack escalation), and tracking/docs consolidation (M4: roadmap restructure + state machine, CHANGELOG/roadmap archives, `PLANS-INDEX`, `PIPELINE-METRICS`, master doc) are complete. **M5 (release hardening)** adds blocking release gates, the `hotfix`/`rollback`/`maintain` skills, and the [`.cursor/pipeline.yml`](.cursor/pipeline.yml) project manifest. All skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md) and CI-validated. Remaining: formally ship `1.6.0`, branch protection on `main`, and ADF extraction (M6). See `.cursor/plans/` for the plan and `docs/PROJECT-STATUS.md` for current state.
+> **Rollout status (M0–M6 complete; v1.6.1 prepared):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0. **v1.6.0 shipped through this pipeline**; **v1.6.1 is prepared** (awaiting tag). Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
 
 ## How this fits together
 
@@ -58,6 +58,7 @@ Only two required human touchpoints: **submission** and **approval**. The agent 
 | Decisions (ADR-lite) | `docs/DECISIONS.md` |
 | Release notes | `docs/releases/RELEASE_NOTES_vX.Y.Z.md` |
 | Repo structure standard | `docs/development/REPO-STRUCTURE.md` |
+| Secrets registry | `docs/development/PIPELINE-SECRETS.md` |
 | Canonical version | `src/app.py` `APP_VERSION` (enforced by `scripts/check-version-sync.sh`) |
 
 ## Non-negotiables

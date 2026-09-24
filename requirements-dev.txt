@@ -6,8 +6,11 @@
 
 # Testing framework
 pytest>=7.4.0
-pytest-cov>=4.1.0
+pytest-cov>=7.1.0
 pytest-mock>=3.11.0
+# Per-test timeout backstop so a hung test can never stall the suite
+# (defense-in-depth alongside the tests/conftest.py network guard, §21).
+pytest-timeout>=2.2.0
 
 # Browser-based UI tests
 pytest-playwright>=0.4.0
@@ -18,7 +21,7 @@ black>=23.0.0
 
 # Static type checking
 mypy>=1.8.0
-types-requests>=2.31.0
+types-requests>=2.33.0.20260712
 types-PyYAML>=6.0.12
 types-paramiko>=3.0.0
 
@@ -27,7 +30,7 @@ bandit>=1.7.0
 pip-audit>=2.6.0
 
 # Pre-commit hooks
-pre-commit>=3.6.0
+pre-commit>=4.6.1
 
 # Packaging
 pyinstaller>=6.0.0

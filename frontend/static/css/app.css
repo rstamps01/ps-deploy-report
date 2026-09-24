@@ -194,6 +194,32 @@ body {
     text-decoration: none;
 }
 .app-update-dl-btn:hover { background: var(--accent-hover); }
+.app-update-note {
+    margin-top: 8px;
+    padding: 6px 8px;
+    border-radius: var(--radius);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #fbbf24;
+    font-size: 0.7rem;
+    line-height: 1.4;
+}
+.app-update-note[hidden] { display: none; }
+.app-update-exit {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    color: var(--text-primary);
+    background: transparent;
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: var(--radius);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.app-update-exit:hover { background: rgba(255, 255, 255, 0.06); }
+.app-update-exit[hidden] { display: none; }
 .nav-links {
     display: flex;
     gap: 0.25rem;
@@ -346,7 +372,7 @@ body {
     position: absolute;
     top: calc(100% + 6px);
     right: 0;
-    min-width: 290px;
+    min-width: 330px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -366,18 +392,26 @@ body {
     border-bottom: 1px solid var(--border);
 }
 .nav-tools-summary { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); }
-.nav-tools-list { max-height: 260px; overflow-y: auto; padding: 4px 0; }
+.nav-tools-list { max-height: 340px; overflow-y: auto; padding: 4px 0; }
 .nav-tools-empty { padding: 0.6rem 0.85rem; font-size: 0.8rem; color: var(--text-muted); }
 .nav-tools-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.nav-tools-row + .nav-tools-row { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.nav-tools-main {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 0.6rem;
-    padding: 0.4rem 0.85rem;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
 }
-.nav-tools-row .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-tools-row .tn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-primary); }
+.nav-tools-desc { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; }
+.nav-tools-meta { font-size: 0.68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .nav-tools-state {
     flex-shrink: 0;
     font-size: 0.66rem;

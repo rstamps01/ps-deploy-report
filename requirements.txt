@@ -20,26 +20,26 @@ pymupdf>=1.24.0
 Pillow>=12.1.1
 
 # SVG diagram generation (rack-centric network topology)
-svgwrite>=1.4.0
+svgwrite>=1.4.3
 cairosvg>=2.7.0
 
 # CLI argument parsing
-click>=8.1.0
+click>=8.4.2
 
 # Logging enhancements
 colorlog>=6.7.0
 
 # Date/time handling
-python-dateutil>=2.8.0
+python-dateutil>=2.9.0.post0
 
 # JSON schema validation
-jsonschema>=4.19.0
+jsonschema>=4.26.0
 
 # Environment variable management
 python-dotenv>=1.0.0
 
 # Web UI (Flask-based GUI)
-flask>=3.0.0
+flask>=3.1.3
 
 # Markdown rendering (in-app documentation viewer)
 markdown>=3.5.0
@@ -49,4 +49,4 @@ paramiko>=3.4.0
 
 # Interactive SSH for Mellanox Onyx switches (macOS/Linux only)
 pexpect>=4.9.0; sys_platform != "win32"
-scp>=0.15.0
+scp>=0.16.1
