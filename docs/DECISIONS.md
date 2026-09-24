@@ -11,6 +11,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-09-08 — v1.6.1 as a patch; ReportLab 5 held
+- **Decision:** ship the post-1.6.0 correction batch as **v1.6.1** (PATCH), not 1.7.0. Merge feature PRs #24/#25/#26 and the four minor Dependabot bumps (#19 scp, #21 flask, #22 types-requests, #23 jsonschema). Leave [PR #20](https://github.com/rstamps01/ps-deploy-report/pull/20) (ReportLab `>=5.0.0`) open.
+- **Rationale:** the batch is corrective (rack-diagram bug, updater architecture split, UI lockouts, stale docs). The Turin catalog entry completes the same defect rather than introducing a new product surface. ReportLab 5 is a major bump of the PDF engine and needs a dedicated regenerated-report visual check. **Approver:** user (2026-09-08).
+
+### 2026-09-02 — Add HPE Turin CBox to the built-in catalog
+- **Decision:** catalog `hpe_turin_cbox` at 1U with the operator-supplied artwork, rather than leaving it a per-user Library entry.
+- **Rationale:** VMS reports the literal model string; Dell and SMC Turin were already built-in; a fresh install would otherwise still hit the `hpe` 2U fallback until every SE added the device by hand. User Library entries under the same key still win. **Approver:** user (2026-09-02).
+
 ### 2026-09-02 — Library and built-in devices matched as one namespace
 - **Decision:** `get_device_height` / `get_device_image_filename` / `NetworkDiagramGenerator.load_hardware_image` now merge the built-in catalog and the user Library into a single namespace matched longest-key-first, instead of searching all built-ins before any user entry.
 - **Rationale:** the built-in catalog contains broad vendor fallbacks (`hpe`, `arista`, `broadwell`, `cascadelake`, `sanmina`). Under built-in-first precedence those keys swallowed any user device from the same vendor, which meant adding a device to the Library could not override a vendor default — defeating the Library's purpose. A user's 1U `hpe_turin_cbox` was claimed by the bare `hpe` key and drawn at 2U; because the rack diagram's image lookup already used merged precedence, the result was the correct artwork stretched 1.8x. Verified against all 39 catalog keys: exactly one result changes (the reported device), and vendor fallbacks still apply where nothing more specific matches. **Approver:** user (2026-09-02).
@@ -62,6 +70,10 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 ---
 
 ## Memlog (newest first)
+
+### 2026-09-08 — v1.6.1 prepare-release
+- Merged to `develop`: #24 (library precedence), #26 (HPE Turin catalog), #25 (Advanced Config docs), #19/#21/#22/#23 (minor dep floors). Held #20 (ReportLab 5).
+- `release/v1.6.1` bumps `APP_VERSION` 1.6.0 → 1.6.1, folds CHANGELOG, adds `docs/releases/RELEASE_NOTES_v1.6.1.md`. Awaiting ship-release approval.
 
 ### 2026-08-01 — planalyzer promoted to L3 + coverage ratchet (pilot complete)
 

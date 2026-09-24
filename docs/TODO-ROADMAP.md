@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-09-02 — **v1.6.0 released**; **v1.6.1 corrections merged to `develop`, awaiting screenshots before tagging** ([PR #18](https://github.com/rstamps01/ps-deploy-report/pull/18)). **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3** after the planalyzer pilot ran to completion ([PR #3](https://github.com/rstamps01/planalyzer/pull/3): L3 + vitest coverage ratchet). See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
+**Last updated:** 2026-09-08 — **v1.6.1 prepared** (version bump + CHANGELOG fold; awaiting `develop`→`main` + tag). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -50,8 +50,9 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | OPS-1 | **Remote access to the reporter app (Windows `netsh portproxy`).** Document/support exposing the local Flask UI to a remote operator via a Windows port-proxy hop, for field machines where the browser runs elsewhere. | Low | Planned (confirm need) | From plan `expose_asbuilt-reporter_remotely_8b7d907f`. Confirm this is still needed before implementing. |
 | SEC-3 | **Cluster profiles store credentials in plaintext.** `config/cluster_profiles.json` holds saved passwords and API tokens unencrypted on disk. | Medium | Deferred (documented) | Surfaced while rewriting `DEPLOYMENT.md` for v1.6.1 and documented there as a caveat. Deferred by decision on 2026-08-01: encrypting it needs a key-storage decision and a migration path for existing profiles, neither of which should ride along in a patch release. |
 | SEC-4 | **`/validation-results` is not behind the Developer Mode guard.** `architecture-03` lists the route as Developer-Mode-only, but it is reachable in a normal session. | Low | Deferred (documented) | Surfaced during the v1.6.1 docs audit. Deferred by decision on 2026-08-01: gating it now would withdraw access someone may be relying on, so confirm nobody depends on it first, then either gate the route or correct `architecture-03`. |
-| HWL-2 | **Library entries could not outrank broad built-in vendor keys.** Height and image lookups searched the built-in catalog to exhaustion before the user Library, so a bare vendor key (`hpe`) claimed a specific user device (`hpe_turin_cbox`) and rendered it at the wrong U-height, stretching its artwork. | High | **Done** (2026-09-02) | Both catalogs are now matched as one namespace, longest key first. Reported from a real report where a 1U HPE Turin CBox drew 1.8x tall. Regression suite in `tests/test_hardware_library.py`. |
+| HWL-2 | **Library entries could not outrank broad built-in vendor keys.** Height and image lookups searched the built-in catalog to exhaustion before the user Library, so a bare vendor key (`hpe`) claimed a specific user device (`hpe_turin_cbox`) and rendered it at the wrong U-height, stretching its artwork. | High | **Done** (shipped v1.6.1) | Both catalogs are now matched as one namespace, longest key first. [PR #24](https://github.com/rstamps01/ps-deploy-report/pull/24). Regression suite in `tests/test_hardware_library.py`. |
 | HWL-3 | **`ebox`/`enclosure` short-circuit overrides declared U-heights.** `get_device_height` returns 1U for any model containing `ebox` before consulting either catalog, so the built-in `supermicro_milan_ebox` and `smc_milan_ebox` (both declared 2U) render at 1U, and no Library entry can set a 2U EBox. | Medium | Planned | Found alongside HWL-2 on 2026-09-02 and deliberately left out of that fix: correcting it changes the rendered height of existing Milan EBox clusters, so it needs confirmation of the true rack height before shipping. |
+| HWL-4 | **HPE Gen6 Turin CBox missing from the built-in catalog.** VMS reports `hpe_turin_cbox`; Dell and SMC Turin were already catalogued. Uncatalogued it fell to the `hpe` 2U fallback. | High | **Done** (shipped v1.6.1) | Added at 1U with bundled artwork. [PR #26](https://github.com/rstamps01/ps-deploy-report/pull/26). |
 
 ---
 
@@ -236,20 +237,19 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 
 ## Next steps (current focus)
 
-> **Execution status (2026-07-31):** **v1.6.0 development is segmented on `develop`** as baseline commit `e48e581` (M0 of the agentic CI/CD pipeline plan) — committed + documented but **not released** (no tag). Focus is now shifting to the CI/CD pipeline build (rules, AGENTS.md, hooks, GitHub scaffolding, lifecycle skills, then release hardening); the `v1.6.0` tag/release will run through the new prepare-release/ship-release path once M5 lands (or sooner if released standalone). Plans are in `.cursor/plans/`.
->
-> **Prior execution status (2026-07-21):** Preparing **v1.6.0**. Added robust Teleport `tsh` auto-discovery (TPM-2): the app resolves `tsh` on PATH and well-known install locations, augments `PATH` at startup, and exposes a Teleport Settings section (path field + Run Discovery + persistence) plus a green/yellow install-status pill on the Reporter tile and in Advanced Configuration. New endpoints `GET /api/teleport/status` and `POST /api/teleport/discover`, new guide `docs/TELEPORT-MODE.md`. Version bumped `1.5.8 → 1.6.0`.
+> **Execution status (2026-09-08):** **v1.6.1 prepared** on `release/v1.6.1` — version strings at `1.6.1`, CHANGELOG folded, release notes written. Awaiting approval to merge to `develop`, then `develop`→`main` and tag `v1.6.1`. ReportLab 5.x held at [PR #20](https://github.com/rstamps01/ps-deploy-report/pull/20).
 
-1. **v1.6.0 released (Done, 2026-08-01):** Shipped via prepare-release/ship-release — tag `v1.6.0`, `build-release.yml` (blocking gates) builds macOS arm64/Intel `.dmg` + Windows `.zip`. QA phase (cross-OS plan, `qa-cross-os` CI, update-pill staged dry-run) complete. M5 hardening (blocking gates, `hotfix`/`rollback`/`maintain`, `.cursor/pipeline.yml`) shipped.
-1a. **v1.6.1 post-1.6.0 corrections (merged to `develop`, unreleased — [PR #18](https://github.com/rstamps01/ps-deploy-report/pull/18)):** CI action bumps clearing the Node 20 deprecation; `ci.yml` exempts `main` from `cancel-in-progress` so a superseded `develop` run can no longer redden a released commit's banner; shared `version-badge.js` across the marketing site; Output Results expand no longer buries its own menu, and the terminal menu binds before init awaits the backend; deployment-tool controls consolidated into the nav dropdown; architecture-aware macOS download links (arm64/Intel were previously decided by GitHub's asset ordering) plus **Exit & Upgrade**; in-app docs now use `{{APP_VERSION}}`-style tokens with guard tests, and unregistered `.md` links fall back to GitHub. **Not tagged** — held pending screenshots for the Quick Start upgrade steps and the Update Tools walkthrough.
-2. **Post-release verification (in progress):** Confirm the `build-release` run is green and artifacts attach; then from a real 1.5.8 build online confirm the **UPDATE AVAILABLE** pill flips to 1.6.0 (QA §6b), and on packaged mac/win builds launched from Finder/Explorer confirm tsh pill state + Run Discovery persistence + Teleport preflight.
-3. **M6 — ADF portability extraction:** Extract the portable core into a new `agentic-dev-framework` repo (manifest-driven adoption). Next milestone.
-4. **Teleport beta exit (TPM-1/TPM-2 follow-up):** Complete live Teleport validation against multiple clusters before removing the Beta flag in a subsequent release.
-5. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
-6. **UI Enhancement Phase (UI-1 through UI-9):** Remaining: Phase 1 foundation restyle (UI-5), enhanced checklist rows (UI-4), Phase 2/3 (UI-8, UI-9).
-7. **Test suite:** TSE-9 (coverage toward 80%).
-8. Before each release: update this file (status, Last updated, move completed items to Done).
-9. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+1. **Ship v1.6.1** (pending approval): merge prepare-release to `develop`, merge `develop`→`main`, tag `v1.6.1`. Confirm `build-release` attaches both mac DMGs + the Windows zip. Then live update-pill check from a real 1.6.0 build (QA §6b).
+2. **v1.6.0 released (Done, 2026-08-01):** tag `v1.6.0`; M5 hardening shipped.
+3. **M6 complete (Done):** ADF v0.3.0; planalyzer L3 pilot complete.
+4. **Teleport beta exit (TPM-1/TPM-2 follow-up):** live Teleport validation against multiple clusters before removing the Beta flag.
+5. **HWL-3:** confirm true rack height of Milan EBoxes before removing the `ebox`/`enclosure` 1U short-circuit.
+6. **SEC-3 / SEC-4:** plaintext profile credentials; ungated `/validation-results`.
+7. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
+8. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items.
+9. **Test suite:** TSE-9 (coverage toward 80%).
+10. Before each release: update this file (status, Last updated, move completed items to Done).
+11. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
 
 ---
 

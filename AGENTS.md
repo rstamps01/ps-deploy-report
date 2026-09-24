@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M0–M6 complete; v1.6.0 shipped):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0 (bootstrap, tiers, adopt-existing pilot on planalyzer, framework-doctor + portfolio). **v1.6.0 was shipped through this pipeline**. Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
+> **Rollout status (M0–M6 complete; v1.6.1 prepared):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0. **v1.6.0 shipped through this pipeline**; **v1.6.1 is prepared** (awaiting tag). Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
 
 ## How this fits together
 

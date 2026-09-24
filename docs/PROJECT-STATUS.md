@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-09-08 — v1.6.1 prepare-release
+
+- **Version strings:** `1.6.1` across all locations (`src/app.py` `APP_VERSION` canonical).
+- **Branch:** `release/v1.6.1` off `origin/develop` (`a32a81b` + this bump). Feature PRs #24/#25/#26 and Dependabot #19/#21/#22/#23 are on `develop`. ReportLab 5 ([#20](https://github.com/rstamps01/ps-deploy-report/pull/20)) held.
+- **Product delta:** library/built-in matching as one namespace; `hpe_turin_cbox` at 1U; architecture-aware update dropdown + Exit & Upgrade; Output Results expand/menu fixes; in-app doc tokens; Reporter workflow docs.
+- **Not yet done:** merge to `main`, tag `v1.6.1`, live update-pill check from a 1.6.0 build.
+
+---
+
 ## 2026-07-31 — Pre-CI/CD-pipeline baseline (M0)
 
 Established a known, documented baseline before starting the agentic CI/CD pipeline build.

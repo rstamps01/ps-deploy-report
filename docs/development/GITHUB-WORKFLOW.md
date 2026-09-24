@@ -154,7 +154,7 @@ Generalised rule: before merging any action or library bump, ask whether the thi
 
 Once `develop` is green and the release content is ready, this is when the `develop → main` merge is correct. Full procedure and the version-location table are in [`.cursor/rules/release-packaging-12.mdc`](../../.cursor/rules/release-packaging-12.mdc) — do not duplicate it, follow it. The shape:
 
-1. Bump the version. `APP_VERSION` in `src/app.py` is canonical (currently `1.6.0`); every other location derives from it and `scripts/check-version-sync.sh` fails CI if they drift.
+1. Bump the version. `APP_VERSION` in `src/app.py` is canonical (currently `1.6.1`); every other location derives from it and `scripts/check-version-sync.sh` fails CI if they drift.
 2. Update `CHANGELOG.md`; add `docs/releases/RELEASE_NOTES_vX.Y.Z.md` if the release warrants notes (the release workflow uses it as the release body, falling back to `CHANGELOG.md`).
 3. Merge `develop → main` and push.
 4. Tag and push the tag:
