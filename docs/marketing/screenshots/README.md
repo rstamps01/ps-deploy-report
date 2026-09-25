@@ -43,7 +43,9 @@ guide assigns step numbers at runtime based on which steps are visible.
 
 `Procedure-NN-*.png` are the annotated captures (green callouts) for the
 **Field Procedure** section of `quick-start-guide.html`. `NN` is the procedure
-step the image belongs to; steps without a capture are text-only by design.
+step the image belongs to. Step 12 reuses the feature image
+`Logical-Network-Diagram.png` rather than a dedicated capture; the remaining
+steps without an image are text-only by design.
 
 | File | Step |
 |---|---|

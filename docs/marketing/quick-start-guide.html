@@ -1049,16 +1049,19 @@ footer a:hover { text-decoration: underline; }
             </div>
         </div>
 
-        <div class="install-step no-image" id="fp-step-12">
+        <div class="install-step reversed" id="fp-step-12">
             <div class="step-content">
                 <div class="step-number-label">Step 12</div>
                 <h3>Review Port Mapping and vnetmap for Mis-Cabling</h3>
                 <p>Check the cabling results in two places:</p>
                 <ul>
-                    <li><strong>As-built PDF</strong> &mdash; the <strong>Port Mapping</strong> section shows which switch port connects to which node, and the <strong>Logical Network Diagram</strong> carries a banner. Green <strong>PASS</strong> means clean; a red <em>"Cabling validation: N mis-cabled switch(es) detected"</em> banner and red dashed outlines mark problem switches.</li>
+                    <li><strong>As-built PDF</strong> &mdash; the <strong>Port Mapping</strong> section shows which switch port connects to which node, and the <strong>Logical Network Diagram</strong> carries a banner at the top. <em>"Cabling validation: PASS"</em> in green means clean; a red <em>"Cabling validation: N mis-cabled connections detected"</em> banner and red dashed outlines mark problem switches.</li>
                     <li><strong>vnetmap output</strong> &mdash; in the bundle or on Results &rarr; <strong>vnetmap</strong>. A clean run reports <em>"No cross-connections detected. All cabling is correct."</em>; otherwise it lists each cross-connection.</li>
                 </ul>
                 <div class="tip">Fix any mis-cabling with the installer, then rerun vnetmap and the as-built report so the posted results reflect the final cabling.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Logical-Network-Diagram.png" alt="Step 12 — Logical Network Topology page from the as-built PDF, with the red banner reporting 2 mis-cabled connections">
             </div>
         </div>
 
