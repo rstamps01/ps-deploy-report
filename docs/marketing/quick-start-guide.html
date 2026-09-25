@@ -364,8 +364,134 @@ footer a:hover { text-decoration: underline; }
     max-width: 600px;
 }
 
+/* ---- Field Procedure ---- */
+.field-procedure { padding: 3rem 0 4rem; border-top: 1px solid var(--border); }
+.jump-link { display: inline-block; margin-top: 1rem; font-size: 0.85rem; font-weight: 600; color: var(--cyan); text-decoration: none; }
+.jump-link:hover { text-decoration: underline; }
+.field-procedure a { color: var(--accent); }
+.field-procedure code {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--cyan);
+}
+.fp-meta { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+.fp-meta span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 12px;
+    border-radius: 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+}
+
+.checklist-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem 2rem;
+    margin-bottom: 3.5rem;
+}
+.checklist-card h3 { font-size: 1.1rem; margin-bottom: 0.25rem; }
+.checklist-card > p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; }
+.checklist-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem 2.5rem; }
+.checklist-group h4 {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin-bottom: 0.5rem;
+}
+.checklist-group ol { list-style: none; }
+.checklist-group li { font-size: 0.88rem; line-height: 1.5; margin-bottom: 0.4rem; }
+.checklist-group label { display: flex; gap: 0.6rem; align-items: flex-start; cursor: pointer; color: var(--text-secondary); }
+.checklist-group input { margin-top: 0.3rem; accent-color: var(--accent); }
+.checklist-group input:checked + span { color: var(--text-muted); text-decoration: line-through; }
+.checklist-group a { color: var(--text-primary); text-decoration: none; }
+.checklist-group a:hover { color: var(--accent); }
+
+.phase-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin: 0 0 2rem;
+}
+.phase-heading::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+.install-step.no-image { grid-template-columns: 1fr; }
+.install-step { scroll-margin-top: 4rem; }
+.step-content ul, .step-content ol { margin: 0 0 0.75rem 1.1rem; font-size: 0.9rem; color: var(--text-secondary); line-height: 1.7; }
+.step-content .tip.warn { color: var(--text-secondary); border-left-color: var(--warning); }
+.step-content .tip.warn strong:first-child { color: var(--warning); }
+
+.fp-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin: 0.5rem 0 1rem; }
+.fp-table th {
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+}
+.fp-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--border-light); color: var(--text-secondary); vertical-align: top; }
+.fp-table td:first-child { color: var(--text-primary); font-weight: 600; white-space: nowrap; }
+
+.copy-block { position: relative; margin: 0.5rem 0 1rem; }
+.copy-block pre {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    line-height: 1.6;
+    color: var(--text-primary);
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    white-space: pre-wrap;
+}
+.copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    font-family: inherit;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+.copy-btn:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.fp-reference { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+.fp-ref-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+}
+.fp-ref-card.wide { grid-column: 1 / -1; }
+.fp-ref-card h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+.fp-ref-card p, .fp-ref-card li { font-size: 0.86rem; color: var(--text-secondary); line-height: 1.6; }
+.fp-ref-card ul { margin: 0 0 0.5rem 1.1rem; }
+.fp-ref-card p + p { margin-top: 0.5rem; }
+
 /* ---- Responsive ---- */
 @media (max-width: 768px) {
+    .checklist-groups, .fp-reference { grid-template-columns: 1fr; }
+    .fp-table td:first-child { white-space: normal; }
     .install-step { grid-template-columns: 1fr; }
     .install-step.reversed { direction: ltr; }
     .tab-btn { padding: 0.7rem 1.25rem; font-size: 0.82rem; }
@@ -390,13 +516,14 @@ footer a:hover { text-decoration: underline; }
         <span class="brand-version" data-app-version>v1.6.1</span>
     </div>
     <h1>Quick Start Guide</h1>
-    <p>Download, install, and launch the application on macOS or Windows in minutes.</p>
+    <p>Download, install, and launch the application on macOS or Windows in minutes &mdash; then follow the field procedure to run, collect, and post results for every deployment.</p>
+    <a href="#field-procedure" class="jump-link">Jump to the Field Procedure &darr;</a>
 </header>
 
 <!-- ================================================================ -->
 <!-- Platform Tabs                                                     -->
 <!-- ================================================================ -->
-<nav class="tab-bar" role="tablist">
+<nav class="tab-bar" role="tablist" id="install">
     <button class="tab-btn active" role="tab" aria-selected="true" data-tab="mac">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke="none" fill="currentColor" opacity="0"/><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83"/><path d="M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/></svg>
         macOS
@@ -621,7 +748,7 @@ footer a:hover { text-decoration: underline; }
 <!-- ================================================================ -->
 <!-- After Installation — Deployment Tools                             -->
 <!-- ================================================================ -->
-<section class="post-install">
+<section class="post-install" id="deployment-tools">
     <div class="container">
         <div class="guide-intro">
             <h2>After Installation: Deployment Tools</h2>
@@ -640,6 +767,317 @@ footer a:hover { text-decoration: underline; }
             </div>
             <div class="step-image">
                 <img src="screenshots/Update-Tools.png" alt="The Update Tools dropdown listing each deployment tool with its description, size, last-updated date and age badge">
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Field Procedure — Report & Post-Deployment Test Suite             -->
+<!-- ================================================================ -->
+<section class="field-procedure" id="field-procedure">
+    <div class="container">
+        <div class="guide-intro">
+            <h2>Field Procedure: As-Built Report &amp; Post-Deployment Test Suite</h2>
+            <p>Expected of every PSE and SE on every deployment: run the as-built report and the full Test Suite, confirm the results, and post them to the customer's SFDC account and internal Slack channel.</p>
+            <div class="fp-meta">
+                <span>13 steps</span>
+                <span>Budget 60&ndash;90 min on site</span>
+                <span>Steps 1&ndash;3 need internet</span>
+            </div>
+        </div>
+
+        <!-- Condensed checklist -->
+        <div class="checklist-card">
+            <h3>Checklist</h3>
+            <p>Already know the tool? Run from this list. Each item links to its full step below. Ticks are not saved.</p>
+            <div class="checklist-groups">
+                <div class="checklist-group">
+                    <h4>Before you go &mdash; needs internet</h4>
+                    <ol>
+                        <li><label><input type="checkbox"><span>1. <a href="#fp-step-1">Install or update to the current release</a></span></label></li>
+                        <li><label><input type="checkbox"><span>2. <a href="#fp-step-2">Launch the app (<code>localhost:5173</code>)</a></span></label></li>
+                        <li><label><input type="checkbox"><span>3. <a href="#fp-step-3">Run Update Tools &mdash; 4/4 cached</a></span></label></li>
+                    </ol>
+                </div>
+                <div class="checklist-group">
+                    <h4>On site &mdash; connect and run</h4>
+                    <ol>
+                        <li><label><input type="checkbox"><span>4. <a href="#fp-step-4">Open the Reporter page</a></span></label></li>
+                        <li><label><input type="checkbox"><span>5. <a href="#fp-step-5">Connect via Tech Port, VMS, or Teleport</a></span></label></li>
+                        <li><label><input type="checkbox"><span>6. <a href="#fp-step-6">Select or create the cluster profile, then Save</a></span></label></li>
+                        <li><label><input type="checkbox"><span>7. <a href="#fp-step-7">Run Discovery and set switch U-heights</a></span></label></li>
+                        <li><label><input type="checkbox"><span>8. <a href="#fp-step-8">Switch to the Test Suite tab</a></span></label></li>
+                        <li><label><input type="checkbox"><span>9. <a href="#fp-step-9">Select all operations and click Run</a></span></label></li>
+                    </ol>
+                </div>
+                <div class="checklist-group">
+                    <h4>After the run &mdash; collect and review</h4>
+                    <ol>
+                        <li><label><input type="checkbox"><span>10. <a href="#fp-step-10">Download the bundle from Results &rarr; Bundles</a></span></label></li>
+                        <li><label><input type="checkbox"><span>11. <a href="#fp-step-11">Confirm every category is OK in <code>SUMMARY.md</code></a></span></label></li>
+                        <li><label><input type="checkbox"><span>12. <a href="#fp-step-12">Review port mapping and vnetmap for mis-cabling</a></span></label></li>
+                    </ol>
+                </div>
+                <div class="checklist-group">
+                    <h4>Post results</h4>
+                    <ol>
+                        <li><label><input type="checkbox"><span>13. <a href="#fp-step-13">Attach PDF, JSON, and bundle to SFDC and Slack</a></span></label></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <!-- ---------------- Before you go ---------------- -->
+        <div class="phase-heading">Before you go &mdash; needs internet</div>
+
+        <div class="install-step no-image" id="fp-step-1">
+            <div class="step-content">
+                <div class="step-number-label">Step 1</div>
+                <h3>Download and Install the Current Release</h3>
+                <p>Install the latest release &mdash; <strong>macOS</strong> <code>.dmg</code> or <strong>Windows</strong> <code>.zip</code> &mdash; from <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest">GitHub Releases</a>. The <a href="#install">installation steps above</a> walk through Gatekeeper and SmartScreen.</p>
+                <p>Already installed? Check the version pill in the app header. <strong>UPDATE AVAILABLE</strong> means follow the <em>Upgrade from Earlier Version</em> path above; <strong>LATEST VERSION</strong> means you are current.</p>
+                <div class="tip">Customer sites often block GitHub, so the pill may not appear there. Update before you travel.</div>
+            </div>
+        </div>
+
+        <div class="install-step no-image" id="fp-step-2">
+            <div class="step-content">
+                <div class="step-number-label">Step 2</div>
+                <h3>Launch the App and Open the Local UI</h3>
+                <p>Open <strong>VAST Reporter</strong>. Your browser opens the UI at <code>localhost:5173</code> automatically. Everything runs on your laptop &mdash; nothing is hosted remotely.</p>
+                <div class="tip">If port 5173 is already in use, the app picks the next free port (5174&ndash;5180). Use whatever address the browser opened.</div>
+                <div class="tip">To stop the app, click <strong>Exit</strong> in the header. Closing the browser tab leaves the local server running.</div>
+            </div>
+        </div>
+
+        <div class="install-step" id="fp-step-3">
+            <div class="step-content">
+                <div class="step-number-label">Step 3</div>
+                <h3>Run Update Tools</h3>
+                <p>Click <strong>Update Tools</strong> in the top-right of the header, then click the <strong>Update Tools</strong> button at the bottom of the dropdown. This fetches the latest <code>vnetmap.py</code>, <code>mlnx_switch_api.py</code>, <code>vast_support_tools.py</code>, and <code>vperfsanity</code> package.</p>
+                <p>You are ready when the dropdown heading reads <strong>4/4 cached</strong>. Age badges such as <strong>13D OLD</strong> are a prompt to refresh, not an error.</p>
+                <div class="tip warn"><strong>Needs internet.</strong> The tools download from VAST's public storage. On an air-gapped or restricted customer network, run this before you arrive &mdash; the Test Suite uses the cached copies. See <a href="#deployment-tools">Deployment Tools</a> above for details.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Procedure-03-Update-Tools.png" alt="Step 3 — Update Tools dropdown in the header listing the four deployment tools, with the Update Tools button highlighted">
+            </div>
+        </div>
+
+        <!-- ---------------- On site ---------------- -->
+        <div class="phase-heading">On site &mdash; connect and run</div>
+
+        <div class="install-step no-image" id="fp-step-4">
+            <div class="step-content">
+                <div class="step-number-label">Step 4</div>
+                <h3>Open the Reporter Page</h3>
+                <p>Click <strong>Reporter</strong> in the header to open <strong>Reporter &amp; One-Shot Test Suite</strong>. Every remaining on-site step happens on this page: <strong>Connection Settings</strong> at the top, and the <strong>Reporter / Test Suite</strong> tabs with the <strong>Select Operation</strong> tile below.</p>
+                <div class="tip">Before connecting, confirm the VMS prerequisites for Step 7 with the installer: racks created, U-heights assigned, and switches added in VMS.</div>
+            </div>
+        </div>
+
+        <div class="install-step no-image" id="fp-step-5">
+            <div class="step-content">
+                <div class="step-number-label">Step 5</div>
+                <h3>Connect Your Laptop to the Cluster</h3>
+                <p>Pick the connection mode that matches how your laptop reaches the cluster. You select the mode in Step 6.</p>
+                <table class="fp-table">
+                    <thead><tr><th>Mode</th><th>IP to enter</th><th>Use when</th></tr></thead>
+                    <tbody>
+                        <tr><td>Tech Port</td><td><code>192.168.2.2</code></td><td>Your laptop is cabled directly to a CNode tech port.</td></tr>
+                        <tr><td>VMS Mgmt</td><td>VMS management VIP</td><td>Your laptop is on the customer management network or VPN.</td></tr>
+                        <tr><td>Teleport (Beta)</td><td>VMS management VIP (not <code>127.0.0.1</code>)</td><td>Remote access. Requires the <code>tsh</code> client (the pill reads <strong>tsh Installed</strong>) and an active <code>tsh login</code> session. Also fill in the Teleport Node and User fields that appear.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="install-step reversed" id="fp-step-6">
+            <div class="step-content">
+                <div class="step-number-label">Step 6</div>
+                <h3>Select or Create a Cluster Profile</h3>
+                <p>Choose the cluster under <strong>Saved Profiles</strong>, or click <strong>&oplus;</strong> to create a new one. Then:</p>
+                <ol>
+                    <li>Enter the <strong>Tech Port IP / VMS VIP</strong> from Step 5.</li>
+                    <li>Check the credentials. Usernames default to <code>support</code> (VMS), <code>vastdata</code> (node), and <code>cumulus</code> (switch).</li>
+                    <li>Leave <strong>Autofill Passwords</strong> on to use the standard factory defaults. If the customer has changed any password, turn it off and type the passwords in.</li>
+                    <li>Select the connection mode &mdash; <strong>Tech Port</strong>, <strong>VMS Mgmt</strong>, or <strong>Teleport</strong>.</li>
+                    <li>Click <strong>Save</strong>.</li>
+                </ol>
+                <div class="tip">You can create the profile before arriving on site to save time.</div>
+                <div class="tip">Saved profiles store passwords in plain text on your laptop. See <a href="#fp-data-handling">Handling customer data</a>.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Procedure-06-Cluster-Profile.png" alt="Step 6 — Connection Settings with the Tech Port IP / VMS VIP field, VMS Mgmt Mode, and Save button highlighted">
+            </div>
+        </div>
+
+        <div class="install-step" id="fp-step-7">
+            <div class="step-content">
+                <div class="step-number-label">Step 7</div>
+                <h3>Run Discovery and Assign Switch U-Heights</h3>
+                <p>This places switches in the rack diagram so it matches the physical install.</p>
+                <ol>
+                    <li>Click <strong>Discovery</strong> in the step bar at the bottom of the Select Operation tile to open the <strong>Switch Placement Editor</strong>.</li>
+                    <li>Click <strong>Run Discovery</strong>. The editor reports how many racks and switches it found.</li>
+                    <li>For each row, confirm the <strong>Rack</strong> and <strong>Switch</strong>, and set the <strong>Height</strong> (U position).</li>
+                    <li>Click <strong>+ Switch</strong> to add any switch VMS doesn't know about, such as customer-managed switches.</li>
+                    <li>Click <strong>Save to Profile</strong>. The tile then shows the rack and switch counts, for example <strong>1 Racks &middot; 2 Switches Placed</strong>.</li>
+                </ol>
+                <div class="tip warn"><strong>Prerequisites in VMS.</strong> The rack must exist with a U-height assigned to every CBox, DBox, and EBox, and the switches must be added to VMS. Unplaced chassis can't be drawn, so the rack diagram will be empty or partial no matter what you set here.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Procedure-07-Discovery.png" alt="Step 7 — Switch Placement Editor: Discovery in the step bar, then Run Discovery, with rack, switch, and height selection">
+            </div>
+        </div>
+
+        <div class="install-step reversed" id="fp-step-8">
+            <div class="step-content">
+                <div class="step-number-label">Step 8</div>
+                <h3>Select the Test Suite Tab</h3>
+                <p>Click <strong>Test Suite</strong> in the <strong>Reporter / Test Suite</strong> toggle above the Select Operation tile. The tile switches from the report-only options to the full list of post-deployment operations, described in Step 9.</p>
+                <div class="tip">The rack and switch counts from Step 7 carry over to this tab, so there's no need to run Discovery again.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Procedure-08-Test-Suite.png" alt="Step 8 — Test Suite tab selected, showing every operation checked and the Run button">
+            </div>
+        </div>
+
+        <div class="install-step no-image" id="fp-step-9">
+            <div class="step-content">
+                <div class="step-number-label">Step 9</div>
+                <h3>Select All Operations and Click Run</h3>
+                <p>Check every operation, including <strong>Include Health Checks (Tier 1 &amp; 3)</strong>:</p>
+                <table class="fp-table">
+                    <thead><tr><th>Operation</th><th>What it does</th><th>Time / impact</th></tr></thead>
+                    <tbody>
+                        <tr><td>Re-Validation</td><td>Pre-flight check of credentials, VMS access, rack and switch config, and SSH access.</td><td>Seconds</td></tr>
+                        <tr><td>VAST vnetmap</td><td>LLDP topology validation to catch mis-cabling.</td><td>Minutes; read-only</td></tr>
+                        <tr><td>VAST Support Tools</td><td>Runs <code>vast_support_tools</code> diagnostics and downloads the archive.</td><td>Several minutes</td></tr>
+                        <tr><td>VAST vperfsanity</td><td>Creates test views, runs write/read performance tests, uploads results to VAST, and cleans up.</td><td><strong>30+ min; real I/O load</strong></td></tr>
+                        <tr><td>VMS Log Bundle</td><td>Creates and downloads a VMS log archive.</td><td>Depends on log size</td></tr>
+                        <tr><td>Switch Extraction</td><td>Saves the running config of each discovered switch.</td><td>Minutes; read-only</td></tr>
+                        <tr><td>Network Extraction</td><td>Collects node network config, interfaces, routes, and bonds.</td><td>Minutes; read-only</td></tr>
+                        <tr><td>Generate As-Built Report</td><td>Builds the PDF and JSON. <strong>Include Health Checks</strong> adds the Tier 1 &amp; 3 checks.</td><td>A few minutes</td></tr>
+                    </tbody>
+                </table>
+                <p>Confirm the vperfsanity <strong>VIP Pool</strong> name (default <code>main</code>), then click <strong>Run</strong>.</p>
+                <p>Progress streams to the <strong>Output Results</strong> pane. Re-Validation runs first; if it reports a problem, fix it and click Run again. Use <strong>Cancel</strong> to stop a run.</p>
+                <div class="tip warn"><strong>vperfsanity puts real load on the cluster.</strong> Run it before customer data or workloads land, or get the customer's OK first.</div>
+                <div class="tip">A full run commonly takes an hour or more. Keep the laptop awake, plugged in, and connected until it finishes.</div>
+            </div>
+        </div>
+
+        <!-- ---------------- After the run ---------------- -->
+        <div class="phase-heading">After the run &mdash; collect and review</div>
+
+        <div class="install-step" id="fp-step-10">
+            <div class="step-content">
+                <div class="step-number-label">Step 10</div>
+                <h3>Download the Results Bundle</h3>
+                <p>Click <strong>Results</strong> in the header, open the <strong>Bundles</strong> tab, and find the newest <code>validation_bundle_&lt;cluster&gt;_&lt;YYYYMMDD_HHMMSS&gt;.zip</code> for your cluster (newest at the top). Click the download icon under <strong>Actions</strong>.</p>
+                <p>The bundle contains every Test Suite output, plus the as-built PDF and JSON under <code>reports/</code>.</p>
+                <div class="tip">Use <strong>Cluster Filter</strong> to narrow the list when your laptop holds results from several clusters.</div>
+            </div>
+            <div class="step-image">
+                <img src="screenshots/Procedure-10-Results-Bundles.png" alt="Step 10 — Validation Results page with the Bundles tab open and the newest validation bundle highlighted">
+            </div>
+        </div>
+
+        <div class="install-step no-image" id="fp-step-11">
+            <div class="step-content">
+                <div class="step-number-label">Step 11</div>
+                <h3>Confirm All Tests Completed</h3>
+                <p>Unzip the bundle and open <code>SUMMARY.md</code>. Under <strong>Category Status</strong>, every category should read <strong>OK</strong>. (<code>manifest.json</code> holds the same status in machine-readable form.)</p>
+                <table class="fp-table">
+                    <thead><tr><th>Status</th><th>Meaning</th><th>What to do</th></tr></thead>
+                    <tbody>
+                        <tr><td>OK</td><td>Output collected from this run.</td><td>Nothing.</td></tr>
+                        <tr><td>SKIPPED</td><td>The operation wasn't selected.</td><td>Rerun it &mdash; this procedure expects every operation.</td></tr>
+                        <tr><td>FAILED</td><td>The operation ran but produced no output.</td><td>Check the Output Results pane, fix the cause, and rerun that operation.</td></tr>
+                        <tr><td>STALE</td><td>Only a file from before this run was found. It is excluded, or included as <code>PRIOR</code> with a banner.</td><td>Rerun that operation.</td></tr>
+                        <tr><td>MISSING</td><td>No output file was found.</td><td>Rerun that operation.</td></tr>
+                    </tbody>
+                </table>
+                <div class="tip">If you rerun an operation, post the new bundle alongside the first one, and note any category that still isn't OK in your Slack post (Step 13).</div>
+            </div>
+        </div>
+
+        <div class="install-step no-image" id="fp-step-12">
+            <div class="step-content">
+                <div class="step-number-label">Step 12</div>
+                <h3>Review Port Mapping and vnetmap for Mis-Cabling</h3>
+                <p>Check the cabling results in two places:</p>
+                <ul>
+                    <li><strong>As-built PDF</strong> &mdash; the <strong>Port Mapping</strong> section shows which switch port connects to which node, and the <strong>Logical Network Diagram</strong> carries a banner. Green <strong>PASS</strong> means clean; a red <em>"Cabling validation: N mis-cabled switch(es) detected"</em> banner and red dashed outlines mark problem switches.</li>
+                    <li><strong>vnetmap output</strong> &mdash; in the bundle or on Results &rarr; <strong>vnetmap</strong>. A clean run reports <em>"No cross-connections detected. All cabling is correct."</em>; otherwise it lists each cross-connection.</li>
+                </ul>
+                <div class="tip">Fix any mis-cabling with the installer, then rerun vnetmap and the as-built report so the posted results reflect the final cabling.</div>
+            </div>
+        </div>
+
+        <!-- ---------------- Post results ---------------- -->
+        <div class="phase-heading">Post results</div>
+
+        <div class="install-step no-image" id="fp-step-13">
+            <div class="step-content">
+                <div class="step-number-label">Step 13</div>
+                <h3>Attach Results to SFDC and Slack</h3>
+                <p>Attach these three files in both places:</p>
+                <ul>
+                    <li>The as-built report <strong>PDF</strong></li>
+                    <li>The as-built report <strong>JSON</strong></li>
+                    <li>The <strong>results bundle</strong> <code>.zip</code> from Step 10</li>
+                </ul>
+                <p><strong>SFDC:</strong> the customer account &rarr; <strong>Notes &amp; Attachments</strong>.<br>
+                <strong>Slack:</strong> a thread in <code>#internal-&lt;customer-name&gt;</code>. You can copy this template:</p>
+                <div class="copy-block">
+                    <button type="button" class="copy-btn">Copy</button>
+<pre>As-Built Report + Post-Deployment Test Suite results: &lt;cluster name&gt; (&lt;PSNT&gt;)
+- Reporter version: v&lt;x.y.z&gt;
+- Run date: &lt;YYYY-MM-DD&gt;
+- Test Suite: all categories OK  |  Exceptions: &lt;category, status, reason&gt;
+- Cabling: no mis-cabling found  |  Issues: &lt;switch/port, remediation&gt;
+- Also attached to the SFDC account under Notes &amp; Attachments
+Files: &lt;report&gt;.pdf, &lt;report&gt;.json, validation_bundle_&lt;cluster&gt;_&lt;timestamp&gt;.zip</pre>
+                </div>
+                <div class="tip">The bundle already contains the PDF and JSON. Attach them separately anyway so they open without unzipping.</div>
+            </div>
+        </div>
+
+        <!-- ---------------- Reference ---------------- -->
+        <div class="phase-heading">Reference</div>
+
+        <div class="fp-reference">
+            <div class="fp-ref-card">
+                <h3>Where your files are</h3>
+                <p>Results are saved next to the app, in the <code>clusters/</code>, <code>reports/</code>, and <code>output/</code> folders. The <strong>Results</strong> page is the easiest way to find and download them.</p>
+                <ul>
+                    <li><strong>macOS:</strong> the folder containing <code>VAST Reporter.app</code> &mdash; usually <code>/Applications</code>.</li>
+                    <li><strong>Windows:</strong> the folder you extracted the ZIP into.</li>
+                </ul>
+                <p><strong>Windows upgrades:</strong> copy those folders and <code>config/</code> out before replacing the extracted folder, or your results and profiles go with it.</p>
+            </div>
+            <div class="fp-ref-card" id="fp-data-handling">
+                <h3>Handling customer data</h3>
+                <ul>
+                    <li>Reports and bundles contain customer configuration &mdash; IPs, hostnames, and switch configs. Share them only in internal channels and on the customer's SFDC account.</li>
+                    <li>Saved profiles keep passwords in plain text in <code>config/cluster_profiles.json</code> on your laptop. Don't share that folder, and delete profiles you no longer need.</li>
+                </ul>
+            </div>
+            <div class="fp-ref-card wide">
+                <h3>Troubleshooting</h3>
+                <table class="fp-table">
+                    <thead><tr><th>Symptom</th><th>Likely cause and fix</th></tr></thead>
+                    <tbody>
+                        <tr><td>"Unable to reach &lt;ip&gt;&hellip; timed out"</td><td>Wrong IP for the selected mode, or no link. Check the cable or VPN, and that the mode matches the IP (Step 5).</td></tr>
+                        <tr><td>"Authentication failed"</td><td>The customer changed a default password. Turn off <strong>Autofill Passwords</strong> and enter the real credentials (Step 6).</td></tr>
+                        <tr><td>Empty rack diagram / "No switches were discovered"</td><td>VMS prerequisites missing. Assign rack U-heights and add switches in VMS, or add switches with <strong>+ Switch</strong> (Step 7).</td></tr>
+                        <tr><td>Update Tools fails</td><td>No internet access. Previously cached tools still work; update again from a connected network (Step 3).</td></tr>
+                        <tr><td>A category isn't OK in <code>SUMMARY.md</code></td><td>See the status table in Step 11. Scroll back through the Output Results pane for the operation's error.</td></tr>
+                        <tr><td>Browser doesn't open, or the page won't load</td><td>Check the address the app opened (5173&ndash;5180). Click <strong>Exit</strong>, or quit the app, and relaunch.</td></tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -751,6 +1189,19 @@ footer a:hover { text-decoration: underline; }
         lb.classList.remove('open');
         document.body.style.overflow = '';
     }
+
+    /* ---- Copy-to-clipboard for the Slack template ---- */
+    document.querySelectorAll('.copy-block').forEach(function (block) {
+        var btn = block.querySelector('.copy-btn');
+        var pre = block.querySelector('pre');
+        btn.addEventListener('click', function () {
+            if (!navigator.clipboard) return;
+            navigator.clipboard.writeText(pre.textContent).then(function () {
+                btn.textContent = 'Copied';
+                setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+            });
+        });
+    });
 })();
 </script>
 <script src="version-badge.js" defer></script>
