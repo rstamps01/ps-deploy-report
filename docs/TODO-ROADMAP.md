@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-09-08 — **v1.6.1 prepared** (version bump + CHANGELOG fold; awaiting `develop`→`main` + tag). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
+**Last updated:** 2026-09-24 — **v1.6.1 released**; Field Procedure added to the Quick Start Guide (DOC-16, in review). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
