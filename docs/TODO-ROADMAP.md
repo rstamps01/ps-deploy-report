@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-09-24 — **v1.6.1 released**; Field Procedure added to the Quick Start Guide (DOC-16, in review). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
+**Last updated:** 2026-09-25 — **v1.6.1 shipped** (tag on `7095ccb`; arm64 + x64 DMGs and Windows zip attached). Field Procedure merged (DOC-16, [PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)). Field-feedback triage accepted: 12 items (HCF/SW/INV/DRV/DIAG) planned for v1.6.2 and v1.7.0. Project plan archive added at [`plans/`](plans/README.md) (audit pending, PLN-1). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -53,6 +53,30 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | HWL-2 | **Library entries could not outrank broad built-in vendor keys.** Height and image lookups searched the built-in catalog to exhaustion before the user Library, so a bare vendor key (`hpe`) claimed a specific user device (`hpe_turin_cbox`) and rendered it at the wrong U-height, stretching its artwork. | High | **Done** (shipped v1.6.1) | Both catalogs are now matched as one namespace, longest key first. [PR #24](https://github.com/rstamps01/ps-deploy-report/pull/24). Regression suite in `tests/test_hardware_library.py`. |
 | HWL-3 | **`ebox`/`enclosure` short-circuit overrides declared U-heights.** `get_device_height` returns 1U for any model containing `ebox` before consulting either catalog, so the built-in `supermicro_milan_ebox` and `smc_milan_ebox` (both declared 2U) render at 1U, and no Library entry can set a 2U EBox. | Medium | Planned | Found alongside HWL-2 on 2026-09-02 and deliberately left out of that fix: correcting it changes the rendered height of existing Milan EBox clusters, so it needs confirmation of the true rack height before shipping. |
 | HWL-4 | **HPE Gen6 Turin CBox missing from the built-in catalog.** VMS reports `hpe_turin_cbox`; Dell and SMC Turin were already catalogued. Uncatalogued it fell to the `hpe` 2U fallback. | High | **Done** (shipped v1.6.1) | Added at 1U with bundled artwork. [PR #26](https://github.com/rstamps01/ps-deploy-report/pull/26). |
+| PLN-1 | **Audit the project plan archive.** Re-check every plan in [`plans/`](plans/README.md) against `CHANGELOG.md` and release tags. Re-bucket each as A–D in [`PLANS-INDEX.md`](PLANS-INDEX.md), mark stale frontmatter as done in the archived copies, and move any genuine open work into this roadmap. Then call `scripts/sync-cursor-plans.py --check` from the `update-tracker` skill so new plans don't go untracked. | Medium | Planned | The archive was created 2026-09-25. The last reconciliation was 2026-07-31. |
+
+---
+
+## Planned — Field feedback (2026-09-23)
+
+*Source: field feedback on v1.6.x (health check output, node identity, drive firmware). The triage plan with the full assessment is archived at [`plans/field_feedback_triage_1d3ae704.plan.md`](plans/field_feedback_triage_1d3ae704.plan.md). Accepted 2026-09-25; decisions are in [`DECISIONS.md`](DECISIONS.md).*
+
+One root cause runs through several of the health check items: `HealthCheckResult.details` is collected but never shown, in either the PDF (`_create_health_check_section`) or `health.html`. HCF-6 fixes that and unblocks HCF-3 and HCF-5.
+
+| ID | Item | Type | Priority | Size | Target | Status | Notes |
+|------|------|------|----------|------|--------|--------|--------|
+| DIAG-1 | **Live API field probe.** `tests/diag_api_fields.py`, following the `tests/diag_prometheus_metrics.py` pattern, dumps the keys of `cnodes/`, `dnodes/`, `ssds/`, `nvrams/`, `licenses/` and `clusters/` (upgrade and license fields) from a lab cluster. | Enabler | P1 | S | v1.6.2 | Planned | Unblocks HCF-4, INV-2 and DRV-1. Run it first. |
+| HCF-1 | **Upgrade State reports "UNKNOWN" as a warning.** `_check_upgrade_state` passes only `""`/`NONE`/`NULL`/`DONE`, so the idle value `UNKNOWN` warns. | Bug | P1 | S | v1.6.2 | Planned | Treat `UNKNOWN` as idle, map `FAILED`/`ABORTED` to fail, and keep warning for genuinely active states. Needs a failing-first test. |
+| HCF-2 | **EBox cluster shows CBox skipped while DBox and EBox pass.** Each check is right on its own (`dboxes/` returns the EBox enclosures and `cboxes/` is empty), but the report never explains the topology. | Bug (misleading output) | P2 | S | v1.6.2 | Planned | Detect an EBox cluster once. CBox then reads "Not applicable — converged EBox cluster" and DBox reads "All N EBox storage enclosures ACTIVE". Status values don't change. |
+| HCF-5 | **Performance Baseline passes with no data shown.** `_check_performance_baseline` returns pass even when it captured nothing, and the captured fields are dropped at render time. | Bug | P2 | S | v1.6.2 | Planned | Return `skipped` when there are no metrics, and render the captured metrics through HCF-6. |
+| HCF-6 | **Render check `details` in the PDF and the web page.** Adds per-check sub-tables for alarms, performance metrics and inactive-component lists. | Gap | P1 | M | v1.6.2 | Planned | Only non-empty details are shown, with row caps. This is the design in `HEALTH-CHECK-MODULE-IMPLEMENTATION-GUIDE.md` (around L661) that was never built. |
+| INV-1 | **Node serial numbers in the report.** `serial_number` is already collected for every CNode and DNode (`api_handler` around L1102 and L1213) but isn't displayed; the inventory "Name/Serial Number" column shows the node name. | Feature (quick win) | P1 | S | v1.6.2 | Planned | Add a Serial column to Hardware Inventory and to the CNode/DNode Management Map, plus box chassis serials where available. |
+| HCF-3 | **Critical alarms only warn.** In one field run, 17 critical/major alarms produced a warning. This reverses the v1.5.0 HC-1 decision, which made alarms informational. | Policy change | P1 | M | v1.7.0 | Planned | Critical alarms fail and major alarms warn, controlled by the new key `health_check.alarms.fail_on` (`critical` / `major` / `none`). Update the render-time fixup to honour it, and render the alarm sub-table through HCF-6. The HC-1 reversal was accepted 2026-09-25. |
+| HCF-4 | **A Trial license passes.** `_check_license` fails only on `EXPIRED`/`INVALID`, and doesn't read the expiry date. | Gap | P2 | S-M | v1.7.0 | Planned | Trial and evaluation licenses become a warning ("verify before go-live"), with days remaining shown if the API exposes it. DIAG-1 confirms the field names first. |
+| INV-2 | **Node MAC addresses.** The API collection path doesn't gather MACs. They exist only through SSH port mapping (`external_port_mapper._collect_node_macs_via_clush`). | Feature | P2 | M-L | v1.7.0 | Planned | If DIAG-1 finds MACs in the API, use the standard api_handler → data_extractor → report_builder path; otherwise surface the port-mapping MACs. Open question: which MACs customers want (management, BMC/IPMI or data NICs). |
+| DRV-1 | **Drive inventory and firmware section (DBox and EBox).** Nothing is collected today: no `ssds/`/`nvrams/` calls. | Feature (high value) | P1 | L | v1.7.0 | Planned | Add `get_drive_inventory()`, `extract_drive_inventory()` and `_create_drive_inventory_section()`: a summary by Box, Vendor, Model and Firmware with quantities, plus a TOC entry. The per-drive list goes to JSON only. Tests for all three layers. Coordinate with PROM-1. |
+| DRV-2 | **Firmware advisories.** A config-driven `hardware_advisories.known_firmware` list (vendor, model and firmware, with severity and a note) flags matching rows in DRV-1. | Feature | P3 | S | Later | Planned | Nothing hardcoded. Depends on DRV-1. |
+| SW-1 | **"Issues connecting to one of the switches."** Not enough detail to act on. | Possible bug | P2 | ? | TBD | Deferred (awaiting logs) | Ask the reporter for the switch vendor/OS, the error text from Output Results, and the ops log. Likely candidates are the Onyx web-API login or a non-default credential. |
 
 ---
 
@@ -169,7 +193,6 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | ID | Item | Notes |
 |------|------|--------|
 | UI-5 | **Full application UI restyle (Phase 1 — Foundation):** Update app.css :root tokens, shared component classes; affects all pages | Planned; ~2 hours estimated |
-| DOC-16 | **Field Procedure in the Quick Start Guide:** 13-step install → update → configure → run → collect → post procedure for the as-built report and post-deployment Test Suite, with condensed checklist, connection-mode / operations / bundle-status tables, troubleshooting, and data-handling notes. Linked from the Resources index and SE one-pager. | Branch `docs/field-procedure`; source draft and captures from `import/Assets-2026-09-24-User-Procedure` |
 
 ## Planned — Tech-Port follow-ups (v1.5.7+)
 
@@ -229,6 +252,7 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | DOC-13 | **docs/API-REFERENCE.md — Prometheus and monitoring endpoints:** Verify Prometheus metric endpoints (`/api/prometheusmetrics/{path}`) are documented with available paths (devices, cnodes, cluster, network, etc.). Check if monitoring endpoints section references removed SNMP/syslog endpoints and remove if present. Confirm `nb_eth_mtu` field reference in network settings. Update "Last updated" date. | Low | Planned |
 | DOC-14 | **Confluence docs sync (`docs/confluence/`):** Refresh local copies of Confluence design/requirements pages (page 6664028496) before v1.5.0 release using Atlassian MCP tools. Ensure RFE table and version references reflect current state. Directory currently empty — requires initial download or re-sync from Confluence. | Medium | Planned |
 | DOC-15 | **CHANGELOG.md — Verify completeness:** Review v1.5.0 changelog entries against all modified files and features. Ensure no changes from recent sessions (Advanced Configuration, report formatting, VIP Pools, config wiring, Prometheus diagnostics) are missing before release tag. | Low | Done — v1.5.0-rc1 |
+| DOC-16 | **Field Procedure in the Quick Start Guide:** 13-step install → update → configure → run → collect → post procedure for the as-built report and post-deployment Test Suite, with condensed checklist, connection-mode / operations / bundle-status tables, troubleshooting, and data-handling notes. Linked from the Resources index and SE one-pager. | Medium | Done — 2026-09-24, [PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33). Automated posting of results follows as UPL-1. |
 | TP-1 | **Tech Port Auto-Discovery and API Proxy Tunnel:** Enable the app to connect to any CBox Tech Port (192.168.2.2) and automatically discover and tunnel API calls to VMS, eliminating manual CBox identification. **Feasibility validated on selab-var-202 (2026-03-28):** (1) `find-vms` returns VMS internal IP (172.16.3.4) from any CNode; (2) SSH hop from non-VMS CNode to VMS internal IP works; (3) `ip addr` on VMS CNode returns management IP (10.143.11.202); (4) API calls to management IP from any CNode return HTTP 403 (auth required = reachable); (5) VMS internal IP does NOT serve HTTPS (000) — must use management IP for API tunnel. **Discovery chain:** SSH Tech Port → `find-vms` → SSH hop to VMS internal IP → extract management IP from `ip addr` → paramiko tunnel to management IP:443. Builds on existing `ssh_adapter.py` proxy hop infrastructure (`direct-tcpip` channels). Diagnostic script at `tests/diag_vms_proxy_feasibility.py`. | High | Planned |
 | AO-28 | **Switch config backup in Network Configuration Extraction:** Add a full switch config backup step to the One-Shot Network Configuration Extraction workflow (`src/workflows/network_config_workflow.py`). Run `nv config show` (full output, not head-50) on each switch and save the complete config to a file in the output directory (e.g. `switch_config_<ip>.txt`). Include in the result bundle. The existing Tier 3 health check `_check_switch_config_backup` (now renamed to `Switch Config Readability`) only captures a 50-line snippet for verification — the workflow step should capture the full config for backup/reference purposes. | Medium | Planned |
 | PROM-1 | **Enhanced Prometheus device metrics capture:** Enrich the Device Health (Prometheus) health check to capture per-device structured data in the JSON details: endurance %, temperature, media errors, power-on hours, power cycles, and active/inactive/failed state for all SSDs and NVRAMs. Add warning thresholds (endurance <80%, temperature >55°C SSD / >65°C NVRAM). Currently only aggregate counts are stored; individual device data is discarded after scanning. Diagnostic script at `tests/diag_prometheus_metrics.py`. | Medium | Planned |
@@ -239,19 +263,21 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 
 ## Next steps (current focus)
 
-> **Execution status (2026-09-08):** **v1.6.1 prepared** on `release/v1.6.1` — version strings at `1.6.1`, CHANGELOG folded, release notes written. Awaiting approval to merge to `develop`, then `develop`→`main` and tag `v1.6.1`. ReportLab 5.x held at [PR #20](https://github.com/rstamps01/ps-deploy-report/pull/20).
+> **Execution status (2026-09-25):** **v1.6.1 shipped.** The tag is on `main` at `7095ccb`, and build-release run `35937686117` attached the arm64 and x64 DMGs and the Windows zip (release marked latest). `main` = `develop` = `2567eb6` after DOC-16. Next up is the v1.6.2 field-feedback patch. ReportLab 5.x is still held ([PR #31](https://github.com/rstamps01/ps-deploy-report/pull/31)).
 
-1. **Ship v1.6.1** (pending approval): merge prepare-release to `develop`, merge `develop`→`main`, tag `v1.6.1`. Confirm `build-release` attaches both mac DMGs + the Windows zip. Then live update-pill check from a real 1.6.0 build (QA §6b).
-2. **v1.6.0 released (Done, 2026-08-01):** tag `v1.6.0`; M5 hardening shipped.
-3. **M6 complete (Done):** ADF v0.3.0; planalyzer L3 pilot complete.
-4. **Teleport beta exit (TPM-1/TPM-2 follow-up):** live Teleport validation against multiple clusters before removing the Beta flag.
-5. **HWL-3:** confirm true rack height of Milan EBoxes before removing the `ebox`/`enclosure` 1U short-circuit.
-6. **SEC-3 / SEC-4:** plaintext profile credentials; ungated `/validation-results`.
-7. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
-8. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items.
-9. **Test suite:** TSE-9 (coverage toward 80%).
-10. Before each release: update this file (status, Last updated, move completed items to Done).
-11. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
+1. **v1.6.2 patch (field feedback):** DIAG-1 first (a live probe on a lab cluster), then HCF-1, HCF-2, HCF-5, HCF-6 and INV-1. Each bug gets a failing-first test.
+2. **v1.7.0 minor (field feedback):** HCF-3 (critical alarms fail, new config key `health_check.alarms.fail_on`), HCF-4, INV-2 and DRV-1. DRV-2 follows. SW-1 waits on the reporter's logs.
+3. **v1.6.1 ship-release leftovers:** the live update-pill check from a real 1.6.0 build (QA §6b), and the Slack and Confluence release announcement (draft, then confirm).
+4. **Dependabot backlog:** #28 types-pyyaml, #30 pillow and #32 pymupdf are minor bumps. #29 types-paramiko is a major bump, so check it with mypy. #31 reportlab 5.0.1 stays on hold for a separately tested branch.
+5. **PLN-1:** audit the project plan archive (`docs/plans/`) against CHANGELOG and tags.
+6. **Teleport beta exit (TPM-1/TPM-2 follow-up):** live Teleport validation against multiple clusters before removing the Beta flag.
+7. **HWL-3:** confirm the true rack height of Milan EBoxes before removing the `ebox`/`enclosure` 1U short-circuit.
+8. **SEC-3 / SEC-4:** plaintext profile credentials; ungated `/validation-results`.
+9. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
+10. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items.
+11. **Test suite:** TSE-9 (coverage toward 80%).
+12. Before each release: update this file (status, Last updated, move completed items to Done).
+13. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
 
 ---
 

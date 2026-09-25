@@ -11,6 +11,17 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-09-25 — Project plan archive committed, redacted
+- **Decision:** the Cursor plans that belong to this repo are copied into `docs/plans/` by `scripts/sync-cursor-plans.py`. `docs/plans/MANIFEST.txt` is the allow-list, and the originals stay in the shared `~/.cursor/plans/`. Every copy is redacted: IP addresses, credential values, emails, and the lab and customer names in the script's pattern list. Plans that still identify a customer after redaction are withheld and stay local. The audit of the archive is deferred to PLN-1.
+- **Rationale:** the shared plans directory is local to one machine, mixes several projects, and isn't versioned, so past activity couldn't be audited from the repo. The repo is public, so verbatim copies would publish lab addresses and customer names. **Approver:** user (2026-09-25).
+
+### 2026-09-25 — Field-feedback triage accepted; HC-1 alarm policy reversed
+- **Decision:** accept the 12-item field-feedback triage into the roadmap. v1.6.2 (patch) gets DIAG-1, HCF-1, HCF-2, HCF-5, HCF-6 and INV-1. v1.7.0 (minor) gets HCF-3, HCF-4, INV-2 and DRV-1. DRV-2 comes later, and SW-1 is deferred until the reporter's logs arrive. For HCF-3, critical alarms fail the Active Alarms check and major alarms stay a warning, controlled by the new key `health_check.alarms.fail_on` (default `critical`). This reverses the v1.5.0 HC-1 decision that made alarms informational.
+- **Rationale:** a field run with 17 critical/major alarms reported only a warning, which undersells a real problem to the customer. A configurable threshold keeps the informational behaviour available (`fail_on: none`). HCF-3 is in the minor release because it changes check semantics and adds a config key. **Approver:** user (2026-09-25).
+
+### 2026-09-24 — v1.6.1 shipped
+- **Decision:** v1.6.1 merged `develop` → `main` and was tagged `v1.6.1` on `7095ccb`. Build-release run `35937686117` passed its gates and attached `VAST-Reporter-v1.6.1-mac-arm64.dmg`, `-mac-x64.dmg` and `-win.zip`. The release is published as latest, not a pre-release, and `develop` was back-merged. Still open: the live update-pill check from a 1.6.0 build, and the Slack/Confluence announcement. **Approver:** user ("merge v1.6.1").
+
 ### 2026-09-08 — v1.6.1 as a patch; ReportLab 5 held
 - **Decision:** ship the post-1.6.0 correction batch as **v1.6.1** (PATCH), not 1.7.0. Merge feature PRs #24/#25/#26 and the four minor Dependabot bumps (#19 scp, #21 flask, #22 types-requests, #23 jsonschema). Leave [PR #20](https://github.com/rstamps01/ps-deploy-report/pull/20) (ReportLab `>=5.0.0`) open.
 - **Rationale:** the batch is corrective (rack-diagram bug, updater architecture split, UI lockouts, stale docs). The Turin catalog entry completes the same defect rather than introducing a new product surface. ReportLab 5 is a major bump of the PDF engine and needs a dedicated regenerated-report visual check. **Approver:** user (2026-09-08).
@@ -70,6 +81,11 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 ---
 
 ## Memlog (newest first)
+
+### 2026-09-25 — Thread handoff
+- Tracking brought current: v1.6.1 shipped, DOC-16 done ([PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)), field-feedback items added to the roadmap, and the plan archive added at `docs/plans/`.
+- Local cleanup: removed the `psdr-161` release worktree and the squash-merged local branches (`validate/v1.6.1`, `feat/hpe-turin-cbox-builtin`, `docs/field-procedure`). Kept for now: `feature/pywebview` (dormant, approach abandoned) and two old stashes.
+- Resume point: the v1.6.2 branch, starting with DIAG-1 and then HCF-1.
 
 ### 2026-09-08 — v1.6.1 prepare-release
 - Merged to `develop`: #24 (library precedence), #26 (HPE Turin catalog), #25 (Advanced Config docs), #19/#21/#22/#23 (minor dep floors). Held #20 (ReportLab 5).

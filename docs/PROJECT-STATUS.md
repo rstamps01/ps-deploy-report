@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-09-25 — v1.6.1 shipped; field-feedback batch planned
+
+- **Release:** [v1.6.1](https://github.com/rstamps01/ps-deploy-report/releases/tag/v1.6.1) tagged on `7095ccb`. Build-release run `35937686117` attached `VAST-Reporter-v1.6.1-mac-arm64.dmg`, `-mac-x64.dmg` and `-win.zip`. The release is published as latest.
+- **Branches:** `main` = `develop` = `2567eb6` after the Field Procedure (DOC-16, [PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)). Open PRs are Dependabot only: #28, #29 (major), #30, #31 (ReportLab 5, held) and #32.
+- **Planned next:** v1.6.2 patch (DIAG-1, HCF-1, HCF-2, HCF-5, HCF-6, INV-1), then v1.7.0 (HCF-3 alarm policy, HCF-4, INV-2, DRV-1 drive firmware section). See the "Field feedback" section of the roadmap.
+- **Tracking:** a redacted archive of the project's Cursor plans now lives in [`plans/`](plans/README.md), with its audit pending as PLN-1.
+- **Not yet done from v1.6.1:** the live update-pill check from a 1.6.0 build, and the Slack/Confluence announcement.
+
+---
+
 ## 2026-09-08 — v1.6.1 prepare-release
 
 - **Version strings:** `1.6.1` across all locations (`src/app.py` `APP_VERSION` canonical).
