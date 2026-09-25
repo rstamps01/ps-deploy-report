@@ -4,6 +4,8 @@ Reconciliation of the prior Cursor plan files (in the shared `~/.cursor/plans/`)
 
 **Last reconciled:** 2026-07-31 — 173 plan files scanned (103 belong to this repo; 70 belong to other projects).
 
+**Archive:** since 2026-09-25, redacted copies of this repo's plans are versioned in [`plans/`](plans/README.md). That's 93 plans: the 103 above, minus the 12 deleted on 2026-07-31, plus 14 plans found during the archive build or created since. Plans from other projects in the shared directory are excluded. Audit against the archive rather than `~/.cursor/plans/`. **Re-reconciliation pending (PLN-1):** 14 archived plans aren't bucketed below yet (`bug_tracking_documentation_update`, `dashboard_mechanical_odometer`, `odometer_design_review`, `ebox_label_&_sort_fix`, `fix_stepper_layout_issues`, `fix_ui_consistency`, `one-shot_report_fixes`, `reorder_sections_fix_config`, `test_suite_log_colors`, `test_suite_success_box`, `v1.5.0_pre-release_completion`, `v1.5.0_release_readiness`, `field_feedback_triage`, `thread_handoff_prep`).
+
 ## Method
 
 Each related plan is validated against reality and sorted into one bucket:

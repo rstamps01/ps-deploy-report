@@ -23,6 +23,7 @@ docs/
 ├── PROJECT-STATUS.md                # Point-in-time status snapshots (PM-owned)
 ├── DECISIONS.md                     # Append-only decisions (ADR-lite) + memlog
 ├── PLANS-INDEX.md                   # Reconciliation of prior Cursor plans
+├── plans/                           # Redacted archive of this project's Cursor plans
 ├── PIPELINE-METRICS.md              # DORA-style pipeline metrics
 ├── CHANGELOG-ARCHIVE.md             # Release history v1.4.7 and earlier
 │
@@ -87,6 +88,7 @@ docs/
 | [Project Status](PROJECT-STATUS.md) | Point-in-time status snapshots (baseline/release/milestone) |
 | [Decisions & Memlog](DECISIONS.md) | Append-only decisions (ADR-lite) + working-memory ledger |
 | [Plans Index](PLANS-INDEX.md) | Reconciliation of prior Cursor plans vs shipped state |
+| [Plan Archive](plans/README.md) | Redacted copies of this project's Cursor plans, for auditing past work |
 | [Pipeline Metrics](PIPELINE-METRICS.md) | DORA-style lead time, change-failure rate, MTTR, coverage trend |
 
 ### For End Users / PS Engineers

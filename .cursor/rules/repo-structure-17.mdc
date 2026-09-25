@@ -12,7 +12,7 @@ Defines the canonical, streamlined layout so new files, docs, and modules land i
 - **Repo root** holds only config + entry docs: `README.md`, `CHANGELOG.md`, `AGENTS.md`, `requirements*.txt`, `pyproject.toml`, and dotfiles. **No** release notes, logs, generated artifacts, or ad-hoc scratch files at root.
 - `src/` — application code. New modules follow the layered map in `REPO-STRUCTURE.md` (pipeline / portmap / diagrams / advanced / web / utils). **Existing flat `src/` modules stay as-is** — the layered map is enforced for NEW modules only; a subpackage refactor of existing modules is a deferred backlog item.
 - `tests/` — mirrors `src/`.
-- `docs/` — all documentation, in its sub-homes: `deployment/`, `development/`, `api/`, `confluence/`, `marketing/`, `issues/<ID>/`, `releases/`.
+- `docs/` — all documentation, in its sub-homes: `deployment/`, `development/`, `api/`, `confluence/`, `marketing/`, `issues/<ID>/`, `plans/`, `releases/`.
 - `config/` — runtime config (gitignored actuals; `*.template` committed).
 - `packaging/`, `scripts/`, `frontend/`, `assets/`, `.github/`, `.cursor/` — as named.
 
@@ -20,7 +20,7 @@ Defines the canonical, streamlined layout so new files, docs, and modules land i
 
 - `AGENTS.md` → repo root.
 - Skills → `.cursor/skills/<name>/SKILL.md`; hooks → `.cursor/hooks.json`; rules → `.cursor/rules/*.mdc`.
-- Under `docs/`: `PROJECT-STATUS.md`, `TODO-ROADMAP.md`, `ROADMAP-ARCHIVE.md`, `PLANS-INDEX.md`, `DECISIONS.md`, `PIPELINE-METRICS.md`, `CHANGELOG-ARCHIVE.md`, `releases/RELEASE_NOTES_v*.md`, `development/AGENTIC-CICD-PIPELINE.md`, `development/REPO-STRUCTURE.md`.
+- Under `docs/`: `PROJECT-STATUS.md`, `TODO-ROADMAP.md`, `ROADMAP-ARCHIVE.md`, `PLANS-INDEX.md`, `DECISIONS.md`, `PIPELINE-METRICS.md`, `CHANGELOG-ARCHIVE.md`, `releases/RELEASE_NOTES_v*.md`, `plans/*.plan.md` (redacted Cursor plan archive, via `scripts/sync-cursor-plans.py`), `development/AGENTIC-CICD-PIPELINE.md`, `development/REPO-STRUCTURE.md`.
 
 ## Runtime / generated convention
 
