@@ -128,9 +128,8 @@
                         <span>VMS Mgmt Mode</span>
                         <span class="info-icon" title="Connect directly to the VMS management IP over HTTPS (no SSH tunnel).">&#9432;</span>
                     </label>
-                    <label class="conn-mode-opt conn-mode-opt--beta">
+                    <label class="conn-mode-opt conn-mode-opt--teleport">
                         <span id="reporterTshPill" class="tsh-pill tsh-pill--warn conn-tsh-pill">Install tsh</span>
-                        <span class="beta-badge">Beta Feature</span>
                         <input type="radio" name="conn_mode" value="teleport" onchange="onConnModeChange()">
                         <span>Teleport Mode</span>
                         <span class="info-icon" title="Connect through Teleport (tsh). Requires an active `tsh login` session. Forwards the cluster API (443) and SSH (22) to local ports. Set the Cluster IP field above to the cluster's VMS management VIP (e.g. 10.143.10.100) — NOT 127.0.0.1 — so the API is forwarded to the VMS and reachable from any node.">&#9432;</span>
@@ -755,24 +754,11 @@
 }
 .conn-mode-opt input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
 
-/* "Beta Feature" pill badge above the Teleport Mode option */
-.conn-mode-opt--beta { position: relative; }
-.beta-badge {
-    position: absolute;
-    bottom: calc(100% + 5px);
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-    line-height: 1; padding: 3px 9px; border-radius: 9999px;
-    color: #fff; background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4);
-    pointer-events: none;
-}
-/* tsh install-status pill stacked directly above the Beta Feature badge */
+/* Teleport Mode option anchors the tsh install-status pill above the radio */
+.conn-mode-opt--teleport { position: relative; }
 .conn-tsh-pill {
     position: absolute;
-    bottom: calc(100% + 22px);
+    bottom: calc(100% + 5px);
     left: 50%;
     transform: translateX(-50%);
     cursor: help;

@@ -142,7 +142,7 @@ _DOC_REGISTRY = [
     },
     {
         "id": "teleport-mode",
-        "title": "Teleport Mode (Beta)",
+        "title": "Teleport Mode",
         "category": "Using the Tool",
         "path": "docs/TELEPORT-MODE.md",
     },

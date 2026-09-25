@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Teleport Mode promoted out of Beta.** Removed the "Beta Feature" UI badge and Beta labeling from Teleport Mode across the Reporter, Advanced Configuration, in-app docs registry, README, Teleport Mode guide, Advanced Operations, and marketing pages. The tsh install-status pill remains.
+
 ### Added
 - **Field Procedure in the Quick Start Guide.** A 13-step procedure for running the as-built report and the post-deployment Test Suite on every deployment, from install and Update Tools through Discovery, the full Test Suite run, bundle download, `SUMMARY.md` status review, and the cabling check, to posting the PDF, JSON, and bundle to the customer's SFDC account and `#internal-<customer>` Slack thread. It opens with a condensed checklist and includes connection-mode, operation, and bundle-status tables, a copyable Slack template, troubleshooting, and notes on where files are saved and how to handle customer data. The guide is now split into **Installation** (macOS / Windows sub-tabs plus Deployment Tools) and **Field Procedure** tabs; links to `#field-procedure`, `#deployment-tools`, or any step open the right tab. Linked from the Resources index and the SE one-pager.
 
