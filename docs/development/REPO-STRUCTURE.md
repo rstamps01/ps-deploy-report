@@ -38,6 +38,7 @@ Status: the standard is **defined** here and the one-time consolidation is **app
 | `docs/confluence/` | local mirror of Confluence page 6664028496 |
 | `docs/marketing/` | one-pager + screenshots |
 | `docs/issues/<ID>/` | per-work-item spec/plan/tasks/evidence |
+| `docs/plans/` | redacted copies of this project's Cursor plans (`MANIFEST.txt` allow-list, synced by `scripts/sync-cursor-plans.py`) |
 | `docs/releases/` | `RELEASE_NOTES_vX.Y.Z.md` (written by `prepare-release`/`ship-release`) |
 
 Pipeline tracking docs live directly under `docs/`: `PROJECT-STATUS.md`, `TODO-ROADMAP.md`, `ROADMAP-ARCHIVE.md`, `PLANS-INDEX.md`, `DECISIONS.md`, `PIPELINE-METRICS.md`, `CHANGELOG-ARCHIVE.md`.
