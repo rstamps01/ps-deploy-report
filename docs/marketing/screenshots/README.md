@@ -39,6 +39,26 @@ The **New Installation** path reuses the same images and shows a subset of these
 steps, so its numbering does not match these filenames. That is expected: the
 guide assigns step numbers at runtime based on which steps are visible.
 
+## The Field Procedure sequence
+
+`Procedure-NN-*.png` are the annotated captures (green callouts) for the
+**Field Procedure** section of `quick-start-guide.html`. `NN` is the procedure
+step the image belongs to. Step 12 reuses the feature image
+`Logical-Network-Diagram.png` rather than a dedicated capture; the remaining
+steps without an image are text-only by design.
+
+| File | Step |
+|---|---|
+| `Procedure-03-Update-Tools.png` | Header Update Tools dropdown, Update Tools button |
+| `Procedure-06-Cluster-Profile.png` | Connection Settings: IP field, VMS Mgmt Mode, Save |
+| `Procedure-07-Discovery.png` | Switch Placement Editor: Discovery, then Run Discovery |
+| `Procedure-08-Test-Suite.png` | Test Suite tab with all operations selected, Run |
+| `Procedure-10-Results-Bundles.png` | Results page, Bundles tab, newest bundle |
+
+These are 2x retina captures (2878 x 1870) from a `v1.6.0` build, so they show
+the `UPDATE AVAILABLE` pill. The procedure text refers to steps by number, so
+renumbering a step means renaming its file and the `<img src>` together.
+
 ## Feature screenshots
 
 `Dash.png`, `Reporter.png`, `Results.png`, `Library.png`, `Adv-Config.png`,

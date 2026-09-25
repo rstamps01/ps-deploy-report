@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-09-08 — **v1.6.1 prepared** (version bump + CHANGELOG fold; awaiting `develop`→`main` + tag). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
+**Last updated:** 2026-09-24 — **v1.6.1 released**; Field Procedure added to the Quick Start Guide (DOC-16, in review). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -169,6 +169,7 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | ID | Item | Notes |
 |------|------|--------|
 | UI-5 | **Full application UI restyle (Phase 1 — Foundation):** Update app.css :root tokens, shared component classes; affects all pages | Planned; ~2 hours estimated |
+| DOC-16 | **Field Procedure in the Quick Start Guide:** 13-step install → update → configure → run → collect → post procedure for the as-built report and post-deployment Test Suite, with condensed checklist, connection-mode / operations / bundle-status tables, troubleshooting, and data-handling notes. Linked from the Resources index and SE one-pager. | Branch `docs/field-procedure`; source draft and captures from `import/Assets-2026-09-24-User-Procedure` |
 
 ## Planned — Tech-Port follow-ups (v1.5.7+)
 
@@ -199,6 +200,7 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 
 | ID | Item | Priority | Notes |
 |------|------|----------|--------|
+| UPL-1 | **Automated results posting:** Field compliance with the Field Procedure (DOC-16) depends on engineers manually attaching the as-built PDF, JSON, and validation bundle to the SFDC account (Notes & Attachments) and the `#internal-<customer>` Slack thread. Add an in-app "post results" action after a Test Suite run. Needs: auth model for SFDC and Slack, customer/account mapping from the cluster profile, and credential storage consistent with SEC-3. | Medium | Planned; target is 100% posting compliance |
 | AO-18 | **Validation Results page (dev mode):** Browse all operation results with tabs and profile-based cluster filtering. Will replace production Reports page when Post Deployment Validation is fully released. | Medium | result_scanner.py, app.py, validation_results.html — implemented, needs polish |
 | AO-20 | **Generate Report page enhancements:** Apply log level selector (Status/Live/Debug), persistent log storage with 1GB capacity, and window state persistence to the Generate Report page. Align Generate page UX with Advanced Ops improvements. | Low | Future work — apply patterns from AO-19 to generate.html and report generation pipeline |
 | NET-1 | **Add nb_eth_mtu to network configuration:** Collect `nb_eth_mtu` (non-blocking Ethernet MTU) from `/api/v7/vms/1/network_settings/` response `data` field. Add to `VastClusterInfo` dataclass, `get_network_config()` extraction, `data_extractor.py` network section, and report output (PDF Network Configuration table and JSON export) alongside existing `eth_mtu` and `ib_mtu` fields. | Medium | Done — v1.5.0; collected from both clusters/ and network_settings endpoints |
