@@ -82,6 +82,9 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Memlog (newest first)
 
+### 2026-09-25 — Teleport Mode beta exit approved
+- User confirmed Teleport testing completed (2026-09-25). Beta flag and "Beta Feature" labeling removed from current UI and user-facing docs; historical CHANGELOG / release-notes entries left as shipped history. No functional Teleport changes; version stays 1.6.1.
+
 ### 2026-09-25 — Thread handoff
 - Tracking brought current: v1.6.1 shipped, DOC-16 done ([PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)), field-feedback items added to the roadmap, and the plan archive added at `docs/plans/`.
 - Local cleanup: removed the `psdr-161` release worktree and the squash-merged local branches (`validate/v1.6.1`, `feat/hpe-turin-cbox-builtin`, `docs/field-procedure`). Kept for now: `feature/pywebview` (dormant, approach abandoned) and two old stashes.

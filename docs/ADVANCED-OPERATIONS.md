@@ -194,7 +194,7 @@ This exposes the VMS REST API (443) and the CNode's SSH (22) on local ephemeral 
 
 The tool runs a preflight check (`tsh` present + active session) before launching and reports an actionable error if either is missing. Configurable via the `teleport` block in `config/config.yaml` (`enabled`, `ssh_user`, `tsh_path`).
 
-For the full guide, see [Teleport Mode (Beta)](TELEPORT-MODE.md).
+For the full guide, see [Teleport Mode](TELEPORT-MODE.md).
 
 ### Starting a Workflow
 

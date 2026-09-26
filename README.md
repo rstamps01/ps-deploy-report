@@ -214,12 +214,7 @@ The Reporter's Connection Settings tile offers three ways to reach a cluster:
 |------|------|-------|
 | **Tech Port Mode** | SSH tunnel via the CBox Tech Port (`192.168.2.2`) | Auto-discovers the VMS and tunnels API calls through SSH. |
 | **VMS Mgmt Mode** | Direct HTTPS to the VMS management IP | No SSH tunnel. |
-| **Teleport Mode** | Teleport (`tsh`) proxy | **Beta.** Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires an authenticated `tsh` session (the app auto-runs `tsh login` on expiry). `tsh` is auto-discovered on PATH and in well-known install locations; manage the path under Advanced Configuration -> Teleport Settings. |
-
-> **Teleport Mode is a Beta feature** — functional and shipped, but still
-> undergoing field validation. The UI flags it with a "Beta Feature" badge and
-> shows a green/yellow tsh install-status pill above the Teleport Mode option.
-> See [docs/TELEPORT-MODE.md](docs/TELEPORT-MODE.md).
+| **Teleport Mode** | Teleport (`tsh`) proxy | Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires an authenticated `tsh` session (the app auto-runs `tsh login` on expiry). `tsh` is auto-discovered on PATH and in well-known install locations; manage the path under Advanced Configuration -> Teleport Settings. A green/yellow tsh install-status pill appears above the Teleport Mode option. See [docs/TELEPORT-MODE.md](docs/TELEPORT-MODE.md). |
 
 ### Command-line interface
 
