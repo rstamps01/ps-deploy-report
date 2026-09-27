@@ -61,6 +61,150 @@
 }
 .ds-note { font-size: 0.78rem; color: var(--text-muted); font-style: italic; }
 
+/* Day-one checklist */
+.dayone-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.35rem 1.1rem;
+}
+.dayone-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 0.85rem;
+}
+.dayone-subtitle {
+    margin: 0.2rem 0 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+.dayone-progress-wrap {
+    min-width: 160px;
+    flex: 0 1 220px;
+}
+.dayone-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.dayone-progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background: var(--bg-elevated, var(--bg-input, #0d1117));
+    border: 1px solid var(--border);
+    overflow: hidden;
+}
+.dayone-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 999px;
+    transition: width 0.25s ease;
+}
+.dayone-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.dayone-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.55rem 0.75rem;
+    align-items: flex-start;
+    padding: 0.55rem 0.45rem;
+    border-radius: 6px;
+    transition: background 0.15s;
+}
+.dayone-item:hover { background: var(--accent-subtle, rgba(26, 111, 181, 0.08)); }
+.dayone-item.is-done .dayone-label {
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+.dayone-item.is-done .dayone-help { color: var(--text-muted); }
+.dayone-check {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+.dayone-label {
+    display: block;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.35;
+}
+.dayone-help {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+.dayone-help a { color: var(--accent); text-decoration: none; }
+.dayone-help a:hover { text-decoration: underline; }
+.dayone-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid var(--border);
+}
+.dayone-btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated, var(--bg-input, #0d1117));
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.dayone-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.dayone-btn-primary {
+    background: var(--accent-subtle, rgba(26, 111, 181, 0.12));
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.dayone-collapsed {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem 1.15rem;
+}
+.dayone-collapsed.is-visible { display: flex; }
+.dayone-collapsed-msg {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.dayone-collapsed-msg strong { color: var(--text-primary); }
+.dayone-root.is-collapsed .dayone-card { display: none; }
+.dayone-root.is-collapsed .dayone-collapsed { display: flex; }
+
 /* Shared odometer mechanics */
 .mech-odo-area{display:flex;flex-direction:column;align-items:center;margin-bottom:1.2rem;}
 .mech-odo-title{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-secondary);margin-bottom:6px;font-weight:600;}
@@ -278,41 +422,97 @@
 .usage-stat-label{font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-top:4px;}
 </style>
 
-<!-- ── Before You Begin ──────────────────────────────────── -->
-<h2 style="font-size:1.15rem;margin-bottom:0.6rem;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-    Before You Begin
-</h2>
-<div class="workflow-steps" style="grid-template-columns: 1fr 1fr;">
-
-    <div class="step-card" style="cursor:default;">
-        <div class="step-header">
-            <span class="step-number" style="background:var(--accent);color:#fff;">P</span>
-            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-        </div>
-        <div class="step-title">Prerequisites</div>
-        <ul class="ds-checklist">
-            <li>Download and install As-Built Reporter</li>
-            <li>Add Rack(s) to VMS</li>
-            <li>Add CBoxes / DBoxes / EBoxes with Rack U-Heights</li>
-            <li>Add Switches to VMS <em class="ds-note">(customer-managed switches can be added manually)</em></li>
-            <li>Gather switch information: Name, Rack, U-Height</li>
-        </ul>
+<!-- ── Before You Begin (day-one checklist) ───────────────── -->
+<div class="dayone-root" id="dayoneRoot" data-storage-key="vast_dayone_checklist_v1">
+    <div class="dayone-collapsed" id="dayoneCollapsed" aria-live="polite">
+        <p class="dayone-collapsed-msg"><strong>Day-one checklist complete.</strong> You can show it again anytime.</p>
+        <button type="button" class="dayone-btn dayone-btn-primary" id="dayoneShowAgain">Show checklist again</button>
     </div>
 
-    <div class="step-card" style="cursor:default;">
-        <div class="step-header">
-            <span class="step-number" style="background:var(--accent);color:#fff;">G</span>
-            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+    <div class="dayone-card" id="dayoneCard">
+        <div class="dayone-header">
+            <div>
+                <h2 style="font-size:1.15rem;margin:0;color:var(--text-primary);display:flex;align-items:center;gap:8px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+                    Before You Begin
+                </h2>
+                <p class="dayone-subtitle">Interactive checklist for first-time users — progress is saved on this browser.</p>
+            </div>
+            <div class="dayone-progress-wrap" aria-hidden="false">
+                <div class="dayone-progress-meta">
+                    <span id="dayoneProgressLabel">0 of 8 complete</span>
+                    <span id="dayoneProgressPct">0%</span>
+                </div>
+                <div class="dayone-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="dayoneProgressBar">
+                    <div class="dayone-progress-fill" id="dayoneProgressFill"></div>
+                </div>
+            </div>
         </div>
-        <div class="step-title">Getting Started</div>
-        <ul class="ds-checklist">
-            <li>Connect directly to a Tech Port (<code>192.168.2.2</code>) or to VMS VIP over the network. Tech Port connections discover VMS CNode automatically.</li>
-            <li>Verify CNode SSH access: <code>ssh -o "StrictHostKeyChecking=no" -o "UserKnownHostsFile /dev/null" vastdata@192.168.2.2</code></li>
-            <li>Verify Switch SSH access from CNode: <code>ssh cumulus@&lt;switch-ip&gt;</code></li>
-        </ul>
-    </div>
 
+        <ul class="dayone-list" id="dayoneList">
+            <li class="dayone-item" data-step="install">
+                <input type="checkbox" class="dayone-check" id="dayone-install" data-step="install" aria-describedby="dayone-help-install">
+                <div>
+                    <label class="dayone-label" for="dayone-install">Install / open the app</label>
+                    <span class="dayone-help" id="dayone-help-install">You&rsquo;re here — mark complete once the Dashboard loads after install.</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="update_tools">
+                <input type="checkbox" class="dayone-check" id="dayone-update_tools" data-step="update_tools" aria-describedby="dayone-help-update_tools">
+                <div>
+                    <label class="dayone-label" for="dayone-update_tools">Update Deployment Tools</label>
+                    <span class="dayone-help" id="dayone-help-update_tools">Use <a href="#navTools" id="dayoneOpenTools">Update Tools</a> in the header so vnetmap and related scripts are current.</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="profile">
+                <input type="checkbox" class="dayone-check" id="dayone-profile" data-step="profile" aria-describedby="dayone-help-profile">
+                <div>
+                    <label class="dayone-label" for="dayone-profile">Create or select a Cluster Profile</label>
+                    <span class="dayone-help" id="dayone-help-profile">Save cluster IP and credentials on the <a href="{{ url_for('reporter_page') }}">Reporter</a> page for reuse.</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="connection_mode">
+                <input type="checkbox" class="dayone-check" id="dayone-connection_mode" data-step="connection_mode" aria-describedby="dayone-help-connection_mode">
+                <div>
+                    <label class="dayone-label" for="dayone-connection_mode">Choose connection mode</label>
+                    <span class="dayone-help" id="dayone-help-connection_mode">Tech Port, VMS Mgmt, or Teleport — pick the mode that matches site access on <a href="{{ url_for('reporter_page') }}">Reporter</a>. See the Field Procedure for which IP to enter.</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="discovery">
+                <input type="checkbox" class="dayone-check" id="dayone-discovery" data-step="discovery" aria-describedby="dayone-help-discovery">
+                <div>
+                    <label class="dayone-label" for="dayone-discovery">Run Discovery &amp; assign switch U-heights</label>
+                    <span class="dayone-help" id="dayone-help-discovery">Open Discovery on <a href="{{ url_for('reporter_page') }}">Reporter</a>, place switches (and non-VMS switches via +Switch), then Save to Profile.</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="run_ops">
+                <input type="checkbox" class="dayone-check" id="dayone-run_ops" data-step="run_ops" aria-describedby="dayone-help-run_ops">
+                <div>
+                    <label class="dayone-label" for="dayone-run_ops">Run Reporter or full Test Suite</label>
+                    <span class="dayone-help" id="dayone-help-run_ops">On <a href="{{ url_for('reporter_page') }}">Reporter</a>, run As-Built alone or the full post-deploy Test Suite (vnetmap, support tools, health, and more).</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="download_results">
+                <input type="checkbox" class="dayone-check" id="dayone-download_results" data-step="download_results" aria-describedby="dayone-help-download_results">
+                <div>
+                    <label class="dayone-label" for="dayone-download_results">Download PDF / JSON / bundle</label>
+                    <span class="dayone-help" id="dayone-help-download_results">Grab outputs from <a href="{{ url_for('validation_results_page') }}">Results</a> (and legacy Reports if needed).</span>
+                </div>
+            </li>
+            <li class="dayone-item" data-step="post_results">
+                <input type="checkbox" class="dayone-check" id="dayone-post_results" data-step="post_results" aria-describedby="dayone-help-post_results">
+                <div>
+                    <label class="dayone-label" for="dayone-post_results">Post results to SFDC + Slack</label>
+                    <span class="dayone-help" id="dayone-help-post_results">Attach PDF/JSON/bundle to the customer SFDC account and <code>#internal-&lt;customer&gt;</code>. Follow the <a href="https://rstamps01.github.io/ps-deploy-report/quick-start-guide.html#field-procedure" target="_blank" rel="noopener">Field Procedure</a> (or <a href="{{ url_for('docs_page') }}">Docs</a>).</span>
+                </div>
+            </li>
+        </ul>
+
+        <div class="dayone-actions">
+            <button type="button" class="dayone-btn" id="dayoneReset">Reset checklist</button>
+            <button type="button" class="dayone-btn dayone-btn-primary" id="dayoneMarkAll">Mark all complete</button>
+        </div>
+    </div>
 </div>
 
 <!-- ── Workflow Steps ──────────────────────────────────────── -->
@@ -330,10 +530,11 @@
         </div>
         <div class="step-title">Connection Settings</div>
         <div style="flex:1;">
-            <p style="margin-bottom:0;">Enter the Cluster IP and save a new profile. Default passwords are pre-populated when Autofill is enabled (see Advanced).</p>
+            <p style="margin-bottom:0;">Create or select a Cluster Profile, then choose a connection mode. Autofill passwords when enabled (see Advanced).</p>
             <ul class="ds-checklist" style="margin-top:2px;">
                 <li><strong>Tech Port:</strong> use <code>192.168.2.2</code>.</li>
-                <li><strong>Network:</strong> use the VMS VIP.</li>
+                <li><strong>VMS Mgmt:</strong> use the VMS VIP over the network.</li>
+                <li><strong>Teleport:</strong> connect via Teleport to the CNode target.</li>
             </ul>
         </div>
         <span class="step-cta">Open Reporter <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
@@ -345,7 +546,7 @@
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         </div>
         <div class="step-title">Discovery &amp; Switch Placement</div>
-        <p>Click <strong>Discovery</strong> to open the Switch Placement Editor. Run Discovery, assign switch U-height. Optionally, use <strong>+Switch</strong> to add customer-managed switches and assign rack U-height, then <strong>Save to Profile</strong>.</p>
+        <p>Click <strong>Discovery</strong> to open the Switch Placement Editor. Run Discovery, assign switch U-heights (top-U for 2U devices). Optionally add customer-managed switches with <strong>+Switch</strong>, then <strong>Save to Profile</strong>.</p>
         <span class="step-cta">Configure <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
@@ -354,15 +555,14 @@
             <span class="step-number">3</span>
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polygon points="5 3 19 12 5 21 5 3"/></svg>
         </div>
-        <div class="step-title">Run Report</div>
+        <div class="step-title">Run Report or Test Suite</div>
         <div style="flex:1;">
-            <p style="margin-bottom:0;">Open Reporter &mdash; Under Select Operation, select:</p>
+            <p style="margin-bottom:0;">On Reporter, choose an operation path:</p>
             <ul class="ds-checklist" style="margin-top:2px;">
-                <li>Pre-Validation</li>
-                <li>Generate As-Built Report</li>
-                <li>Health Check</li>
+                <li><strong>Reporter:</strong> Pre-Validation, As-Built Report, Health Check</li>
+                <li><strong>Test Suite:</strong> full post-deploy checklist (vnetmap, support tools, bundles, and more)</li>
             </ul>
-            <p style="margin-top:6px;margin-bottom:0;">Click <strong>Run</strong>, then monitor progress in Output Results logging console.</p>
+            <p style="margin-top:6px;margin-bottom:0;">Click <strong>Run</strong>, then monitor progress in Output Results.</p>
         </div>
         <span class="step-cta">Run <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
@@ -373,7 +573,7 @@
             <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </div>
         <div class="step-title">Review &amp; Download</div>
-        <p>View PDF, Download PDF, and Download JSON buttons activate once the report completes. Browse all results on the Results page.</p>
+        <p>Download PDF, JSON, and cluster bundles from Results once jobs complete. Review <code>SUMMARY.md</code> status before posting to SFDC and Slack.</p>
         <span class="step-cta">View Results <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></span>
     </a>
 
@@ -567,6 +767,156 @@
                 .catch(function() {});
         });
     }
+
+    /* ── Day-one checklist (localStorage) ── */
+    (function initDayoneChecklist() {
+        var root = document.getElementById('dayoneRoot');
+        if (!root) return;
+
+        var STORAGE_KEY = root.getAttribute('data-storage-key') || 'vast_dayone_checklist_v1';
+        var STEP_IDS = [
+            'install', 'update_tools', 'profile', 'connection_mode',
+            'discovery', 'run_ops', 'download_results', 'post_results'
+        ];
+        var HIDDEN_KEY = STORAGE_KEY + '_hidden';
+
+        var checks = root.querySelectorAll('.dayone-check');
+        var progressLabel = document.getElementById('dayoneProgressLabel');
+        var progressPct = document.getElementById('dayoneProgressPct');
+        var progressFill = document.getElementById('dayoneProgressFill');
+        var progressBar = document.getElementById('dayoneProgressBar');
+        var btnReset = document.getElementById('dayoneReset');
+        var btnMarkAll = document.getElementById('dayoneMarkAll');
+        var btnShowAgain = document.getElementById('dayoneShowAgain');
+        var openTools = document.getElementById('dayoneOpenTools');
+
+        function emptyState() {
+            var state = { updatedAt: null };
+            for (var i = 0; i < STEP_IDS.length; i++) {
+                state[STEP_IDS[i]] = false;
+            }
+            return state;
+        }
+
+        function loadState() {
+            var state = emptyState();
+            try {
+                var raw = localStorage.getItem(STORAGE_KEY);
+                if (!raw) return state;
+                var parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return state;
+                for (var i = 0; i < STEP_IDS.length; i++) {
+                    var id = STEP_IDS[i];
+                    if (typeof parsed[id] === 'boolean') state[id] = parsed[id];
+                }
+                if (parsed.updatedAt) state.updatedAt = parsed.updatedAt;
+            } catch (e) { /* ignore corrupt storage */ }
+            return state;
+        }
+
+        function saveState(state) {
+            state.updatedAt = new Date().toISOString();
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            } catch (e) { /* private mode / quota */ }
+        }
+
+        function countDone(state) {
+            var n = 0;
+            for (var i = 0; i < STEP_IDS.length; i++) {
+                if (state[STEP_IDS[i]]) n++;
+            }
+            return n;
+        }
+
+        function applyState(state) {
+            for (var i = 0; i < checks.length; i++) {
+                var cb = checks[i];
+                var id = cb.getAttribute('data-step');
+                var done = !!state[id];
+                cb.checked = done;
+                var item = cb.closest('.dayone-item');
+                if (item) item.classList.toggle('is-done', done);
+            }
+            var doneCount = countDone(state);
+            var total = STEP_IDS.length;
+            var pct = Math.round((doneCount / total) * 100);
+            if (progressLabel) progressLabel.textContent = doneCount + ' of ' + total + ' complete';
+            if (progressPct) progressPct.textContent = pct + '%';
+            if (progressFill) progressFill.style.width = pct + '%';
+            if (progressBar) progressBar.setAttribute('aria-valuenow', String(pct));
+
+            var allDone = doneCount === total;
+            var showPreference = null;
+            try { showPreference = localStorage.getItem(HIDDEN_KEY); } catch (e) {}
+            if (!allDone) {
+                root.classList.remove('is-collapsed');
+                try { localStorage.removeItem(HIDDEN_KEY); } catch (e2) {}
+            } else if (showPreference === '0') {
+                // User explicitly asked to show the checklist again
+                root.classList.remove('is-collapsed');
+            } else {
+                // All complete — collapse by default
+                root.classList.add('is-collapsed');
+                try { localStorage.setItem(HIDDEN_KEY, '1'); } catch (e3) {}
+            }
+        }
+
+        var state = loadState();
+        // First visit on Dashboard: pre-check "install / open the app"
+        if (!localStorage.getItem(STORAGE_KEY) && state.install === false) {
+            state.install = true;
+            saveState(state);
+        }
+        applyState(state);
+
+        for (var i = 0; i < checks.length; i++) {
+            checks[i].addEventListener('change', function() {
+                var id = this.getAttribute('data-step');
+                state[id] = !!this.checked;
+                saveState(state);
+                if (countDone(state) < STEP_IDS.length) {
+                    try { localStorage.setItem(HIDDEN_KEY, '0'); } catch (e) {}
+                }
+                applyState(state);
+            });
+        }
+
+        if (btnReset) {
+            btnReset.addEventListener('click', function() {
+                state = emptyState();
+                // Keep install pre-checked — they are still in the app
+                state.install = true;
+                saveState(state);
+                try { localStorage.setItem(HIDDEN_KEY, '0'); } catch (e) {}
+                applyState(state);
+            });
+        }
+
+        if (btnMarkAll) {
+            btnMarkAll.addEventListener('click', function() {
+                for (var j = 0; j < STEP_IDS.length; j++) state[STEP_IDS[j]] = true;
+                saveState(state);
+                try { localStorage.removeItem(HIDDEN_KEY); } catch (e) {}
+                applyState(state);
+            });
+        }
+
+        if (btnShowAgain) {
+            btnShowAgain.addEventListener('click', function() {
+                try { localStorage.setItem(HIDDEN_KEY, '0'); } catch (e) {}
+                root.classList.remove('is-collapsed');
+            });
+        }
+
+        if (openTools) {
+            openTools.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                var toolsBtn = document.getElementById('navToolsBtn');
+                if (toolsBtn) toolsBtn.click();
+            });
+        }
+    })();
 })();
 </script>
 {% endblock %}
