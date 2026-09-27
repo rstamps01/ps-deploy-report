@@ -892,6 +892,7 @@ footer a:hover { text-decoration: underline; }
                 <div class="step-number-label">Step 2</div>
                 <h3>Launch the App and Open the Local UI</h3>
                 <p>Open <strong>VAST Reporter</strong>. Your browser opens the UI at <code>localhost:5173</code> automatically. Everything runs on your laptop &mdash; nothing is hosted remotely.</p>
+                <div class="tip warn"><strong>First launch of each new version is blocked.</strong> The app isn't signed with an Apple Developer certificate, so macOS Gatekeeper shows <em>"VAST Reporter.app" Not Opened</em>. Click <strong>Done</strong> (not Move to Trash), then open <strong>System Settings &rarr; Privacy &amp; Security</strong>, click <strong>Open Anyway</strong>, confirm <strong>Open Anyway</strong>, and authenticate with Touch ID or your password. On Windows, SmartScreen shows <em>"Windows protected your PC"</em>: click <strong>More info &rarr; Run anyway</strong>. Later launches of the same version open normally. Screenshots are in the <a href="#installation">Installation</a> tab.</div>
                 <div class="tip">If port 5173 is already in use, the app picks the next free port (5174&ndash;5180). Use whatever address the browser opened.</div>
                 <div class="tip">To stop the app, click <strong>Exit</strong> in the header. Closing the browser tab leaves the local server running.</div>
             </div>
