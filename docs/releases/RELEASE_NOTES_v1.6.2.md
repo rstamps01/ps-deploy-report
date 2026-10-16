@@ -59,7 +59,8 @@ See `CHANGELOG.md` for the full list.
 ## Security
 
 - Credentials used by the run (passwords, per-switch and candidate passwords, API token) are masked
-  as `[REDACTED]` in the bundled `diagnostics/operation_log.jsonl`.
+  as `[REDACTED]` in the bundled `diagnostics/operation_log.jsonl` and in the copy saved under
+  `logs/operations/`.
 
 ## Upgrade notes
 

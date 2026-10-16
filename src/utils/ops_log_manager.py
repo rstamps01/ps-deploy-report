@@ -9,9 +9,9 @@ the oldest 25% of log files when the limit is exceeded.
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
-from utils.logger import get_logger
+from utils.logger import get_logger, redact_log_entries
 
 logger = get_logger(__name__)
 
@@ -42,11 +42,20 @@ class OpsLogManager:
         entries: List[Dict[str, Any]],
         session_id: str,
         cluster_ip: str,
+        secrets: Optional[Iterable[str]] = None,
     ) -> Path:
-        """Write operation log as a JSON Lines file.
+        """Write operation log as a JSON Lines file, with credentials masked.
 
-        Returns the path to the saved log file.
+        Args:
+            entries: Output Results entries.
+            session_id: Session identifier used in the file name.
+            cluster_ip: Cluster IP used in the file name.
+            secrets: Credential values used by the run; masked wherever they appear.
+
+        Returns:
+            Path: The saved log file.
         """
+        entries = redact_log_entries(entries, secrets)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_ip = cluster_ip.replace(".", "_") if cluster_ip else "unknown"
         filename = f"oneshot_{safe_ip}_{timestamp}_{session_id}.jsonl"

@@ -34,6 +34,17 @@ class TestOpsLogManagerSave(unittest.TestCase):
         path = self.mgr.save_session_log([{"msg": "a"}], "s1", "")
         self.assertIn("unknown", path.name)
 
+    def test_save_masks_credentials(self):
+        entries = [
+            {"level": "info", "message": "export ADMIN_PASSWORD=Adm1n!pw"},
+            {"level": "warn", "message": "retry", "details": "token: tok-abcdef"},
+        ]
+        path = self.mgr.save_session_log(entries, "s2", "10.0.0.1", secrets=["Adm1n!pw"])
+        text = path.read_text()
+        self.assertNotIn("Adm1n!pw", text)
+        self.assertNotIn("tok-abcdef", text)
+        self.assertIn("[REDACTED]", text)
+
 
 class TestOpsLogManagerCapacity(unittest.TestCase):
     """Test capacity checking and purge."""

@@ -303,7 +303,8 @@ class LogBundleWorkflow:
         """Copy files under ``log_dir`` modified in the recent window, if below the size cap.
 
         Returns:
-            "copied", "missing" (nothing recent / dir absent) or "skipped_too_large".
+            "copied", "missing" (nothing recent / dir absent), "skipped_too_large", or
+            "copy_failed" (the copy staged no files).
         """
         assert self._script_runner is not None
         minutes = self.RECENT_LOG_MINUTES
@@ -331,9 +332,17 @@ class LogBundleWorkflow:
             return "skipped_too_large"
         copy_cmd = (
             f"cd / && sudo find {log_dir} -type f -mmin -{minutes} -print0 2>/dev/null "
-            f"| sudo xargs -0 -r cp --parents -t {self.BUNDLE_DIR}/ 2>/dev/null; echo DONE"
+            f"| sudo xargs -0 -r cp --parents -t {self.BUNDLE_DIR}/ 2>/dev/null; "
+            f"sudo find {self.BUNDLE_DIR}{log_dir} -type f 2>/dev/null | wc -l"
         )
-        self._script_runner.execute_remote(host, user, password, copy_cmd, timeout=600)
+        copy_result = self._script_runner.execute_remote(host, user, password, copy_cmd, timeout=600)
+        try:
+            staged = int((copy_result.stdout or "0").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            staged = 0
+        if not copy_result.success or staged <= 0:
+            self.emit("warn", f"{log_dir}: copying recent logs staged no files; not included")
+            return "copy_failed"
         return "copied"
 
     def _step_download_to_laptop(self) -> Dict[str, Any]:

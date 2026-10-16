@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from utils.cluster_paths import cluster_paths, iter_cluster_roots, read_cluster_marker
-from utils.logger import SensitiveDataFilter, get_logger
+from utils.logger import get_logger, redact_log_entries
 
 logger = get_logger(__name__)
 
@@ -92,7 +92,6 @@ class ResultBundler:
         self._operation_status: Dict[str, str] = {}
         self._operation_details: Dict[str, str] = {}
         self._operation_log: List[Dict[str, Any]] = []
-        self._log_secrets: List[str] = []
         self._since: Optional[datetime] = None
         self._metadata: Dict[str, Any] = {}
         # RM-5: rescue prior ``vperfsanity`` output when the current run
@@ -134,16 +133,7 @@ class ResultBundler:
             secrets: Credential values used by the run. Every occurrence is masked in the
                 bundled log, along with credential-shaped ``key=value`` text.
         """
-        self._operation_log = list(entries or [])
-        self._log_secrets = sorted({s for s in (secrets or []) if s}, key=len, reverse=True)
-
-    def _redact_log_text(self, text: str) -> str:
-        for secret in self._log_secrets:
-            text = text.replace(secret, "[REDACTED]")
-        return str(SensitiveDataFilter._CREDENTIAL_RE.sub(SensitiveDataFilter._redact_match, text))
-
-    def _redacted_log_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
-        return {k: self._redact_log_text(v) if isinstance(v, str) else v for k, v in entry.items()}
+        self._operation_log = redact_log_entries(entries or [], secrets)
 
     def set_metadata(self, cluster_name: str, cluster_ip: str, cluster_version: str) -> None:
         """Set cluster metadata for the bundle.
@@ -829,10 +819,7 @@ class ResultBundler:
             }
             files_manifest = {k: v.name for k, v in self._collected_files.items()}
             if self._operation_log:
-                log_text = (
-                    "\n".join(json.dumps(self._redacted_log_entry(entry), default=str) for entry in self._operation_log)
-                    + "\n"
-                )
+                log_text = "\n".join(json.dumps(entry, default=str) for entry in self._operation_log) + "\n"
                 zf.writestr(f"diagnostics/{self.OPERATION_LOG_NAME}", log_text)
                 files_manifest["operation_log"] = self.OPERATION_LOG_NAME
                 self.emit("success", f"Added: diagnostics/{self.OPERATION_LOG_NAME}")

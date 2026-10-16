@@ -2271,7 +2271,9 @@ class OneShotRunner:
                 else "unknown"
             )
             cluster_ip = self._credentials.get("cluster_ip", "unknown")
-            log_manager.save_session_log(mgr._output_buffer[:], session_id, cluster_ip)
+            log_manager.save_session_log(
+                mgr._output_buffer[:], session_id, cluster_ip, secrets=self._credential_values(self._credentials)
+            )
             self._emit("info", "Operation log saved to disk.")
         except Exception as log_exc:
             self._emit("warn", f"Failed to save operation log: {log_exc}")

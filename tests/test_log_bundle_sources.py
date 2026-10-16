@@ -25,9 +25,10 @@ MB = 1048576
 class _FakeRunner:
     """Answers execute_remote by command shape so tests don't depend on call order."""
 
-    def __init__(self, existing, recent_bytes):
+    def __init__(self, existing, recent_bytes, staged_files=25):
         self.existing = set(existing)
         self.recent_bytes = recent_bytes
+        self.staged_files = staged_files
         self.commands = []
 
     def execute_remote(self, host, user, password, cmd, timeout=60):
@@ -37,6 +38,8 @@ class _FakeRunner:
             return _result(stdout="COPIED" if path in self.existing else "MISSING")
         if "-printf" in cmd:
             return _result(stdout=str(self.recent_bytes))
+        if "cp --parents" in cmd:
+            return _result(stdout=f"{self.staged_files}\n")
         return _result(stdout="12M")
 
 
@@ -89,6 +92,15 @@ class TestLogBundleSources:
         assert f"rm -rf {bundle_dir}" in first_cmd and f"mkdir -p {bundle_dir}" in first_cmd
         tar_idx = next(i for i, c in enumerate(runner.commands) if "tar -czf" in c)
         assert any(f"rm -rf {bundle_dir}" in c for c in runner.commands[tar_idx + 1 :])
+
+    def test_recent_log_copy_that_stages_nothing_is_reported_partial(self):
+        runner = _FakeRunner(
+            existing={"/var/log/vast", "/var/log/messages", "/var/log/syslog"}, recent_bytes=10 * MB, staged_files=0
+        )
+        wf = _workflow(runner)
+        result = wf._step_create_archive()
+        assert wf._step_data["log_sources"]["/vast/log"] == "copy_failed"
+        assert "partial" in result["message"].lower()
 
     def test_recent_logs_respect_overall_bundle_limit(self):
         runner = _FakeRunner(existing={"/var/log/messages"}, recent_bytes=1500 * MB)
