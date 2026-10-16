@@ -116,6 +116,7 @@ One root cause runs through several of the health check items: `HealthCheckResul
 | FR-15 | **Cancel does not interrupt long steps other than vperfsanity.** | Enhancement | P2 | M | v1.6.3 | Planned | FR-7 covers vperfsanity only; extend to log bundle and support tools. |
 | OBS-1 | **Artifact timestamps mix UTC and local time.** Health files are named in UTC (`..._20260926_013125`) while the bundle, report and the timestamps inside the health file use local time (`..._20260925_183126`, `-07:00`). | Bug | P3 | S | v1.6.3 | Planned | One convention for filenames; the HUB-2 recorder uses UTC throughout. |
 | TP-3 | **Tech Port discovery logged `management=192.168.2.2`.** The VMS management IP was not resolved (the tunnel still worked), so anything that uses the management IP gets the Tech Port address, and Network Extraction counts the gateway twice. | Bug (investigate) | P3 | S | v1.6.3 | Planned | Reproduce from the field ops log against a lab Tech Port session. |
+| TP-4 | **Results page cluster filter returns every Tech Port cluster.** Choosing one cluster that was reported through the Tech Port also lists the results of every other Tech Port cluster, and the reverse (seen with four field clusters). The filter dropdown sends the profile's `cluster_ip`, and `/validation-results/api/results` filters by that IP, which is `192.168.2.2` for all of them. | Bug | P2 | M | v1.6.3 | Planned | Spec: [`issues/TP-4/spec.md`](issues/TP-4/spec.md). Filter by `cluster_key` (the per-cluster folder from QP-2), as `get_known_clusters()` already does. |
 
 ---
 
