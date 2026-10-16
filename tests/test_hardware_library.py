@@ -100,6 +100,13 @@ class TestEboxHeights(unittest.TestCase):
         self.assertEqual(get_device_height("supermicro_milan_ebox"), 2)
         self.assertEqual(get_device_height("SMC_MILAN_EBOX"), 2)
 
+    def test_supermicro_turin_ebox24_is_2u_with_its_own_image(self):
+        entry = BUILTIN_DEVICES["supermicro_turin_ebox24"]
+        self.assertEqual(entry["type"], "ebox")
+        self.assertEqual(entry["description"], "Supermicro Turin 2U EBox")
+        self.assertEqual(get_device_height("supermicro_turin_ebox24"), 2)
+        self.assertEqual(get_device_image_filename("supermicro_turin_ebox24"), "supermicro_turin_ebox24_2u.png")
+
     def test_1u_eboxes_unchanged(self):
         for key in ("supermicro_gen5_ebox", "dell_genoa_ebox", "cisco_ebox"):
             with self.subTest(model=key):

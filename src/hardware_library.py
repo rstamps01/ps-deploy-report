@@ -162,6 +162,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "cisco_ebox_1u.png",
         "description": "Cisco UCS C225 EBox",
     },
+    "supermicro_turin_ebox24": {
+        "type": "ebox",
+        "height_u": 2,
+        "image_filename": "supermicro_turin_ebox24_2u.png",
+        "description": "Supermicro Turin 2U EBox",
+    },
     # =========================================================================
     # Switches
     # =========================================================================

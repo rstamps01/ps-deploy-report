@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Teleport Mode promoted out of Beta.** Removed the "Beta Feature" UI badge and Beta labeling from Teleport Mode across the Reporter, Advanced Configuration, in-app docs registry, README, Teleport Mode guide, Advanced Operations, and marketing pages. The tsh install-status pill remains.
 
 ### Added
+- **Supermicro Turin 2U EBox in the hardware library.** New built-in device `supermicro_turin_ebox24` (Supermicro Hyper A+ AS -2115HS-TNR, 24 × 2.5" bays), drawn at 2U with its own front-bezel image.
 - **45U, 48U, 50U and 52U racks (RACK-1).** The Physical Rack Layout draws each rack at its VMS height. Racks up to 48U keep today's size; 50U and 52U racks are drawn about 4% and 7–8% smaller so the whole rack fits on its page. A height that isn't supported rounds up to the next one (never down, so no device is cut off).
 - **Rack validation report (RACK-2).** `python3 scripts/generate_rack_validation_report.py [--page-size Letter] [--heights 42,52]` fills two racks of every height with one of each library device and renders them with the report's own rack code, including every status-indicator colour, shape and count. Writes a PDF and a JSON manifest to `output/rack-validation/` and exits non-zero if a rack is not full or does not fit on its page.
 - **DIAG-1 live API field probe** (`scripts/diag_api_fields.py`): dumps keys from `cnodes/`, `dnodes/`, `ssds/`, `nvrams/`, `licenses/`, and `clusters/` for lab field discovery (HCF-4 / INV-2 / DRV-1 enabler).
