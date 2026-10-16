@@ -99,7 +99,7 @@ Rules (`architecture-03`, `change-control-07`, `documentation-08`, `todo-trackin
 
 ## Repo-specific
 
-- **Product:** VAST As-Built Report Generator — a Flask app that connects to a VAST cluster (API + SSH/Teleport/Tech-Port), extracts configuration, and renders PDF/JSON as-built reports plus advanced post-install validation workflows.
+- **Product:** asbuilt-reporter — a Flask app that connects to a VAST cluster (API + SSH/Teleport/Tech-Port), extracts configuration, and renders PDF/JSON as-built reports plus advanced post-install validation workflows.
 - **Layers (`architecture-03`):** `api_handler` → `data_extractor` → `report_builder`; `health_checker` and `oneshot_runner` orchestrate; workflows under `src/workflows/`.
 - **Run tests:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py` (add `--no-cov` for a subset). UI tests need Playwright; some `test_oneshot_runner` cases require CI-like fast connection refusal (see `docs/PROJECT-STATUS.md`).
 - **Release build:** tag `vX.Y.Z` → `.github/workflows/build-release.yml` builds the macOS `.dmg` + Windows `.zip` from that tagged commit.

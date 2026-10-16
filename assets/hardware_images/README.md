@@ -1,6 +1,6 @@
 # Hardware Images for Rack Diagrams
 
-This directory contains hardware images used to populate the Physical Rack Layout diagrams in VAST As-Built Reports.
+This directory contains hardware images used to populate the Physical Rack Layout diagrams in as-built reports.
 
 ## Adding Hardware Images
 

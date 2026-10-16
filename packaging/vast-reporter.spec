@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for VAST As-Built Report Generator.
+PyInstaller spec for asbuilt-reporter.
 
 Builds a one-directory bundle containing the embedded Python runtime,
 all runtime dependencies, the Flask web UI, and application assets.

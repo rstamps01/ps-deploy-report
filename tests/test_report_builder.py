@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Report Builder Module.
+Unit tests for asbuilt-reporter Report Builder Module.
 
 This module contains comprehensive unit tests for the report builder,
 including PDF generation, report formatting, and error handling.

@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator API Handler Module.
+Unit tests for asbuilt-reporter API Handler Module.
 
 This module contains comprehensive unit tests for the API handler,
 including authentication, data collection, error handling, and enhanced features.

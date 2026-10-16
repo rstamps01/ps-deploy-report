@@ -1,5 +1,5 @@
 """
-Consolidated Hardware Library for VAST As-Built Reporter.
+Consolidated Hardware Library for asbuilt-reporter.
 
 This module provides a single source of truth for all hardware device definitions,
 including CBoxes, DBoxes, EBoxes, and Switches. All other modules should import

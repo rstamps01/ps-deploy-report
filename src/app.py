@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Web UI Application
+asbuilt-reporter - Web UI Application
 
 Flask-based web interface providing a browser GUI for generating reports,
 browsing output, editing configuration, and streaming live progress.

@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Windows Installation Script
+# asbuilt-reporter - Windows Installation Script
 # For VAST Professional Services Engineers
 # Version: 1.0.0-dev
 # Date: September 27, 2025
@@ -480,7 +480,7 @@ function New-LaunchScript {
 
     $launchScript = @"
 @echo off
-REM VAST As-Built Report Generator Launch Script for Windows
+REM asbuilt-reporter Launch Script for Windows
 
 REM Get the directory where this script is located
 set SCRIPT_DIR=%~dp0
@@ -508,7 +508,7 @@ function New-PowerShellLaunchScript {
     Write-Status "Creating PowerShell launch script..."
 
     $psLaunchScript = @"
-# VAST As-Built Report Generator PowerShell Launch Script
+# asbuilt-reporter PowerShell Launch Script
 
 # Get the directory where this script is located
 `$ScriptDir = Split-Path -Parent `$MyInvocation.MyCommand.Definition
@@ -544,7 +544,7 @@ function New-DesktopShortcut {
     $Shortcut = $WshShell.CreateShortcut($shortcutPath)
     $Shortcut.TargetPath = $targetPath
     $Shortcut.WorkingDirectory = $projectDir
-    $Shortcut.Description = "VAST As-Built Report Generator"
+    $Shortcut.Description = "asbuilt-reporter"
     $Shortcut.Save()
 
     Write-Success "Desktop shortcut created: VAST As-Built Reporter.lnk"
@@ -566,7 +566,7 @@ function New-StartMenuShortcut {
     $Shortcut = $WshShell.CreateShortcut($shortcutPath)
     $Shortcut.TargetPath = $targetPath
     $Shortcut.WorkingDirectory = $projectDir
-    $Shortcut.Description = "VAST As-Built Report Generator"
+    $Shortcut.Description = "asbuilt-reporter"
     $Shortcut.Save()
 
     Write-Success "Start Menu shortcut created"
@@ -979,7 +979,7 @@ function Main {
     Write-Host "STARTING INSTALLATION - $($script:InstallMode.ToUpper()) MODE" -ForegroundColor $Blue
     Write-Host "==================================================================" -ForegroundColor $Blue
     Write-Host ""
-    Write-Host "This script will install the VAST As-Built Report Generator on your Windows PC." -ForegroundColor $Green
+    Write-Host "This script will install asbuilt-reporter on your Windows PC." -ForegroundColor $Green
     Write-Host "The installation includes Python, dependencies, and creates shortcuts." -ForegroundColor $Green
     Write-Host ""
     Write-Host "📋 Installation will be logged to: $LogPath" -ForegroundColor $Yellow

@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator
+asbuilt-reporter
 
 A Python package for automatically generating comprehensive as-built reports
 for VAST Data clusters following deployment by Professional Services.

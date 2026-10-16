@@ -750,7 +750,7 @@ class ResultBundler:
             [
                 "## Notes",
                 "",
-                "This bundle was created by the VAST As-Built Report Generator.",
+                "This bundle was created by asbuilt-reporter.",
                 "For support, contact your VAST Data representative.",
             ]
         )

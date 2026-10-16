@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Installation Guide
+# asbuilt-reporter - Installation Guide
 
 **For VAST Professional Services Engineers**
 
@@ -81,7 +81,7 @@ The application opens a browser window at `http://127.0.0.1:5173` with the full 
    The app will:
    - Start a local web server on port 5173
    - Open your default browser to `http://127.0.0.1:5173`
-   - Display the VAST As-Built Reporter dashboard
+   - Display asbuilt-reporter dashboard
 
 ### What Gets Installed
 

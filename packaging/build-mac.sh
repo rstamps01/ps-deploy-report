@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build VAST As-Built Reporter for macOS.
+# Build asbuilt-reporter for macOS.
 #
 # Prerequisites:
 #   pip install pyinstaller

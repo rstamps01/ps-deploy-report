@@ -1,10 +1,10 @@
 #!/bin/bash
 
 ################################################################################
-# VAST As-Built Report Generator - macOS Uninstall Script
+# asbuilt-reporter - macOS Uninstall Script
 ################################################################################
 #
-# Purpose: Clean uninstallation of the VAST As-Built Report Generator
+# Purpose: Clean uninstallation of asbuilt-reporter
 # Platform: macOS (Intel and Apple Silicon)
 # Requirements: bash, git (optional for repo removal)
 #
@@ -33,7 +33,7 @@ DEFAULT_INSTALL_DIR="$HOME/vast-asbuilt-reporter"
 print_header() {
     echo ""
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  VAST As-Built Report Generator - macOS Uninstaller${NC}"
+    echo -e "${BLUE}  asbuilt-reporter - macOS Uninstaller${NC}"
     echo -e "${BLUE}═══════════════════════════════════════════════════════════════${NC}"
     echo ""
 }
@@ -377,7 +377,7 @@ main() {
 
     # Confirm uninstallation
     echo ""
-    print_warning "This will uninstall the VAST As-Built Report Generator"
+    print_warning "This will uninstall asbuilt-reporter"
     print_warning "Installation: $INSTALL_DIR"
     echo ""
 

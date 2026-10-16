@@ -1,7 +1,7 @@
 """
-VAST As-Built Report Generator - Logging Infrastructure
+asbuilt-reporter - Logging Infrastructure
 
-This module provides comprehensive logging infrastructure for the VAST As-Built Report Generator.
+This module provides comprehensive logging infrastructure for asbuilt-reporter.
 It implements dual-output logging (console with colors + file with rotation), configurable
 log levels, and professional formatting suitable for both development and production use.
 
@@ -185,7 +185,7 @@ class SensitiveDataFilter(logging.Filter):
 
 def setup_logging(config: Optional[Dict[str, Any]] = None, config_file: Optional[str] = None) -> logging.Logger:
     """
-    Set up comprehensive logging infrastructure for the VAST As-Built Report Generator.
+    Set up comprehensive logging infrastructure for asbuilt-reporter.
 
     This function configures both console and file logging with appropriate formatters,
     handlers, and security measures. It supports configuration via dictionary or YAML file.

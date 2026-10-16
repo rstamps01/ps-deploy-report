@@ -1,6 +1,6 @@
 # Teleport Mode
 
-Teleport Mode lets the VAST As-Built Reporter generate a full as-built report — including `vnetmap`/port mapping — against a cluster that is reachable only through a [Teleport](https://goteleport.com/) proxy. It connects through the Teleport CLI (`tsh`), forwarding the cluster API (TCP 443) and CNode SSH (TCP 22) to local ephemeral ports at the same time.
+Teleport Mode lets asbuilt-reporter generate a full as-built report — including `vnetmap`/port mapping — against a cluster that is reachable only through a [Teleport](https://goteleport.com/) proxy. It connects through the Teleport CLI (`tsh`), forwarding the cluster API (TCP 443) and CNode SSH (TCP 22) to local ephemeral ports at the same time.
 
 ---
 

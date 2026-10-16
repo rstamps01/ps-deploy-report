@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VAST As-Built Report Generator - Report Regeneration Utility
+asbuilt-reporter - Report Regeneration Utility
 
 This utility script allows you to regenerate PDF reports from existing JSON data files.
 This is useful for working on report formatting without needing cluster access.
@@ -197,7 +197,7 @@ Examples:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info("=" * 60)
-    logger.info("VAST As-Built Report Regeneration Utility")
+    logger.info("asbuilt-reporter report regeneration utility")
     logger.info("=" * 60)
     logger.info(f"JSON file: {json_path}")
     logger.info(f"Output file: {output_path}")

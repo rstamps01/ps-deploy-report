@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Report Builder Module
+asbuilt-reporter - Report Builder Module
 
 This module generates professional PDF reports from processed VAST cluster data.
 It creates comprehensive as-built reports with enhanced features including
@@ -1714,7 +1714,7 @@ class VastReportBuilder:
 
         content.append(
             Paragraph(
-                "This VAST As-Built Report provides a comprehensive technical documentation of the deployed VAST Data cluster infrastructure, configuration, and operational status. The report serves as a critical reference for system administrators, storage engineers, and technical stakeholders to understand the current state of the cluster deployment, validate configuration compliance, and support ongoing operations and troubleshooting. The Executive Summary consolidates key operational metrics, hardware inventory, and cluster health indicators into high-level overview tables that enable rapid assessment of cluster status and capacity utilization.",
+                "This as-built report provides a comprehensive technical documentation of the deployed VAST Data cluster infrastructure, configuration, and operational status. The report serves as a critical reference for system administrators, storage engineers, and technical stakeholders to understand the current state of the cluster deployment, validate configuration compliance, and support ongoing operations and troubleshooting. The Executive Summary consolidates key operational metrics, hardware inventory, and cluster health indicators into high-level overview tables that enable rapid assessment of cluster status and capacity utilization.",
                 overview_style,
             )
         )

@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Runtime Dependencies
+# asbuilt-reporter - Runtime Dependencies
 # These are the packages bundled into the self-contained application.
 
 # Core HTTP and API libraries

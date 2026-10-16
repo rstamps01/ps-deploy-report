@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Health Checker Module
+asbuilt-reporter - Health Checker Module
 
 Standalone module that runs cluster health checks via the VAST REST API.
 Produces HealthCheckReport containing HealthCheckResult items consumed by

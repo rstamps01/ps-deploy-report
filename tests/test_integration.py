@@ -1,5 +1,5 @@
 """
-Integration tests for the VAST As-Built Report Generator pipeline.
+Integration tests for asbuilt-reporter pipeline.
 
 Tests the full flow: raw API data -> VastDataExtractor -> VastReportBuilder,
 verifying data consistency, graceful degradation, and end-to-end report generation.

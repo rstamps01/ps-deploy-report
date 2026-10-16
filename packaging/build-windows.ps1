@@ -1,4 +1,4 @@
-# Build VAST As-Built Reporter for Windows.
+# Build asbuilt-reporter for Windows.
 #
 # Prerequisites:
 #   pip install pyinstaller

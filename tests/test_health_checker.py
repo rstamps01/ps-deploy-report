@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Health Checker Module.
+Unit tests for asbuilt-reporter Health Checker Module.
 
 Covers HealthCheckResult, HealthCheckReport, HealthChecker (tier-1 API checks,
 orchestration, serialisation), and the Prometheus text-format parser.

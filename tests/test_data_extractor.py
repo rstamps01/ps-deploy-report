@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Data Extractor Module.
+Unit tests for asbuilt-reporter Data Extractor Module.
 
 This module contains comprehensive unit tests for the data extractor,
 including data processing, validation, enhanced features, and error handling.

@@ -1,5 +1,5 @@
 """
-Rack Diagram Generator for VAST As-Built Reports
+Rack Diagram Generator for as-built reports
 
 This module generates visual rack diagrams showing physical hardware placement
 in 42U data center racks with proper scaling, positioning, and labeling.

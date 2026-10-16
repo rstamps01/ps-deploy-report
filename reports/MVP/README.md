@@ -1,7 +1,7 @@
-# VAST As-Built Report Generator - MVP Baseline
+# asbuilt-reporter - MVP Baseline
 
 ## Overview
-This directory contains the **Minimum Viable Product (MVP) Baseline** for the VAST As-Built Report Generator.
+This directory contains the **Minimum Viable Product (MVP) Baseline** for asbuilt-reporter.
 
 ## MVP Baseline Version
 - **Date**: October 17, 2025

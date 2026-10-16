@@ -1,6 +1,6 @@
 # Read-Only VAST API Policy
 
-**Applies to:** All API usage, tests, validation, and development for the VAST As-Built Report Generator.
+**Applies to:** All API usage, tests, validation, and development for asbuilt-reporter.
 
 ## Policy
 

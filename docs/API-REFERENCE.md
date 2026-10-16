@@ -1,6 +1,6 @@
 # VAST API Reference — As-Built Report Generator
 
-This document is the definitive API reference for the VAST As-Built Report Generator.
+This document is the definitive API reference for asbuilt-reporter.
 It catalogs every REST API endpoint the application uses, the authentication flow,
 response fields depended on, version compatibility, and fallback behavior.
 

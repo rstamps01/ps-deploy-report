@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator
+# asbuilt-reporter
 
 Generate professional as-built reports for VAST Data clusters in minutes—no Python required. Download the app, connect to your cluster, and get a customer-ready PDF plus machine-readable JSON.
 
