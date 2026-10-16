@@ -297,13 +297,25 @@ def _lead_height(group: List[Any], table: Table, frame_width: float, frame_heigh
     return min(height, frame_height)
 
 
+def _is_caption(story: List[Any], index: int) -> bool:
+    """A plain paragraph directly between a title and a table (or another title)."""
+    if not isinstance(story[index], Paragraph) or is_title(story[index]):
+        return False
+    k = index + 1
+    while k < len(story) and _is_filler(story[k]):
+        k += 1
+    return k < len(story) and (isinstance(story[k], Table) or is_title(story[k]))
+
+
 def bind_titles_to_content(story: List[Any], frame_width: float, frame_height: float, lead_rows: int = 3) -> List[Any]:
     """Keep each title on the same page as the content that follows it.
 
-    A title followed by a table gets a ``CondPageBreak`` sized to the title plus the
-    table header and first ``lead_rows`` rows, so long tables still start under their
-    title and split across pages. A title followed by anything else is wrapped in
-    ``KeepTogether`` with that flowable. Nothing is bound across explicit page breaks.
+    A title (with any caption paragraph under it) and the table that follows move as
+    one ``KeepTogether`` when they fit on a page, so neither is left behind. A table
+    taller than a page gets a ``CondPageBreak`` sized to the title plus the table
+    header and first ``lead_rows`` rows, so it still starts under its title and splits
+    across pages. A title followed by anything else is wrapped in ``KeepTogether``
+    with that flowable. Nothing is bound across explicit page breaks.
 
     Args:
         story: Flowables in document order.
@@ -323,7 +335,7 @@ def bind_titles_to_content(story: List[Any], frame_width: float, frame_height: f
             continue
         j = i
         group: List[Any] = []
-        while j < n and (is_title(story[j]) or _is_filler(story[j])):
+        while j < n and (is_title(story[j]) or _is_filler(story[j]) or _is_caption(story, j)):
             group.append(story[j])
             j += 1
         if j >= n or _is_break(story[j]):
@@ -331,14 +343,15 @@ def bind_titles_to_content(story: List[Any], frame_width: float, frame_height: f
             i = j
             continue
         content = story[j]
-        if isinstance(content, Table):
+        fits = (
+            _group_height(group, frame_width, frame_height) + _height(content, frame_width, frame_height)
+            <= frame_height
+        )
+        if isinstance(content, Table) and not fits:
             out.append(CondPageBreak(_lead_height(group, content, frame_width, frame_height, lead_rows)))
             out.extend(group)
             out.append(content)
-        elif (
-            _group_height(group, frame_width, frame_height) + _height(content, frame_width, frame_height)
-            <= frame_height
-        ):
+        elif fits:
             out.append(KeepTogether(group + [content]))
         else:
             out.extend(group)

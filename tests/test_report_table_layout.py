@@ -4,12 +4,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent))
 
+import pymupdf  # noqa: E402
+from reportlab.lib.pagesizes import A4  # noqa: E402
+from reportlab.lib.styles import getSampleStyleSheet  # noqa: E402
+from reportlab.lib.units import inch  # noqa: E402
 from reportlab.pdfbase.pdfmetrics import stringWidth  # noqa: E402
+from reportlab.platypus import BaseDocTemplate, Frame, PageTemplate  # noqa: E402
 from reportlab.platypus import CondPageBreak, KeepTogether, PageBreak, Paragraph, Spacer, Table  # noqa: E402
 
 from brand_compliance import create_vast_brand_compliance  # noqa: E402
 from report_builder import ReportConfig, VastReportBuilder  # noqa: E402
+from utils.health_detail_groups import build_health_detail_groups  # noqa: E402
 from utils.pdf_layout import VastWrappedTable  # noqa: E402
 
 
@@ -123,7 +130,47 @@ class TestStoryFinalization:
     def test_binds_titles(self):
         story = [Paragraph("<b>Title</b>"), Spacer(1, 4), Table([["h"], ["v"]], colWidths=[50])]
         out = _builder()._finalize_story(story)
+        assert len(out) == 1 and isinstance(out[0], KeepTogether)
+
+    def test_long_table_still_starts_under_its_title(self):
+        story = [Paragraph("<b>Title</b>"), Table([["h"]] + [[str(i)] for i in range(120)], colWidths=[50])]
+        out = _builder()._finalize_story(story)
         assert isinstance(out[0], CondPageBreak)
+
+
+class TestHealthGroupPagination:
+    """A health detail heading lands on the same page as its whole first table."""
+
+    FRAME_W = A4[0] - 1.0 * inch
+    FRAME_H = A4[1] - 1.5 * inch
+
+    def _render(self, tmp_path, lead_height):
+        from test_health_detail_groups import EBOX_RESULTS
+
+        builder = _builder()
+        builder._frame_width, builder._frame_height = self.FRAME_W, self.FRAME_H
+        styles = getSampleStyleSheet()
+        story = [Spacer(1, lead_height)] + builder._create_health_detail_group_tables(EBOX_RESULTS, styles)
+        path = tmp_path / f"groups_{lead_height}.pdf"
+        doc = BaseDocTemplate(str(path), pagesize=A4)
+        frame = Frame(0.5 * inch, 0.75 * inch, self.FRAME_W, self.FRAME_H, 0, 0, 0, 0)
+        doc.addPageTemplates([PageTemplate(frames=[frame])])
+        doc.build(builder._finalize_story(story))
+        return [page.get_text() for page in pymupdf.open(str(path))]
+
+    def test_heading_and_first_table_share_a_page(self, tmp_path):
+        from test_health_detail_groups import EBOX_RESULTS
+
+        groups = build_health_detail_groups(EBOX_RESULTS)
+        for lead in range(0, int(self.FRAME_H), 30):
+            pages = self._render(tmp_path, lead)
+            for group in groups:
+                first = next(t for t in group.tables if t.rows)
+                title_page = next(i for i, text in enumerate(pages) if group.title in text)
+                text = pages[title_page]
+                tail = text[text.index(group.title) :]
+                for cell in (first.headers[0], first.rows[0][0], first.rows[-1][0]):
+                    assert str(cell) in tail, f"lead={lead}: {group.title!r} split from its table ({cell!r})"
 
 
 class TestNetworkConfigTables:

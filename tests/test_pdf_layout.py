@@ -196,14 +196,40 @@ def _table(rows=5):
 
 
 class TestBindTitlesToContent:
-    def test_title_before_table_gets_conditional_break(self):
+    def test_title_and_table_that_fit_a_page_move_as_one(self):
         title, spacer, table = _title(), Spacer(1, 4), _table()
+        out = bind_titles_to_content([title, spacer, table], 400, 700)
+        assert len(out) == 1 and isinstance(out[0], KeepTogether)
+        assert out[0]._content == [title, spacer, table]
+
+    def test_caption_between_title_and_table_stays_in_the_group(self):
+        caption = Paragraph("What these checks cover.", getSampleStyleSheet()["Normal"])
+        story = [_title(), Spacer(1, 2), caption, Spacer(1, 4), _table()]
+        out = bind_titles_to_content(story, 400, 700)
+        assert len(out) == 1 and isinstance(out[0], KeepTogether)
+        assert out[0]._content == story
+
+    def test_caption_and_subtitle_bind_to_first_table(self):
+        caption = Paragraph("Caption", getSampleStyleSheet()["Normal"])
+        story = [_title("<b>Group</b>"), caption, _title("<b>Sub</b>"), _table()]
+        out = bind_titles_to_content(story, 400, 700)
+        assert len(out) == 1 and out[0]._content == story
+
+    def test_two_paragraphs_are_not_a_caption(self):
+        normal = getSampleStyleSheet()["Normal"]
+        p1, p2, table = Paragraph("One", normal), Paragraph("Two", normal), _table()
+        out = bind_titles_to_content([_title(), p1, p2, table], 400, 700)
+        assert isinstance(out[0], KeepTogether) and out[0]._content[-1] is p1
+        assert out[1:] == [p2, table]
+
+    def test_table_taller_than_page_gets_conditional_break(self):
+        title, spacer, table = _title(), Spacer(1, 4), _table(60)
         out = bind_titles_to_content([title, spacer, table], 400, 700)
         assert isinstance(out[0], CondPageBreak)
         assert out[1:] == [title, spacer, table]
 
     def test_break_height_covers_title_header_and_first_rows(self):
-        title, table = _title(), _table(10)
+        title, table = _title(), _table(60)
         out = bind_titles_to_content([title, table], 400, 700)
         _, title_h = title.wrap(400, 700)
         table.wrap(400, 700)
@@ -217,7 +243,7 @@ class TestBindTitlesToContent:
     def test_heading_style_counts_as_title(self):
         heading = Paragraph("Network", getSampleStyleSheet()["Heading1"])
         out = bind_titles_to_content([heading, _table()], 400, 700)
-        assert isinstance(out[0], CondPageBreak)
+        assert isinstance(out[0], KeepTogether)
 
     def test_partially_bold_label_is_not_a_title(self):
         label = Paragraph("<b>Total DNodes:</b> 86", getSampleStyleSheet()["Normal"])
@@ -231,8 +257,7 @@ class TestBindTitlesToContent:
     def test_consecutive_titles_bind_to_same_content(self):
         t1, t2, table = _title("<b>A</b>"), _title("<b>B</b>"), _table()
         out = bind_titles_to_content([t1, t2, table], 400, 700)
-        assert isinstance(out[0], CondPageBreak)
-        assert out[1:] == [t1, t2, table]
+        assert len(out) == 1 and out[0]._content == [t1, t2, table]
 
     def test_title_not_bound_to_content_taller_than_page(self):
         title = _title()
