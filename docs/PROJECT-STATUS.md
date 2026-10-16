@@ -4,6 +4,17 @@
 
 ---
 
+## 2026-10-16 — v1.6.2 prepare-release
+
+- **Version strings:** `1.6.2` across all locations (`src/app.py` `APP_VERSION` canonical); `check-version-sync.sh` passes.
+- **Branch:** `fix/v1.6.2-field-feedback` off `develop` (`develop` has not moved since). Release notes in [`releases/RELEASE_NOTES_v1.6.2.md`](releases/RELEASE_NOTES_v1.6.2.md); CHANGELOG folded into `[1.6.2] - 2026-10-16`.
+- **Product delta:** EBox Test Suite fixes (FR-1–6, NET-6, HCF-7/8), vperfsanity run time and cleanup, grouped Health Check details, wrapped tables with titles kept on the table's page, 42U–52U racks, Turin 2U EBox, new report title and the asbuilt-reporter name in visible text.
+- **Validation:** EBox cluster report reviewed clean; remaining live-test-plan sections waived by the owner ([disposition](issues/v1.6.2/live-test-plan.md)). Update-pill dry run covers 1.6.1 → 1.6.2.
+- **Not yet done:** PR CI, merge to `develop` and `main`, tag `v1.6.2`, live update-pill check from a 1.6.1 build, Confluence/Slack announcement, GOV-3 advisory. v1.6.1's live update-pill check and announcement were also never done.
+- **Logged for v1.6.3:** TP-4, the Results page cluster filter mixing Tech Port clusters.
+
+---
+
 ## 2026-09-25 — v1.6.1 shipped; field-feedback batch planned
 
 - **Release:** [v1.6.1](https://github.com/rstamps01/ps-deploy-report/releases/tag/v1.6.1) tagged on `7095ccb`. Build-release run `35937686117` attached `VAST-Reporter-v1.6.1-mac-arm64.dmg`, `-mac-x64.dmg` and `-win.zip`. The release is published as latest.

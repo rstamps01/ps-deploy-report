@@ -11,7 +11,8 @@ phase (no live GitHub call).
 Two generations are covered:
 
 - 1.5.8 → 1.6.0 (historical; still the installed base that cannot be patched)
-- 1.6.0 → 1.6.1 (this release)
+- 1.6.0 → 1.6.1
+- 1.6.1 → 1.6.2 (this release)
 
 It also covers the macOS architecture split. Releases publish two mac DMGs
 (arm64 + x64), which the resolver reports under separate keys so the UI can
@@ -169,6 +170,57 @@ class TestShipped160SeesStable161(unittest.TestCase):
         self.assertEqual(result["download_url_mac_arm64"], "https://gh/dl/mac-arm64.dmg")
         self.assertEqual(result["download_url_mac_x64"], "https://gh/dl/mac-x64.dmg")
         self.assertEqual(result["download_url_win"], "https://gh/dl/win.zip")
+
+
+V162_ASSETS = [
+    {"name": "VAST-Reporter-v1.6.2-mac-arm64.dmg", "browser_download_url": "https://gh/dl/v162/mac-arm64.dmg"},
+    {"name": "VAST-Reporter-v1.6.2-mac-x64.dmg", "browser_download_url": "https://gh/dl/v162/mac-x64.dmg"},
+    {"name": "VAST-Reporter-v1.6.2-win.zip", "browser_download_url": "https://gh/dl/v162/win.zip"},
+]
+
+
+def _post_162_payload():
+    """GitHub /releases once v1.6.2 is published (1.6.1 remains as the prior stable)."""
+    return [
+        {
+            "tag_name": "v1.6.2",
+            "prerelease": False,
+            "draft": False,
+            "html_url": "https://gh/releases/v1.6.2",
+            "assets": V162_ASSETS,
+        },
+        *_post_161_payload(),
+    ]
+
+
+class TestShipped161SeesStable162(unittest.TestCase):
+    """Headline for this release: a live 1.6.1 (and 1.6.0) build detects 1.6.2."""
+
+    @patch("requests.get")
+    def test_161_client_detects_162_with_arch_links(self, mock_get):
+        mock_get.return_value = _mock_resp(_post_162_payload())
+        result = check_for_update("1.6.1", include_prereleases=False)
+        self.assertTrue(result["update_available"], "1.6.1 must see 1.6.2 as newer")
+        self.assertEqual(result["latest_version"], "1.6.2")
+        self.assertEqual(result["release_notes_url"], "https://gh/releases/v1.6.2")
+        self.assertEqual(result["download_url_mac_arm64"], "https://gh/dl/v162/mac-arm64.dmg")
+        self.assertEqual(result["download_url_mac_x64"], "https://gh/dl/v162/mac-x64.dmg")
+        self.assertEqual(result["download_url_win"], "https://gh/dl/v162/win.zip")
+        self.assertIsNone(result["error"])
+
+    @patch("requests.get")
+    def test_160_client_also_detects_162(self, mock_get):
+        mock_get.return_value = _mock_resp(_post_162_payload())
+        result = check_for_update("1.6.0", include_prereleases=False)
+        self.assertTrue(result["update_available"])
+        self.assertEqual(result["latest_version"], "1.6.2")
+        self.assertTrue(str(result["download_url_mac"]).endswith(".dmg"))
+
+    @patch("requests.get")
+    def test_already_on_162_sees_no_update(self, mock_get):
+        mock_get.return_value = _mock_resp(_post_162_payload())
+        result = check_for_update("1.6.2", include_prereleases=False)
+        self.assertFalse(result["update_available"])
 
 
 class TestReleaseSelectionRobustness(unittest.TestCase):

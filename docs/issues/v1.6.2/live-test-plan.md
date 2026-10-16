@@ -135,6 +135,11 @@ Unzip each validation bundle:
 - Evidence (Debug logs, both bundles, both PDFs) is saved locally; a redacted summary is added here.
 - Then: merge `develop` into the branch, commit, open the v1.6.2 PR, merge #36/#37, bump the version, release.
 
+**Disposition (2026-10-16, owner):** the EBox cluster report was reviewed and came back clean (section 3
+on cluster A). The owner accepted that result and waived the remaining sections (4–8) for v1.6.2. They are
+covered by unit and regression tests and will be exercised on the next field runs; any finding is filed
+against v1.6.3. The FR-5 "partial" decision stands as shipped: a missing source marks the archive partial.
+
 **Known issues, not blockers:**
 - TP-3: gateway counted twice in Tech Port mode.
 - FR-11: remote archives left on the cluster.

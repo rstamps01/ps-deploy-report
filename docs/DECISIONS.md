@@ -11,6 +11,12 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-10-16 — v1.6.2 release scope, live validation and product name
+- **Live validation:** the EBox cluster report came back clean; the remaining live-test-plan sections (Test Suite, vperfsanity full and forced-failure runs, C/DBox regression, bundle inspection) are waived for v1.6.2. Field findings go to v1.6.3.
+- **Product name:** "asbuilt-reporter" replaces "VAST As-Built Reporter / Report Generator" in visible text (tab titles, footer, CLI, log banners, bundle README, README and in-app guides, marketing). The packaged app name "VAST Reporter", download file names and legacy installer shortcut names stay, because the updater, installers and uninstallers depend on them. CHANGELOG history, past release notes and Confluence page titles are not rewritten.
+- **TP-4 logged** for v1.6.3 (Results page cluster filter keyed on the shared Tech Port IP).
+- **Rationale:** the report title already dropped "VAST"; one name everywhere avoids confusing field engineers. **Approver:** user (2026-10-16).
+
 ### 2026-09-26 — NET-6, HCF-7 and HCF-8 fold into v1.6.2
 - **Decision:** three more bugs from the EBox field report ship in v1.6.2. NET-6 fixes `local.cfg` group resolution in Network Extraction and vnetmap; HCF-7 compares firmware on version tokens; HCF-8 gives skipped checks a `[SKIP]` icon and shows their reason. NET-6 is implemented as a shared parser with ClusterShell's semantics (every definition of a group is unioned), not as a remote `nodeset -e` call.
 - **Rationale:** all three are small, customer-visible and were confirmed from field artifacts. The field run itself confirms the union semantics: vperfsanity's `clush` reached all 12 hosts that our parsers missed one of. A local parser keeps discovery to the existing single `cat`, adds no remote dependency, and is deterministic to test. **Approver:** user ("execute the plan", 2026-09-26).

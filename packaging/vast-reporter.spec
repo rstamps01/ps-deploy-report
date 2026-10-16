@@ -169,8 +169,8 @@ if IS_MAC:
         icon=ICON_MAC,
         bundle_identifier="com.vastdata.asbuilt-reporter",
         info_plist={
-            "CFBundleShortVersionString": "1.6.1",
-            "CFBundleVersion": "1.6.1",
+            "CFBundleShortVersionString": "1.6.2",
+            "CFBundleVersion": "1.6.2",
             "NSHighResolutionCapable": True,
             "NSAppTransportSecurity": {
                 "NSAllowsLocalNetworking": True,

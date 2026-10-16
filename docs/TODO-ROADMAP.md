@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-10-16 — **v1.6.2 field-feedback patch** on `fix/v1.6.2-field-feedback`: DIAG-1, HCF-1/2/5/6/7/8, INV-1, SR-2, RPT-VALIDATION, NET-6, FR-1–6, FR-12, GOV-1 and RPT-LAYOUT-1 (approved; `legacy` toggle removed) done; Health Check Summary total fixed; GOV-3 advisory drafted. Report title rebrand (RPT-TITLE-1), 45–52U racks with validation report and tests (RACK-1/2/3) and HWL-3 done; vnetmap_lldp fallback assessed as future NET-7. [PR #37](https://github.com/rstamps01/ps-deploy-report/pull/37) (Dashboard day-one checklist) merged to `develop` and [PR #36](https://github.com/rstamps01/ps-deploy-report/pull/36) closed as superseded. Dependabot #28/#29/#30/#32 merged. **v1.6.1 shipped** (tag on `7095ccb`). **Results Hub and field diagnostics** (HUB-1–23) planned. Plan archive audit pending (PLN-1). **M6 complete.** See [`DECISIONS.md`](DECISIONS.md).
+**Last updated:** 2026-10-16 — **v1.6.2 prepared for release** on `fix/v1.6.2-field-feedback`: version 1.6.2, CHANGELOG folded, [release notes](releases/RELEASE_NOTES_v1.6.2.md), QA plan §4 delta, update-pill dry run for 1.6.1 → 1.6.2. Live validation: EBox report clean, remaining live-test sections waived by the owner. Product renamed to asbuilt-reporter in visible text; in-app guides and marketing refreshed. Contents: DIAG-1, HCF-1/2/5/6/7/8, INV-1, SR-2, RPT-VALIDATION-1/2, NET-6, FR-1–6, FR-12, GOV-1, RPT-LAYOUT-1, RPT-TITLE-1, RACK-1/2/3, HWL-3, Turin 2U EBox. TP-4 (Results filter mixes Tech Port clusters) logged for v1.6.3. **v1.6.1 shipped** (tag on `7095ccb`). See [`DECISIONS.md`](DECISIONS.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -355,10 +355,10 @@ One root cause runs through several of the health check items: `HealthCheckResul
 
 ## Next steps (current focus)
 
-> **Execution status (2026-10-16):** **v1.6.2 in progress** on `fix/v1.6.2-field-feedback` (committed, not pushed; `develop` merged in). **v1.6.1 shipped** (tag on `7095ccb`). `develop` now carries PR #37 and Dependabot #28/#29/#30/#32 on top of `main`. ReportLab 5.x still held ([PR #31](https://github.com/rstamps01/ps-deploy-report/pull/31)).
+> **Execution status (2026-10-16):** **v1.6.2 prepared** on `fix/v1.6.2-field-feedback`; next is the PR to `develop` and CI, then `develop` → `main`, tag `v1.6.2` (needs approval). **v1.6.1 shipped** (tag on `7095ccb`). ReportLab 5.x still held ([PR #31](https://github.com/rstamps01/ps-deploy-report/pull/31)); the title-with-table layout depends on ReportLab 4.4 page splitting.
 
-1. **v1.6.2 patch (field feedback + EBox field report):** on `fix/v1.6.2-field-feedback` (`develop` merged in 2026-10-16): DIAG-1, HCF-1/2/5/6/7/8, INV-1, SR-2, RPT-VALIDATION-1/2, NET-6, FR-1–6, FR-12, RPT-LAYOUT-1, GOV-1 and the Health Check Summary total fix done. Before release: EBox retest and the live-cluster validation pass (FR-1 on an EBox and a C/DBox cluster, FR-5 paths, NET-6 node count), then open the v1.6.2 PR, post the GOV-3 advisory ([draft](issues/v1.6.2/field-advisory.md)), and bump the version.
-2. **v1.6.3:** FR-7–15, OBS-1, TP-3, and the local diagnostics work HUB-1–9 plus DATA-1.
+1. **v1.6.2 release:** prepared on `fix/v1.6.2-field-feedback` (version, CHANGELOG, release notes, QA §4, docs and marketing). Remaining: CI green on the PR, merge to `develop`, merge `develop` → `main`, tag `v1.6.2`, verify the GitHub Release artifacts and the live update pill from a 1.6.1 build, then publish: Confluence page, Slack announcement, GOV-3 advisory ([draft](issues/v1.6.2/field-advisory.md)). Each publishing step needs approval.
+2. **v1.6.3:** TP-4, FR-7–15, OBS-1, TP-3, and the local diagnostics work HUB-1–9 plus DATA-1.
 3. **v1.7.0 minor:** HCF-3/4, INV-2, DRV-1, **RCS-1–5** (Ross install-time logging), HUB-10/11. DRV-2 follows. SW-1 waits on logs.
 4. **Results Hub backend (separate repos):** HUB-12–16, then connectors HUB-17–23 in v1.7.x.
 5. **v1.6.1 ship-release leftovers:** the live update-pill check from a real 1.6.0 build (QA §6b), and the Slack and Confluence release announcement (draft, then confirm).
@@ -366,7 +366,7 @@ One root cause runs through several of the health check items: `HealthCheckResul
 7. **Dependabot backlog:** #28, #29 (types-paramiko 5.x, mypy clean on the branch), #30 and #32 merged 2026-10-16. #31 reportlab 5.0.1 stays on hold for a separately tested branch.
 8. **PLN-1:** audit the project plan archive (`docs/plans/`) against CHANGELOG and tags; [`PLANS-INDEX.md`](PLANS-INDEX.md) has the 2026-09-26 re-bucket as the starting point.
 9. **Teleport beta exit:** Beta badge and labeling removed on `fix/v1.6.2-field-feedback` (2026-10-08); PR #36 closed as a duplicate.
-10. **HWL-3:** confirm the true rack height of Milan EBoxes before removing the `ebox`/`enclosure` 1U short-circuit.
+10. **HWL-3:** done on the branch (EBox models use the library's declared height).
 11. **SEC-3 / SEC-4:** plaintext profile credentials; ungated `/validation-results`.
 12. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync or rule trim), CFG-1 (template parity).
 13. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items.

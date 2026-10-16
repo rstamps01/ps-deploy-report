@@ -1,20 +1,13 @@
 # Changelog
 
-All notable changes to the VAST As-Built Report Generator will be documented in this file.
+All notable changes to asbuilt-reporter will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Removed
-- **Upgrade State health check (HCF-1).** VMS reports `upgrade_state` as `UNKNOWN` on idle clusters, so the check and its row in Health Check Details carried no useful information. It no longer runs, and reports regenerated from results saved by earlier versions omit it from the Cluster State & Software group. This replaces the earlier v1.6.2 fixes that treated `UNKNOWN` and `NOT_UPLOADED` as idle.
-
-### Changed
-- **New report title (RPT-TITLE-1).** The title page now reads "asbuilt-reporter" in the one-pager style: Fira Sans Bold, with "asbuilt" in black and "-reporter" in accent blue. The large center logo is unchanged. The font (SIL Open Font License) ships with the app.
-- **Physical Rack Layout drawing.** Every U is labelled on the left (U1 to the top U), the rack sits directly under its page heading, and the duplicate "Rack: X" caption inside the drawing is gone. All racks in a report share one scale, so devices are the same size on every rack page. Stacked devices now touch with no white line between them, because blank padding inside device artwork is cropped when drawn.
-- **vperfsanity commands no longer export `VAST_VMS` (FR-12).** The vperfsanity scripts never read it; they find the VMS address from `/vast/vman/mgmt-vip`. The commands shown in Output Results are shorter as a result.
-- **Teleport Mode promoted out of Beta.** Removed the "Beta Feature" UI badge and Beta labeling from Teleport Mode across the Reporter, Advanced Configuration, in-app docs registry, README, Teleport Mode guide, Advanced Operations, and marketing pages. The tsh install-status pill remains.
+## [1.6.2] - 2026-10-16
 
 ### Added
 - **Supermicro Turin 2U EBox in the hardware library.** New built-in device `supermicro_turin_ebox24` (Supermicro Hyper A+ AS -2115HS-TNR, 24 × 2.5" bays), drawn at 2U with its own front-bezel image.
@@ -26,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **RPT-LAYOUT-1 wrapped report tables.** Text in PDF tables now wraps inside its cell instead of running past the borders, for example serial numbers in Hardware Inventory and the Management Maps. Cells are centered horizontally and vertically, and rows grow in height. Column widths stay as before, except that a column too narrow for one short word (up to 1 inch, such as `Unknown` or `performance`) borrows space from wider columns. Hardware Inventory flows as one table with its header repeated on each page, replacing the fixed 25-row "(Page X of N)" chunks.
 - **Health Check details grouped by functional area.** The per-check detail sub-tables under Detailed Check Results are replaced by nine group tables: Cluster State & Software, Hardware Components, Rack Placement, Storage & Device Health, Capacity & Usage, Network & Connectivity, Data Protection & Services, Alarms & Events, and Switch Checks (SSH). Each group has a heading, a short caption, and clearer column and row labels. Long lists show a count followed by every item, and any field not covered by a group is still listed under Other Check Details. Performance Baseline keeps its row in Detailed Check Results but has no details group; its point-in-time metrics are omitted from the PDF.
 - **Section titles stay with their content.** A table title now starts on the same page as the table's header and first rows; short titled sections move to the next page together instead of leaving the title at the bottom of a page.
+- **Interactive Dashboard day-one checklist.** The Quick Start "Before You Begin" section is now a checkable first-run list (install → Update Tools → profile → connection mode → Discovery → Reporter/Test Suite → download results → post to SFDC/Slack). Progress persists in browser `localStorage` (`vast_dayone_checklist_v1`), with a progress bar, reset / mark-all controls, and auto-collapse when complete. Deployment Workflow cards align with the Field Procedure (Tech Port / VMS Mgmt / Teleport, Test Suite option).
+- **Field Procedure in the Quick Start Guide.** A 13-step procedure for running the as-built report and the post-deployment Test Suite on every deployment, from install and Update Tools through Discovery, the full Test Suite run, bundle download, `SUMMARY.md` status review, and the cabling check, to posting the PDF, JSON, and bundle to the customer's SFDC account and `#internal-<customer>` Slack thread. It opens with a condensed checklist and includes connection-mode, operation, and bundle-status tables, a copyable Slack template, troubleshooting, and notes on where files are saved and how to handle customer data. The guide is now split into **Installation** (macOS / Windows sub-tabs plus Deployment Tools) and **Field Procedure** tabs; links to `#field-procedure`, `#deployment-tools`, or any step open the right tab. Step 2 summarizes the first-launch Gatekeeper (macOS) and SmartScreen (Windows) prompts. Linked from the Resources index and the SE one-pager.
+
+### Changed
+- **New report title (RPT-TITLE-1).** The title page now reads "asbuilt-reporter" in the one-pager style: Fira Sans Bold, with "asbuilt" in black and "-reporter" in accent blue. The large center logo is unchanged. The font (SIL Open Font License) ships with the app.
+- **Physical Rack Layout drawing.** Every U is labelled on the left (U1 to the top U), the rack sits directly under its page heading, and the duplicate "Rack: X" caption inside the drawing is gone. All racks in a report share one scale, so devices are the same size on every rack page. Stacked devices now touch with no white line between them, because blank padding inside device artwork is cropped when drawn.
+- **vperfsanity commands no longer export `VAST_VMS` (FR-12).** The vperfsanity scripts never read it; they find the VMS address from `/vast/vman/mgmt-vip`. The commands shown in Output Results are shorter as a result.
+- **Teleport Mode promoted out of Beta.** Removed the "Beta Feature" UI badge and Beta labeling from Teleport Mode across the Reporter, Advanced Configuration, in-app docs registry, README, Teleport Mode guide, Advanced Operations, and marketing pages. The tsh install-status pill remains.
+- **Product name is asbuilt-reporter everywhere it is shown.** Browser tab titles, the page footer, `--version` and CLI help, log banners, the bundle README, and the README and in-app guide headings now match the report title. The installed app is still called "VAST Reporter" and download file names are unchanged, so updates and uninstalls work as before.
+- **In-app guides updated for v1.6.2.** Advanced Operations describes EBox Support Tools, the vperfsanity run time and automatic cleanup, Log Bundle sources and partial results, and what bundles record about failures. Post-Install Validation lists all 27 API checks by their current names.
+
+### Removed
+- **Upgrade State health check (HCF-1).** VMS reports `upgrade_state` as `UNKNOWN` on idle clusters, so the check and its row in Health Check Details carried no useful information. It no longer runs, and reports regenerated from results saved by earlier versions omit it from the Cluster State & Software group. This replaces the earlier v1.6.2 fixes that treated `UNKNOWN` and `NOT_UPLOADED` as idle.
 
 ### Fixed
 - **Table titles separated from their tables.** A title such as "Health Check Details — Cluster State & Software" could sit at the bottom of one page with its table on the next, because the caption line under the title broke the link. A title, its caption and its table now move to the next page together whenever they fit on one page; a table longer than a page still starts under its title and continues with its header repeated.
@@ -56,9 +62,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vperfsanity reports a rejected SSH login as a login failure**, for example `SSH login to <VMS IP> was rejected (Too many authentication failures; rc=255); the tests did not start`, instead of `Tests failed (rc=255)`. SSH host-key and post-quantum banner lines are stripped from error messages.
 - **The Test Suite no longer starts a run while pre-validation is still going.** The page stopped waiting after 120 seconds and then POSTed the start request, which the server rejected with "One-shot execution already running". It now waits up to 15 minutes and never starts without results.
 
-### Added (prior)
-- **Interactive Dashboard day-one checklist.** The Quick Start "Before You Begin" section is now a checkable first-run list (install → Update Tools → profile → connection mode → Discovery → Reporter/Test Suite → download results → post to SFDC/Slack). Progress persists in browser `localStorage` (`vast_dayone_checklist_v1`), with a progress bar, reset / mark-all controls, and auto-collapse when complete. Deployment Workflow cards align with the Field Procedure (Tech Port / VMS Mgmt / Teleport, Test Suite option).
-- **Field Procedure in the Quick Start Guide.** A 13-step procedure for running the as-built report and the post-deployment Test Suite on every deployment, from install and Update Tools through Discovery, the full Test Suite run, bundle download, `SUMMARY.md` status review, and the cabling check, to posting the PDF, JSON, and bundle to the customer's SFDC account and `#internal-<customer>` Slack thread. It opens with a condensed checklist and includes connection-mode, operation, and bundle-status tables, a copyable Slack template, troubleshooting, and notes on where files are saved and how to handle customer data. The guide is now split into **Installation** (macOS / Windows sub-tabs plus Deployment Tools) and **Field Procedure** tabs; links to `#field-procedure`, `#deployment-tools`, or any step open the right tab. Step 2 summarizes the first-launch Gatekeeper (macOS) and SmartScreen (Windows) prompts. Linked from the Resources index and the SE one-pager.
+### Known issues
+- **Results page cluster filter mixes Tech Port clusters (TP-4).** Clusters reached through the Tech Port all use `192.168.2.2`, so filtering by one lists the others' results too. Check the cluster name in the file name before sharing. Planned for v1.6.3.
+- **Tech Port discovery records `192.168.2.2` as the management IP (TP-3)**, and Network Extraction counts the gateway twice.
+- **Remote archives stay on the cluster (FR-11).** `/tmp/vast_log_bundle_*.tar.gz` and the Support Tools archive under `/userdata` are not removed after download.
+- **Artifact file names mix UTC and local time (OBS-1).**
+- **vperfsanity Step 6 reports "Upload skipped" as success (HUB-7)**, and Cancel does not interrupt long steps other than vperfsanity (FR-15).
 
 ## [1.6.1] - 2026-09-08
 
