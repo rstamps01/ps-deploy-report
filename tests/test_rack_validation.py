@@ -4,6 +4,7 @@ import json
 import sys
 from pathlib import Path
 
+import pymupdf
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -87,6 +88,18 @@ class TestValidationReport:
         assert Path(manifest["pdf"]).stat().st_size > 0
         data = json.loads(Path(manifest["json"]).read_text())
         assert data["racks"][0]["name"] == "VAL-42U-A"
+
+    def test_generic_placeholder_counts_as_fallback(self, tmp_path):
+        import generate_rack_validation_report as gen
+
+        manifest = gen.generate(tmp_path, page_size="A4", heights=[42])
+        devices = [d for r in manifest["racks"] for d in r["devices"]]
+        ceres_4u = [d for d in devices if d["model"] == "ceres_4u"]
+        assert ceres_4u and all(d["image_fallback"] for d in ceres_4u)
+        assert not any(d["image_fallback"] for d in devices if d["model"] == "ceres_v2")
+
+        summary = pymupdf.open(manifest["pdf"])[0].get_text()
+        assert "ceres_4u" in summary
 
     def test_build_validation_racks_names_and_status(self):
         racks, status = build_validation_racks([42])

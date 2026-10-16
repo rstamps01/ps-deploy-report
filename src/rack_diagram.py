@@ -697,6 +697,7 @@ class RackDiagram:
                 "width": self.rack_width,
                 "height": device_height,
                 "image": image_used,
+                "image_fallback": image_used is None or image_used.startswith("generic_"),
                 "indicators": [
                     {"shape": i.get("shape", "dot"), "color": str(getattr(i.get("color"), "hexval", lambda: "")())}
                     for i in (indicators or [])

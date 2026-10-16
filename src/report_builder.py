@@ -704,7 +704,7 @@ class VastReportBuilder:
         for r in racks:
             placed = r.get("placed_devices", [])
             filled = sum(d["u_height"] for d in placed)
-            fallback = [str(d["model"]) for d in placed if not d["image"]]
+            fallback = [str(d["model"]) for d in placed if d["image_fallback"]]
             summary.append(
                 [r["name"], f"{r['height_u']}U", str(len(placed)), f"{filled}/{r['height_u']}", ", ".join(fallback)]
             )
@@ -719,7 +719,8 @@ class VastReportBuilder:
             for d in sorted(r.get("placed_devices", []), key=lambda d: d["u_position"]):
                 top = d["u_position"] + d["u_height"] - 1
                 span = f"U{d['u_position']}" if top == d["u_position"] else f"U{d['u_position']}-U{top}"
-                rows.append([span, str(d["model"]), d["type"], d["image"] or "fallback", str(len(d["indicators"]))])
+                image = f"fallback ({d['image']})" if d["image_fallback"] and d["image"] else d["image"] or "fallback"
+                rows.append([span, str(d["model"]), d["type"], image, str(len(d["indicators"]))])
             story.append(Paragraph(f"{r['name']} ({r['height_u']}U)", styles["Heading3"]))
             story.append(self._table(rows, colWidths=[0.8 * inch, 2 * inch, 0.7 * inch, 2.4 * inch, 0.8 * inch]))
 
