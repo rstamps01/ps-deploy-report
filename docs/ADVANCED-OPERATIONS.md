@@ -96,11 +96,16 @@ Runs VAST's diagnostic script inside the cluster container.
 
 | Step | Name | Description |
 |------|------|-------------|
-| 1 | Download Script | Download vast_support_tools.py to CNode |
-| 2 | Run in Container | Execute script inside VAST container |
-| 3 | Validate Results | Check output for errors and warnings |
-| 4 | Package Results | Create archive of diagnostic output |
-| 5 | Download Archive | SCP archive to local laptop |
+| 1 | Download Script to CNode | Download vast_support_tools.py next to the VMS container wrapper |
+| 2 | Set Permissions | Make the script executable |
+| 3 | Run Support Tools | Run `vast_support_tools.py inspect` inside the VAST container |
+| 4 | Create Archive | Create a tarball of the support-checks output |
+| 5 | Download Results | SCP the tarball to the laptop |
+
+**EBox clusters.** The VMS container wrapper is `/vast/data/vms.sh` on CBox clusters, but EBox
+clusters keep it in the CNode container directory (for example `/vast/data/C-4200/vms.sh`). The
+workflow finds the wrapper on the VMS host and places the script beside it. Step 3 fails, with the
+reason, when the tool cannot start (exit code 127), times out, or exits non-zero without output.
 
 ### vperfsanity Performance Test (7 steps)
 
@@ -120,17 +125,35 @@ User-initiated storage performance validation using the vperfsanity test suite. 
 
 **Cross-tenant cleanup:** Step 3 queries `GET /api/views/` to find any `vperfsanity` views across all tenants and deletes them before running the prepare script, preventing HTTP 400 "bucket name already in use" errors from prior runs in different tenant contexts.
 
+**Run time.** Step 4 allows 4 hours: writes, the script's burst-recovery wait of up to 2 hours, then
+reads. A timeout says whether it happened during the burst wait. On large clusters, where one object
+per thread would exceed the S3 limit of 10,000 parts, Step 4 reads the script's suggested object count
+and re-runs once with `-n`.
+
+**Cleanup always runs.** If any step fails or the run is cancelled after cluster objects may exist,
+Step 7 still runs, so test data, the view, policy and user, and elbencho are removed. This applies to
+Run All and to the Test Suite.
+
+**VIP pool.** One-Shot pre-validation fails if the chosen pool does not exist or has no VIPs on
+CNodes, and lists the cluster's protocol pools.
+
 ### VMS Log Bundle (5 steps)
 
 Collects VMS logs for support analysis.
 
 | Step | Name | Description |
 |------|------|-------------|
-| 1 | Discover Sizes | Check log sizes before collection |
+| 1 | Discover Log Sizes | Check log sizes before collection, including recent `/vast/log` files |
 | 2 | Confirm Collection | Review sizes and confirm (skip large bundles) |
 | 3 | Create Archive | Compress logs into tar.gz |
-| 4 | Download Bundle | Transfer archive to laptop |
-| 5 | Verify Contents | Check archive integrity |
+| 4 | Download to Laptop | SCP the archive to the laptop |
+| 5 | Verify Contents | Check archive integrity and contents |
+
+**What is collected.** `/var/log/messages`, `/var/log/vast` and `/var/log/syslog` when present, plus
+files under `/vast/log` changed in the last 24 hours (capped at 2 GB). On 5.x CNodes most VAST logs are
+under `/vast/log`; the `/var/log/vast` and `/var/log/syslog` paths often do not exist. Each source is
+recorded, and when one is missing the result reads **partial** and names what was not collected.
+Remote archives are not yet removed from the CNode after download (FR-11).
 
 ### Switch Configuration Extraction (3 steps)
 
@@ -296,6 +319,11 @@ The bundle contains (when available):
 - As-Built report PDF (matched via sidecar `.meta.json` cluster_ip)
 - As-Built report JSON data file (matched via `cluster_ip` field)
 - SUMMARY.md and manifest.json
+- `diagnostics/operation_log.jsonl`: the session's Output Results log
+
+When an operation failed or was skipped, its placeholder and its `SUMMARY.md` line name the step
+and the error, for example `FAILED — Step 3 (Prepare Infrastructure): Prepare failed (rc=1)`.
+`manifest.json` records per-operation details.
 
 ---
 
@@ -306,7 +334,7 @@ The **Validation Results** page (`/validation-results`) provides a browser for a
 ### Features
 
 - **Operation Tabs:** 9 tabs for each operation type (As-Built Reports, Health Checks, Network Config, Switch Config, vnetmap, vperfsanity, Support Tools, Log Bundles, Bundles)
-- **Profile Filter Dropdown:** Filter all tabs by a saved cluster profile, view all clusters at once, or view only "Unsaved Cluster Results"
+- **Profile Filter Dropdown:** Filter all tabs by a saved cluster profile, view all clusters at once, or view only "Unsaved Cluster Results". Known issue (TP-4): clusters reached through the Tech Port all use `192.168.2.2`, so filtering by one of them also lists the others' results. Check the cluster name in the file name before sharing.
 - **Per-Tab Tables:** Each tab shows file name, type, size, cluster IP, generation date, and View/Download/Delete actions
 - **Tab Badges:** Each tab shows the count of results for the active filter
 
