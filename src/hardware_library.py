@@ -312,12 +312,14 @@ def get_device_height(model: str, user_library: Optional[Dict[str, Any]] = None)
         return 1
 
     model_lower = model.lower()
-
-    # EBox/enclosure default to 1U
-    if "ebox" in model_lower or "enclosure" in model_lower:
-        return 1
-
     device = match_device(model, user_library)
+
+    # An EBox/enclosure only takes a catalog height from an EBox entry; a vendor
+    # fallback such as "hpe" (a 2U CBox) must not size an unknown EBox.
+    if "ebox" in model_lower or "enclosure" in model_lower:
+        if device is None or str(device.get("type", "")).lower() != "ebox":
+            return 1
+
     if device is None:
         return 1
 
