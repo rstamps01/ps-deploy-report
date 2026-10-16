@@ -95,11 +95,14 @@ class TestDashboardRoute(unittest.TestCase):
     def test_dashboard_quick_start_content(self):
         resp = self.client.get("/")
         self.assertIn(b"Quick Start", resp.data)
-        self.assertIn(b"Prerequisites", resp.data)
-        self.assertIn(b"Getting Started", resp.data)
+        self.assertIn(b"Before You Begin", resp.data)
+        self.assertIn(b"vast_dayone_checklist_v1", resp.data)
+        self.assertIn(b"Day-one checklist", resp.data)
+        self.assertIn(b"Update Deployment Tools", resp.data)
         self.assertIn(b"Connection Settings", resp.data)
-        self.assertIn(b"Run Report", resp.data)
+        self.assertIn(b"Run Report or Test Suite", resp.data)
         self.assertIn(b"Review", resp.data)
+        self.assertIn(b"field-procedure", resp.data)
 
     def test_dashboard_status_api(self):
         resp = self.client.get("/api/dashboard/status")
