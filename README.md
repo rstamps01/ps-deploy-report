@@ -173,9 +173,9 @@ cp config/config.yaml.template config/config.yaml
 
 **Report Tuning Tool** (on the Results page) lets you select a previously generated JSON report file and regenerate a customized PDF with section toggles and formatting overrides — no cluster access required.
 
-**Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`, `report.table_layout`.
+**Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`.
 
-**Table layout:** `report.table_layout: wrapped` (default) wraps text inside every table cell, centered horizontally and vertically, letting rows grow in height. It groups Health Check details into functional-area tables and keeps section titles on the same page as their table. `report.table_layout: legacy` restores the previous layout while the new one is under review.
+**Table layout:** Text wraps inside every table cell, centered horizontally and vertically, and rows grow in height. Health Check details are grouped into functional-area tables, and section titles stay on the same page as their table.
 
 **Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping; `SMTP_USERNAME` / `SMTP_PASSWORD` for pipeline escalation email (see below).
 

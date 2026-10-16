@@ -24,6 +24,8 @@
 - [x] Update CHANGELOG `[Unreleased]` / roadmap statuses
 - [x] quality-gate (see DECISIONS memlog for the latest run)
 - [ ] Live-cluster validation pass ([`live-test-plan.md`](live-test-plan.md)): FR-1 (EBox + C/DBox), FR-5 (`/vast/log` paths), NET-6 node count, HCF-7/HCF-8 output; retest vperfsanity/log_bundle with laptop awake after SE Lab SSH-drop findings
-- [ ] Merge PR #36 / #37, then open the v1.6.2 PR
+- [x] PR #36 closed as superseded (Teleport Beta removal is on this branch); PR #37 merged to develop (2026-10-16)
+- [x] Health Check Summary "Total 0" fix; RPT-LAYOUT-1 approved and `legacy` toggle removed; FR-12; GOV-1; GOV-3 advisory drafted ([`field-advisory.md`](field-advisory.md))
+- [ ] Open the v1.6.2 PR (after the live-cluster validation pass)
 - [ ] Live DIAG-1 lab run (needs operator credentials)
 - [ ] SW-1 / update-pill / Slack+Confluence announcement (separate leftovers)

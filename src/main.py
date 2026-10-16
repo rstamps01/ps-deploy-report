@@ -43,17 +43,12 @@ if sys.platform == "darwin":
 
 from api_handler import create_vast_api_handler  # noqa: E402
 from data_extractor import create_data_extractor  # noqa: E402
-from report_builder import ReportConfig, create_report_builder  # noqa: E402
+from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
 # Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
 APP_VERSION = "1.6.1"
 __version__ = APP_VERSION
-
-
-def _layout_report_config(config: Optional[Dict[str, Any]]) -> ReportConfig:
-    """Report config for CLI runs: defaults plus the ``report.table_layout`` toggle."""
-    return ReportConfig(table_layout=ReportConfig.from_yaml(config or {}).table_layout)
 
 
 class VastReportGenerator:
@@ -150,7 +145,7 @@ class VastReportGenerator:
             self.logger.info("Data extractor initialized")
 
             # Initialize report builder
-            self.report_builder = create_report_builder(config=_layout_report_config(self.config))
+            self.report_builder = create_report_builder()
             self.logger.info("Report builder initialized")
 
             # API handler will be initialized when we have credentials
@@ -1089,7 +1084,7 @@ def _run_from_json(json_path: str, output_dir: str, logger: Any, config: Optiona
     pdf_path = output_path / pdf_filename
 
     try:
-        report_builder = create_report_builder(config=_layout_report_config(config))
+        report_builder = create_report_builder()
     except Exception as exc:
         logger.error("Failed to create report builder: %s", exc)
         return 1

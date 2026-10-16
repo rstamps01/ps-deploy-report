@@ -39,12 +39,8 @@ def _cell(table, row, col):
 
 
 class TestMakeTable:
-    def test_wrapped_layout_returns_wrapped_table(self):
-        assert isinstance(make_table([["a"]], "wrapped", colWidths=[50]), VastWrappedTable)
-
-    def test_legacy_layout_returns_plain_table(self):
-        table = make_table([["a"]], "legacy", colWidths=[50])
-        assert type(table) is Table
+    def test_returns_wrapped_table(self):
+        assert isinstance(make_table([["a"]], colWidths=[50]), VastWrappedTable)
 
 
 class TestVastWrappedTableCells:

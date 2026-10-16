@@ -1,4 +1,4 @@
-"""Report-level wiring of the wrapped table layout and its legacy toggle (RPT-LAYOUT-1)."""
+"""Report-level wiring of the wrapped table layout (RPT-LAYOUT-1)."""
 
 import sys
 from pathlib import Path
@@ -57,8 +57,8 @@ HEALTH_DATA = {
 }
 
 
-def _builder(layout):
-    return VastReportBuilder(config=ReportConfig(table_layout=layout))
+def _builder():
+    return VastReportBuilder()
 
 
 def _tables(flowables):
@@ -71,29 +71,15 @@ def _tables(flowables):
 
 
 class TestConfig:
-    def test_default_is_wrapped(self):
-        assert ReportConfig().table_layout == "wrapped"
-
-    def test_yaml_legacy(self):
-        assert ReportConfig.from_yaml({"report": {"table_layout": "legacy"}}).table_layout == "legacy"
-
-    def test_yaml_invalid_falls_back_to_wrapped(self):
-        assert ReportConfig.from_yaml({"report": {"table_layout": "fancy"}}).table_layout == "wrapped"
-
-    def test_builder_passes_layout_to_brand_compliance(self):
-        assert _builder("legacy").brand_compliance.table_layout == "legacy"
-        assert _builder("wrapped").brand_compliance.table_layout == "wrapped"
-
-    def test_cli_and_replay_honor_table_layout(self):
-        from main import _layout_report_config
-
-        assert _layout_report_config({"report": {"table_layout": "legacy"}}).table_layout == "legacy"
-        assert _layout_report_config(None).table_layout == "wrapped"
+    def test_retired_table_layout_key_is_ignored(self):
+        config = ReportConfig.from_yaml({"report": {"table_layout": "legacy", "organization": "Acme"}})
+        assert config.organization == "Acme"
+        assert not hasattr(config, "table_layout")
 
 
 class TestHealthSection:
-    def test_wrapped_renders_consolidated_groups(self):
-        text = _flowable_text(_builder("wrapped")._create_health_check_section(HEALTH_DATA))
+    def test_renders_consolidated_groups(self):
+        text = _flowable_text(_builder()._create_health_check_section(HEALTH_DATA))
         assert "Health Check Details — Cluster State &amp; Software" in text or (
             "Health Check Details — Cluster State & Software" in text
         )
@@ -101,71 +87,43 @@ class TestHealthSection:
         assert "1.1.1.1, 8.8.8.8" in text
         assert "— details" not in text
 
-    def test_legacy_keeps_per_check_subtables(self):
-        text = _flowable_text(_builder("legacy")._create_health_check_section(HEALTH_DATA))
-        assert "Cluster State — details" in text
-        assert "Health Check Details —" not in text
-
-    def test_wrapped_tables_are_wrapped(self):
-        tables = _tables(_builder("wrapped")._create_health_check_section(HEALTH_DATA))
+    def test_tables_are_wrapped(self):
+        tables = _tables(_builder()._create_health_check_section(HEALTH_DATA))
         assert tables and all(isinstance(t, VastWrappedTable) for t in tables)
-
-    def test_legacy_tables_are_plain(self):
-        tables = _tables(_builder("legacy")._create_health_check_section(HEALTH_DATA))
-        assert tables and not any(isinstance(t, VastWrappedTable) for t in tables)
 
 
 class TestBrandTables:
-    def _bc(self, layout):
-        bc = create_vast_brand_compliance()
-        bc.table_layout = layout
-        return bc
-
-    def test_wrapped_titled_table_is_flat(self):
-        elements = self._bc("wrapped").create_vast_table([["a", "b"]], title="Things", headers=["A", "B"])
+    def test_titled_table_is_flat(self):
+        elements = create_vast_brand_compliance().create_vast_table([["a", "b"]], title="Things", headers=["A", "B"])
         assert not any(isinstance(e, KeepTogether) for e in elements)
         assert any(isinstance(e, VastWrappedTable) for e in elements)
 
-    def test_legacy_titled_table_kept_together(self):
-        elements = self._bc("legacy").create_vast_table([["a", "b"]], title="Things", headers=["A", "B"])
-        assert isinstance(elements[0], KeepTogether)
-        assert not _tables(elements)[0].__class__ is VastWrappedTable
-
-    def test_wrapped_hardware_table_flows_continuously(self):
+    def test_hardware_table_flows_continuously(self):
         rows = [[f"r{i}", "m", "n", "s", "ACTIVE", "1U"] for i in range(60)]
         headers = ["Rack", "Model", "Name", "Serial", "Status", "Height"]
-        elements = self._bc("wrapped").create_vast_hardware_table_with_pagination(rows, "Hardware Inventory", headers)
+        bc = create_vast_brand_compliance()
+        elements = bc.create_vast_hardware_table_with_pagination(rows, "Hardware Inventory", headers)
         assert not any(isinstance(e, PageBreak) for e in elements)
         assert len(_tables(elements)) == 1
         assert "(Page 1 of" not in _flowable_text(elements)
 
-    def test_wrapped_hardware_columns_fit_short_words(self):
+    def test_hardware_columns_fit_short_words(self):
         serial = "S000000X0000001-PLATFORM-RDMA:4200"
         rows = [["Unknown", "supermicro_turin_ebox24", f"ebox-{serial}-{serial}", serial, "ACTIVE", "1U"]]
         headers = ["Rack", "Model", "Name", "Serial", "Status", "Height"]
-        bc = self._bc("wrapped")
+        bc = create_vast_brand_compliance()
         table = _tables(bc.create_vast_hardware_table_with_auto_width(rows, "Hardware Inventory", headers))[0]
         table.wrap(sum(table._argW), 10_000)
         size = bc.typography.BODY_SIZE
         assert table._argW[0] >= stringWidth("Unknown", bc.typography.BODY_FONT, size)
         assert table._argW[5] >= stringWidth("Height", "Helvetica-Bold", size)
 
-    def test_legacy_hardware_table_paginates(self):
-        rows = [[f"r{i}", "m", "n", "s", "ACTIVE", "1U"] for i in range(60)]
-        headers = ["Rack", "Model", "Name", "Serial", "Status", "Height"]
-        elements = self._bc("legacy").create_vast_hardware_table_with_pagination(rows, "Hardware Inventory", headers)
-        assert "(Page 1 of 3)" in _flowable_text(elements)
-
 
 class TestStoryFinalization:
-    def test_wrapped_binds_titles(self):
+    def test_binds_titles(self):
         story = [Paragraph("<b>Title</b>"), Spacer(1, 4), Table([["h"], ["v"]], colWidths=[50])]
-        out = _builder("wrapped")._finalize_story(story)
+        out = _builder()._finalize_story(story)
         assert isinstance(out[0], CondPageBreak)
-
-    def test_legacy_story_unchanged(self):
-        story = [Paragraph("<b>Title</b>"), Spacer(1, 4), Table([["h"], ["v"]], colWidths=[50])]
-        assert _builder("legacy")._finalize_story(story) == story
 
 
 class TestNetworkConfigTables:
@@ -180,10 +138,6 @@ class TestNetworkConfigTables:
         }
     }
 
-    def test_wrapped_uses_wrapped_table(self):
-        tables = _tables(_builder("wrapped")._create_cnodes_network_configuration(self.DATA))
+    def test_uses_wrapped_table(self):
+        tables = _tables(_builder()._create_cnodes_network_configuration(self.DATA))
         assert tables and isinstance(tables[0], VastWrappedTable)
-
-    def test_legacy_uses_plain_table(self):
-        tables = _tables(_builder("legacy")._create_cnodes_network_configuration(self.DATA))
-        assert tables and type(tables[0]) is Table

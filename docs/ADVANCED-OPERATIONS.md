@@ -116,7 +116,7 @@ User-initiated storage performance validation using the vperfsanity test suite. 
 | 6 | Upload Results | Upload results to VAST (requires cluster internet access; skipped gracefully if unavailable) |
 | 7 | Cleanup | Delete test data, remove infrastructure (user, view, policy), and clean up package files |
 
-**Environment variables:** `VAST_VMS` (cluster IP), `ADMIN_USER`, and `ADMIN_PASSWORD` are explicitly passed to all remote script executions.
+**Environment variables:** `ADMIN_USER` and `ADMIN_PASSWORD` are passed to the prepare and cleanup scripts. The scripts find the VMS address themselves from `/vast/vman/mgmt-vip` on the CNode.
 
 **Cross-tenant cleanup:** Step 3 queries `GET /api/views/` to find any `vperfsanity` views across all tenants and deletes them before running the prepare script, preventing HTTP 400 "bucket name already in use" errors from prior runs in different tenant contexts.
 

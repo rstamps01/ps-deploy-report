@@ -582,7 +582,7 @@ class TestNodeManagementMap(unittest.TestCase):
     def _data(self):
         return {
             "metadata": {"enhanced_features": {}},
-            "cluster_summary": {"name": "LAMBDA-VAST-LAX-01", "psnt": "VA2553454"},
+            "cluster_summary": {"name": "ACME-VAST-NYC-01", "psnt": "VA0000001"},
             "hardware_inventory": {
                 "cnodes": [
                     {
@@ -760,11 +760,33 @@ class TestHardwareInventorySerialColumn(unittest.TestCase):
         self.assertNotIn("Name/Serial Number", text)
 
 
-class TestHealthCheckDetailsRendering(unittest.TestCase):
-    """HCF-6: non-empty check details render as PDF sub-tables (legacy table layout)."""
+class TestHealthCheckSummaryTotal(unittest.TestCase):
+    """The checker's summary has no 'total' key; the PDF must still show the real total."""
 
-    def test_alarm_details_subtable_rendered(self):
-        builder = VastReportBuilder(config=ReportConfig(table_layout="legacy"))
+    @staticmethod
+    def _summary_row(flowables):
+        for f in flowables:
+            rows = getattr(f, "_cellvalues", None)
+            if rows and [str(getattr(c, "text", c)) for c in rows[0]][:1] == ["Pass"]:
+                return [str(getattr(c, "text", c)) for c in rows[1]]
+        raise AssertionError("summary table not found")
+
+    def test_total_computed_when_summary_has_no_total(self):
+        builder = VastReportBuilder()
+        result = {"check_name": "Expansion State", "category": "api", "status": "pass", "message": "ok", "details": {}}
+        health_data = {
+            "summary": {"pass": 23, "fail": 0, "warning": 3, "skipped": 2, "error": 0},
+            "results": [result],
+        }
+        row = self._summary_row(builder._create_health_check_section(health_data))
+        self.assertEqual(row, ["23", "0", "3", "2", "0", "28"])
+
+
+class TestHealthCheckDetailsRendering(unittest.TestCase):
+    """HCF-6 / RPT-LAYOUT-1: non-empty check details render in their functional-area group."""
+
+    def test_alarm_details_rendered_in_alarms_group(self):
+        builder = VastReportBuilder()
         health_data = {
             "summary": {"pass": 0, "fail": 0, "warning": 1, "skipped": 0, "error": 0, "total": 1},
             "results": [
@@ -793,12 +815,14 @@ class TestHealthCheckDetailsRendering(unittest.TestCase):
             ],
         }
         text = _flowable_text(builder._create_health_check_section(health_data))
-        self.assertIn("Active Alarms — details", text)
+        self.assertIn("Health Check Details — Alarms & Events", text)
+        self.assertIn("Unresolved critical/major alarms", text)
         self.assertIn("Drive predictive failure", text)
         self.assertIn("CRITICAL", text)
+        self.assertNotIn("— details", text)
 
-    def test_performance_details_subtable_rendered(self):
-        builder = VastReportBuilder(config=ReportConfig(table_layout="legacy"))
+    def test_performance_details_not_shown(self):
+        builder = VastReportBuilder()
         health_data = {
             "summary": {"pass": 1, "fail": 0, "warning": 0, "skipped": 0, "error": 0, "total": 1},
             "results": [
@@ -812,12 +836,12 @@ class TestHealthCheckDetailsRendering(unittest.TestCase):
             ],
         }
         text = _flowable_text(builder._create_health_check_section(health_data))
-        self.assertIn("Performance Baseline — details", text)
-        self.assertIn("iops", text)
-        self.assertIn("1200", text)
+        self.assertIn("Performance baseline captured (2 metrics)", text)
+        self.assertNotIn("Health Check Details — Performance", text)
+        self.assertNotIn("1200", text)
 
     def test_empty_details_omitted(self):
-        builder = VastReportBuilder(config=ReportConfig(table_layout="legacy"))
+        builder = VastReportBuilder()
         health_data = {
             "summary": {"pass": 1, "fail": 0, "warning": 0, "skipped": 0, "error": 0, "total": 1},
             "results": [

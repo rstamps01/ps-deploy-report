@@ -4,13 +4,13 @@
 | --- | --- | --- |
 | 1 | `src/utils/pdf_layout.py`: `VastWrappedTable`, `make_table`, token breaking, adaptive side padding, short-word column floor, `bind_titles_to_content` | Done |
 | 2 | `src/utils/health_detail_groups.py`: functional-area groups + Other Check Details | Done |
-| 3 | `report_builder.py`: `ReportConfig.table_layout`, data tables via `make_table`, health group rendering, `_finalize_story` title binding | Done |
-| 4 | `brand_compliance.py`: layout-aware tables; flat titled tables and continuous hardware tables in `wrapped` | Done |
-| 5 | `main.py`: CLI and `--from-json` replay honour `report.table_layout` | Done |
-| 6 | Tests: `test_pdf_layout.py`, `test_health_detail_groups.py`, `test_report_table_layout.py`; HCF-6 PDF tests pinned to `legacy` | Done |
-| 7 | Docs: `config.yaml.template`, `README.md`, `CHANGELOG.md`, `TODO-ROADMAP.md` | Done |
-| 8 | User review of the rendered 43-EBox report | Pending |
-| 9 | After approval: remove `legacy`, the HCF-6 PDF sub-table code, and the toggle | Pending approval |
+| 3 | `report_builder.py`: data tables via `make_table`, health group rendering, `_finalize_story` title binding | Done |
+| 4 | `brand_compliance.py`: wrapped tables; flat titled tables and continuous hardware tables | Done |
+| 5 | Temporary `report.table_layout: wrapped / legacy` toggle (all report paths) for side-by-side review | Done, then removed |
+| 6 | Tests: `test_pdf_layout.py`, `test_health_detail_groups.py`, `test_report_table_layout.py`; HCF-6 PDF tests moved to the grouped layout | Done |
+| 7 | Docs: `README.md`, `CHANGELOG.md`, `TODO-ROADMAP.md` | Done |
+| 8 | User review of the rendered 43-EBox report | Approved 2026-10-16 |
+| 9 | Remove `legacy`, the HCF-6 PDF sub-table code, and the toggle | Done 2026-10-16 |
 
 ## Evidence (43-EBox report, `--from-json` replay of the 2026-10-15 run)
 

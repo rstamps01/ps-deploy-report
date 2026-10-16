@@ -1,6 +1,6 @@
 # RPT-LAYOUT-1 — Wrapped table cells, consolidated health details, titles kept with content
 
-**Status:** Implemented, in review (2026-10-15) · **Toggle:** `report.table_layout: wrapped | legacy` (default `wrapped`) until the new layout is approved, then `legacy` is removed.
+**Status:** Approved and done (2026-10-16). The temporary `report.table_layout: wrapped | legacy` toggle (R4) was removed after approval; the wrapped layout is the only layout.
 
 ## Problem
 
@@ -51,7 +51,7 @@ The "Detailed Check Results" table stays as-is (wrapping/centering from R1 appli
 - Title followed by other content: kept together with that first flowable.
 - Applied once at the end of story assembly so both build passes paginate identically (TOC page numbers stay correct).
 
-### R4 — Restore toggle
+### R4 — Restore toggle (removed 2026-10-16 after approval)
 
 - `report.table_layout` in `config.yaml` (`wrapped` default, `legacy` = today's rendering, unchanged code paths). Documented in `config.yaml.template` and `README.md`.
 - `legacy` disables R1–R3 entirely.
@@ -61,7 +61,7 @@ The "Detailed Check Results" table stays as-is (wrapping/centering from R1 appli
 
 - `src/utils/pdf_layout.py`
   - `VastWrappedTable(Table)`: converts text cells to centered `Paragraph`s on first layout using each cell's computed style and column width (span-aware); re-centers existing `Paragraph` cells; leaves other flowables untouched; forces `ALIGN CENTER` / `VALIGN MIDDLE`.
-  - `make_table(data, layout, **kwargs)`: returns `VastWrappedTable` for `wrapped`, plain `Table` for `legacy`.
+  - `make_table(data, **kwargs)`: returns `VastWrappedTable` (during review it also returned a plain `Table` for `legacy`).
   - `bind_titles_to_content(story, frame_width, frame_height)`: R3.
 - `src/utils/health_detail_groups.py`: pure functions `build_health_detail_groups(results) -> List[DetailGroup]` (title, caption, tables of headers/rows/column weights). No ReportLab import.
 - `report_builder.py`: `ReportConfig.table_layout`; health section renders groups in `wrapped`, legacy sub-tables in `legacy`; data tables via `make_table`; binder at end of `_build_report_story`.

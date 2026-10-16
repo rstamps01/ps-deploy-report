@@ -39,7 +39,7 @@ from reportlab.platypus import (
 )
 
 from utils.logger import get_logger
-from utils.pdf_layout import TABLE_LAYOUT_LEGACY, TABLE_LAYOUT_WRAPPED, make_table
+from utils.pdf_layout import make_table
 
 
 @dataclass
@@ -117,8 +117,6 @@ class VastBrandCompliance:
         self.logger = get_logger(__name__)
         self.colors = VastColorPalette()
         self.typography = VastTypography()
-        # report.table_layout; the report builder overrides this from config.
-        self.table_layout = TABLE_LAYOUT_WRAPPED
 
         # Create brand-compliant paragraph styles
         self.styles = self._create_paragraph_styles()
@@ -373,7 +371,7 @@ class VastBrandCompliance:
             computed_widths = [col_width] * num_cols
 
         # Create table with repeat headers on page breaks
-        table = make_table(table_data, self.table_layout, colWidths=computed_widths, repeatRows=1)
+        table = make_table(table_data, colWidths=computed_widths, repeatRows=1)
 
         # Apply VAST brand table styling
         font_sz = (self.typography.BODY_SIZE - 2) if compact else self.typography.BODY_SIZE
@@ -411,12 +409,8 @@ class VastBrandCompliance:
         table.setStyle(table_style)
         table_elements.append(table)
 
-        # Keep title and table together if title provided (wrapped layout: the report
-        # builder keeps titles with their tables, so long tables may split across pages)
-        if title and self.table_layout == TABLE_LAYOUT_LEGACY:
-            elements.append(KeepTogether(table_elements))
-        else:
-            elements.extend(table_elements)
+        # The report builder keeps titles with their tables, so long tables may split across pages.
+        elements.extend(table_elements)
 
         elements.append(Spacer(1, 12))
 
@@ -589,7 +583,7 @@ class VastBrandCompliance:
                 processed_table_data.append(processed_row)
 
         # Create table with calculated column widths and repeat headers on page breaks
-        table = make_table(processed_table_data, self.table_layout, colWidths=col_widths, repeatRows=1)
+        table = make_table(processed_table_data, colWidths=col_widths, repeatRows=1)
 
         # Apply VAST brand table styling with text wrapping - match create_vast_table styling
         table_style = TableStyle(
@@ -625,12 +619,7 @@ class VastBrandCompliance:
 
         table.setStyle(table_style)
         table_elements.append(table)
-
-        # Keep title and table together to prevent page breaks
-        if self.table_layout == TABLE_LAYOUT_LEGACY:
-            elements.append(KeepTogether(table_elements))
-        else:
-            elements.extend(table_elements)
+        elements.extend(table_elements)
         elements.append(Spacer(1, 12))
 
         return elements
@@ -639,8 +628,10 @@ class VastBrandCompliance:
         self, table_data: List[List[str]], title: str, headers: List[str]
     ) -> List[Any]:
         """
-        Create VAST brand-compliant hardware table with pagination support for large tables.
-        Automatically splits large tables across multiple pages with repeated headers.
+        Create VAST brand-compliant hardware table that splits across pages with repeated headers.
+
+        Wrapped rows vary in height, so the table flows as one and ReportLab splits it,
+        repeating the header row on each page.
 
         Args:
             table_data (List[List[str]]): Table data
@@ -648,47 +639,11 @@ class VastBrandCompliance:
             headers (List[str]): Column headers
 
         Returns:
-            List[Any]: Table elements with pagination
+            List[Any]: Table elements
         """
         if not table_data:
             return []
-
-        elements = []
-
-        # Define rows per page (adjust based on page size and row height)
-        # Assuming ~25 rows per page for A4 with current styling
-        rows_per_page = 25
-
-        # Calculate number of pages needed
-        total_rows = len(table_data)
-        num_pages = (total_rows + rows_per_page - 1) // rows_per_page
-
-        # Wrapped rows vary in height, so a fixed row count per page no longer fits:
-        # flow one table and let it split with the header row repeated.
-        if num_pages <= 1 or self.table_layout != TABLE_LAYOUT_LEGACY:
-            return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
-
-        # Split data into pages
-        for page_num in range(num_pages):
-            start_idx = page_num * rows_per_page
-            end_idx = min(start_idx + rows_per_page, total_rows)
-            page_data = table_data[start_idx:end_idx]
-
-            # Create page title with pagination info
-            if num_pages > 1:
-                page_title = f"{title} (Page {page_num + 1} of {num_pages})"
-            else:
-                page_title = title
-
-            # Create table for this page
-            page_elements = self.create_vast_hardware_table_with_auto_width(page_data, page_title, headers)
-            elements.extend(page_elements)
-
-            # Add page break between pages (except for the last page)
-            if page_num < num_pages - 1:
-                elements.append(PageBreak())
-
-        return elements
+        return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
 
     def create_vast_2d_diagram_placeholder(self, title: str, description: str) -> List[Any]:
         """

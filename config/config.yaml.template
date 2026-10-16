@@ -49,13 +49,6 @@ report:
   # Company/organization name for report header
   organization: "VAST Data Professional Services"
 
-  # Table layout (RPT-LAYOUT-1, under review):
-  #   wrapped - text wraps inside each cell, centered both ways; rows grow in height,
-  #             health check details are grouped by functional area, and titles stay
-  #             on the same page as their tables (default)
-  #   legacy  - previous layout (single-line cells, per-check detail tables)
-  table_layout: "wrapped"
-
   # Report template settings
   template:
     # Page size: A4, Letter

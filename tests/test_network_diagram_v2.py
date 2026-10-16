@@ -488,7 +488,7 @@ class TestSwitchRoleClassification:
         assert self._classify()({"hostname": "SW-LF-04"}) == "leaf"
 
     def test_site_prefixed_leaf_is_leaf(self):
-        assert self._classify()({"hostname": "LAX-01-SW-LF-02"}) == "leaf"
+        assert self._classify()({"hostname": "NYC-01-SW-LF-02"}) == "leaf"
 
     def test_uses_name_when_hostname_absent(self):
         assert self._classify()({"name": "SW-SP-01"}) == "spine"
@@ -504,13 +504,13 @@ class TestSwitchRoleClassification:
         gen = RackCentricDiagramGenerator()
         switches = [
             {"hostname": "SW-LF-01", "mgmt_ip": "10.0.0.13"},
-            {"hostname": "LAX-01-SW-LF-02", "mgmt_ip": "10.0.0.14"},
+            {"hostname": "NYC-01-SW-LF-02", "mgmt_ip": "10.0.0.14"},
             {"hostname": "SW-LF-03", "mgmt_ip": "10.0.0.15"},
             {"hostname": "SW-LF-04", "mgmt_ip": "10.0.0.16"},
         ]
         manual = [
             {"switch_name": "SW-LF-01", "rack_name": "RackP01C01"},
-            {"switch_name": "LAX-01-SW-LF-02", "rack_name": "RackP01C01"},
+            {"switch_name": "NYC-01-SW-LF-02", "rack_name": "RackP01C01"},
             {"switch_name": "SW-LF-03", "rack_name": "RackP01C02"},
             {"switch_name": "SW-LF-04", "rack_name": "RackP01C02"},
         ]
@@ -524,7 +524,7 @@ class TestSwitchRoleClassification:
             for sw in r["switches"]:
                 placed[sw.get("hostname")] = r["rack_name"]
         assert placed.get("SW-LF-01") == "RackP01C01"
-        assert placed.get("LAX-01-SW-LF-02") == "RackP01C01"
+        assert placed.get("NYC-01-SW-LF-02") == "RackP01C01"
         assert placed.get("SW-LF-03") == "RackP01C02"
         assert placed.get("SW-LF-04") == "RackP01C02"
 
@@ -2164,7 +2164,7 @@ class TestSwitchLabels:
 
         switches = [
             _make_switch("SW-LF-01", "10.208.59.13"),
-            _make_switch("LAX-01-SW-LF-02", "10.208.59.14"),
+            _make_switch("NYC-01-SW-LF-02", "10.208.59.14"),
         ]
         spines = [
             {"hostname": "SW-SP-01", "mgmt_ip": "10.208.59.11", "_assigned_rack": "RackP01C01"},
@@ -2187,7 +2187,7 @@ class TestSwitchLabels:
     def test_switch_name_and_mgmt_ip_rendered(self):
         svg = self._svg()
         assert "SW-LF-01" in svg
-        assert "LAX-01-SW-LF-02" in svg
+        assert "NYC-01-SW-LF-02" in svg
         assert "SW-SP-01" in svg
         assert "10.208.59.13" in svg
         assert "10.208.59.14" in svg

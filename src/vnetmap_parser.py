@@ -220,7 +220,7 @@ class VNetMapParser:
                     }
                 )
 
-    # SR-3: IB switch header anchor.  Example line from the mammoth
+    # SR-3: IB switch header anchor.  Example line from an IB
     # cluster's ``vnetmap_output_192.168.2.2_*.txt``:
     #
     #     Switch MF0;vast-switch1-bot:MQM8700/U1 - 0xb83fd20300e856b8 has {'172.16.0'}, network {'B', 'A'}, ...

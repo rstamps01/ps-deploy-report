@@ -331,7 +331,6 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         cleanup_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS='{host}' && "
             f" export ADMIN_USER='{admin_user}' && "
             f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh -c {vip_pool}"
@@ -362,7 +361,6 @@ class VperfsanityWorkflow:
         self.emit("info", f"$ ssh {user}@{host}")
         prepare_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS='{host}' && "
             f" export ADMIN_USER='{admin_user}' && "
             f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh {vip_pool}"
@@ -483,7 +481,7 @@ class VperfsanityWorkflow:
         self.emit("info", "")
         self.emit("info", f"$ ssh {user}@{host}")
 
-        run_cmd = f"cd {vperf_dir} && export VAST_VMS='{host}' && ./vperfsanity_run.sh -w -r {vip_pool}"
+        run_cmd = f"cd {vperf_dir} && ./vperfsanity_run.sh -w -r {vip_pool}"
         self.emit("info", f"$ {run_cmd}")
         self.emit("info", "")
         timeout = self._run_timeout_s()
@@ -508,10 +506,7 @@ class VperfsanityWorkflow:
                 "vperfsanity's default of one object per thread would exceed the S3 limit of 10,000 "
                 f"parts per object on this cluster; re-running with {num_objects} objects (-n {num_objects}).",
             )
-            run_cmd = (
-                f"cd {vperf_dir} && export VAST_VMS='{host}' && "
-                f"./vperfsanity_run.sh -w -r -n {num_objects} {vip_pool}"
-            )
+            run_cmd = f"cd {vperf_dir} && ./vperfsanity_run.sh -w -r -n {num_objects} {vip_pool}"
             self.emit("info", f"$ {run_cmd}")
             self.emit("info", "")
             rc, stdout, stderr = run_ssh_command(
@@ -669,7 +664,7 @@ class VperfsanityWorkflow:
         self.emit("info", "")
 
         # Delete generated test files
-        cleanup_run_cmd = f"cd {vperf_dir} && export VAST_VMS='{host}' && ./vperfsanity_run.sh -c {vip_pool}"
+        cleanup_run_cmd = f"cd {vperf_dir} && ./vperfsanity_run.sh -c {vip_pool}"
         self.emit("info", f"$ {cleanup_run_cmd}")
 
         rc1, stdout1, stderr1 = run_ssh_command(
@@ -692,7 +687,6 @@ class VperfsanityWorkflow:
         # Delete infrastructure (user, view, policy) -- needs admin creds
         cleanup_prep_cmd = (
             f"cd {vperf_dir} && "
-            f" export VAST_VMS='{host}' && "
             f" export ADMIN_USER='{admin_user}' && "
             f" export ADMIN_PASSWORD='{admin_pass}' && "
             f"./vperfsanity_prepare.sh -c {vip_pool}"

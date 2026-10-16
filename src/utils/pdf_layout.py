@@ -20,9 +20,6 @@ from reportlab.platypus import CondPageBreak, KeepTogether, Paragraph, Spacer, T
 from reportlab.platypus.doctemplate import ActionFlowable
 from reportlab.platypus.flowables import UseUpSpace
 
-TABLE_LAYOUT_WRAPPED = "wrapped"
-TABLE_LAYOUT_LEGACY = "legacy"
-TABLE_LAYOUTS = (TABLE_LAYOUT_WRAPPED, TABLE_LAYOUT_LEGACY)
 MIN_SIDE_PADDING = 2.0
 
 _SEPARATORS = "-_:/."
@@ -252,10 +249,8 @@ def apply_word_floor(widths: Sequence[float], floors: Sequence[float]) -> List[f
     return [f + spare * e / excess_total for f, e in zip(floors, excess)]
 
 
-def make_table(data: Any, layout: str = TABLE_LAYOUT_WRAPPED, **kwargs: Any) -> Table:
-    """Build a data table for the given ``report.table_layout`` (``wrapped`` or ``legacy``)."""
-    if layout == TABLE_LAYOUT_LEGACY:
-        return Table(data, **kwargs)
+def make_table(data: Any, **kwargs: Any) -> Table:
+    """Build a report data table (wrapped, centered cells)."""
     return VastWrappedTable(data, **kwargs)
 
 

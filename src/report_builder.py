@@ -36,13 +36,7 @@ from rack_diagram import RackDiagram
 from utils import get_bundle_dir, get_data_dir
 from utils.health_detail_groups import DetailGroup, build_health_detail_groups
 from utils.logger import get_logger
-from utils.pdf_layout import (
-    TABLE_LAYOUT_LEGACY,
-    TABLE_LAYOUT_WRAPPED,
-    TABLE_LAYOUTS,
-    bind_titles_to_content,
-    make_table,
-)
+from utils.pdf_layout import bind_titles_to_content, make_table
 
 try:
     from reportlab.lib import colors
@@ -128,7 +122,6 @@ class ReportConfig:
     include_timestamp: bool = True
     include_enhanced_features: bool = True
     organization: str = "VAST Professional Services"
-    table_layout: str = TABLE_LAYOUT_WRAPPED
     sections: Dict[str, bool] = field(default_factory=dict)
     network_diagram: Dict[str, Any] = field(
         default_factory=lambda: {
@@ -175,9 +168,6 @@ class ReportConfig:
         _set("include_timestamp", report.get("include_timestamp"), bool)
         _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
         _set("organization", report.get("organization"), str)
-        layout = str(report.get("table_layout", pdf.get("table_layout", "")) or "").strip().lower()
-        if layout in TABLE_LAYOUTS:
-            kwargs["table_layout"] = layout
 
         dc = config.get("data_collection", {})
         raw_sections = dc.get("sections", {})
@@ -268,7 +258,6 @@ class VastReportBuilder:
 
         # Initialize VAST brand compliance
         self.brand_compliance = create_vast_brand_compliance()
-        self.brand_compliance.table_layout = self.config.table_layout
 
         self.logger.info("Report builder initialized with VAST brand compliance")
 
@@ -302,13 +291,11 @@ class VastReportBuilder:
         return family.get(variant, family["normal"])
 
     def _table(self, data: Any, **kwargs: Any) -> Any:
-        """Build a data table for the configured ``report.table_layout``."""
-        return make_table(data, self.config.table_layout, **kwargs)
+        """Build a report data table (wrapped, centered cells)."""
+        return make_table(data, **kwargs)
 
     def _finalize_story(self, story: List[Any]) -> List[Any]:
-        """Keep titles on the same page as their tables/sections (wrapped layout only)."""
-        if self.config.table_layout == TABLE_LAYOUT_LEGACY:
-            return story
+        """Keep titles on the same page as their tables/sections."""
         frame_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
         frame_height = getattr(self, "_frame_height", A4[1] - 1.5 * inch)
         return list(bind_titles_to_content(story, frame_width, frame_height))
@@ -5179,7 +5166,6 @@ class VastReportBuilder:
                     bucket = r.get("status", "error")
                     if bucket in summary:
                         summary[bucket] = max(0, summary[bucket] - 1)
-                summary["total"] = sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))
 
         cluster_summary = (processed_data or {}).get("cluster_summary", {})
         mgmt_cnode = cluster_summary.get("mgmt_cnode", "")
@@ -5322,7 +5308,7 @@ class VastReportBuilder:
                 self._safe_table_value(summary.get("warning", 0)),
                 self._safe_table_value(summary.get("skipped", 0)),
                 self._safe_table_value(summary.get("error", 0)),
-                self._safe_table_value(summary.get("total", 0)),
+                self._safe_table_value(sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))),
             ]
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
@@ -5443,11 +5429,7 @@ class VastReportBuilder:
             content.append(detail_table)
             content.append(Spacer(1, 12))
 
-            if self.config.table_layout == TABLE_LAYOUT_LEGACY:
-                # HCF-6: per-check detail sub-tables (alarms, metrics, inactive lists)
-                content.extend(self._create_health_check_detail_subtables(results, styles))
-            else:
-                content.extend(self._create_health_detail_group_tables(results, styles))
+            content.extend(self._create_health_detail_group_tables(results, styles))
         elif not summary:
             content.append(
                 Paragraph(
@@ -5504,135 +5486,6 @@ class VastReportBuilder:
                     ("FONTSIZE", (0, 0), (-1, -1), max(self.config.font_size - 1, 7)),
                     ("GRID", (0, 0), (-1, -1), 0.5, self.brand_compliance.colors.BACKGROUND_DARK),
                     ("PADDING", (0, 0), (-1, -1), 5),
-                    (
-                        "ROWBACKGROUNDS",
-                        (0, 1),
-                        (-1, -1),
-                        [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
-                    ),
-                ]
-            )
-        )
-        return table
-
-    # Cap how many checks get a details sub-table and how many rows each shows (HCF-6).
-    _HEALTH_DETAIL_MAX_CHECKS = 15
-    _HEALTH_DETAIL_MAX_ROWS = 20
-
-    @staticmethod
-    def _health_details_nonempty(details: Any) -> bool:
-        """Return True when details has at least one meaningful value."""
-        if not isinstance(details, dict) or not details:
-            return False
-        for value in details.values():
-            if value is None or value == "" or value == [] or value == {}:
-                continue
-            return True
-        return False
-
-    def _create_health_check_detail_subtables(
-        self,
-        results: List[Dict[str, Any]],
-        styles: Any,
-    ) -> List[Any]:
-        """Build bounded per-check detail sub-tables for non-empty HealthCheckResult.details."""
-        content: List[Any] = []
-        emitted = 0
-        for result in results:
-            if emitted >= self._HEALTH_DETAIL_MAX_CHECKS:
-                break
-            details = result.get("details")
-            if not self._health_details_nonempty(details):
-                continue
-            tables = self._health_detail_table_specs(details)
-            if not tables:
-                continue
-            check_name = self._safe_table_value(result.get("check_name") or "Check")
-            content.append(Paragraph(f"<b>{check_name} — details</b>", styles["Normal"]))
-            content.append(Spacer(1, 4))
-            for title, headers, rows in tables:
-                if title:
-                    content.append(Paragraph(title, styles["Normal"]))
-                    content.append(Spacer(1, 2))
-                content.append(self._build_simple_health_detail_table(headers, rows))
-                content.append(Spacer(1, 8))
-            emitted += 1
-        return content
-
-    def _health_detail_table_specs(
-        self,
-        details: Dict[str, Any],
-    ) -> List[Tuple[str, List[str], List[List[str]]]]:
-        """Convert a details dict into one or more (title, headers, rows) table specs."""
-        specs: List[Tuple[str, List[str], List[List[str]]]] = []
-        remaining = dict(details)
-
-        alarms = remaining.pop("alarms", None)
-        if isinstance(alarms, list) and alarms:
-            rows: List[List[str]] = []
-            for alarm in alarms[: self._HEALTH_DETAIL_MAX_ROWS]:
-                if not isinstance(alarm, dict):
-                    continue
-                rows.append(
-                    [
-                        self._safe_table_value(alarm.get("severity")),
-                        self._safe_table_value(alarm.get("object_name") or alarm.get("object_type")),
-                        self._safe_table_value(alarm.get("description")),
-                    ]
-                )
-            if rows:
-                specs.append(("", ["Severity", "Object", "Description"], rows))
-
-        inactive = remaining.pop("inactive", None)
-        if isinstance(inactive, list) and inactive:
-            rows = []
-            for item in inactive[: self._HEALTH_DETAIL_MAX_ROWS]:
-                if isinstance(item, dict):
-                    rows.append(
-                        [
-                            self._safe_table_value(item.get("name") or item.get("id")),
-                            self._safe_table_value(item.get("state") or item.get("status")),
-                        ]
-                    )
-                else:
-                    rows.append([self._safe_table_value(item), ""])
-            if rows:
-                headers = ["Name", "State"] if any(r[1] for r in rows) else ["Name"]
-                if headers == ["Name"]:
-                    rows = [[r[0]] for r in rows]
-                specs.append(("", headers, rows))
-
-        # Scalar / simple leftover fields (performance metrics, counts, etc.)
-        kv_rows: List[List[str]] = []
-        for key, value in remaining.items():
-            if value is None or value == "" or isinstance(value, (list, dict)):
-                continue
-            kv_rows.append([self._safe_table_value(key), self._safe_table_value(value)])
-            if len(kv_rows) >= self._HEALTH_DETAIL_MAX_ROWS:
-                break
-        if kv_rows:
-            specs.append(("", ["Field", "Value"], kv_rows))
-
-        return specs
-
-    def _build_simple_health_detail_table(self, headers: List[str], rows: List[List[str]]) -> Any:
-        """Build a compact branded table for health-check detail rows."""
-        page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
-        col_count = max(len(headers), 1)
-        col_widths = [page_width / col_count] * col_count
-        data = [headers] + rows
-        table = Table(data, colWidths=col_widths, repeatRows=1)
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
-                    ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
-                    ("FONTSIZE", (0, 0), (-1, -1), max(self.config.font_size - 2, 7)),
-                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("GRID", (0, 0), (-1, -1), 0.5, self.brand_compliance.colors.BACKGROUND_DARK),
-                    ("PADDING", (0, 0), (-1, -1), 4),
                     (
                         "ROWBACKGROUNDS",
                         (0, 1),
