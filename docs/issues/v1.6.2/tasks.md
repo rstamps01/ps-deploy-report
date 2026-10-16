@@ -1,0 +1,29 @@
+# v1.6.2 — Tasks
+
+- [x] DIAG-1: add `scripts/diag_api_fields.py` (do not reuse multi-rack `scripts/discover_api_fields.py` as-is)
+- [x] HCF-1: failing tests for UNKNOWN / FAILED / ABORTED / active; implement (+ `NOT_UPLOADED` idle)
+- [x] HCF-2: EBox topology messaging tests + implement
+- [x] HCF-5: empty baseline → skipped; implement
+- [x] HCF-6: render details in PDF + health.html
+- [x] INV-1: serial columns in inventory + management map
+- [x] SR-2, RPT-VALIDATION-1/2
+- [x] FR-1: support tools EBox wrapper discovery + honest Step 3 failures
+- [x] FR-2: vperfsanity timeout budget covers burst-recovery wait
+- [x] FR-3: guaranteed workflow cleanup after failure/cancel (one-shot + Advanced Ops)
+- [x] FR-4: switch ops SKIPPED when VMS has no switches; vnetmap never runs with empty `-s`
+- [x] FR-5: log bundle per-source status, recent `/vast/log`, partial labeling, clean staging dir
+- [x] FR-6: operation log in bundle; placeholders carry step + error; SSH timeout keeps partial output
+- [x] Independent review of FR-1–6 (6 findings fixed)
+- [x] NET-6: shared ClusterShell group resolver; Network Extraction + vnetmap use it (field `local.cfg` fixture)
+- [x] HCF-7: firmware compared on version tokens
+- [x] HCF-8: `[SKIP]` icon + skip reason in Output Results
+- [x] SSH transport diagnostics: classify connection-lost vs tool failure; kill process group on timeout; Network Extraction / Log Bundle messaging; Step 1 includes `/vast/log` recent size
+- [x] EBox L3 field run fixes: vperfsanity VIP pool pre-validation; vnetmap node-config pre-check (skip with reason), `-l3`, EBox host de-dupe; SUMMARY failure/skip reasons; Test Suite never starts without pre-validation results
+- [x] SSH password-first login + one retry on rc=255 login rejection; vperfsanity login-failure message; banner noise stripped (vast3238-var run)
+- [ ] EBox retest: confirm the `/etc/vast-configure_network.py-params.ini` keys on an L3 ENode, and re-run vperfsanity with an existing protocol VIP pool (vast3238-var: vnetmap OK, Prepare OK on `vippool-1`; re-run after the SSH login fix)
+- [x] Update CHANGELOG `[Unreleased]` / roadmap statuses
+- [x] quality-gate (see DECISIONS memlog for the latest run)
+- [ ] Live-cluster validation pass ([`live-test-plan.md`](live-test-plan.md)): FR-1 (EBox + C/DBox), FR-5 (`/vast/log` paths), NET-6 node count, HCF-7/HCF-8 output; retest vperfsanity/log_bundle with laptop awake after SE Lab SSH-drop findings
+- [ ] Merge PR #36 / #37, then open the v1.6.2 PR
+- [ ] Live DIAG-1 lab run (needs operator credentials)
+- [ ] SW-1 / update-pill / Slack+Confluence announcement (separate leftovers)

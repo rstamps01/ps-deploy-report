@@ -42,7 +42,7 @@ When enabled, the following links appear in the navigation bar:
 | **API Username/Password** | All workflows | `support` / `654321` | VAST API credentials (support account) |
 | **Node SSH User/Password** | Most workflows | `vastdata` / `vastdata` | SSH credentials for CNodes |
 | **Switch SSH User/Password** | Switch workflows | `cumulus` / `Vastdata1!` | SSH credentials for switches |
-| **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing |
+| **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing. Must exist and have VIPs assigned to CNodes; One-Shot pre-validation checks this and lists the cluster's protocol pools when it does not. |
 
 **Global Setting — Autofill Passwords:** A toggle switch in the Connection Settings tile (above the Advanced menu) auto-populates standard credentials when set to Enable (default). Set to Disable to enter custom credentials for non-standard configurations. When default passwords are enabled, `support`/`654321` is used for all operations except vperfsanity, which is automatically overridden to `admin`/`123456` (the only operation requiring admin access). If the admin password has been changed on the cluster, disable the toggle and enter the current admin credentials manually.
 
@@ -80,6 +80,15 @@ Validates network topology using VAST's vnetmap.py script.
 >
 > When this signature is detected the Reporter now surfaces a single
 > plain-language hint in the log instead of the raw traceback.
+
+> **Node network config check, L3 and EBox clusters.** Before running vnetmap, the
+> Reporter reads `/etc/vast-configure_network.py-params.ini` on the CNode with the
+> same rules `vnetmap.py` uses. It needs `internal_interfaces=`, `data_vlan=` and
+> `eth_mtu=` (or `ib_mtu=` on InfiniBand). If any is missing, vnetmap is reported as
+> **SKIPPED** with the missing entries named, because `vnetmap.py` would fail on every
+> node. When the file records `l3_network_mode=True`, `-l3` is passed so Cumulus
+> switch ports are mapped from LLDP. On EBox clusters, where every host is both a
+> CNode and a DNode, each host is passed to vnetmap once.
 
 ### VAST Support Tools (5 steps)
 
@@ -194,7 +203,7 @@ This exposes the VMS REST API (443) and the CNode's SSH (22) on local ephemeral 
 
 The tool runs a preflight check (`tsh` present + active session) before launching and reports an actionable error if either is missing. Configurable via the `teleport` block in `config/config.yaml` (`enabled`, `ssh_user`, `tsh_path`).
 
-For the full guide, see [Teleport Mode (Beta)](TELEPORT-MODE.md).
+For the full guide, see [Teleport Mode](TELEPORT-MODE.md).
 
 ### Starting a Workflow
 
@@ -242,7 +251,10 @@ Run multiple operations sequentially in a single pass with automated pre-validat
 - Switch SSH connectivity (warn with proceed/stop option on failure)
 - Cluster outbound internet access (required when vnetmap, support tools, or vperfsanity is selected)
 - Tool freshness (warn if any cached tools are >10 days old)
-- vperfsanity duration notice (~30 minutes)
+- vperfsanity VIP pool (fail if the pool does not exist or none of its VIPs are assigned to a CNode)
+- vperfsanity duration notice (1-4 hours on large clusters)
+
+The Test Suite waits up to 15 minutes for pre-validation and never starts execution without its results.
 
 **Cancellation:** Cancel at any point between phases. The current phase completes its in-progress step before stopping.
 

@@ -392,19 +392,67 @@
             const tr = document.createElement("tr");
             const statusClass = "status-" + (r.status || "skipped");
             const duration = (r.duration_seconds != null) ? r.duration_seconds.toFixed(2) + "s" : "-";
+            const detailsHtml = formatCheckDetails(r.details);
             tr.innerHTML =
                 "<td>" + escapeHtml(r.check_name || "") + "</td>" +
                 "<td>" + escapeHtml(r.category || "") + "</td>" +
                 "<td class=\"" + statusClass + "\">" + escapeHtml(r.status || "") + "</td>" +
-                "<td>" + escapeHtml(r.message || "") + "</td>" +
+                "<td>" + escapeHtml(r.message || "") + detailsHtml + "</td>" +
                 "<td>" + duration + "</td>";
             resultsBody.appendChild(tr);
         }
     }
 
+    function formatCheckDetails(details) {
+        if (!details || typeof details !== "object") return "";
+        const parts = [];
+        if (Array.isArray(details.alarms) && details.alarms.length) {
+            const rows = details.alarms.slice(0, 20).map(function (a) {
+                return "<tr><td>" + escapeHtml(a.severity || "") + "</td>" +
+                    "<td>" + escapeHtml(a.object_name || a.object_type || "") + "</td>" +
+                    "<td>" + escapeHtml(a.description || "") + "</td></tr>";
+            }).join("");
+            parts.push(
+                "<table class=\"health-detail-table\"><thead><tr>" +
+                "<th>Severity</th><th>Object</th><th>Description</th></tr></thead><tbody>" +
+                rows + "</tbody></table>"
+            );
+        }
+        if (Array.isArray(details.inactive) && details.inactive.length) {
+            const rows = details.inactive.slice(0, 20).map(function (item) {
+                if (item && typeof item === "object") {
+                    return "<tr><td>" + escapeHtml(item.name || item.id || "") + "</td>" +
+                        "<td>" + escapeHtml(item.state || item.status || "") + "</td></tr>";
+                }
+                return "<tr><td colspan=\"2\">" + escapeHtml(String(item)) + "</td></tr>";
+            }).join("");
+            parts.push(
+                "<table class=\"health-detail-table\"><thead><tr>" +
+                "<th>Name</th><th>State</th></tr></thead><tbody>" + rows + "</tbody></table>"
+            );
+        }
+        const kvKeys = Object.keys(details).filter(function (k) {
+            if (k === "alarms" || k === "inactive") return false;
+            const v = details[k];
+            return v !== null && v !== undefined && v !== "" && typeof v !== "object";
+        }).slice(0, 20);
+        if (kvKeys.length) {
+            const rows = kvKeys.map(function (k) {
+                return "<tr><td>" + escapeHtml(k) + "</td><td>" + escapeHtml(String(details[k])) + "</td></tr>";
+            }).join("");
+            parts.push(
+                "<table class=\"health-detail-table\"><thead><tr>" +
+                "<th>Field</th><th>Value</th></tr></thead><tbody>" + rows + "</tbody></table>"
+            );
+        }
+        if (!parts.length) return "";
+        return "<details class=\"health-check-details\"><summary>Details</summary>" +
+            parts.join("") + "</details>";
+    }
+
     function escapeHtml(s) {
         const div = document.createElement("div");
-        div.textContent = s;
+        div.textContent = s == null ? "" : String(s);
         return div.innerHTML;
     }
 

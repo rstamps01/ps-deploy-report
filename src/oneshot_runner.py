@@ -40,6 +40,28 @@ SSH_NODE_OPS = frozenset({"vnetmap", "support_tool", "vperfsanity", "log_bundle"
 # candidate sweep even when the operator has correct credentials.
 SSH_SWITCH_OPS = frozenset({"switch_config", "vnetmap"})
 
+VPERFSANITY_DURATION_NOTICE = (
+    "vperfsanity can take 1-4 hours on large clusters: writes, then up to 2 hours waiting for "
+    "burst recovery, then reads. If it fails or is cancelled, its test data and infrastructure "
+    "are cleaned up automatically."
+)
+
+_STATUS_ICONS = {
+    "pass": "[PASS]",
+    "warn": "[WARN]",
+    "warning": "[WARN]",
+    "fail": "[FAIL]",
+    "error": "[ERR]",
+    "info": "[INFO]",
+    "skipped": "[SKIP]",
+}
+_STATUS_LEVELS = {"pass": "success", "warn": "warn", "warning": "warn", "fail": "error", "error": "error"}
+
+
+def _status_icon(status: str) -> str:
+    return _STATUS_ICONS.get(status, f"[{str(status).upper()}]")
+
+
 # Config override for validation API calls: disable SSL verify, short timeout, single retry
 _VALIDATION_API_CONFIG: Dict[str, Any] = {
     "api": {"verify_ssl": False, "timeout": 10, "max_retries": 1, "retry_delay": 1}
@@ -150,6 +172,9 @@ class OneShotState:
     # "success", "failed" or "skipped".  Used by the bundler to flag
     # stale/missing categories and by the UI to render per-op status.
     operation_results: Dict[str, str] = field(default_factory=dict)
+    # Human-readable reason for a failed/skipped operation ("Step 3 (Run Support
+    # Tools): ..."), surfaced in bundle placeholders so bundles explain failures.
+    operation_details: Dict[str, str] = field(default_factory=dict)
 
 
 class OneShotRunner:
@@ -345,6 +370,15 @@ class OneShotRunner:
         else:
             logger.info("[%s] %s", level, message)
 
+    def _emit_health_results(self, results: List[Any]) -> None:
+        """Emit one line per health check, plus the message for non-pass outcomes."""
+        total = len(results)
+        for idx, result in enumerate(results, start=1):
+            level = _STATUS_LEVELS.get(result.status, "info")
+            self._emit(level, f"  {_status_icon(result.status)} {result.check_name} ({idx}/{total})")
+            if result.status in ("fail", "error", "warning", "skipped") and result.message:
+                self._emit(level, f"        {result.message}")
+
     def _emit_live(self, level: str, message: str, details: Optional[str] = None) -> None:
         if self._output_callback:
             try:
@@ -443,11 +477,13 @@ class OneShotRunner:
             checks.append(self._validate_tool_freshness())
 
             if "vperfsanity" in self._selected_ops:
+                self._check_cancel()
+                checks.append(self._validate_vip_pool())
                 checks.append(
                     ValidationCheck(
                         name="vperfsanity Duration",
                         status="info",
-                        message="vperfsanity performance test may take up to 30 minutes to complete.",
+                        message=VPERFSANITY_DURATION_NOTICE,
                         category="notice",
                     )
                 )
@@ -465,9 +501,7 @@ class OneShotRunner:
                 self._state.phase = "idle"
 
         for c in checks:
-            icon = {"pass": "[PASS]", "warn": "[WARN]", "fail": "[FAIL]", "info": "[INFO]"}.get(c.status, "[????]")
-            level = {"pass": "success", "warn": "warn", "fail": "error", "info": "info"}.get(c.status, "info")
-            self._emit(level, f"{icon} {c.name}: {c.message}")
+            self._emit(_STATUS_LEVELS.get(c.status, "info"), f"{_status_icon(c.status)} {c.name}: {c.message}")
 
         self._emit("info", "-" * 65)
         return results
@@ -523,6 +557,74 @@ class OneShotRunner:
             )
         except Exception as exc:
             return ValidationCheck("Cluster API", "fail", f"Cannot reach cluster API: {exc}", "connectivity")
+
+    def _validate_vip_pool(self) -> ValidationCheck:
+        """Confirm the vperfsanity VIP pool exists and has VIPs assigned to CNodes.
+
+        Uses the same query as vperfsanity's ``vast_get_vippool_cnodes.sh``
+        (``vips/?vippool__name=<pool>``), so a wrong pool name fails here
+        instead of at the workflow's Prepare Infrastructure step.
+        """
+        from workflows.vperfsanity_workflow import VperfsanityWorkflow
+
+        name = "vperfsanity VIP Pool"
+        pool = (self._credentials.get("vip_pool") or "").strip() or VperfsanityWorkflow.DEFAULT_VIP_POOL
+        vips: Any = None
+        pools: Any = None
+        try:
+            from api_handler import create_vast_api_handler
+
+            api = create_vast_api_handler(
+                cluster_ip=self._credentials.get("cluster_ip", "").strip(),
+                username=self._credentials.get("username"),
+                password=self._credentials.get("password"),
+                token=self._credentials.get("api_token"),
+                config=_VALIDATION_API_CONFIG,
+                tunnel_address=self._tunnel_address,
+            )
+            api.authenticate()
+            vips = api._make_api_request("vips/", params={"vippool__name": pool})
+            if isinstance(vips, list) and not vips:
+                pools = api._make_api_request("vippools/")
+            api.close()
+        except Exception as exc:
+            return ValidationCheck(name, "warn", f"Could not verify VIP pool '{pool}': {exc}", "configuration")
+
+        if not isinstance(vips, list):
+            return ValidationCheck(
+                name, "warn", f"Could not verify VIP pool '{pool}': no response from the VIPs API.", "configuration"
+            )
+
+        cnodes = {v.get("cnode") for v in vips if isinstance(v, dict) and v.get("cnode")}
+        if cnodes:
+            return ValidationCheck(
+                name,
+                "pass",
+                f"VIP pool '{pool}' has {len(vips)} VIP(s) on {len(cnodes)} CNode(s).",
+                "configuration",
+            )
+        if vips:
+            return ValidationCheck(
+                name,
+                "fail",
+                f"VIP pool '{pool}' exists but none of its VIPs are assigned to a CNode, so vperfsanity "
+                "cannot prepare its test clients. Check the pool in VMS before running vperfsanity.",
+                "configuration",
+            )
+
+        protocol_pools = [
+            str(p.get("name"))
+            for p in (pools if isinstance(pools, list) else [])
+            if isinstance(p, dict) and p.get("name") and str(p.get("role", "")).upper() == "PROTOCOLS"
+        ]
+        hint = f" Protocol VIP pools on this cluster: {', '.join(protocol_pools)}." if protocol_pools else ""
+        return ValidationCheck(
+            name,
+            "fail",
+            f"VIP pool '{pool}' not found on the cluster.{hint} "
+            "Set the vperfsanity VIP Pool field to an existing pool and re-run.",
+            "configuration",
+        )
 
     def _validate_teleport_tunnel(self, cluster_ip: str) -> "ValidationCheck":
         """In Teleport mode, verify the tsh tunnel is up and the API answers."""
@@ -1345,18 +1447,7 @@ class OneShotRunner:
 
             report = checker.run_all_checks(tiers=tiers)
 
-            # Emit per-check progress
-            total_checks = len(report.results)
-            for idx, result in enumerate(report.results, start=1):
-                icon = {"pass": "[PASS]", "warning": "[WARN]", "fail": "[FAIL]", "error": "[ERR]"}.get(
-                    result.status, "[????]"
-                )
-                level = {"pass": "success", "warning": "warn", "fail": "error", "error": "error"}.get(
-                    result.status, "info"
-                )
-                self._emit(level, f"  {icon} {result.check_name} ({idx}/{total_checks})")
-                if result.status in ("fail", "error", "warning") and result.message:
-                    self._emit(level, f"        {result.message}")
+            self._emit_health_results(report.results)
 
             summary = report.summary
 
@@ -1533,36 +1624,99 @@ class OneShotRunner:
                 wf_instance.set_credentials(self._get_workflow_credentials(op_id))
 
             op_success = True
+            op_skipped = False
+            op_detail = ""
             steps = wf_instance.get_steps()
-            for step in steps:
-                self._check_cancel()
-                step_id = step.get("id", 0)
-                step_name = step.get("name", f"Step {step_id}")
-                self._emit("info", f"  Step {step_id}: {step_name}")
+            attempted: set = set()
+            reached_step = 0
+            try:
+                for step in steps:
+                    self._check_cancel()
+                    step_id = step.get("id", 0)
+                    step_name = step.get("name", f"Step {step_id}")
+                    self._emit("info", f"  Step {step_id}: {step_name}")
+                    attempted.add(step_id)
+                    reached_step = max(reached_step, step_id)
 
-                start = time.time()
-                try:
-                    result = wf_instance.run_step(step_id)
-                    elapsed = int((time.time() - start) * 1000)
-                    success = result.get("success", False)
-                    msg = result.get("message", "")
-                    if success:
-                        self._emit("success", f"  [DONE] {msg} ({elapsed}ms)")
-                    else:
-                        self._emit("error", f"  [ERROR] {msg} ({elapsed}ms)")
-                        self._emit("warn", f"  Workflow '{op_id}' step {step_id} failed; continuing to next operation.")
+                    start = time.time()
+                    try:
+                        result = wf_instance.run_step(step_id)
+                        elapsed = int((time.time() - start) * 1000)
+                        success = result.get("success", False)
+                        msg = result.get("message", "")
+                        if success:
+                            self._emit("success", f"  [DONE] {msg} ({elapsed}ms)")
+                        elif result.get("skipped"):
+                            self._emit("warn", f"  [SKIPPED] {msg} ({elapsed}ms)")
+                            op_skipped = True
+                            op_detail = f"Step {step_id} ({step_name}): {msg}"
+                            break
+                        else:
+                            self._emit("error", f"  [ERROR] {msg} ({elapsed}ms)")
+                            self._emit(
+                                "warn", f"  Workflow '{op_id}' step {step_id} failed; continuing to next operation."
+                            )
+                            op_success = False
+                            op_detail = f"Step {step_id} ({step_name}): {msg}"
+                            break
+                    except Exception as step_exc:
+                        elapsed = int((time.time() - start) * 1000)
+                        self._emit("error", f"  [EXCEPTION] {step_exc} ({elapsed}ms)")
+                        self._emit("warn", f"  Workflow '{op_id}' aborted; continuing to next operation.")
                         op_success = False
+                        op_detail = f"Step {step_id} ({step_name}): {step_exc}"
                         break
-                except Exception as step_exc:
-                    elapsed = int((time.time() - start) * 1000)
-                    self._emit("error", f"  [EXCEPTION] {step_exc} ({elapsed}ms)")
-                    self._emit("warn", f"  Workflow '{op_id}' aborted; continuing to next operation.")
-                    op_success = False
-                    break
+            except _OneShotCancelled:
+                self._run_cleanup_steps(wf_instance, op_id, attempted, reached_step, reason="cancel")
+                raise
 
+            if not op_success:
+                self._run_cleanup_steps(wf_instance, op_id, attempted, reached_step, reason="failure")
+
+            status = "skipped" if op_skipped else ("success" if op_success else "failed")
             with self._lock:
-                self._state.operation_results[category] = "success" if op_success else "failed"
+                for cat in self._categories_for(category):
+                    self._state.operation_results[cat] = status
+                    if op_detail:
+                        self._state.operation_details[cat] = op_detail
             self._emit("info", f"--- {getattr(wf_instance, 'name', op_id)} complete ---")
+
+    @staticmethod
+    def _categories_for(category: str) -> List[str]:
+        """Bundle categories an operation's outcome applies to (vnetmap owns two)."""
+        if category == "vnetmap":
+            return ["vnetmap", "vnetmap_output"]
+        return [category]
+
+    def _run_cleanup_steps(self, wf_instance: Any, op_id: str, attempted: set, reached_step: int, reason: str) -> None:
+        """Run a workflow's declared cleanup steps after a failure or cancel.
+
+        Deliberately ignores the cancel flag: cleanup must still run when the user cancels,
+        otherwise test data and services are left on the customer cluster.
+        """
+        from workflows import get_cleanup_plan
+
+        cleanup_steps, required_after = get_cleanup_plan(wf_instance)
+        pending = [sid for sid in cleanup_steps if sid not in attempted]
+        if not pending or reached_step < required_after:
+            return
+
+        self._emit("warn", f"  Running cleanup for '{op_id}' after {reason} so no test artifacts remain on the cluster")
+        for step_id in pending:
+            start = time.time()
+            try:
+                result = wf_instance.run_step(step_id)
+                elapsed = int((time.time() - start) * 1000)
+                if result.get("success", False):
+                    self._emit("success", f"  [CLEANUP] Step {step_id}: {result.get('message', '')} ({elapsed}ms)")
+                else:
+                    self._emit(
+                        "error",
+                        f"  [CLEANUP FAILED] Step {step_id}: {result.get('message', '')} ({elapsed}ms) - "
+                        "test artifacts may remain on the cluster; clean up manually",
+                    )
+            except Exception as exc:  # noqa: BLE001 - cleanup must never mask the original outcome
+                self._emit("error", f"  [CLEANUP FAILED] Step {step_id}: {exc} - clean up manually")
 
     # ------------------------------------------------------------------
     # Phase: Report
@@ -1675,17 +1829,7 @@ class OneShotRunner:
                     )
                     hc_report = checker.run_all_checks(tiers=tiers)
 
-                    total_checks = len(hc_report.results)
-                    for idx, result in enumerate(hc_report.results, start=1):
-                        icon = {"pass": "[PASS]", "warning": "[WARN]", "fail": "[FAIL]", "error": "[ERR]"}.get(
-                            result.status, "[????]"
-                        )
-                        level = {"pass": "success", "warning": "warn", "fail": "error", "error": "error"}.get(
-                            result.status, "info"
-                        )
-                        self._emit(level, f"  {icon} {result.check_name} ({idx}/{total_checks})")
-                        if result.status in ("fail", "error", "warning") and result.message:
-                            self._emit(level, f"        {result.message}")
+                    self._emit_health_results(hc_report.results)
 
                     raw_data["health_check_results"] = checker.to_dict(hc_report)
                     with self._lock:
@@ -2019,9 +2163,11 @@ class OneShotRunner:
             # as "skipped" so the bundler can distinguish skipped vs failed.
             with self._lock:
                 op_results = dict(self._state.operation_results)
+                op_details = dict(self._state.operation_details)
             for op_id in self._selected_ops:
                 cat = self._OP_CATEGORY_MAP.get(op_id, op_id)
-                op_results.setdefault(cat, "skipped")
+                for sub_cat in self._categories_for(cat):
+                    op_results.setdefault(sub_cat, "skipped")
             # Health checks run inside the report phase, not as a selected op, so
             # mark them skipped here when not requested; when requested, the
             # report phase records success/failed. Without this the bundler would
@@ -2033,7 +2179,9 @@ class OneShotRunner:
                 cluster_ip=cluster_ip or None,
                 since=since,
                 operation_status=op_results,
+                operation_details=op_details,
             )
+            bundler.set_operation_log(self._operation_log_snapshot())
             bundle_path = bundler.create_bundle()
 
             with self._lock:
@@ -2049,6 +2197,17 @@ class OneShotRunner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _operation_log_snapshot() -> List[Dict[str, Any]]:
+        """Copy of the Output Results entries recorded so far, for bundling."""
+        try:
+            from advanced_ops import get_advanced_ops_manager
+
+            return list(get_advanced_ops_manager()._output_buffer[:])
+        except Exception as exc:  # noqa: BLE001 - bundling must not fail over the log copy
+            logger.warning("Could not snapshot operation log for bundle: %s", exc)
+            return []
 
     def _persist_ops_log(self) -> None:
         """Write the one-shot operation log to disk (cluster-scoped under QP-2).

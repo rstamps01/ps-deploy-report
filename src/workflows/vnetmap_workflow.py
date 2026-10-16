@@ -16,6 +16,7 @@ import requests
 from urllib3.exceptions import InsecureRequestWarning
 
 from script_runner import ScriptRunner
+from utils.clustershell_groups import expand_nodeset, fold_nodeset, parse_group_file, resolve_group
 from utils.ssh_adapter import run_ssh_command
 from utils.logger import get_logger
 
@@ -103,6 +104,7 @@ class VnetmapWorkflow:
 
     REQUIRED_SCRIPTS = ["vnetmap.py", "mlnx_switch_api.py"]
     LOCAL_CFG_PATH = "/etc/clustershell/groups.d/local.cfg"
+    NODE_NETWORK_CONFIG_PATH = "/etc/vast-configure_network.py-params.ini"
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -349,59 +351,19 @@ class VnetmapWorkflow:
             cnodesub0: 172.16.3.[4-5]
             cnodes: @cnodesub0
 
-        Resolves @group references to their actual IP ranges.
+        Resolves @group references to their actual IP ranges.  Repeated group
+        keys are unioned, matching ClusterShell (NET-6); EBox local.cfg
+        repeats ``cnodesub0``/``dnodesubN`` across sections.
 
         Returns:
             Tuple of (cnodes_pattern, dnodes_pattern) in ClusterShell format
         """
-        # First pass: build a dictionary of all group definitions
-        groups = {}
-        cnodes_raw = None
-        dnodes_raw = None
+        groups = parse_group_file(cfg_content)
+        cnodes_raw = ",".join(groups["cnodes"]) if "cnodes" in groups else None
+        dnodes_raw = ",".join(groups["dnodes"]) if "dnodes" in groups else None
 
-        for line in cfg_content.split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-
-                if key == "cnodes":
-                    cnodes_raw = value
-                elif key == "dnodes":
-                    dnodes_raw = value
-                elif key not in ["all"]:  # Store other groups for resolution
-                    groups[key] = value
-
-        # Second pass: resolve group references
-        def resolve_group_ref(value: str) -> str:
-            """Resolve @group references to actual IP patterns."""
-            if not value:
-                return ""
-
-            resolved_parts = []
-            # Handle comma-separated group references (e.g., @cnodesub0,@cnodesub1)
-            for part in value.split(","):
-                part = part.strip()
-                if part.startswith("@"):
-                    group_name = part[1:]  # Remove @ prefix
-                    if group_name in groups:
-                        # Recursively resolve in case of nested references
-                        resolved = resolve_group_ref(groups[group_name])
-                        resolved_parts.append(resolved)
-                    else:
-                        # Group not found, keep as-is
-                        resolved_parts.append(part)
-                else:
-                    resolved_parts.append(part)
-
-            return ",".join(resolved_parts)
-
-        cnodes = resolve_group_ref(cnodes_raw) if cnodes_raw else None
-        dnodes = resolve_group_ref(dnodes_raw) if dnodes_raw else None
+        cnodes = (fold_nodeset(resolve_group("cnodes", groups)) or None) if cnodes_raw else None
+        dnodes = (fold_nodeset(resolve_group("dnodes", groups)) or None) if dnodes_raw else None
 
         # Log resolution for debugging
         if cnodes_raw and cnodes_raw != cnodes:
@@ -561,6 +523,54 @@ class VnetmapWorkflow:
         # working without configuration changes.
         return "ETH" if switch_ips else "IB"
 
+    def _check_node_network_config(
+        self, host: str, user: str, password: Optional[str], ssh_port: int, network_type: str
+    ) -> Tuple[Optional[str], bool]:
+        """Check the node network config file the way vnetmap.py parses it.
+
+        vnetmap.py whitespace-splits ``NODE_NETWORK_CONFIG_PATH`` and needs
+        ``internal_interfaces=``, ``data_vlan=`` and an MTU entry. When one is
+        missing it logs "Failed to get network configure" for every node and
+        then crashes with ``IndexError`` (rc=1).
+
+        Returns:
+            Tuple of (problem, is_l3). ``problem`` explains why vnetmap cannot
+            parse the file, or is None when it can (or the file could not be
+            read, in which case vnetmap runs as before). ``is_l3`` is True when
+            the file records L3 network mode.
+        """
+        path = self.NODE_NETWORK_CONFIG_PATH
+        rc, content, stderr = run_ssh_command(host, user, password, f"sudo -n cat {path}", timeout=30, port=ssh_port)
+        if rc != 0 or not content.strip():
+            reason = (stderr or "").strip() or "empty file"
+            self.emit("warn", f"Could not read {path} on {host} ({reason}); running vnetmap without a config check.")
+            return None, False
+
+        tokens = content.split()
+
+        def _has(key: str) -> bool:
+            return any(t.startswith(f"{key}=") for t in tokens)
+
+        missing = [key for key in ("internal_interfaces", "data_vlan") if not _has(key)]
+        mtu_keys = ("eth_mtu", "ib_mtu") if network_type == "IB" else ("eth_mtu",)
+        if not any(_has(key) for key in mtu_keys):
+            missing.append(" or ".join(mtu_keys))
+        is_l3 = bool(re.search(r"(?im)^\s*l3_network_mode\s*=\s*(true|yes|1)\b", content))
+
+        watched = ("internal_interfaces", "data_vlan", "eth_mtu", "ib_mtu", "l3_network_mode")
+        found = [t for t in tokens if t.split("=", 1)[0] in watched and "=" in t]
+        self.emit("info", f"[NODE CONFIG] {path} on {host}: {' '.join(found) or 'no vnetmap-readable entries'}")
+
+        if not missing:
+            return None, is_l3
+        mode = " This cluster uses L3 network mode." if is_l3 else ""
+        return (
+            f"vnetmap.py cannot parse {path} on {host}: no {', '.join(missing)} entry in the key=value form it "
+            f"reads, so it would fail on every node.{mode} Topology validation needs a vnetmap.py release "
+            "that supports this network configuration.",
+            is_l3,
+        )
+
     def _step_generate_export_commands(self) -> Dict[str, Any]:
         host = self._ssh_host()
         ssh_port = self._ssh_port()
@@ -673,7 +683,15 @@ class VnetmapWorkflow:
         if network_type == "ETH":
             mlx_ips = ",".join(switch_ips)
             if not switch_ips:
-                self.emit("warn", "[API] net_type=ETH but no switches returned; vnetmap will run without -s")
+                # vnetmap.py requires -s on Ethernet; running it with an empty list only
+                # produces an argparse usage error.
+                self.emit("warn", "[API] net_type=ETH but no switches registered in VMS - skipping vnetmap")
+                self.emit("info", "Add the switches in VMS (Infrastructure > Switches) and re-run vnetmap.")
+                return {
+                    "success": False,
+                    "skipped": True,
+                    "message": "No switches registered in VMS; vnetmap needs switch IPs on Ethernet clusters",
+                }
             # Validate switch credentials for ETH mode.
             if not switch_password:
                 self.emit("error", "Switch SSH Password is required for ETH networks.")
@@ -691,6 +709,19 @@ class VnetmapWorkflow:
                 self.emit("info", "[API] net_type=IB — using InfiniBand mode despite switches in /api/switches/")
             else:
                 self.emit("info", "[API] net_type=IB — using InfiniBand mode")
+
+        config_problem, is_l3 = self._check_node_network_config(host, user, password, ssh_port, network_type)
+        if config_problem:
+            self.emit("warn", config_problem)
+            return {"success": False, "skipped": True, "message": config_problem}
+
+        # On EBox every host is both a CNode and a DNode, so local.cfg lists the
+        # same IPs in both groups; vnetmap would otherwise map each host twice.
+        include_dnodes = bool(dnodes_export) and not set(expand_nodeset(dnodes_raw, {})) <= set(
+            expand_nodeset(cnodes_raw, {})
+        )
+        if dnodes_export and not include_dnodes:
+            self.emit("info", "DNode IPs are the same hosts as the CNode IPs (EBox); passing each host once.")
 
         # Step 5: Generate export commands
         self.emit("info", "")
@@ -719,21 +750,29 @@ class VnetmapWorkflow:
 
         if network_type == "ETH":
             # Ethernet command with switches
-            if dnodes_export:
+            if include_dnodes:
                 node_ips = "$cnodes_ips,$dnodes_ips"
             else:
                 node_ips = "$cnodes_ips"
 
+            # -l3 maps Cumulus switch ports from LLDP; L3 fabrics have no node MACs in the bridge table.
+            l3_flag = " -l3" if is_l3 else ""
             # Note: Not passing -k flag - vnetmap will auto-discover the correct SSH key
             vnetmap_cmd = (
-                f"python3 vnetmap.py -s $MLX_IPS " f"-i {node_ips} " f"-u {switch_user} " f"-p '{switch_password}'"
+                f"python3 vnetmap.py -s $MLX_IPS "
+                f"-i {node_ips} "
+                f"-u {switch_user} "
+                f"-p '{switch_password}'{l3_flag}"
             )
             display_vnetmap_cmd = (
-                f"python3 vnetmap.py -s $MLX_IPS " f"-i {node_ips} " f"-u {switch_user} " f"-p '<switch-password>'"
+                f"python3 vnetmap.py -s $MLX_IPS "
+                f"-i {node_ips} "
+                f"-u {switch_user} "
+                f"-p '<switch-password>'{l3_flag}"
             )
         else:
             # InfiniBand command
-            if dnodes_export:
+            if include_dnodes:
                 node_ips = "$cnodes_ips,$dnodes_ips"
             else:
                 node_ips = "$cnodes_ips"
@@ -965,7 +1004,7 @@ class VnetmapWorkflow:
             return {"success": False, "message": "vnetmap did not execute"}
 
         self.emit("error", f"vnetmap exited with return code: {result.returncode}")
-        if len(candidates) > 1:
+        if len(candidates) > 1 and self._is_auth_failure(result.stdout, result.stderr):
             self.emit(
                 "error",
                 f"Authentication failed on all {len(candidates)} candidate switch password(s). "

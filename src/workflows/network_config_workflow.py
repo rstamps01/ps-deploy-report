@@ -13,14 +13,14 @@ CNode via nested SSH: ``ssh gateway 'ssh <internal_ip> "command"'``.
 """
 
 import json
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from script_runner import ScriptRunner
+from utils.clustershell_groups import parse_group_file, resolve_all_groups
 from utils.logger import get_logger
-from utils.ssh_adapter import run_ssh_command
+from utils.ssh_adapter import is_ssh_transport_failure, run_ssh_command, ssh_transport_failure_message
 
 logger = get_logger(__name__)
 
@@ -137,44 +137,12 @@ class NetworkConfigWorkflow:
         return (int(result[0]), str(result[1]), str(result[2]))
 
     def _parse_local_cfg(self, cfg_text: str) -> Dict[str, List[str]]:
-        """Parse /etc/clustershell/groups.d/local.cfg to extract node IPs."""
-        groups: Dict[str, str] = {}
-        result: Dict[str, List[str]] = {}
+        """Parse /etc/clustershell/groups.d/local.cfg into group -> node IPs.
 
-        for line in cfg_text.strip().split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" not in line:
-                continue
-            key, _, value = line.partition(":")
-            groups[key.strip()] = value.strip()
-
-        def resolve(value: str) -> List[str]:
-            ips = []
-            for token in value.split():
-                token = token.strip()
-                if token.startswith("@"):
-                    ref = token[1:]
-                    if ref in groups:
-                        ips.extend(resolve(groups[ref]))
-                elif "[" in token and "-" in token:
-                    match = re.match(r"(.+)\[(\d+)-(\d+)\]", token)
-                    if match:
-                        prefix = match.group(1)
-                        start, end = int(match.group(2)), int(match.group(3))
-                        for i in range(start, end + 1):
-                            ips.append(f"{prefix}{i}")
-                else:
-                    ips.append(token)
-            return ips
-
-        for key, value in groups.items():
-            resolved = resolve(value)
-            if resolved:
-                result[key] = resolved
-
-        return result
+        Repeated group keys are unioned, matching ClusterShell (NET-6).
+        """
+        groups: Dict[str, List[str]] = resolve_all_groups(parse_group_file(cfg_text))
+        return groups
 
     def _run_on_all_nodes(self, description: str, cmd: str, timeout: int = 30) -> Dict[str, str]:
         """Run a command on every discovered node via clush on the gateway.
@@ -358,6 +326,15 @@ class NetworkConfigWorkflow:
                 self.emit("success", f"Discovered {len(all_nodes)} node(s):")
                 for name, ip in sorted(all_nodes.items(), key=lambda x: x[1]):
                     self.emit("info", f"  {name}: {ip}")
+        elif is_ssh_transport_failure(rc, stdout or "", stderr or ""):
+            self.emit(
+                "warn",
+                f"SSH failed reading local.cfg — {ssh_transport_failure_message(rc, stdout or '', stderr or '')}; "
+                "using connected node only",
+            )
+        elif rc != 0:
+            err = (stderr or stdout or "").strip().split("\n")[-1] if (stderr or stdout) else f"rc={rc}"
+            self.emit("warn", f"SSH failed reading local.cfg ({err}); using connected node only")
         else:
             self.emit("warn", "ClusterShell config not found, using connected node only")
 

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
+from xml.sax.saxutils import escape as xml_escape
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -33,7 +34,15 @@ from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
 # Import rack diagram module
 from rack_diagram import RackDiagram
 from utils import get_bundle_dir, get_data_dir
+from utils.health_detail_groups import DetailGroup, build_health_detail_groups
 from utils.logger import get_logger
+from utils.pdf_layout import (
+    TABLE_LAYOUT_LEGACY,
+    TABLE_LAYOUT_WRAPPED,
+    TABLE_LAYOUTS,
+    bind_titles_to_content,
+    make_table,
+)
 
 try:
     from reportlab.lib import colors
@@ -119,6 +128,7 @@ class ReportConfig:
     include_timestamp: bool = True
     include_enhanced_features: bool = True
     organization: str = "VAST Professional Services"
+    table_layout: str = TABLE_LAYOUT_WRAPPED
     sections: Dict[str, bool] = field(default_factory=dict)
     network_diagram: Dict[str, Any] = field(
         default_factory=lambda: {
@@ -165,6 +175,9 @@ class ReportConfig:
         _set("include_timestamp", report.get("include_timestamp"), bool)
         _set("include_enhanced_features", report.get("include_enhanced_features"), bool)
         _set("organization", report.get("organization"), str)
+        layout = str(report.get("table_layout", pdf.get("table_layout", "")) or "").strip().lower()
+        if layout in TABLE_LAYOUTS:
+            kwargs["table_layout"] = layout
 
         dc = config.get("data_collection", {})
         raw_sections = dc.get("sections", {})
@@ -255,6 +268,7 @@ class VastReportBuilder:
 
         # Initialize VAST brand compliance
         self.brand_compliance = create_vast_brand_compliance()
+        self.brand_compliance.table_layout = self.config.table_layout
 
         self.logger.info("Report builder initialized with VAST brand compliance")
 
@@ -286,6 +300,18 @@ class VastReportBuilder:
         }
         family = _MAP.get(base, _MAP["Helvetica"])
         return family.get(variant, family["normal"])
+
+    def _table(self, data: Any, **kwargs: Any) -> Any:
+        """Build a data table for the configured ``report.table_layout``."""
+        return make_table(data, self.config.table_layout, **kwargs)
+
+    def _finalize_story(self, story: List[Any]) -> List[Any]:
+        """Keep titles on the same page as their tables/sections (wrapped layout only)."""
+        if self.config.table_layout == TABLE_LAYOUT_LEGACY:
+            return story
+        frame_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+        frame_height = getattr(self, "_frame_height", A4[1] - 1.5 * inch)
+        return list(bind_titles_to_content(story, frame_width, frame_height))
 
     def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
@@ -505,7 +531,7 @@ class VastReportBuilder:
             )
             story.append(PageBreak())
 
-        return story
+        return self._finalize_story(story)
 
     @staticmethod
     def _normalize_boxes_to_dict(boxes: Any) -> Dict[str, Any]:
@@ -1727,7 +1753,7 @@ class VastReportBuilder:
         row order EBox → CNode → 2× DNodes per EBox, model from CNode box_vendor, switches at bottom.
         Returns None if no rows (e.g. no eboxes with rack_unit).
         """
-        headers_5 = ["Rack", "Model", "Name/Serial Number", "Status", "Height"]
+        headers_5 = ["Rack", "Model", "Name", "Serial", "Status", "Height"]
         ebox_list = list(eboxes.values())
 
         def ebox_sort_key(e: Dict[str, Any]) -> tuple:
@@ -1748,6 +1774,7 @@ class VastReportBuilder:
             ebox_name = ebox.get("name", "Unknown")
             ebox_state = ebox.get("state", "Unknown")
             rack_unit = ebox.get("rack_unit") or "1U"
+            ebox_serial = ebox.get("serial_number") or ebox.get("serial") or ebox.get("uid") or ""
 
             # Find associated CNode and DNodes by ebox_id
             cnode = None
@@ -1761,15 +1788,16 @@ class VastReportBuilder:
                 model = (bv.split(",")[0].strip()) if isinstance(bv, str) and bv else "Unknown"
 
             # EBox row
-            all_rows.append([rack_name, model, ebox_name, ebox_state, rack_unit])
+            all_rows.append([rack_name, model, ebox_name, ebox_serial or "—", ebox_state, rack_unit])
 
             # CNode row (no Model value)
             if cnode:
                 cnode_name = cnode.get("name") or f"cnode-{cnode.get('id', 'Unknown')}"
                 cnode_status = cnode.get("status", "Unknown")
-                all_rows.append([rack_name, "", cnode_name, cnode_status, rack_unit])
+                cnode_serial = cnode.get("serial_number") or cnode.get("serial") or ""
+                all_rows.append([rack_name, "", cnode_name, cnode_serial or "—", cnode_status, rack_unit])
             else:
-                all_rows.append([rack_name, "", "N/A", "Unknown", rack_unit])
+                all_rows.append([rack_name, "", "N/A", "—", "Unknown", rack_unit])
 
             # Up to 2 DNode rows (no Model value; Status = ACTIVE/FAILED from API)
             matching_dnodes = sorted(
@@ -1780,9 +1808,10 @@ class VastReportBuilder:
             for d in matching_dnodes[:2]:
                 dnode_name = d.get("name") or f"dnode-{d.get('id', 'Unknown')}"
                 dnode_state = d.get("status") or d.get("state") or ""
-                all_rows.append([rack_name, "", dnode_name, dnode_state, rack_unit])
+                dnode_serial = d.get("serial_number") or d.get("serial") or ""
+                all_rows.append([rack_name, "", dnode_name, dnode_serial or "—", dnode_state, rack_unit])
             if len(matching_dnodes) == 0:
-                all_rows.append([rack_name, "", "N/A", "", rack_unit])
+                all_rows.append([rack_name, "", "N/A", "—", "", rack_unit])
 
         # Switches at bottom
         if switches:
@@ -1816,7 +1845,7 @@ class VastReportBuilder:
                 position = ""
                 if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
                     position = f"U{self.switch_positions[switch_num]}"
-                all_rows.append([rack_name_sw, model_sw, serial, state_sw, position])
+                all_rows.append([rack_name_sw, model_sw, sw_name, serial or "—", state_sw, position])
 
         if not all_rows:
             return None
@@ -1861,7 +1890,7 @@ class VastReportBuilder:
 
         # Prepare table data - will be grouped by rack
         all_rows = []
-        headers = ["Rack", "Node", "Model", "Name/Serial Number", "Status", "Height"]
+        headers = ["Rack", "Node", "Model", "Name", "Serial", "Status", "Height"]
 
         # Build mapping of cbox_id to rack_name for CNodes
         cbox_id_to_rack_name = {}
@@ -1912,6 +1941,7 @@ class VastReportBuilder:
                 name = cbox_data.get("name", "Unknown")
                 rack_unit = cbox_data.get("rack_unit", "Unknown")
                 rack_name = cbox_data.get("rack_name") or "Unknown"
+                box_serial = cbox_data.get("serial_number") or cbox_data.get("serial") or cbox_data.get("uid") or ""
 
                 # Get model and status from cnodes data using cbox_id (strip NIC description after comma)
                 model = cbox_vendor_map.get(cbox_id, "Unknown")
@@ -1924,11 +1954,12 @@ class VastReportBuilder:
                 if cnode_names:
                     # Create one row for each CNode
                     for cnode_name in cnode_names:
-                        row = [rack_name, cnode_name, model, name, status, rack_unit]
+                        serial = cnode_name_to_serial.get(cnode_name, "") or box_serial
+                        row = [rack_name, cnode_name, model, name, serial or "—", status, rack_unit]
                         cbox_rows.append((rack_name, cbox_id, cnode_name, row))
                 else:
                     # No CNodes found, create one row with N/A
-                    row = [rack_name, "N/A", model, name, status, rack_unit]
+                    row = [rack_name, "N/A", model, name, box_serial or "—", status, rack_unit]
                     cbox_rows.append((rack_name, cbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by CNode name
@@ -1937,16 +1968,17 @@ class VastReportBuilder:
 
         # Add DBoxes with DNode names
         if dboxes and dnodes:
-            # Create a mapping of dbox_id to list of (dnode_name, dnode_state)
-            dbox_to_dnodes: dict[str, list[tuple[str, str]]] = {}
+            # Create a mapping of dbox_id to list of (dnode_name, dnode_state, serial)
+            dbox_to_dnodes: dict[str, list[tuple[str, str, str]]] = {}
             for dnode in dnodes:
                 dbox_id = dnode.get("dbox_id")
                 dnode_name = dnode.get("name") or f"dnode-{dnode.get('id', 'Unknown')}"
                 dnode_state = dnode.get("status") or dnode.get("state") or "Unknown"
+                dnode_serial = dnode.get("serial_number") or dnode.get("serial") or ""
                 if dbox_id:
                     if dbox_id not in dbox_to_dnodes:
                         dbox_to_dnodes[dbox_id] = []
-                    dbox_to_dnodes[dbox_id].append((dnode_name, dnode_state))
+                    dbox_to_dnodes[dbox_id].append((dnode_name, dnode_state, dnode_serial))
 
             dbox_rows = []
             for dbox_name, dbox_data in dboxes.items():
@@ -1958,23 +1990,25 @@ class VastReportBuilder:
                 state = dbox_data.get("state", "Unknown")
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
                 rack_name = dbox_data.get("rack_name") or "Unknown"
+                box_serial = dbox_data.get("serial_number") or dbox_data.get("serial") or dbox_data.get("uid") or ""
 
                 # Get DNodes for this DBox - create one row per DNode with Model and Status (ACTIVE/FAILED)
                 dnode_list = dbox_to_dnodes.get(dbox_id, [])
                 if dnode_list:
-                    for dnode_name, dnode_state in dnode_list:
+                    for dnode_name, dnode_state, dnode_serial in dnode_list:
                         row = [
                             rack_name,
                             dnode_name,
                             hardware_type,
                             name,
+                            dnode_serial or box_serial or "—",
                             dnode_state,
                             rack_unit,
                         ]
                         dbox_rows.append((rack_name, dbox_id, dnode_name, row))
                 else:
                     # No DNodes found, create one row with N/A
-                    row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                    row = [rack_name, "N/A", hardware_type, name, box_serial or "—", state, rack_unit]
                     dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by DNode name
@@ -1994,7 +2028,8 @@ class VastReportBuilder:
                 rack_name = dbox_data.get("rack_name") or "Unknown"
 
                 # Create row data with N/A for DNode column (4-tuple to match dnode branch)
-                row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                box_serial = dbox_data.get("serial_number") or dbox_data.get("serial") or dbox_data.get("uid") or ""
+                row = [rack_name, "N/A", hardware_type, name, box_serial or "—", state, rack_unit]
                 dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID
@@ -2009,7 +2044,8 @@ class VastReportBuilder:
                 name = ebox_data.get("name", "Unknown")
                 state = ebox_data.get("state", "Unknown")
                 rack_unit = ebox_data.get("rack_unit", "N/A")
-                row = [rack_name, "EBox", "Enclosure", name, state, rack_unit]
+                box_serial = ebox_data.get("serial_number") or ebox_data.get("serial") or ebox_data.get("uid") or ""
+                row = [rack_name, "EBox", "Enclosure", name, box_serial or "—", state, rack_unit]
                 ebox_rows.append((rack_name, ebox_data.get("id"), row))
             ebox_rows.sort(key=lambda x: (x[0], int(x[1]) if x[1] is not None and str(x[1]).isdigit() else 0))
             all_rows.extend([row for _, _, row in ebox_rows])
@@ -2058,7 +2094,7 @@ class VastReportBuilder:
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
-                row = [rack_name, "N/A", model, serial, state, position]
+                row = [rack_name, "N/A", model, hostname, serial or "—", state, position]
                 switch_rows.append((rack_name, hostname, row))
 
             switch_rows.sort(key=lambda x: (x[0], x[1]))
@@ -2066,7 +2102,7 @@ class VastReportBuilder:
             for idx, (_rn, _hn, row) in enumerate(switch_rows, start=1):
                 if hasattr(self, "switch_positions") and idx in self.switch_positions:
                     u_pos = self.switch_positions[idx]
-                    row[5] = f"U{u_pos}"
+                    row[6] = f"U{u_pos}"
 
             all_rows.extend([row for _, _, row in switch_rows])
 
@@ -2100,8 +2136,9 @@ class VastReportBuilder:
 
         # Two-pass stable sort: name descending first, then primary criteria ascending.
         # Python's stable sort preserves name order within identical primary keys.
+        # Columns: Rack, Node, Model, Name, Serial, Status, Height
         all_rows.sort(key=lambda r: (r[3] or r[1] or ""), reverse=True)
-        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[5] or ""), _dev_order(r)))
+        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[6] or ""), _dev_order(r)))
 
         # Create table with VAST styling
         return cast(
@@ -3248,7 +3285,7 @@ class VastReportBuilder:
                 )
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
-            table = Table(
+            table = self._table(
                 table_data,
                 colWidths=[
                     page_width * 0.08,  # ID
@@ -3357,7 +3394,7 @@ class VastReportBuilder:
                 )
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
-            table = Table(
+            table = self._table(
                 table_data,
                 colWidths=[
                     page_width * 0.08,  # ID
@@ -3588,19 +3625,21 @@ class VastReportBuilder:
                 content.extend(network_table_elements)
                 content.append(Spacer(1, 16))
 
-        # Node Management Map: VMS device name -> assigned hostname -> external mgmt IP.
-        # Sourced from hardware_inventory so all three identifiers appear together;
-        # the per-node network tables below show name + mgmt IP but not hostname.
+        # Node Management Map: VMS device name -> assigned hostname -> serial -> external mgmt IP.
+        # Sourced from hardware_inventory so identifiers appear together;
+        # the per-node network tables below show name + mgmt IP but not hostname/serial.
         hw_inv = data.get("hardware_inventory", {})
-        map_headers = ["Device Name (VMS)", "Hostname", "Mgmt IP"]
+        map_headers = ["Device Name (VMS)", "Hostname", "Serial", "Mgmt IP"]
 
         def _management_map_rows(nodes: Any) -> List[List[str]]:
             rows: List[List[str]] = []
             for node in sorted(nodes or [], key=self._ip_sort_key):
+                serial = node.get("serial_number") or node.get("serial") or ""
                 rows.append(
                     [
                         node.get("name") or node.get("hostname", "Unknown"),
                         node.get("hostname", "Unknown"),
+                        serial or "—",
                         node.get("mgmt_ip", "Unknown"),
                     ]
                 )
@@ -4631,7 +4670,7 @@ class VastReportBuilder:
                 full_table_data = [headers] + summary_table_data
 
                 # Create table with custom column widths
-                port_table = Table(full_table_data, colWidths=col_widths, repeatRows=1)
+                port_table = self._table(full_table_data, colWidths=col_widths, repeatRows=1)
 
                 # Apply VAST brand table styling
                 table_style = TableStyle(
@@ -5288,7 +5327,7 @@ class VastReportBuilder:
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_width = page_width / len(summary_headers)
-            summary_table = Table(
+            summary_table = self._table(
                 [summary_headers, summary_row],
                 colWidths=[col_width] * len(summary_headers),
                 repeatRows=1,
@@ -5365,7 +5404,7 @@ class VastReportBuilder:
                 page_width * 0.56,  # Message
             ]
 
-            detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
+            detail_table = self._table(detail_data, colWidths=col_widths, repeatRows=1)
 
             detail_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
@@ -5403,6 +5442,12 @@ class VastReportBuilder:
             content.append(Spacer(1, 4))
             content.append(detail_table)
             content.append(Spacer(1, 12))
+
+            if self.config.table_layout == TABLE_LAYOUT_LEGACY:
+                # HCF-6: per-check detail sub-tables (alarms, metrics, inactive lists)
+                content.extend(self._create_health_check_detail_subtables(results, styles))
+            else:
+                content.extend(self._create_health_detail_group_tables(results, styles))
         elif not summary:
             content.append(
                 Paragraph(
@@ -5412,6 +5457,192 @@ class VastReportBuilder:
             )
 
         return content
+
+    def _create_health_detail_group_tables(self, results: List[Dict[str, Any]], styles: Any) -> List[Any]:
+        """Render health check details as consolidated group tables (RPT-LAYOUT-1)."""
+        caption_style = ParagraphStyle(
+            "HealthGroupCaption",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            leading=self.config.font_size + 2,
+            textColor=self.brand_compliance.colors.DARK_GRAY,
+        )
+        content: List[Any] = []
+        for group in build_health_detail_groups(results):
+            content.append(Paragraph(f"<b>{xml_escape(group.title)}</b>", styles["Normal"]))
+            content.append(Spacer(1, 2))
+            content.append(Paragraph(xml_escape(group.caption), caption_style))
+            content.append(Spacer(1, 4))
+            content.extend(self._health_group_table_flowables(group, styles))
+            content.append(Spacer(1, 6))
+        return content
+
+    def _health_group_table_flowables(self, group: DetailGroup, styles: Any) -> List[Any]:
+        page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+        flowables: List[Any] = []
+        for detail in group.tables:
+            if not detail.rows:
+                continue
+            if detail.title:
+                flowables.append(Paragraph(f"<b>{xml_escape(detail.title)}</b>", styles["Normal"]))
+                flowables.append(Spacer(1, 2))
+            total = sum(detail.col_weights) or 1.0
+            col_widths = [page_width * w / total for w in detail.col_weights]
+            flowables.append(self._build_health_group_table(detail.headers, detail.rows, col_widths))
+            flowables.append(Spacer(1, 6))
+        return flowables
+
+    def _build_health_group_table(self, headers: List[str], rows: List[List[str]], col_widths: List[float]) -> Any:
+        """Branded table for one consolidated health detail group."""
+        table = self._table([headers] + rows, colWidths=col_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                    ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
+                    ("FONTSIZE", (0, 0), (-1, -1), max(self.config.font_size - 1, 7)),
+                    ("GRID", (0, 0), (-1, -1), 0.5, self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("PADDING", (0, 0), (-1, -1), 5),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                    ),
+                ]
+            )
+        )
+        return table
+
+    # Cap how many checks get a details sub-table and how many rows each shows (HCF-6).
+    _HEALTH_DETAIL_MAX_CHECKS = 15
+    _HEALTH_DETAIL_MAX_ROWS = 20
+
+    @staticmethod
+    def _health_details_nonempty(details: Any) -> bool:
+        """Return True when details has at least one meaningful value."""
+        if not isinstance(details, dict) or not details:
+            return False
+        for value in details.values():
+            if value is None or value == "" or value == [] or value == {}:
+                continue
+            return True
+        return False
+
+    def _create_health_check_detail_subtables(
+        self,
+        results: List[Dict[str, Any]],
+        styles: Any,
+    ) -> List[Any]:
+        """Build bounded per-check detail sub-tables for non-empty HealthCheckResult.details."""
+        content: List[Any] = []
+        emitted = 0
+        for result in results:
+            if emitted >= self._HEALTH_DETAIL_MAX_CHECKS:
+                break
+            details = result.get("details")
+            if not self._health_details_nonempty(details):
+                continue
+            tables = self._health_detail_table_specs(details)
+            if not tables:
+                continue
+            check_name = self._safe_table_value(result.get("check_name") or "Check")
+            content.append(Paragraph(f"<b>{check_name} — details</b>", styles["Normal"]))
+            content.append(Spacer(1, 4))
+            for title, headers, rows in tables:
+                if title:
+                    content.append(Paragraph(title, styles["Normal"]))
+                    content.append(Spacer(1, 2))
+                content.append(self._build_simple_health_detail_table(headers, rows))
+                content.append(Spacer(1, 8))
+            emitted += 1
+        return content
+
+    def _health_detail_table_specs(
+        self,
+        details: Dict[str, Any],
+    ) -> List[Tuple[str, List[str], List[List[str]]]]:
+        """Convert a details dict into one or more (title, headers, rows) table specs."""
+        specs: List[Tuple[str, List[str], List[List[str]]]] = []
+        remaining = dict(details)
+
+        alarms = remaining.pop("alarms", None)
+        if isinstance(alarms, list) and alarms:
+            rows: List[List[str]] = []
+            for alarm in alarms[: self._HEALTH_DETAIL_MAX_ROWS]:
+                if not isinstance(alarm, dict):
+                    continue
+                rows.append(
+                    [
+                        self._safe_table_value(alarm.get("severity")),
+                        self._safe_table_value(alarm.get("object_name") or alarm.get("object_type")),
+                        self._safe_table_value(alarm.get("description")),
+                    ]
+                )
+            if rows:
+                specs.append(("", ["Severity", "Object", "Description"], rows))
+
+        inactive = remaining.pop("inactive", None)
+        if isinstance(inactive, list) and inactive:
+            rows = []
+            for item in inactive[: self._HEALTH_DETAIL_MAX_ROWS]:
+                if isinstance(item, dict):
+                    rows.append(
+                        [
+                            self._safe_table_value(item.get("name") or item.get("id")),
+                            self._safe_table_value(item.get("state") or item.get("status")),
+                        ]
+                    )
+                else:
+                    rows.append([self._safe_table_value(item), ""])
+            if rows:
+                headers = ["Name", "State"] if any(r[1] for r in rows) else ["Name"]
+                if headers == ["Name"]:
+                    rows = [[r[0]] for r in rows]
+                specs.append(("", headers, rows))
+
+        # Scalar / simple leftover fields (performance metrics, counts, etc.)
+        kv_rows: List[List[str]] = []
+        for key, value in remaining.items():
+            if value is None or value == "" or isinstance(value, (list, dict)):
+                continue
+            kv_rows.append([self._safe_table_value(key), self._safe_table_value(value)])
+            if len(kv_rows) >= self._HEALTH_DETAIL_MAX_ROWS:
+                break
+        if kv_rows:
+            specs.append(("", ["Field", "Value"], kv_rows))
+
+        return specs
+
+    def _build_simple_health_detail_table(self, headers: List[str], rows: List[List[str]]) -> Any:
+        """Build a compact branded table for health-check detail rows."""
+        page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+        col_count = max(len(headers), 1)
+        col_widths = [page_width / col_count] * col_count
+        data = [headers] + rows
+        table = Table(data, colWidths=col_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                    ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
+                    ("FONTSIZE", (0, 0), (-1, -1), max(self.config.font_size - 2, 7)),
+                    ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("GRID", (0, 0), (-1, -1), 0.5, self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                    ),
+                ]
+            )
+        )
+        return table
 
     def _create_post_deployment_activities_section(
         self,
@@ -5528,7 +5759,7 @@ class VastReportBuilder:
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_widths = [page_width * 0.25, page_width * 0.55, page_width * 0.20]
 
-            checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)
+            checklist_table = self._table(checklist_data, colWidths=col_widths, repeatRows=1)
 
             checklist_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),

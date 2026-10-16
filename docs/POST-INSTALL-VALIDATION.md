@@ -18,7 +18,7 @@ By default, switch SSH connections tunnel through the CNode for field deployment
 
 These checks run automatically via the **Health Check** module.
 
-### Tier 1: API Checks (26 checks)
+### Tier 1: API Checks (27 checks)
 
 | Validation | Health Check | Status |
 |------------|--------------|--------|
@@ -32,7 +32,6 @@ These checks run automatically via the **Health Check** module.
 | **Capacity** | `_check_capacity()` | Automated |
 | **Firmware** | `_check_firmware_consistency()` | Automated |
 | **Leader Election** | `_check_leader_state()` | Automated |
-| **Upgrade State** | `_check_upgrade_status()` | Automated |
 | **Call Home** | `_check_call_home_status()` | Automated + Reminder |
 | **Rack/U-Height** | `_check_rack_uheight_config()` | Automated + Reminder |
 | **Switches Registered** | `_check_switches_registered()` | Automated + Reminder |

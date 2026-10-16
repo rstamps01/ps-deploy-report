@@ -33,7 +33,7 @@ STATUS_SKIPPED = "skipped"
 class ResultBundler:
     """Bundles validation results into downloadable ZIP archives."""
 
-    BUNDLE_MANIFEST_VERSION = "1.3"
+    BUNDLE_MANIFEST_VERSION = "1.4"
 
     # RM-6: generalization of the RM-5 "attach prior output with a
     # banner instead of a one-line STALE placeholder" rescue.
@@ -90,6 +90,8 @@ class ResultBundler:
         self._stale_files: Dict[str, Path] = {}
         self._category_status: Dict[str, str] = {}
         self._operation_status: Dict[str, str] = {}
+        self._operation_details: Dict[str, str] = {}
+        self._operation_log: List[Dict[str, Any]] = []
         self._since: Optional[datetime] = None
         self._metadata: Dict[str, Any] = {}
         # RM-5: rescue prior ``vperfsanity`` output when the current run
@@ -118,6 +120,12 @@ class ResultBundler:
                 pass
         else:
             logger.info(f"[{level}] {message}")
+
+    OPERATION_LOG_NAME = "operation_log.jsonl"
+
+    def set_operation_log(self, entries: Optional[List[Dict[str, Any]]]) -> None:
+        """Include the run's Output Results entries as ``diagnostics/operation_log.jsonl``."""
+        self._operation_log = list(entries or [])
 
     def set_metadata(self, cluster_name: str, cluster_ip: str, cluster_version: str) -> None:
         """Set cluster metadata for the bundle.
@@ -310,6 +318,7 @@ class ResultBundler:
         cluster_ip: Optional[str] = None,
         since: Optional[datetime] = None,
         operation_status: Optional[Dict[str, str]] = None,
+        operation_details: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Path]:
         """Collect validation result files scoped to *cluster_ip*.
 
@@ -327,9 +336,14 @@ class ResultBundler:
         "skipped"}`` map from the caller (one-shot runner) describing which
         operations were actually executed.  It is used to choose between
         ``missing``, ``failed`` and ``skipped`` when no fresh file is found.
+
+        *operation_details* optionally maps a category to the reason it failed or
+        was skipped (for example ``"Step 3 (Run Support Tools): ... rc=127"``);
+        placeholders and the manifest carry it so the bundle explains itself.
         """
         self._since = since
         self._operation_status = dict(operation_status or {})
+        self._operation_details = {k: str(v) for k, v in (operation_details or {}).items() if v}
 
         if cluster_ip:
             self.emit("info", f"Collecting results for cluster {cluster_ip}...")
@@ -668,12 +682,24 @@ class ResultBundler:
                 elif category == "vnetmap_output":
                     rescued_source = self._prior_vnetmap_output_source
 
-                if rescued_source is not None and rescued_source == stale:
+                failure = (
+                    self._operation_details.get(category) if self._operation_status.get(category) == "failed" else None
+                )
+                if failure and rescued_source is not None and rescued_source == stale:
+                    lines.append(
+                        f"- **{name}**: FAILED — {failure.rstrip('.')}. "
+                        f"Prior result included as PRIOR with banner — `{category}_PRIOR_{fname}`"
+                    )
+                elif failure:
+                    lines.append(f"- **{name}**: FAILED — {failure} (older result `{fname}` not included)")
+                elif rescued_source is not None and rescued_source == stale:
                     lines.append(
                         f"- **{name}**: STALE (included as PRIOR with banner) — " f"`{category}_PRIOR_{fname}`"
                     )
                 else:
                     lines.append(f"- **{name}**: {label} — `{fname}` (not included)")
+            elif status in (STATUS_FAILED, STATUS_SKIPPED) and self._operation_details.get(category):
+                lines.append(f"- **{name}**: {status.upper()} — {self._operation_details[category]}")
             else:
                 lines.append(f"- **{name}**: {label}")
 
@@ -783,6 +809,13 @@ class ResultBundler:
                 "asbuilt_report": "reports",
                 "asbuilt_json": "reports",
             }
+            files_manifest = {k: v.name for k, v in self._collected_files.items()}
+            if self._operation_log:
+                log_text = "\n".join(json.dumps(entry, default=str) for entry in self._operation_log) + "\n"
+                zf.writestr(f"diagnostics/{self.OPERATION_LOG_NAME}", log_text)
+                files_manifest["operation_log"] = self.OPERATION_LOG_NAME
+                self.emit("success", f"Added: diagnostics/{self.OPERATION_LOG_NAME}")
+
             self._write_placeholders(zf, placeholder_categories, cip)
 
             # Manifest / SUMMARY are written last so they can reference
@@ -791,10 +824,11 @@ class ResultBundler:
             manifest = {
                 "version": self.BUNDLE_MANIFEST_VERSION,
                 "metadata": self._metadata,
-                "files": {k: v.name for k, v in self._collected_files.items()},
+                "files": files_manifest,
                 "categories": dict(self._category_status),
                 "stale": {k: v.name for k, v in self._stale_files.items()},
                 "operation_status": dict(self._operation_status),
+                "operation_details": dict(self._operation_details),
                 "run_started_at": self._since.isoformat() if self._since else None,
                 "created": datetime.now().isoformat(),
                 "vperfsanity_prior_source": (
@@ -916,13 +950,23 @@ class ResultBundler:
                 )
                 arcname = f"{folder}/{cat}_STALE.txt"
             elif status == STATUS_FAILED:
-                note = (
-                    f"The {cat.replace('_', ' ')} operation ran but failed for "
-                    f"cluster {cip}. See the operation log for the root cause.\n"
+                detail = self._operation_details.get(cat)
+                log_ref = (
+                    f"diagnostics/{self.OPERATION_LOG_NAME} in this bundle"
+                    if self._operation_log
+                    else "the operation log (logs/operations/ next to the app)"
                 )
+                note = f"The {cat.replace('_', ' ')} operation ran but failed for cluster {cip}.\n"
+                if detail:
+                    note += f"Failed at: {detail}\n"
+                note += f"Full step-by-step output: {log_ref}.\n"
                 arcname = f"{folder}/{cat}_FAILED.txt"
             elif status == STATUS_SKIPPED:
-                note = f"The {cat.replace('_', ' ')} operation was not selected for this run (cluster {cip}).\n"
+                detail = self._operation_details.get(cat)
+                if detail:
+                    note = f"The {cat.replace('_', ' ')} operation was skipped for cluster {cip}.\nReason: {detail}\n"
+                else:
+                    note = f"The {cat.replace('_', ' ')} operation was not selected for this run (cluster {cip}).\n"
                 arcname = f"{folder}/{cat}_SKIPPED.txt"
             else:
                 note = f"No {cat.replace('_', ' ')} results found for cluster {cip}.\n"

@@ -457,6 +457,14 @@ class AdvancedOpsManager:
                             details=details,
                             duration_ms=int((time.time() - start_time) * 1000),
                         )
+                    elif step_result.get("skipped"):
+                        self._emit_output("warn", f"Skipped: {message}")
+                        result = StepResult(
+                            status=StepStatus.SKIPPED,
+                            message=message,
+                            details=details,
+                            duration_ms=int((time.time() - start_time) * 1000),
+                        )
                     else:
                         result = StepResult(
                             status=StepStatus.ERROR,
@@ -509,18 +517,62 @@ class AdvancedOpsManager:
                 return False
             total_steps = self._current_state.total_steps
 
+        attempted: set = set()
         for step_id in range(1, total_steps + 1):
             if self._cancel_event.is_set():
                 self._emit_output("warn", "Workflow cancelled by user")
                 break
 
             result = self.run_step(step_id, credentials)
+            cancelled_before_running = result.status == StepStatus.SKIPPED and self._cancel_event.is_set()
+            if not cancelled_before_running:
+                attempted.add(step_id)
             if result.status == StepStatus.ERROR:
+                self._run_cleanup_steps(attempted, credentials, reason="failure")
                 self._complete_workflow(error=result.message)
                 return False
+            if result.status == StepStatus.SKIPPED and not self._cancel_event.is_set():
+                # The workflow decided it cannot apply (e.g. no switches in VMS); later
+                # steps depend on this one, so stop without treating it as an error.
+                break
+
+        if self._cancel_event.is_set():
+            self._run_cleanup_steps(attempted, credentials, reason="cancel")
 
         self._complete_workflow()
         return True
+
+    def _run_cleanup_steps(self, attempted: set, credentials: Dict[str, Any], reason: str) -> None:
+        """Run the workflow's declared cleanup steps after a failure or cancel.
+
+        Calls the workflow instance directly (not ``run_step``) because ``run_step`` skips
+        work once the cancel flag is set, and cleanup must still run after a cancel.
+        """
+        from workflows import get_cleanup_plan
+
+        with self._lock:
+            workflow_id = self._current_state.workflow_id if self._current_state else None
+            workflow = self._workflows.get(workflow_id) if workflow_id else None
+        wf_instance = workflow.get("_instance") if workflow else None
+        if wf_instance is None:
+            return
+
+        cleanup_steps, required_after = get_cleanup_plan(wf_instance)
+        reached_step = max(attempted) if attempted else 0
+        pending = [sid for sid in cleanup_steps if sid not in attempted]
+        if not pending or reached_step < required_after:
+            return
+
+        self._emit_output("warn", f"Running cleanup after {reason} so no test artifacts remain on the cluster")
+        if hasattr(wf_instance, "set_credentials"):
+            wf_instance.set_credentials(credentials)
+        for step_id in pending:
+            try:
+                step_result = wf_instance.run_step(step_id)
+                level = "success" if step_result.get("success", False) else "error"
+                self._emit_output(level, f"[CLEANUP] Step {step_id}: {step_result.get('message', '')}")
+            except Exception as exc:  # noqa: BLE001 - cleanup must never mask the original outcome
+                self._emit_output("error", f"[CLEANUP FAILED] Step {step_id}: {exc} - clean up manually")
 
     def cancel(self) -> bool:
         """Cancel the current workflow."""

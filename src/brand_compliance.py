@@ -39,6 +39,7 @@ from reportlab.platypus import (
 )
 
 from utils.logger import get_logger
+from utils.pdf_layout import TABLE_LAYOUT_LEGACY, TABLE_LAYOUT_WRAPPED, make_table
 
 
 @dataclass
@@ -116,6 +117,8 @@ class VastBrandCompliance:
         self.logger = get_logger(__name__)
         self.colors = VastColorPalette()
         self.typography = VastTypography()
+        # report.table_layout; the report builder overrides this from config.
+        self.table_layout = TABLE_LAYOUT_WRAPPED
 
         # Create brand-compliant paragraph styles
         self.styles = self._create_paragraph_styles()
@@ -370,7 +373,7 @@ class VastBrandCompliance:
             computed_widths = [col_width] * num_cols
 
         # Create table with repeat headers on page breaks
-        table = Table(table_data, colWidths=computed_widths, repeatRows=1)
+        table = make_table(table_data, self.table_layout, colWidths=computed_widths, repeatRows=1)
 
         # Apply VAST brand table styling
         font_sz = (self.typography.BODY_SIZE - 2) if compact else self.typography.BODY_SIZE
@@ -408,8 +411,9 @@ class VastBrandCompliance:
         table.setStyle(table_style)
         table_elements.append(table)
 
-        # Keep title and table together if title provided
-        if title:
+        # Keep title and table together if title provided (wrapped layout: the report
+        # builder keeps titles with their tables, so long tables may split across pages)
+        if title and self.table_layout == TABLE_LAYOUT_LEGACY:
             elements.append(KeepTogether(table_elements))
         else:
             elements.extend(table_elements)
@@ -536,8 +540,8 @@ class VastBrandCompliance:
             page_width = A4[0] - 1.0 * inch
         num_cols = len(headers)
 
-        # Hardware Inventory: content-based column widths (6-col or 5-col EBox-only)
-        if headers and headers[0] == "Rack" and (num_cols == 6 or num_cols == 5):
+        # Hardware Inventory: content-based column widths (7-col standard, 6-col EBox-only, legacy 5-col)
+        if headers and headers[0] == "Rack" and num_cols in (5, 6, 7):
             col_widths = self._content_based_column_widths(
                 full_table_data,
                 page_width,
@@ -549,10 +553,14 @@ class VastBrandCompliance:
             )
         else:
             # Other tables: fixed ratios
-            if num_cols == 5:
+            if num_cols == 4:
+                col_ratios = [0.28, 0.28, 0.22, 0.22]
+            elif num_cols == 5:
                 col_ratios = [0.06, 0.45, 0.25, 0.12, 0.12]
             elif num_cols == 6:
                 col_ratios = [0.08, 0.28, 0.15, 0.15, 0.20, 0.14]
+            elif num_cols == 7:
+                col_ratios = [0.08, 0.18, 0.14, 0.18, 0.16, 0.14, 0.12]
             else:
                 col_ratios = [0.15, 0.35, 0.25, 0.15, 0.1]
             if len(col_ratios) == num_cols:
@@ -581,7 +589,7 @@ class VastBrandCompliance:
                 processed_table_data.append(processed_row)
 
         # Create table with calculated column widths and repeat headers on page breaks
-        table = Table(processed_table_data, colWidths=col_widths, repeatRows=1)
+        table = make_table(processed_table_data, self.table_layout, colWidths=col_widths, repeatRows=1)
 
         # Apply VAST brand table styling with text wrapping - match create_vast_table styling
         table_style = TableStyle(
@@ -619,7 +627,10 @@ class VastBrandCompliance:
         table_elements.append(table)
 
         # Keep title and table together to prevent page breaks
-        elements.append(KeepTogether(table_elements))
+        if self.table_layout == TABLE_LAYOUT_LEGACY:
+            elements.append(KeepTogether(table_elements))
+        else:
+            elements.extend(table_elements)
         elements.append(Spacer(1, 12))
 
         return elements
@@ -652,8 +663,9 @@ class VastBrandCompliance:
         total_rows = len(table_data)
         num_pages = (total_rows + rows_per_page - 1) // rows_per_page
 
-        # If only one page needed, use the regular method
-        if num_pages <= 1:
+        # Wrapped rows vary in height, so a fixed row count per page no longer fits:
+        # flow one table and let it split with the header row repeated.
+        if num_pages <= 1 or self.table_layout != TABLE_LAYOUT_LEGACY:
             return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
 
         # Split data into pages

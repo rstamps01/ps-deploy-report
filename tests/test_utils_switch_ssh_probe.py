@@ -254,6 +254,23 @@ class TestProbeSwitchPassword:
         mock_sleep.assert_not_called()
 
     @patch("utils.switch_ssh_probe.run_ssh_command")
+    def test_success_logs_info_not_warning_for_rejected_candidates(self, mock_ssh):
+        """SR-2: rejected candidates stay at debug; winner logs a single info line."""
+        mock_ssh.side_effect = [
+            (1, "", "Permission denied"),  # candidate 1
+            (0, "leaf.example.com\n", ""),  # candidate 2 wins on command path
+        ]
+        logger = MagicMock()
+        with patch("utils.switch_ssh_probe.run_interactive_ssh", return_value=(1, "", "auth failed")):
+            result = probe_switch_password("10.0.0.1", "cumulus", ["wrong", "Vastdata1!"], logger=logger)
+        assert result == "Vastdata1!"
+        warning_msgs = " ".join(str(c.args[0]) for c in logger.warning.call_args_list if c.args)
+        assert "Rejected candidate" not in warning_msgs
+        info_msgs = " ".join(str(c.args[0]) for c in logger.info.call_args_list if c.args)
+        assert "Authenticated" in info_msgs
+        assert "candidate" in info_msgs
+
+    @patch("utils.switch_ssh_probe.run_ssh_command")
     def test_jump_kwargs_are_forwarded(self, mock_ssh):
         # The Reporter-tile probe runs through a bastion (the VAST CNode
         # acts as a proxy-jump host for the operator laptop).  jump_host,

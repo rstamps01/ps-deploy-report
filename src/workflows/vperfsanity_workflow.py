@@ -12,12 +12,19 @@ vperfsanity Performance Test Workflow
 """
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from script_runner import ScriptRunner
-from utils.ssh_adapter import run_ssh_command
+from utils.ssh_adapter import (
+    is_ssh_auth_failure,
+    is_ssh_transport_failure,
+    run_ssh_command,
+    ssh_auth_failure_message,
+    ssh_transport_failure_message,
+)
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -40,6 +47,17 @@ class VperfsanityWorkflow:
     # vperfsanity uses admin credentials
     VPERF_USER = "admin"
     VPERF_PASSWORD = "123456"
+
+    # Step 3 creates the vperfsanity user/view/policy and Step 4 writes test data and
+    # starts elbencho services; Step 7 removes all of it.  Runners must run Step 7
+    # after a failure or cancel at or beyond Step 3.
+    CLEANUP_STEPS = (7,)
+    CLEANUP_REQUIRED_AFTER_STEP = 3
+
+    # vperfsanity_run.sh -w -r writes enough to overflow the write buffer, then waits up
+    # to 7200s (its BURST_WAIT_TIMEOUT_S) for burst recovery before reading.  Budget the
+    # write phase, that wait, and the read phase so the session is not killed mid-run.
+    RUN_TIMEOUT_S = 3600 + 7200 + 3600
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -397,6 +415,57 @@ class VperfsanityWorkflow:
         self.emit("success", "Infrastructure preparation completed")
         return {"success": True, "message": "Infrastructure prepared", "details": output[:500]}
 
+    def _run_timeout_s(self) -> int:
+        """Step 4 timeout: the class budget unless the caller supplies ``vperfsanity_timeout_s``."""
+        override = self._credentials.get("vperfsanity_timeout_s")
+        try:
+            if override:
+                return max(60, int(override))
+        except (TypeError, ValueError):
+            pass
+        return self.RUN_TIMEOUT_S
+
+    @staticmethod
+    def _object_count_for_part_limit(output: str) -> Optional[int]:
+        """Object count for ``-n`` after vperfsanity refuses a run over the S3 part limit.
+
+        ``vperfsanity_run.sh`` defaults to one object per elbencho thread.  When that makes
+        objects larger than blocksize x 10,000 parts it exits with a HINT naming the minimum
+        object count rather than raising ``-n`` itself.  The hint is rounded up to a whole
+        multiple of the default count so every thread handles the same number of objects.
+
+        Args:
+            output: Combined stdout/stderr of the refused ``vperfsanity_run.sh`` run.
+
+        Returns:
+            Optional[int]: Object count to pass via ``-n``, or None if the run was not
+            refused for the part limit.
+        """
+        if "exceed the S3 limit of 10,000 parts" not in output:
+            return None
+        hint = re.search(r"number of objects to:\s*(\d+)", output)
+        if not hint:
+            return None
+        minimum = int(hint.group(1))
+        default = re.search(r"Files:\s*(\d+)", output)
+        per_thread_round = int(default.group(1)) if default else 0
+        if per_thread_round <= 0:
+            return minimum
+        return -(-minimum // per_thread_round) * per_thread_round
+
+    def _emit_run_output(self, output: str) -> None:
+        for line in output.strip().split("\n"):
+            if line.strip():
+                ll = line.lower()
+                if "error" in ll:
+                    self.emit("error", line)
+                elif "warning" in ll or "warn" in ll:
+                    self.emit("warn", line)
+                elif "pass" in ll or "success" in ll or "complete" in ll:
+                    self.emit("success", line)
+                else:
+                    self.emit("info", line)
+
     def _step_run_tests(self) -> Dict[str, Any]:
         """Step 4: Run vperfsanity write and read tests."""
         host = self._credentials.get("cluster_ip")
@@ -417,34 +486,68 @@ class VperfsanityWorkflow:
         run_cmd = f"cd {vperf_dir} && export VAST_VMS='{host}' && ./vperfsanity_run.sh -w -r {vip_pool}"
         self.emit("info", f"$ {run_cmd}")
         self.emit("info", "")
-        self.emit("warn", "This test may take 30+ minutes. Please wait...")
+        timeout = self._run_timeout_s()
+        self.emit(
+            "warn",
+            "This test can take 1-4 hours on large clusters: writes, then up to 2 hours waiting for "
+            f"burst recovery, then reads (limit {timeout // 3600}h {timeout % 3600 // 60}m). Please wait...",
+        )
         self.emit("info", "")
 
         # Long timeout for performance tests, force_tty for interactive output
         rc, stdout, stderr = run_ssh_command(
-            ssh_host, user, password, run_cmd, timeout=3600, force_tty=True, port=ssh_port
+            ssh_host, user, password, run_cmd, timeout=timeout, force_tty=True, port=ssh_port
         )
-
         output = stdout + stderr
-        for line in output.strip().split("\n"):
-            if line.strip():
-                ll = line.lower()
-                if "error" in ll:
-                    self.emit("error", line)
-                elif "warning" in ll or "warn" in ll:
-                    self.emit("warn", line)
-                elif "pass" in ll or "success" in ll or "complete" in ll:
-                    self.emit("success", line)
-                else:
-                    self.emit("info", line)
+        self._emit_run_output(output)
+
+        num_objects = self._object_count_for_part_limit(output) if rc != 0 else None
+        if num_objects:
+            self.emit(
+                "warn",
+                "vperfsanity's default of one object per thread would exceed the S3 limit of 10,000 "
+                f"parts per object on this cluster; re-running with {num_objects} objects (-n {num_objects}).",
+            )
+            run_cmd = (
+                f"cd {vperf_dir} && export VAST_VMS='{host}' && "
+                f"./vperfsanity_run.sh -w -r -n {num_objects} {vip_pool}"
+            )
+            self.emit("info", f"$ {run_cmd}")
+            self.emit("info", "")
+            rc, stdout, stderr = run_ssh_command(
+                ssh_host, user, password, run_cmd, timeout=timeout, force_tty=True, port=ssh_port
+            )
+            output = stdout + stderr
+            self._emit_run_output(output)
+            self._step_data["num_objects"] = num_objects
 
         self._step_data["test_output"] = output
         self._step_data["test_rc"] = rc
 
         if rc != 0:
+            ol = output.lower()
+            if is_ssh_auth_failure(rc, stdout, stderr):
+                msg = f"{ssh_auth_failure_message(rc, stdout, stderr, host=host)}; the tests did not start"
+                self.emit("error", msg)
+                self.emit(
+                    "warn",
+                    "Hint: earlier steps logged in with the same credentials, so the node refused this "
+                    "login intermittently. Check sshd and faillock on the node (journalctl -u sshd; "
+                    "faillock --user <node user>) and re-run vperfsanity.",
+                )
+                return {"success": False, "message": msg, "details": output[-1000:]}
+            if is_ssh_transport_failure(rc, stdout, stderr):
+                msg = ssh_transport_failure_message(rc, stdout, stderr)
+                self.emit("error", msg)
+                self.emit(
+                    "warn",
+                    "Hint: the laptop lost its SSH session to the cluster (sleep, VPN flap, or "
+                    "network change). Keep the machine awake and re-run; cluster test data is "
+                    "cleaned up automatically when this workflow fails.",
+                )
+                return {"success": False, "message": msg, "details": output[-1000:]}
             self.emit("error", f"Tests failed with exit code {rc}")
             hint = ""
-            ol = output.lower()
             if "no such file or directory" in ol and "elbencho" in ol:
                 hint = (
                     "elbencho was not installed on the CNodes. "
@@ -453,6 +556,13 @@ class VperfsanityWorkflow:
                 )
             if hint:
                 self.emit("warn", f"Hint: {hint}")
+            if "ssh command timed out after" in (stderr or "").lower():
+                phase = "while waiting for burst recovery" if "waiting for burst" in ol else "before completing"
+                return {
+                    "success": False,
+                    "message": f"Tests timed out after {timeout}s {phase} (rc={rc})",
+                    "details": output[-1000:],
+                }
             return {"success": False, "message": f"Tests failed (rc={rc})", "details": output[-1000:]}
 
         self.emit("success", "Performance tests completed")

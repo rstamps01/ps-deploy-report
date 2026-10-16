@@ -157,7 +157,7 @@ client, then open the **&#9776;** menu in the header, choose **Configuration**,
 and expand **Teleport Settings**. The pill
 beside that heading reads `Install tsh` until the client is found, and
 `tsh Installed` once it is. The same pill appears next to **Teleport Mode** on
-the Reporter page. See [Teleport Mode (Beta)](../TELEPORT-MODE.md) for the full
+the Reporter page. See [Teleport Mode](../TELEPORT-MODE.md) for the full
 setup, including `tsh login` and the identifiers the Teleport fields accept.
 
 #### 3. Add racks in VMS and assign U-heights to the chassis
@@ -189,10 +189,10 @@ The mode determines which address goes in the **Tech Port IP / VMS VIP** field:
 |---|---|---|
 | **Tech Port Mode** (default) | Connects via the CBox tech port and tunnels API calls over SSH, discovering VMS automatically | The tech port address, normally `192.168.2.2` |
 | **VMS Mgmt Mode** | Connects straight to VMS over HTTPS, with no SSH tunnel | The VMS management VIP, for example `10.143.10.100` |
-| **Teleport Mode** (Beta) | Forwards the cluster API and SSH through Teleport | The cluster's VMS management VIP — **not** `127.0.0.1`, so the API is forwarded to VMS and reachable from any node |
+| **Teleport Mode** | Forwards the cluster API and SSH through Teleport | The cluster's VMS management VIP — **not** `127.0.0.1`, so the API is forwarded to VMS and reachable from any node |
 
 Teleport Mode reveals two extra fields, **Teleport Node** and **Teleport User**.
-Both are covered in [Teleport Mode (Beta)](../TELEPORT-MODE.md).
+Both are covered in [Teleport Mode](../TELEPORT-MODE.md).
 
 #### Step 2 — Enter credentials
 

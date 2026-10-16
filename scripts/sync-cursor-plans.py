@@ -54,6 +54,10 @@ REDACT_PATTERNS: List[Tuple[str, str]] = [
     (r"(?<![A-Za-z0-9])(?:Lambda|LAMBDA)(?![a-z])", "<customer>"),
     (r"(?i)\bmammoth\b", "<customer-cluster>"),
     (r"(?i)\bm-pr-xpvast-[a-z0-9]+\b", "<customer-cluster>"),
+    (r"(?i)\bVAST-TELUS\b", "<customer-cluster>"),
+    (r"(?i)\btelus\b", "<customer>"),
+    (r"(?i)\bcoreweave\b", "<customer>"),
+    (r"(?i)\bkpn\d+cnl\d+\b", "<customer-switch>"),
     (r"(?<![\w])Vastdata1!", "<default-password>"),
     (r"\b123456\b", "<default-password>"),
 ]
