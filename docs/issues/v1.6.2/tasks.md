@@ -26,6 +26,8 @@
 - [ ] Live-cluster validation pass ([`live-test-plan.md`](live-test-plan.md)): FR-1 (EBox + C/DBox), FR-5 (`/vast/log` paths), NET-6 node count, HCF-7/HCF-8 output; retest vperfsanity/log_bundle with laptop awake after SE Lab SSH-drop findings
 - [x] PR #36 closed as superseded (Teleport Beta removal is on this branch); PR #37 merged to develop (2026-10-16)
 - [x] Health Check Summary "Total 0" fix; RPT-LAYOUT-1 approved and `legacy` toggle removed; FR-12; GOV-1; GOV-3 advisory drafted ([`field-advisory.md`](field-advisory.md))
+- [x] RPT-TITLE-1 report title rebrand (Fira Sans Bold, black + `#1a6fb5`); HWL-3 Milan EBox 2U; RACK-1 45/48/50/52U with shared scale and every-U labels; RACK-2 validation report script; RACK-3 tests; NET-7 assessed ([`../NET-7/spec.md`](../NET-7/spec.md))
+- [ ] Review the rack validation PDF (`python3 scripts/generate_rack_validation_report.py`, A4 and Letter)
 - [ ] Open the v1.6.2 PR (after the live-cluster validation pass)
 - [ ] Live DIAG-1 lab run (needs operator credentials)
 - [ ] SW-1 / update-pill / Slack+Confluence announcement (separate leftovers)

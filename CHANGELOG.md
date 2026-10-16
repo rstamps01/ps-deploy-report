@@ -11,10 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Upgrade State health check (HCF-1).** VMS reports `upgrade_state` as `UNKNOWN` on idle clusters, so the check and its row in Health Check Details carried no useful information. It no longer runs, and reports regenerated from results saved by earlier versions omit it from the Cluster State & Software group. This replaces the earlier v1.6.2 fixes that treated `UNKNOWN` and `NOT_UPLOADED` as idle.
 
 ### Changed
+- **New report title (RPT-TITLE-1).** The title page now reads "VAST asbuilt-reporter" in the one-pager style: Fira Sans Bold, with "VAST asbuilt" in black and "-reporter" in accent blue. The large center logo is unchanged. The font (SIL Open Font License) ships with the app.
+- **Physical Rack Layout drawing.** Every U is labelled on the left (U1 to the top U), the rack sits directly under its page heading, and the duplicate "Rack: X" caption inside the drawing is gone. All racks in a report share one scale, so devices are the same size on every rack page. Stacked devices now touch with no white line between them, because blank padding inside device artwork is cropped when drawn.
 - **vperfsanity commands no longer export `VAST_VMS` (FR-12).** The vperfsanity scripts never read it; they find the VMS address from `/vast/vman/mgmt-vip`. The commands shown in Output Results are shorter as a result.
 - **Teleport Mode promoted out of Beta.** Removed the "Beta Feature" UI badge and Beta labeling from Teleport Mode across the Reporter, Advanced Configuration, in-app docs registry, README, Teleport Mode guide, Advanced Operations, and marketing pages. The tsh install-status pill remains.
 
 ### Added
+- **45U, 48U, 50U and 52U racks (RACK-1).** The Physical Rack Layout draws each rack at its VMS height. Racks up to 48U keep today's size; 50U and 52U racks are drawn about 4% and 7–8% smaller so the whole rack fits on its page. A height that isn't supported rounds up to the next one (never down, so no device is cut off).
+- **Rack validation report (RACK-2).** `python3 scripts/generate_rack_validation_report.py [--page-size Letter] [--heights 42,52]` fills two racks of every height with one of each library device and renders them with the report's own rack code, including every status-indicator colour, shape and count. Writes a PDF and a JSON manifest to `output/rack-validation/` and exits non-zero if a rack is not full or does not fit on its page.
 - **DIAG-1 live API field probe** (`scripts/diag_api_fields.py`): dumps keys from `cnodes/`, `dnodes/`, `ssds/`, `nvrams/`, `licenses/`, and `clusters/` for lab field discovery (HCF-4 / INV-2 / DRV-1 enabler).
 - **INV-1 node serial numbers** in Hardware Inventory (dedicated Serial column; Name/Serial Number renamed to Name) and in the CNode/DNode Management Map.
 - **HCF-6 health-check details** rendered in the PDF (see the grouped tables below) and as expandable detail tables on the Health Check web page (alarms, inactive lists, performance metrics).
@@ -23,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Section titles stay with their content.** A table title now starts on the same page as the table's header and first rows; short titled sections move to the next page together instead of leaving the title at the bottom of a page.
 
 ### Fixed
+- **Devices above U42 vanished from 45U, 50U and 52U racks.** Those heights fell back to a 42U drawing, which dropped every device mounted higher. They are now drawn at their real height; a device that would extend past the top of its rack is skipped with a warning instead of being drawn outside the frame.
+- **Milan EBoxes were drawn at 1U (HWL-3).** Any model containing "ebox" was forced to 1U before the hardware library was checked, so the 2U `supermicro_milan_ebox` and `smc_milan_ebox` overlapped their neighbours, and a 2U EBox added to the Library was ignored. A model matched to an EBox library entry now uses its declared height; unknown EBoxes still default to 1U. Reports for Milan EBox clusters show those boxes at 2U.
 - **Health Check Summary showed a Total of 0.** The checker's summary has no total, and the report only computed one when it dropped node-SSH results, so most reports printed `Total 0` beside non-zero Pass/Warning/Skipped counts. The total is now the sum of the status counts.
 - **HCF-2:** On converged EBox clusters, empty CBox Status explains topology ("Not applicable — converged EBox…") and DBox Status labels EBox storage enclosures.
 - **HCF-5:** Performance Baseline is `skipped` when the cluster object has no performance metrics (was a empty pass).

@@ -62,7 +62,7 @@ No Python, pip, or virtual environment needed. Updates: download the latest rele
 
 ### Report highlights
 
-- **Physical rack layout** — 42U rack diagrams with CBox, DBox, EBox, and switch positions with hardware images.
+- **Physical rack layout** — 42U, 45U, 48U, 50U and 52U rack diagrams (height from VMS) with CBox, DBox, EBox and switch positions, hardware images, a label on every U, and per-node status indicators. `python3 scripts/generate_rack_validation_report.py` renders two fully populated racks of every height from the hardware library for visual review.
 - **Network topology** — Logical diagram with port mapping and IPL/MLAG links; EBox clusters show EB# labels with color-coded Network A/B connections.
 - **Health check sections** — Cluster Health Check Results (summary + detailed table) and Post Deployment Validation when health check is enabled.
 - **Dual output** — Customer-ready PDF and machine-readable JSON for automation.
