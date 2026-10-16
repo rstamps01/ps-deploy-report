@@ -81,6 +81,47 @@ class TestOperationLogInBundle:
         assert manifest["files"]["operation_log"] == "operation_log.jsonl"
         assert "operation_log.jsonl" in zf.read("performance/vperfsanity_FAILED.txt").decode()
 
+    def test_operation_log_redacts_credential_values(self, tmp_path):
+        entries = [
+            {"level": "info", "message": "export ADMIN_PASSWORD=Adm1n!pw && ./vperfsanity_prepare.sh"},
+            {"level": "error", "message": "Login failed", "details": "sshpass -p 'N0de#pw' ssh vastdata@10.0.0.1"},
+            {"level": "info", "message": "switch login: password=Sw1tch$pw"},
+            {"level": "info", "message": "Primary switch password failed authentication"},
+        ]
+        results = tmp_path / "output"
+        (results / "health").mkdir(parents=True)
+        (results / "health" / "health_check_cluster-x_20260925_183125.json").write_text(
+            json.dumps({"cluster_ip": CIP, "cluster_name": "cluster-x", "summary": {}, "results": []})
+        )
+        bundler = ResultBundler(output_dir=tmp_path / "bundles")
+        bundler.set_metadata("cluster-x", CIP, "5.5")
+        bundler.collect_results(results, cluster_ip=CIP, since=datetime.now() - timedelta(minutes=5))
+        bundler.set_operation_log(entries, secrets=["Adm1n!pw", "N0de#pw"])
+        text = zipfile.ZipFile(bundler.create_bundle()).read("diagnostics/operation_log.jsonl").decode()
+
+        for secret in ("Adm1n!pw", "N0de#pw", "Sw1tch$pw"):
+            assert secret not in text
+        assert "[REDACTED]" in text
+        assert "Primary switch password failed authentication" in text
+
+    def test_runner_collects_every_credential_value(self):
+        from oneshot_runner import OneShotRunner
+
+        creds = {
+            "username": "admin",
+            "password": "Adm1n!pw",
+            "node_password": "N0de#pw",
+            "switch_password_candidates": ["Sw1", "Sw1tch$pw"],
+            "switch_password_by_ip": {"10.0.0.5": "Per-ip$pw"},
+            "api_token": "tok-abcdef",
+            "cluster_ip": "10.0.0.1",
+            "jump_password": "",
+        }
+        values = OneShotRunner._credential_values(creds)
+        assert {"Adm1n!pw", "N0de#pw", "Sw1tch$pw", "Per-ip$pw", "tok-abcdef"} <= set(values)
+        assert "admin" not in values and "10.0.0.1" not in values
+        assert "" not in values and "Sw1" not in values
+
     def test_operation_details_in_manifest(self, tmp_path):
         zf = _bundle(tmp_path, {"vperfsanity": "failed"}, {"vperfsanity": "Step 4 (Run Performance Tests): timed out"})
         manifest = json.loads(zf.read("manifest.json"))

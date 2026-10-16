@@ -11,6 +11,7 @@ report_builder).  See architecture-03.mdc for full boundary rules.
 """
 
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -2181,7 +2182,9 @@ class OneShotRunner:
                 operation_status=op_results,
                 operation_details=op_details,
             )
-            bundler.set_operation_log(self._operation_log_snapshot())
+            bundler.set_operation_log(
+                self._operation_log_snapshot(), secrets=self._credential_values(self._credentials)
+            )
             bundle_path = bundler.create_bundle()
 
             with self._lock:
@@ -2197,6 +2200,38 @@ class OneShotRunner:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    _SECRET_KEY_RE = re.compile(r"password|passwd|token|secret", re.IGNORECASE)
+    # Shorter values would mask ordinary words throughout the log.
+    _MIN_SECRET_LEN = 4
+
+    @classmethod
+    def _credential_values(cls, credentials: Optional[Dict[str, Any]]) -> List[str]:
+        """Every credential value in ``credentials``, including per-IP and candidate lists.
+
+        Args:
+            credentials: The run's credentials dict.
+
+        Returns:
+            List[str]: Distinct secret strings to mask in bundled logs.
+        """
+        values: set = set()
+
+        def collect(value: Any) -> None:
+            if isinstance(value, str):
+                if len(value) >= cls._MIN_SECRET_LEN:
+                    values.add(value)
+            elif isinstance(value, dict):
+                for item in value.values():
+                    collect(item)
+            elif isinstance(value, (list, tuple, set)):
+                for item in value:
+                    collect(item)
+
+        for key, value in (credentials or {}).items():
+            if cls._SECRET_KEY_RE.search(str(key)):
+                collect(value)
+        return sorted(values)
 
     @staticmethod
     def _operation_log_snapshot() -> List[Dict[str, Any]]:

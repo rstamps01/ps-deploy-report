@@ -56,6 +56,11 @@ details, wrapped tables, titles kept with their tables), and rack diagrams for 4
 
 See `CHANGELOG.md` for the full list.
 
+## Security
+
+- Credentials used by the run (passwords, per-switch and candidate passwords, API token) are masked
+  as `[REDACTED]` in the bundled `diagnostics/operation_log.jsonl`.
+
 ## Upgrade notes
 
 1. In a running 1.6.x app, wait for **UPDATE AVAILABLE**, open **Download**, pick your macOS

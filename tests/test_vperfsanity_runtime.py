@@ -117,3 +117,10 @@ class TestPrevalidationDurationNotice:
         assert "30 minutes" not in VPERFSANITY_DURATION_NOTICE
         assert "hour" in VPERFSANITY_DURATION_NOTICE
         assert "clean" in VPERFSANITY_DURATION_NOTICE.lower()
+
+    def test_prior_bundle_banner_matches_run_time(self):
+        from result_bundler import ResultBundler
+
+        banner = " ".join(ResultBundler._PRIOR_RESCUE["vperfsanity"]["rationale"])
+        assert "30 minutes" not in banner
+        assert "hour" in banner

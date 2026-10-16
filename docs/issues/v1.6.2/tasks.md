@@ -19,8 +19,8 @@
 - [x] HCF-8: `[SKIP]` icon + skip reason in Output Results
 - [x] SSH transport diagnostics: classify connection-lost vs tool failure; kill process group on timeout; Network Extraction / Log Bundle messaging; Step 1 includes `/vast/log` recent size
 - [x] EBox L3 field run fixes: vperfsanity VIP pool pre-validation; vnetmap node-config pre-check (skip with reason), `-l3`, EBox host de-dupe; SUMMARY failure/skip reasons; Test Suite never starts without pre-validation results
-- [x] SSH password-first login + one retry on rc=255 login rejection; vperfsanity login-failure message; banner noise stripped (vast3238-var run)
-- [ ] EBox retest: confirm the `/etc/vast-configure_network.py-params.ini` keys on an L3 ENode, and re-run vperfsanity with an existing protocol VIP pool (vast3238-var: vnetmap OK, Prepare OK on `vippool-1`; re-run after the SSH login fix)
+- [x] SSH password-first login + one retry on rc=255 login rejection; vperfsanity login-failure message; banner noise stripped (EBox lab cluster run)
+- [x] EBox retest (owner, 2026-10-16: report clean; remaining live checks waived): confirm the `/etc/vast-configure_network.py-params.ini` keys on an L3 ENode, and re-run vperfsanity with an existing protocol VIP pool (EBox lab cluster: vnetmap OK, Prepare OK on an existing protocol pool; re-run after the SSH login fix)
 - [x] Update CHANGELOG `[Unreleased]` / roadmap statuses
 - [x] quality-gate (see DECISIONS memlog for the latest run)
 - [ ] Live-cluster validation pass ([`live-test-plan.md`](live-test-plan.md)): FR-1 (EBox + C/DBox), FR-5 (`/vast/log` paths), NET-6 node count, HCF-7/HCF-8 output; retest vperfsanity/log_bundle with laptop awake after SE Lab SSH-drop findings

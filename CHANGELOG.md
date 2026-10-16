@@ -62,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **vperfsanity reports a rejected SSH login as a login failure**, for example `SSH login to <VMS IP> was rejected (Too many authentication failures; rc=255); the tests did not start`, instead of `Tests failed (rc=255)`. SSH host-key and post-quantum banner lines are stripped from error messages.
 - **The Test Suite no longer starts a run while pre-validation is still going.** The page stopped waiting after 120 seconds and then POSTed the start request, which the server rejected with "One-shot execution already running". It now waits up to 15 minutes and never starts without results.
 
+### Security
+- **Credentials are masked in the bundled operation log.** `diagnostics/operation_log.jsonl` (new in this release) copies Output Results into the customer bundle. Every password, per-switch password, candidate password and API token used by the run is now replaced with `[REDACTED]`, as is credential-shaped `key=value` text.
+
 ### Known issues
 - **Results page cluster filter mixes Tech Port clusters (TP-4).** Clusters reached through the Tech Port all use `192.168.2.2`, so filtering by one lists the others' results too. Check the cluster name in the file name before sharing. Planned for v1.6.3.
 - **Tech Port discovery records `192.168.2.2` as the management IP (TP-3)**, and Network Extraction counts the gateway twice.

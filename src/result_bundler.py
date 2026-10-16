@@ -14,10 +14,10 @@ import re
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from utils.cluster_paths import cluster_paths, iter_cluster_roots, read_cluster_marker
-from utils.logger import get_logger
+from utils.logger import SensitiveDataFilter, get_logger
 
 logger = get_logger(__name__)
 
@@ -47,8 +47,8 @@ class ResultBundler:
         "vperfsanity": {
             "human_name": "vperfsanity",
             "rationale": [
-                "vperfsanity was not rerun during this run (it can take up to",
-                "30 minutes), so this file is included for continuity only.",
+                "vperfsanity was not rerun during this run (it can take 1-4",
+                "hours on large clusters), so this file is included for continuity only.",
                 "Do NOT treat these numbers as current-run performance data.",
             ],
         },
@@ -92,10 +92,11 @@ class ResultBundler:
         self._operation_status: Dict[str, str] = {}
         self._operation_details: Dict[str, str] = {}
         self._operation_log: List[Dict[str, Any]] = []
+        self._log_secrets: List[str] = []
         self._since: Optional[datetime] = None
         self._metadata: Dict[str, Any] = {}
         # RM-5: rescue prior ``vperfsanity`` output when the current run
-        # didn't regenerate it (it can take 30 min) — recorded in the
+        # didn't regenerate it (it can take hours) — recorded in the
         # manifest as ``vperfsanity_prior_source``.  Opt out by passing
         # ``include_prior_vperfsanity=False`` / setting
         # ``bundle.include_prior_vperfsanity: false`` in config.
@@ -123,9 +124,26 @@ class ResultBundler:
 
     OPERATION_LOG_NAME = "operation_log.jsonl"
 
-    def set_operation_log(self, entries: Optional[List[Dict[str, Any]]]) -> None:
-        """Include the run's Output Results entries as ``diagnostics/operation_log.jsonl``."""
+    def set_operation_log(
+        self, entries: Optional[List[Dict[str, Any]]], secrets: Optional[Iterable[str]] = None
+    ) -> None:
+        """Include the run's Output Results entries as ``diagnostics/operation_log.jsonl``.
+
+        Args:
+            entries: Output Results entries recorded during the run.
+            secrets: Credential values used by the run. Every occurrence is masked in the
+                bundled log, along with credential-shaped ``key=value`` text.
+        """
         self._operation_log = list(entries or [])
+        self._log_secrets = sorted({s for s in (secrets or []) if s}, key=len, reverse=True)
+
+    def _redact_log_text(self, text: str) -> str:
+        for secret in self._log_secrets:
+            text = text.replace(secret, "[REDACTED]")
+        return str(SensitiveDataFilter._CREDENTIAL_RE.sub(SensitiveDataFilter._redact_match, text))
+
+    def _redacted_log_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        return {k: self._redact_log_text(v) if isinstance(v, str) else v for k, v in entry.items()}
 
     def set_metadata(self, cluster_name: str, cluster_ip: str, cluster_version: str) -> None:
         """Set cluster metadata for the bundle.
@@ -811,7 +829,10 @@ class ResultBundler:
             }
             files_manifest = {k: v.name for k, v in self._collected_files.items()}
             if self._operation_log:
-                log_text = "\n".join(json.dumps(entry, default=str) for entry in self._operation_log) + "\n"
+                log_text = (
+                    "\n".join(json.dumps(self._redacted_log_entry(entry), default=str) for entry in self._operation_log)
+                    + "\n"
+                )
                 zf.writestr(f"diagnostics/{self.OPERATION_LOG_NAME}", log_text)
                 files_manifest["operation_log"] = self.OPERATION_LOG_NAME
                 self.emit("success", f"Added: diagnostics/{self.OPERATION_LOG_NAME}")
