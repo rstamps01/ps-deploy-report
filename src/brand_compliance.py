@@ -45,7 +45,7 @@ from utils.pdf_layout import make_table
 
 BRAND_TITLE_FONT = "FiraSans-Bold"
 BRAND_TITLE_FALLBACK_FONT = "Helvetica-Bold"
-BRAND_PRODUCT_NAME = "VAST asbuilt-reporter"
+BRAND_PRODUCT_NAME = "asbuilt-reporter"
 BRAND_TITLE_BLACK = "#000000"
 BRAND_TITLE_ACCENT = "#1a6fb5"
 
@@ -257,7 +257,7 @@ class VastBrandCompliance:
     def format_title_markup(self, title: str) -> str:
         """Return Paragraph markup for a report title.
 
-        The product name gets the one-pager treatment: "VAST asbuilt" in black and
+        The product name gets the one-pager treatment: "asbuilt" in black and
         "-reporter" in the accent blue, both in the brand title font. Any other
         title renders as plain bold text.
 
@@ -269,7 +269,7 @@ class VastBrandCompliance:
         """
         if title != BRAND_PRODUCT_NAME:
             return f"<b>{title}</b>"
-        head, tail = "VAST asbuilt", "-reporter"
+        head, tail = "asbuilt", "-reporter"
         return (
             f'<font name="{self.title_font}" color="{BRAND_TITLE_BLACK}">{head}</font>'
             f'<font name="{self.title_font}" color="{BRAND_TITLE_ACCENT}">{tail}</font>'
