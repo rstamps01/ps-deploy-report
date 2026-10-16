@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-09-25 — **v1.6.1 shipped** (tag on `7095ccb`; arm64 + x64 DMGs and Windows zip attached). Field Procedure merged (DOC-16, [PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)). Field-feedback triage accepted: 12 items (HCF/SW/INV/DRV/DIAG) planned for v1.6.2 and v1.7.0. Project plan archive added at [`plans/`](plans/README.md) (audit pending, PLN-1). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
+**Last updated:** 2026-09-25 — Dashboard day-one checklist (Approach C) in progress on `feature/dashboard-day-one-checklist`. **v1.6.1 shipped** (tag on `7095ccb`; arm64 + x64 DMGs and Windows zip attached). Field Procedure merged (DOC-16, [PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)). Field-feedback triage accepted: 12 items (HCF/SW/INV/DRV/DIAG) planned for v1.6.2 and v1.7.0. Project plan archive added at [`plans/`](plans/README.md) (audit pending, PLN-1). **v1.6.0 released.** **M6 complete (Phases A–E):** ADF [`v0.3.0`](https://github.com/rstamps01/agentic-dev-framework/releases/tag/v0.3.0) ships `framework-doctor` + portfolio PM; portfolio scores 100/100 across vast, planalyzer, and ADF — **all at L3**. See [`DECISIONS.md`](DECISIONS.md) / [`development/ADF-EXTRACTION.md`](development/ADF-EXTRACTION.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -265,7 +265,7 @@ One root cause runs through several of the health check items: `HealthCheckResul
 
 > **Execution status (2026-09-25):** **v1.6.1 shipped.** The tag is on `main` at `7095ccb`, and build-release run `35937686117` attached the arm64 and x64 DMGs and the Windows zip (release marked latest). `main` = `develop` = `2567eb6` after DOC-16. Next up is the v1.6.2 field-feedback patch. ReportLab 5.x is still held ([PR #31](https://github.com/rstamps01/ps-deploy-report/pull/31)).
 
-1. **v1.6.2 patch (field feedback):** DIAG-1 first (a live probe on a lab cluster), then HCF-1, HCF-2, HCF-5, HCF-6 and INV-1. Each bug gets a failing-first test.
+1. **v1.6.2 patch (field feedback):** DIAG-1 first (a live probe on a lab cluster), then HCF-1, HCF-2, HCF-5, HCF-6 and INV-1. Each bug gets a failing-first test. **UI:** Dashboard interactive day-one checklist (Approach C) — PR pending merge.
 2. **v1.7.0 minor (field feedback):** HCF-3 (critical alarms fail, new config key `health_check.alarms.fail_on`), HCF-4, INV-2 and DRV-1. DRV-2 follows. SW-1 waits on the reporter's logs.
 3. **v1.6.1 ship-release leftovers:** the live update-pill check from a real 1.6.0 build (QA §6b), and the Slack and Confluence release announcement (draft, then confirm).
 4. **Dependabot backlog:** #28 types-pyyaml, #30 pillow and #32 pymupdf are minor bumps. #29 types-paramiko is a major bump, so check it with mypy. #31 reportlab 5.0.1 stays on hold for a separately tested branch.
@@ -274,7 +274,7 @@ One root cause runs through several of the health check items: `HealthCheckResul
 7. **HWL-3:** confirm the true rack height of Milan EBoxes before removing the `ebox`/`enclosure` 1U short-circuit.
 8. **SEC-3 / SEC-4:** plaintext profile credentials; ungated `/validation-results`.
 9. **Documentation refresh (remaining):** DOC-13 (API reference Prometheus endpoints), DOC-14 (Confluence sync).
-10. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items.
+10. **UI Enhancement Phase (UI-1 through UI-9):** remaining Phase 1–3 items; Dashboard day-one checklist (Approach C) contributes to UI-9 polish.
 11. **Test suite:** TSE-9 (coverage toward 80%).
 12. Before each release: update this file (status, Last updated, move completed items to Done).
 13. CI validates this file exists and contains required sections (see todo-tracking rule and CI job).
