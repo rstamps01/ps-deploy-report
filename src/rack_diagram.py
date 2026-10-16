@@ -45,6 +45,78 @@ def _load_user_library(library_path: Optional[str]) -> Dict[str, Any]:
         return {}
 
 
+_BLANK_EDGE_THRESHOLD = 0.9  # an edge row/column this blank (transparent or near-white) is padding
+_trim_cache: Dict[str, Any] = {}
+
+
+def blank_edge_bounds(image: Any) -> Tuple[int, int, int, int]:
+    """Bounding box of an image with blank padding rows/columns removed.
+
+    A row or column counts as padding when at least 90% of its pixels are
+    transparent or near-white. Only contiguous edge padding is removed.
+
+    Args:
+        image: PIL image.
+
+    Returns:
+        Tuple[int, int, int, int]: ``(left, top, right, bottom)`` crop box.
+    """
+    rgba = image.convert("RGBA")
+    w, h = rgba.size
+    px = rgba.load()
+
+    def blank(x: int, y: int) -> bool:
+        r, g, b, a = px[x, y]
+        return bool(a < 20 or (r > 235 and g > 235 and b > 235))
+
+    def col_blank(x: int) -> bool:
+        return bool(sum(blank(x, y) for y in range(h)) >= _BLANK_EDGE_THRESHOLD * h)
+
+    def row_blank(y: int) -> bool:
+        return bool(sum(blank(x, y) for x in range(w)) >= _BLANK_EDGE_THRESHOLD * w)
+
+    left, right, top, bottom = 0, w, 0, h
+    while left < right - 1 and col_blank(left):
+        left += 1
+    while right - 1 > left and col_blank(right - 1):
+        right -= 1
+    while top < bottom - 1 and row_blank(top):
+        top += 1
+    while bottom - 1 > top and row_blank(bottom - 1):
+        bottom -= 1
+    return left, top, right, bottom
+
+
+def trimmed_device_image(path: Path) -> Any:
+    """Return the device artwork with blank edge padding cropped off.
+
+    Device images are stretched to fill their U slot edge to edge, so padding baked
+    into the artwork would show as white lines between stacked devices.
+
+    Args:
+        path: Image file.
+
+    Returns:
+        A cropped PIL image, or the path string when there is nothing to crop or
+        the image cannot be read.
+    """
+    key = str(path)
+    if key in _trim_cache:
+        return _trim_cache[key]
+    result: Any = key
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(path) as im:
+            box = blank_edge_bounds(im)
+            if box != (0, 0, im.size[0], im.size[1]):
+                result = im.convert("RGBA").crop(box)
+    except Exception as e:  # noqa: BLE001 - fall back to the untrimmed file
+        logger.debug(f"Could not trim {path}: {e}")
+    _trim_cache[key] = result
+    return result
+
+
 class RackDiagram:
     """Generate visual rack diagrams for VAST hardware deployments."""
 
@@ -54,15 +126,29 @@ class RackDiagram:
     RACK_EXTERNAL_WIDTH = 24.0  # inches
     U_HEIGHT = 1.75  # inches per U
 
-    # Rack height configurations (internal height in inches)
-    # Standard 42U rack: 42 * 1.75 = 73.5 inches
-    # Standard 48U rack: 48 * 1.75 = 84.0 inches
+    # Supported rack heights; internal height in inches is U * 1.75
+    SUPPORTED_RACK_HEIGHTS = (42, 45, 48, 50, 52)
     RACK_HEIGHTS = {
-        42: 73.5,  # 42U rack internal height
-        48: 84.0,  # 48U rack internal height
+        42: 73.5,
+        45: 78.75,
+        48: 84.0,
+        50: 87.5,
+        52: 91.0,
     }
 
     DEFAULT_RACK_HEIGHT = 42  # Default to 42U for backward compatibility
+
+    # Vertical layout inside the drawing (points)
+    BOTTOM_PAD = 0.15 * inch  # room for an auto-placement note under a U1 device label
+    TOP_PAD = 0.1 * inch  # top border stroke
+    RACK_LABEL_RESERVE = 0.1 * inch + 16  # "Rack: <name>" caption above the rack
+    # Report page space taken by the rack heading + spacer above the drawing
+    RACK_HEADING_RESERVE = 0.55 * inch
+
+    # Indicator pills, mounting holes and fonts are sized for a U pitch of at least
+    # this many points; below it they shrink proportionally so a pill fits in 1U.
+    OVERLAY_REFERENCE_U_PT = 12.0
+    INDICATOR_X_FRACTION = 0.179  # indicator pill center, as a fraction of rack width from its left edge
 
     # VAST brand colors
     BRAND_DARK = HexColor("#2F2042")
@@ -86,6 +172,8 @@ class RackDiagram:
         rack_height_u: int = None,
         library_path: Optional[str] = None,
         user_images_dir: Optional[str] = None,
+        u_height_pt: Optional[float] = None,
+        show_rack_label: bool = True,
     ):
         """
         Initialize rack diagram generator.
@@ -93,45 +181,49 @@ class RackDiagram:
         Args:
             page_width: Available page width in points (default 7.5" for content area)
             page_height: Available page height in points (default 8.5" to maximize space)
-            rack_height_u: Number of rack units (U) for this rack (42, 48, etc.).
-                         Defaults to 42U for backward compatibility.
+            rack_height_u: Number of rack units (U) for this rack (42, 45, 48, 50, 52).
+                         Defaults to 42U; other values round up to the next supported height.
             library_path: Path to user device_library.json file.
             user_images_dir: Path to directory with user-uploaded hardware images.
+            u_height_pt: Points per U. Pass one value for every rack in a report so racks
+                and devices share a single scale; it is reduced only if the rack would not
+                fit on the page. Defaults to the largest pitch that fits.
+            show_rack_label: Draw the "Rack: <name>" caption above the rack. The report
+                turns it off because its page heading already names the rack.
         """
         self.page_width = page_width
         self.page_height = page_height
         self.library_path = library_path
         self.user_images_dir = user_images_dir
+        self.show_rack_label = show_rack_label
 
-        if rack_height_u is None:
-            rack_height_u = self.DEFAULT_RACK_HEIGHT
+        self.rack_height_u = self.normalize_rack_height(rack_height_u)
+        self.rack_internal_height = self.RACK_HEIGHTS[self.rack_height_u]
 
-        # Validate rack height
-        if rack_height_u not in self.RACK_HEIGHTS:
-            logger.warning(
-                f"Unsupported rack height {rack_height_u}U, defaulting to {self.DEFAULT_RACK_HEIGHT}U. "
-                f"Supported heights: {list(self.RACK_HEIGHTS.keys())}"
-            )
-            rack_height_u = self.DEFAULT_RACK_HEIGHT
-
-        self.rack_height_u = rack_height_u
-        self.rack_internal_height = self.RACK_HEIGHTS[rack_height_u]
-
-        # Calculate scaling to fit rack on page with margins
-        self.margin = 0.3 * inch  # Reduced margins for larger diagram
+        self.margin = 0.3 * inch
         self.available_width = page_width - (2 * self.margin)
-        self.available_height = page_height - (0.5 * inch)  # Minimal space for labels
+        self.rack_bottom = self.BOTTOM_PAD
+        self.available_height = page_height - self.BOTTOM_PAD - self._top_reserve(show_rack_label)
 
-        # Calculate scale factor to fit rack on page
-        # Use internal dimensions for the main rack area
-        width_scale = self.available_width / (self.RACK_INTERNAL_WIDTH * inch)
-        height_scale = self.available_height / (self.rack_internal_height * inch)
-        self.scale = min(width_scale, height_scale) * 0.95  # 95% to maximize rack size while ensuring it fits
+        fit_pt = self.fit_u_height(page_width, page_height, self.rack_height_u, show_rack_label)
+        if u_height_pt is None:
+            pitch = fit_pt
+        elif u_height_pt > fit_pt:
+            logger.warning(
+                f"Requested {u_height_pt:.2f}pt/U does not fit a {self.rack_height_u}U rack; using {fit_pt:.2f}pt/U"
+            )
+            pitch = fit_pt
+        else:
+            pitch = u_height_pt
 
-        # Scaled dimensions
+        self.scale = pitch / (self.U_HEIGHT * inch)
         self.rack_width = self.RACK_INTERNAL_WIDTH * inch * self.scale
-        self.rack_height = self.rack_internal_height * inch * self.scale
-        self.u_height = self.U_HEIGHT * inch * self.scale
+        self.u_height = pitch
+        self.rack_height = self.rack_height_u * pitch
+        self.overlay_scale = min(1.0, pitch / self.OVERLAY_REFERENCE_U_PT)
+        self.placed_devices: List[Dict[str, Any]] = []
+        # Trim the drawing to its content so the rack sits directly under the page heading
+        self.page_height = min(page_height, self.rack_bottom + self.rack_height + self._top_reserve(show_rack_label))
 
         logger.info(
             f"Rack diagram initialized: {rack_height_u}U rack, scale={self.scale:.3f}, "
@@ -141,6 +233,87 @@ class RackDiagram:
 
         # Initialize hardware image cache
         self.hardware_images = self._load_hardware_images()
+
+    @classmethod
+    def normalize_rack_height(cls, rack_height_u: Optional[int]) -> int:
+        """Map a rack height to a supported one.
+
+        Unknown heights round up to the next supported height (or the tallest), so a
+        device near the top of a non-standard rack is never clipped.
+
+        Args:
+            rack_height_u: Rack height in U, or None for the default.
+
+        Returns:
+            int: A value from ``SUPPORTED_RACK_HEIGHTS``.
+        """
+        if rack_height_u is None:
+            return cls.DEFAULT_RACK_HEIGHT
+        try:
+            requested = int(rack_height_u)
+        except (TypeError, ValueError):
+            logger.warning(f"Invalid rack height {rack_height_u!r}, using {cls.DEFAULT_RACK_HEIGHT}U")
+            return cls.DEFAULT_RACK_HEIGHT
+        if requested in cls.RACK_HEIGHTS:
+            return requested
+        larger = [h for h in cls.SUPPORTED_RACK_HEIGHTS if h >= requested]
+        chosen = min(larger) if larger else max(cls.SUPPORTED_RACK_HEIGHTS)
+        logger.warning(
+            f"Unsupported rack height {requested}U, drawing as {chosen}U. "
+            f"Supported heights: {list(cls.SUPPORTED_RACK_HEIGHTS)}"
+        )
+        return chosen
+
+    @classmethod
+    def _top_reserve(cls, show_rack_label: bool) -> float:
+        return float(cls.RACK_LABEL_RESERVE if show_rack_label else cls.TOP_PAD)
+
+    @classmethod
+    def fit_u_height(
+        cls, page_width: float, page_height: float, rack_height_u: int, show_rack_label: bool = True
+    ) -> float:
+        """Largest U pitch (points) at which a rack fits the drawing area.
+
+        Args:
+            page_width: Drawing width in points.
+            page_height: Drawing height in points.
+            rack_height_u: Rack height in U.
+            show_rack_label: Whether the rack caption takes space above the rack.
+
+        Returns:
+            float: Points per U.
+        """
+        height_u = cls.normalize_rack_height(rack_height_u)
+        avail_w = page_width - 2 * (0.3 * inch)
+        avail_h = page_height - cls.BOTTOM_PAD - cls._top_reserve(show_rack_label)
+        by_width = avail_w * cls.U_HEIGHT / cls.RACK_INTERNAL_WIDTH
+        by_height = avail_h / height_u
+        return float(max(1.0, min(by_width, by_height)))
+
+    @classmethod
+    def report_u_height(cls, frame_width: float, frame_height: float, rack_heights: List[int]) -> float:
+        """One U pitch shared by every rack in a report.
+
+        Capped at the pitch a 42U rack has always used, so reports with only 42U
+        racks look exactly as before; reduced only as far as the tallest rack needs.
+
+        Args:
+            frame_width: Report frame width in points.
+            frame_height: Report frame height in points.
+            rack_heights: Rack heights (U) in the report.
+
+        Returns:
+            float: Points per U.
+        """
+        legacy_42u = 0.95 * (frame_height - 1.5 * inch) / 42
+        tallest = max([cls.normalize_rack_height(h) for h in rack_heights] or [cls.DEFAULT_RACK_HEIGHT])
+        fit = cls.fit_u_height(frame_width, cls.report_drawing_height(frame_height), tallest, show_rack_label=False)
+        return float(min(legacy_42u, fit))
+
+    @classmethod
+    def report_drawing_height(cls, frame_height: float) -> float:
+        """Drawing height for a rack page: the frame minus the rack heading."""
+        return float(frame_height - cls.RACK_HEADING_RESERVE)
 
     def _load_hardware_images(self) -> Dict[str, Optional[Path]]:
         """
@@ -275,7 +448,7 @@ class RackDiagram:
         """
         # Starting position (centered horizontally, from bottom)
         start_x = (self.page_width - self.rack_width) / 2
-        start_y = self.margin + 0.5 * inch
+        start_y = self.rack_bottom
 
         # Draw rack frame with posts (darker gray on sides)
         post_width = 0.08 * self.rack_width
@@ -331,24 +504,21 @@ class RackDiagram:
             )
             drawing.add(u_line)
 
-            # U number label on the left side
-            if u % 2 == 1:  # Label every other U to avoid crowding
-                label_x = start_x - post_width - 0.15 * inch
-                label_y = y_pos + (self.u_height / 2) - 3  # Center vertically
-
-                u_label = String(
-                    label_x,
-                    label_y,
-                    f"U{u}",
-                    fontSize=7,
-                    fillColor=self.BRAND_DARK,
-                    textAnchor="end",
-                    fontName="Helvetica-Bold",
-                )
-                drawing.add(u_label)
+            # U number label on the left side, every U, centered on the U
+            u_font = 7 * self.overlay_scale
+            u_label = String(
+                start_x - post_width - 0.15 * inch,
+                y_pos + (self.u_height / 2) - u_font * 0.35,
+                f"U{u}",
+                fontSize=u_font,
+                fillColor=self.BRAND_DARK,
+                textAnchor="end",
+                fontName="Helvetica-Bold",
+            )
+            drawing.add(u_label)
 
             # Add mounting holes on left and right (every U)
-            hole_radius = 1.5
+            hole_radius = 1.5 * self.overlay_scale
             hole_color = HexColor("#333333")
 
             # Left mounting holes
@@ -414,7 +584,15 @@ class RackDiagram:
             indicators: List of status indicator specs [{"shape": "dot"|"square", "color": HexColor}]
         """
         start_x = (self.page_width - self.rack_width) / 2
-        start_y = self.margin + 0.5 * inch
+        start_y = self.rack_bottom
+
+        top_u = u_position + u_height - 1
+        if top_u > self.rack_height_u:
+            logger.warning(
+                f"{device_type}-{device_id} ({model}) at U{u_position} needs U{u_position}-U{top_u}, "
+                f"above the top of a {self.rack_height_u}U rack; skipped"
+            )
+            return
 
         device_bottom_u = u_position
         device_y = start_y + ((device_bottom_u - 1) * self.u_height)
@@ -438,6 +616,7 @@ class RackDiagram:
 
         image_path = self._get_hardware_image_path(model) if model else None
 
+        image_used: Optional[str] = None
         if image_path and image_path.exists():
             try:
                 hw_image = GraphicsImage(
@@ -445,9 +624,10 @@ class RackDiagram:
                     device_y,
                     self.rack_width,
                     device_height,
-                    str(image_path),
+                    trimmed_device_image(image_path),
                 )
                 drawing.add(hw_image)
+                image_used = image_path.name
                 logger.debug(f"Using hardware image for {device_type}-{device_id}: {image_path}")
             except Exception as e:
                 logger.warning(f"Failed to load hardware image {image_path}: {e}, using fallback")
@@ -455,13 +635,15 @@ class RackDiagram:
         else:
             self._draw_fallback_device(drawing, start_x, device_y, device_height, fill_color)
 
+        indicator_box = None
         if indicators is not None:
-            self._draw_status_indicators(drawing, indicators, start_x, device_y, device_height)
+            indicator_box = self._draw_status_indicators(drawing, indicators, start_x, device_y, device_height)
 
         # Add label outside rack with connector line
+        font = self.LABEL_FONT_SIZE * self.overlay_scale
         post_width = 0.08 * self.rack_width
         label_x = start_x + self.rack_width + post_width + 0.15 * inch
-        label_y = device_y + (device_height / 2) - 3
+        label_y = device_y + (device_height / 2) - font * 0.35
         label_text = label_override if label_override else f"{label_prefix}-{device_id}"
 
         # Connector line from device to label
@@ -473,7 +655,7 @@ class RackDiagram:
             line_start_x,
             line_start_y,
             line_end_x,
-            label_y + 3,
+            line_start_y,
             strokeColor=self.BRAND_DARK,
             strokeWidth=0.5,
             strokeDashArray=[2, 2],
@@ -485,7 +667,7 @@ class RackDiagram:
             label_x,
             label_y,
             label_text,
-            fontSize=self.LABEL_FONT_SIZE,
+            fontSize=font,
             fillColor=self.BRAND_DARK,
             textAnchor="start",
         )
@@ -494,13 +676,36 @@ class RackDiagram:
         if annotation:
             ann_label = String(
                 label_x,
-                label_y - self.LABEL_FONT_SIZE,
+                label_y - font,
                 annotation,
-                fontSize=self.LABEL_FONT_SIZE - 2,
+                fontSize=font - 2 * self.overlay_scale,
                 fillColor=colors.HexColor("#B85C00"),
                 textAnchor="start",
             )
             drawing.add(ann_label)
+
+        self.placed_devices.append(
+            {
+                "type": device_type.lower(),
+                "id": device_id,
+                "model": model,
+                "label": label_text,
+                "u_position": u_position,
+                "u_height": u_height,
+                "x": start_x,
+                "y": device_y,
+                "width": self.rack_width,
+                "height": device_height,
+                "image": image_used,
+                "indicators": [
+                    {"shape": i.get("shape", "dot"), "color": str(getattr(i.get("color"), "hexval", lambda: "")())}
+                    for i in (indicators or [])
+                ],
+                "indicator_box": indicator_box,
+                "label_y": label_y,
+                "label_font": font,
+            }
+        )
 
     def _draw_fallback_device(
         self,
@@ -555,7 +760,7 @@ class RackDiagram:
         start_x: float,
         device_y: float,
         device_height: float,
-    ) -> None:
+    ) -> Optional[Tuple[float, float, float, float]]:
         """Draw a row of status indicator shapes (circles/squares) at the left edge of a device.
 
         Args:
@@ -564,15 +769,20 @@ class RackDiagram:
             start_x: X position of the rack left edge
             device_y: Y position of device bottom
             device_height: Height of device slot in points
+
+        Returns:
+            Optional[Tuple[float, float, float, float]]: The pill's (x, y, width, height), or None.
         """
         if not indicators:
-            return
-        radius = 2.5
-        spacing = 2
-        pad_x = 3
-        pad_y = 2.5
+            return None
+        k = self.overlay_scale
+        radius = 2.5 * k
+        spacing = 2 * k
+        pad_x = 3 * k
+        pad_y = 2.5 * k
         total_width = len(indicators) * (radius * 2) + (len(indicators) - 1) * spacing
-        cx_start = start_x + 8 + 0.25 * inch - total_width / 2 + radius
+        # Pill centered over the device bezel, at a fixed fraction of the rack width
+        cx_start = start_x + self.INDICATOR_X_FRACTION * self.rack_width - total_width / 2 + radius
         cy = device_y + (device_height / 2)
 
         bg_w = total_width + pad_x * 2
@@ -616,13 +826,15 @@ class RackDiagram:
                 drawing.add(dot)
             cx += radius * 2 + spacing
 
+        return (cx_start - radius - pad_x, cy - radius - pad_y, bg_w, bg_h)
+
     def _draw_status_legend(
         self,
         drawing: Drawing,
     ) -> None:
         """Draw a status indicator legend tile to the left of the rack diagram, centered vertically."""
         rack_left = (self.page_width - self.rack_width) / 2
-        start_y = self.margin + 0.5 * inch
+        start_y = self.rack_bottom
 
         title_fs = 7
         row_fs = 6.5
@@ -986,14 +1198,15 @@ class RackDiagram:
         nsm = node_status_map or {}
 
         drawing = Drawing(self.page_width, self.page_height)
+        self.placed_devices = []
 
         # Create empty rack background
         self._create_empty_rack_background(drawing)
 
         # Add rack name label at the top of the diagram
-        if rack_name and rack_name != "Unknown":
+        if self.show_rack_label and rack_name and rack_name != "Unknown":
             start_x = (self.page_width - self.rack_width) / 2
-            start_y = self.margin + 0.5 * inch
+            start_y = self.rack_bottom
             rack_label_y = start_y + self.rack_height + 0.1 * inch
 
             rack_label = String(

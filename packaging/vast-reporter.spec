@@ -59,6 +59,8 @@ a = Analysis(
         (str(ROOT / "config" / "cluster_profiles.json"), "config"),
         # Assets (hardware images — exclude the large source composite)
         (str(ROOT / "assets" / "diagrams"), "assets/diagrams"),
+        # Report title font (Fira Sans Bold, SIL OFL 1.1 — license travels with it)
+        (str(ROOT / "assets" / "fonts"), "assets/fonts"),
         # Documentation (Docs page in UI): all _DOC_REGISTRY paths must be in the bundle
         (str(ROOT / "README.md"), "."),
         (str(ROOT / "CHANGELOG.md"), "."),

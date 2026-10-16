@@ -28,7 +28,9 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm, inch
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     KeepTogether,
     PageBreak,
@@ -40,6 +42,48 @@ from reportlab.platypus import (
 
 from utils.logger import get_logger
 from utils.pdf_layout import make_table
+
+BRAND_TITLE_FONT = "FiraSans-Bold"
+BRAND_TITLE_FALLBACK_FONT = "Helvetica-Bold"
+BRAND_PRODUCT_NAME = "VAST asbuilt-reporter"
+BRAND_TITLE_BLACK = "#000000"
+BRAND_TITLE_ACCENT = "#1a6fb5"
+
+_title_font_name: Optional[str] = None
+
+
+def _brand_font_path():
+    """Return the bundled Fira Sans Bold TTF path (frozen-app aware)."""
+    from utils import get_bundle_dir
+
+    return get_bundle_dir() / "assets" / "fonts" / "FiraSans-Bold.ttf"
+
+
+def register_brand_title_font(force: bool = False) -> str:
+    """Register the one-pager title font with ReportLab.
+
+    Args:
+        force: Re-check the font file even if registration already ran.
+
+    Returns:
+        str: The font name to use for the report title — ``FiraSans-Bold`` when the
+        bundled TTF loads, otherwise ``Helvetica-Bold``.
+    """
+    global _title_font_name
+    if _title_font_name is not None and not force:
+        return _title_font_name
+
+    path = _brand_font_path()
+    try:
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        if BRAND_TITLE_FONT not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(BRAND_TITLE_FONT, str(path)))
+        _title_font_name = BRAND_TITLE_FONT
+    except Exception as e:  # noqa: BLE001 - any font failure must degrade to Helvetica
+        logging.getLogger(__name__).warning(f"Brand title font unavailable ({e}); using {BRAND_TITLE_FALLBACK_FONT}")
+        _title_font_name = BRAND_TITLE_FALLBACK_FONT
+    return _title_font_name
 
 
 @dataclass
@@ -117,6 +161,7 @@ class VastBrandCompliance:
         self.logger = get_logger(__name__)
         self.colors = VastColorPalette()
         self.typography = VastTypography()
+        self.title_font = register_brand_title_font()
 
         # Create brand-compliant paragraph styles
         self.styles = self._create_paragraph_styles()
@@ -209,6 +254,27 @@ class VastBrandCompliance:
 
         return styles
 
+    def format_title_markup(self, title: str) -> str:
+        """Return Paragraph markup for a report title.
+
+        The product name gets the one-pager treatment: "VAST asbuilt" in black and
+        "-reporter" in the accent blue, both in the brand title font. Any other
+        title renders as plain bold text.
+
+        Args:
+            title: Title text.
+
+        Returns:
+            str: ReportLab Paragraph markup.
+        """
+        if title != BRAND_PRODUCT_NAME:
+            return f"<b>{title}</b>"
+        head, tail = "VAST asbuilt", "-reporter"
+        return (
+            f'<font name="{self.title_font}" color="{BRAND_TITLE_BLACK}">{head}</font>'
+            f'<font name="{self.title_font}" color="{BRAND_TITLE_ACCENT}">{tail}</font>'
+        )
+
     def create_vast_header(self, title: str, subtitle: str = None, cluster_info: Dict[str, Any] = None) -> List[Any]:
         """
         Create VAST Light gradient header with brand-compliant styling.
@@ -229,7 +295,7 @@ class VastBrandCompliance:
             parent=self.styles["vast_title"],
             alignment=TA_CENTER,
         )
-        title_para = Paragraph(f"<b>{title}</b>", title_style)
+        title_para = Paragraph(self.format_title_markup(title), title_style)
         elements.append(title_para)
         elements.append(Spacer(1, 20))
 

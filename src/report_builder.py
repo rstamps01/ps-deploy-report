@@ -29,7 +29,7 @@ from xml.sax.saxutils import escape as xml_escape
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
+from brand_compliance import BRAND_PRODUCT_NAME, VastBrandCompliance, create_vast_brand_compliance
 
 # Import rack diagram module
 from rack_diagram import RackDiagram
@@ -644,6 +644,97 @@ class VastReportBuilder:
         except Exception:  # pragma: no cover - never block report generation
             pass
 
+    def generate_rack_validation_pdf(
+        self,
+        racks: List[Dict[str, Any]],
+        node_status_map: Dict[str, Any],
+        output_path: str,
+        title: str = "Rack Layout Validation",
+    ) -> Dict[str, int]:
+        """Render rack specs through the report's page template and rack section code.
+
+        Used by ``scripts/generate_rack_validation_report.py`` (RACK-2) so validation
+        racks are drawn exactly as the Physical Rack Layout section draws them.
+
+        Args:
+            racks: Rack specs (see ``_build_rack_layout_flowables``); each is annotated
+                in place with ``placed_devices``, ``u_height_pt`` and ``drawn_height_u``.
+            node_status_map: Status indicator data.
+            output_path: PDF path to write.
+            title: Heading of the summary page.
+
+        Returns:
+            Dict[str, int]: Page number of every rack heading and diagram.
+        """
+        from reportlab.platypus import BaseDocTemplate
+
+        page_size = A4 if self.config.page_size == "A4" else letter
+        page_template = self.brand_compliance.create_vast_page_template(
+            {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "completeness": 1.0, "mgmt_vip": "validation"},
+            page_size=page_size,
+            margins={
+                "margin_left": self.config.margin_left,
+                "margin_right": self.config.margin_right,
+                "margin_top": self.config.margin_top,
+                "margin_bottom": self.config.margin_bottom,
+            },
+            organization=getattr(self.config, "organization", None),
+            include_page_numbers=True,
+        )
+        em = self.brand_compliance.effective_margins
+        self._frame_width = page_size[0] - em["left"] - em["right"]
+        self._frame_height = page_size[1] - em["top"] - em["bottom"]
+
+        styles = getSampleStyleSheet()
+        story: List[Any] = [NextPageTemplate("VastPage"), Paragraph(title, styles["Title"])]
+        pitch = RackDiagram.report_u_height(self._frame_width, self._frame_height, [r["height_u"] for r in racks])
+        story.append(
+            Paragraph(
+                f"{len(racks)} racks, one of each library device per rack, bottom to top in library order. "
+                f"Every rack is drawn at {pitch:.2f}pt per U. Page size {self.config.page_size}.",
+                styles["Normal"],
+            )
+        )
+        story.append(Spacer(1, 0.15 * inch))
+
+        fit_tracker: Dict[str, int] = {}
+        rack_flowables = self._build_rack_layout_flowables(racks, node_status_map, fit_tracker=fit_tracker)
+
+        summary = [["Rack", "Height", "Devices", "U filled", "Fallback images"]]
+        for r in racks:
+            placed = r.get("placed_devices", [])
+            filled = sum(d["u_height"] for d in placed)
+            fallback = [str(d["model"]) for d in placed if not d["image"]]
+            summary.append(
+                [r["name"], f"{r['height_u']}U", str(len(placed)), f"{filled}/{r['height_u']}", ", ".join(fallback)]
+            )
+        story.append(self._table(summary, colWidths=[1.4 * inch, 0.8 * inch, 0.8 * inch, 0.9 * inch, 2.3 * inch]))
+        story.append(PageBreak())
+        story.extend(rack_flowables)
+
+        story.append(PageBreak())
+        story.append(Paragraph("Appendix: U map per rack", styles["Heading2"]))
+        for r in racks:
+            rows = [["U", "Device", "Type", "Image", "Indicators"]]
+            for d in sorted(r.get("placed_devices", []), key=lambda d: d["u_position"]):
+                top = d["u_position"] + d["u_height"] - 1
+                span = f"U{d['u_position']}" if top == d["u_position"] else f"U{d['u_position']}-U{top}"
+                rows.append([span, str(d["model"]), d["type"], d["image"] or "fallback", str(len(d["indicators"]))])
+            story.append(Paragraph(f"{r['name']} ({r['height_u']}U)", styles["Heading3"]))
+            story.append(self._table(rows, colWidths=[0.8 * inch, 2 * inch, 0.7 * inch, 2.4 * inch, 0.8 * inch]))
+
+        doc = BaseDocTemplate(
+            output_path,
+            pagesize=page_size,
+            rightMargin=em["right"],
+            leftMargin=em["left"],
+            topMargin=em["top"],
+            bottomMargin=em["bottom"],
+        )
+        doc.addPageTemplates([page_template])
+        doc.build(story)
+        return fit_tracker
+
     def _generate_with_reportlab(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """Generate PDF using ReportLab with two-pass generation for dynamic TOC."""
         try:
@@ -765,7 +856,7 @@ class VastReportBuilder:
         switches = hardware_inventory.get("switches") or []
 
         # Create VAST brand-compliant header
-        title = "VAST As-Built Report"
+        title = BRAND_PRODUCT_NAME
         subtitle = "Customer Deployment Documentation"
 
         header_elements = self.brand_compliance.create_vast_header(
@@ -2260,6 +2351,108 @@ class VastReportBuilder:
 
         return content
 
+    def _build_rack_layout_flowables(
+        self,
+        racks: List[Dict[str, Any]],
+        node_status_map: Optional[Dict[str, Any]] = None,
+        section_marker: Optional[Any] = None,
+        first_heading_prefix: str = "Physical Rack Layout - ",
+        fit_tracker: Optional[Dict[str, int]] = None,
+    ) -> List[Any]:
+        """Build one page per rack: heading plus rack diagram, all at one U pitch.
+
+        Every rack in the list is drawn with the same points-per-U value (capped at
+        the 42U pitch, reduced only as far as the tallest rack needs), so racks and
+        devices share one scale across the section and each rack fits its page.
+
+        Args:
+            racks: Rack specs with keys ``name``, ``height_u``, ``cboxes``, ``dboxes``,
+                ``eboxes`` and ``switches`` (device dicts as for ``generate_rack_diagram``).
+            node_status_map: Status indicator data passed to every diagram.
+            section_marker: Optional flowable (e.g. a ``PageMarker``) placed right after
+                the first heading.
+            first_heading_prefix: Prefix for the first rack's heading.
+            fit_tracker: When given, records the page of each rack heading
+                (``rack:<name>:heading``) and of its diagram (``rack:<name>:diagram``).
+
+        Returns:
+            List[Any]: Flowables for the section.
+        """
+        content: List[Any] = []
+        if not racks:
+            return content
+
+        fw = getattr(self, "_frame_width", 7.27 * inch)
+        fh = getattr(self, "_frame_height", 8.5 * inch)
+        pitch = RackDiagram.report_u_height(fw, fh, [r.get("height_u") or 42 for r in racks])
+        drawing_h = RackDiagram.report_drawing_height(fh)
+        styles = getSampleStyleSheet()
+
+        for idx, rack in enumerate(racks):
+            rack_name = rack["name"]
+            rack_gen = RackDiagram(
+                page_width=fw,
+                page_height=drawing_h,
+                rack_height_u=rack.get("height_u") or 42,
+                library_path=self.library_path,
+                user_images_dir=self.user_images_dir,
+                u_height_pt=pitch,
+                show_rack_label=False,
+            )
+            rack_drawing, _ = rack_gen.generate_rack_diagram(
+                rack.get("cboxes") or [],
+                rack.get("dboxes") or [],
+                rack.get("switches"),
+                rack_name=rack_name,
+                eboxes=rack.get("eboxes") or [],
+                node_status_map=node_status_map,
+            )
+            rack["placed_devices"] = rack_gen.placed_devices
+            rack["u_height_pt"] = rack_gen.u_height
+            rack["drawn_height_u"] = rack_gen.rack_height_u
+
+            heading_style = ParagraphStyle(
+                "Rack_Heading",
+                parent=styles["Heading2"],
+                fontSize=14,
+                spaceAfter=8,
+                spaceBefore=(12 if idx > 0 else 0),
+                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            )
+            heading = f"{first_heading_prefix}Rack: {rack_name}" if idx == 0 else f"Rack: {rack_name}"
+            content.append(Paragraph(heading, heading_style))
+            if idx == 0 and section_marker is not None:
+                content.append(section_marker)
+            if fit_tracker is not None:
+                content.append(PageMarker(f"rack:{rack_name}:heading", fit_tracker))
+            content.append(Spacer(1, 0.1 * inch))
+
+            rack_table = Table([[rack_drawing]], colWidths=[fw])
+            rack_table.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                )
+            )
+            content.append(rack_table)
+            if fit_tracker is not None:
+                content.append(PageMarker(f"rack:{rack_name}:diagram", fit_tracker))
+            if idx < len(racks) - 1:
+                content.append(PageBreak())
+
+            self.logger.info(
+                f"Added rack diagram for {rack_name} ({rack_gen.rack_height_u}U at {pitch:.2f}pt/U): "
+                f"{len(rack.get('cboxes') or [])} CBoxes, {len(rack.get('dboxes') or [])} DBoxes, "
+                f"{len(rack.get('eboxes') or [])} EBoxes, {len(rack.get('switches') or [])} Switches"
+            )
+        return content
+
     def _create_hardware_inventory(
         self,
         data: Dict[str, Any],
@@ -2842,99 +3035,33 @@ class VastReportBuilder:
                         if "Unknown" in racks_data:
                             self.logger.info("Physical Rack Layout: excluding 'Unknown' rack (not in VMS)")
 
-                    for idx, rack_name in enumerate(sorted_racks):
+                    rack_specs: List[Dict[str, Any]] = []
+                    for rack_name in sorted_racks:
                         rack_hw = racks_data[rack_name]
                         rack_cboxes = rack_hw["cboxes"]
                         rack_dboxes = rack_hw["dboxes"]
                         rack_eboxes = rack_hw.get("eboxes") or []
-                        rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
-
                         # Only generate diagram if rack has hardware (cboxes, dboxes, or eboxes)
-                        if rack_cboxes or rack_dboxes or rack_eboxes:
-                            # Get rack height for this rack (default to 42U if not found)
-                            rack_height_u = rack_height_map.get(rack_name, 42)
+                        if not (rack_cboxes or rack_dboxes or rack_eboxes):
+                            continue
+                        # EBox clusters: use ebox U height in diagram; disregard dbox in diagram
+                        rack_specs.append(
+                            {
+                                "name": rack_name,
+                                "height_u": rack_height_map.get(rack_name, 42),
+                                "cboxes": rack_cboxes,
+                                "dboxes": [] if is_ebox_cluster else rack_dboxes,
+                                "eboxes": rack_eboxes if is_ebox_cluster else [],
+                                "switches": rack_hw["switches"] or None,
+                            }
+                        )
 
-                            # Create rack diagram generator with appropriate rack height
-                            # Reserve headroom for the heading, spacer, and table padding
-                            # that share the page with the diagram
-                            fw = getattr(self, "_frame_width", 7.27 * inch)
-                            fh = getattr(self, "_frame_height", 8.5 * inch)
-                            rack_page_h = fh - 1.0 * inch
-                            rack_gen = RackDiagram(
-                                page_width=fw,
-                                page_height=rack_page_h,
-                                rack_height_u=rack_height_u,
-                                library_path=self.library_path,
-                                user_images_dir=self.user_images_dir,
-                            )
-
-                            # EBox clusters: use ebox U height in diagram; disregard dbox in diagram
-                            diagram_dboxes = [] if is_ebox_cluster else rack_dboxes
-                            diagram_eboxes = rack_eboxes if is_ebox_cluster else []
-
-                            rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
-                                rack_cboxes,
-                                diagram_dboxes,
-                                rack_switches,
-                                rack_name=rack_name,
-                                eboxes=diagram_eboxes,
-                                node_status_map=node_status_map,
-                            )
-
-                            # Add rack name heading before diagram
-                            # First rack gets combined heading, subsequent racks get simple heading
-                            rack_heading_style = ParagraphStyle(
-                                "Rack_Heading",
-                                parent=styles["Heading2"],
-                                fontSize=14,
-                                spaceAfter=8,
-                                spaceBefore=(12 if idx > 0 else 0),  # No space before first heading
-                                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-                            )
-
-                            if idx == 0:
-                                # First rack: Combined heading with section title
-                                heading_text = f"Physical Rack Layout - Rack: {rack_name}"
-                                # Place page marker for Physical Rack Layout section immediately after first heading
-                                if page_tracker is not None and rack_layout_key == "rack_layout":
-                                    content.append(PageMarker("rack_layout", page_tracker))
-                            else:
-                                # Subsequent racks: Simple heading
-                                heading_text = f"Rack: {rack_name}"
-
-                            content.append(Paragraph(heading_text, rack_heading_style))
-                            content.append(Spacer(1, 0.2 * inch))
-
-                            # Center the rack diagram on the page using a table
-                            from reportlab.platypus import Table as RLTable
-
-                            fw = getattr(self, "_frame_width", 7.5 * inch)
-                            rack_table = RLTable(
-                                [[rack_drawing]],
-                                colWidths=[fw],
-                            )
-                            rack_table.setStyle(
-                                TableStyle(
-                                    [
-                                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                                        ("TOPPADDING", (0, 0), (-1, -1), 0),
-                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                                    ]
-                                )
-                            )
-                            content.append(rack_table)
-
-                            # Add page break between racks (except for last one)
-                            if rack_name != sorted_racks[-1]:
-                                content.append(PageBreak())
-
-                            switch_msg = f", {len(rack_switches)} Switches" if rack_switches else ""
-                            self.logger.info(
-                                f"Added rack diagram for {rack_name}: {len(rack_cboxes)} CBoxes, {len(rack_dboxes)} DBoxes{switch_msg}"
-                            )
+                    marker = (
+                        PageMarker("rack_layout", page_tracker)
+                        if page_tracker is not None and rack_layout_key == "rack_layout"
+                        else None
+                    )
+                    content.extend(self._build_rack_layout_flowables(rack_specs, node_status_map, marker))
                 else:
                     # Fallback to placeholder if no position data
                     layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
