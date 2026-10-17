@@ -1,5 +1,5 @@
 """
-Shared pytest fixtures for the VAST As-Built Report Generator test suite.
+Shared pytest fixtures for asbuilt-reporter test suite.
 
 Provides reusable mock API data, configuration, and temporary directory
 helpers used across unit, integration, and UI tests.

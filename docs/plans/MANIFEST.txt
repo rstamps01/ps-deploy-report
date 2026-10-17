@@ -1,7 +1,7 @@
 # Cursor plans that belong to this project, copied (redacted) into docs/plans/ by
 # scripts/sync-cursor-plans.py. One filename per line; '#' lines are comments.
 # Plans modified after last-triaged and not listed are reported by --check.
-# last-triaged: 2026-09-25
+# last-triaged: 2026-09-26
 
 add_profiles_to_pages_b09d8d36.plan.md
 advanced_configuration_ui_64681a71.plan.md
@@ -25,6 +25,7 @@ docs_update_and_rc1_tag_b390cdd8.plan.md
 ebox_label_&_sort_fix_3458cec9.plan.md
 expose_asbuilt-reporter_remotely_8b7d907f.plan.md
 extract_hardware_bezel_images_c387a6ee.plan.md
+field_diagnostics_pipeline_9b6d157c.plan.md
 field_feedback_triage_1d3ae704.plan.md
 fix-bundle-collection-gaps_c5e699a3.plan.md
 fix_beta_release_latest_34659824.plan.md
@@ -73,6 +74,7 @@ rm-16_oneshot_report_auth_parity_fa21bb8c.plan.md
 se_marketing_one-pager_f61511fd.plan.md
 segment_results_by_psnt_739a98da.plan.md
 self-contained_app_packaging_5fc62807.plan.md
+status_and_roadmap_gaps_657efcda.plan.md
 switch_discovery_workflow_8950f43a.plan.md
 switch_placement_modal_3d624e42.plan.md
 tech-port_stack_v1.5.7_4ee5b210.plan.md

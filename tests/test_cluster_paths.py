@@ -22,7 +22,7 @@ from utils import cluster_paths as cp  # noqa: E402
 # ---------------------------------------------------------------------------
 class TestSanitizeComponent:
     def test_keeps_safe_chars(self):
-        assert cp.sanitize_component("LAMBDA-VAST-LAX-01") == "LAMBDA-VAST-LAX-01"
+        assert cp.sanitize_component("ACME-VAST-NYC-01") == "ACME-VAST-NYC-01"
 
     def test_replaces_unsafe_with_dash(self):
         assert cp.sanitize_component("foo/bar baz:qux") == "foo-bar-baz-qux"
@@ -50,8 +50,8 @@ class TestSanitizeComponent:
 # ---------------------------------------------------------------------------
 class TestResolveClusterKey:
     def test_name_plus_psnt(self):
-        key = cp.resolve_cluster_key(name="LAMBDA-VAST-LAX-01", psnt="PSNT123", guid="0xabc")
-        assert key == "LAMBDA-VAST-LAX-01__PSNT123"
+        key = cp.resolve_cluster_key(name="ACME-VAST-NYC-01", psnt="PSNT123", guid="0xabc")
+        assert key == "ACME-VAST-NYC-01__PSNT123"
 
     def test_prefers_psnt_over_guid(self):
         key = cp.resolve_cluster_key(name="c1", psnt="PSNT9", guid="0xdead")

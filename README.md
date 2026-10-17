@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator
+# asbuilt-reporter
 
 Generate professional as-built reports for VAST Data clusters in minutes—no Python required. Download the app, connect to your cluster, and get a customer-ready PDF plus machine-readable JSON.
 
@@ -55,14 +55,14 @@ No Python, pip, or virtual environment needed. Updates: download the latest rele
 | **Desktop app** | Single .dmg/.zip install, browser-based UI at localhost:5173, live progress via SSE, cancel anytime, cluster profiles (shared across pages), report browser, config editor, hardware device library, in-app documentation viewer, full CLI via `--cli` |
 | **Reporter** | Unified workflow: switch placement (auto/manual), as-built report generation, optional pre-validation, vnetmap topology collection, and health checks, VAST logo progress indicator with stopwatch timer, result bundling — all from a single page |
 | **Report generation** | VAST REST API v7 (v1 fallback), rack U positioning, auto/manual switch placement, PSNT tracking, optional SSH-based port mapping and IPL detection, vnetmap integration with hardware change detection, SSH proxy hop through CNode for field deployments, EBox cluster support |
-| **Health check** | Tier 1 (26 API checks) and Tier 3 (6 switch SSH checks) — 32 total checks; correlation engine; auto-generated remediation report with severity levels and actionable guidance |
+| **Health check** | Tier 1 (27 API checks) and Tier 3 (6 switch SSH checks) — 33 total checks; correlation engine; auto-generated remediation report with severity levels and actionable guidance |
 | **Post-install validation** | One-Shot mode runs selected operations sequentially with operation badges, pre-validation, auto-bundling; Developer-mode Advanced Ops for step-by-step execution |
 | **Reports** | PDF (VAST-branded) + JSON; executive summary, hardware inventory, physical rack layout, network topology, security, optional health check results and post-deployment validation |
 | **Reliability** | Secure auth (args, env, or prompt), fault tolerance with graceful degradation, sanitized logging, retries with backoff, read-only API policy (GET only) |
 
 ### Report highlights
 
-- **Physical rack layout** — 42U rack diagrams with CBox, DBox, EBox, and switch positions with hardware images.
+- **Physical rack layout** — 42U, 45U, 48U, 50U and 52U rack diagrams (height from VMS) with CBox, DBox, EBox and switch positions, hardware images, a label on every U, and per-node status indicators. `python3 scripts/generate_rack_validation_report.py` renders two fully populated racks of every height from the hardware library for visual review.
 - **Network topology** — Logical diagram with port mapping and IPL/MLAG links; EBox clusters show EB# labels with color-coded Network A/B connections.
 - **Health check sections** — Cluster Health Check Results (summary + detailed table) and Post Deployment Validation when health check is enabled.
 - **Dual output** — Customer-ready PDF and machine-readable JSON for automation.
@@ -175,6 +175,8 @@ cp config/config.yaml.template config/config.yaml
 
 **Report formatting options:** Organization name (PDF footer), margins (0.25"–1.5", default 0.5"), font family (Helvetica, Times-Roman, Courier), Include TOC toggle, Include Page Numbers toggle. Config keys: `report.organization`, `report.template.margin_*`, `report.pdf.font_family`, `report.pdf.include_page_numbers`, `report.pdf.include_toc`.
 
+**Table layout:** Text wraps inside every table cell, centered horizontally and vertically, and rows grow in height. Health Check details are grouped into functional-area tables, and section titles stay on the same page as their table.
+
 **Environment variables (optional):** `VAST_API_TOKEN`; `VAST_USERNAME` / `VAST_PASSWORD`; `VAST_NODE_USER` / `VAST_NODE_PASSWORD`; `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` for SSH-based port mapping; `SMTP_USERNAME` / `SMTP_PASSWORD` for pipeline escalation email (see below).
 
 **Pipeline escalation notifications (optional, off by default):** the agentic CI/CD pipeline can email a structured escalation when automated remediation is exhausted, configured under the `notifications:` block in `config.yaml`. SMTP credentials are read only from the `SMTP_USERNAME` / `SMTP_PASSWORD` environment variables — never stored in the config file. Slack replies are handled by the agent via the Slack MCP. See `docs/development/AGENTIC-CICD-PIPELINE.md` for the full pipeline.
@@ -214,12 +216,7 @@ The Reporter's Connection Settings tile offers three ways to reach a cluster:
 |------|------|-------|
 | **Tech Port Mode** | SSH tunnel via the CBox Tech Port (`192.168.2.2`) | Auto-discovers the VMS and tunnels API calls through SSH. |
 | **VMS Mgmt Mode** | Direct HTTPS to the VMS management IP | No SSH tunnel. |
-| **Teleport Mode** | Teleport (`tsh`) proxy | **Beta.** Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires an authenticated `tsh` session (the app auto-runs `tsh login` on expiry). `tsh` is auto-discovered on PATH and in well-known install locations; manage the path under Advanced Configuration -> Teleport Settings. |
-
-> **Teleport Mode is a Beta feature** — functional and shipped, but still
-> undergoing field validation. The UI flags it with a "Beta Feature" badge and
-> shows a green/yellow tsh install-status pill above the Teleport Mode option.
-> See [docs/TELEPORT-MODE.md](docs/TELEPORT-MODE.md).
+| **Teleport Mode** | Teleport (`tsh`) proxy | Tunnels the cluster API (443) and CNode SSH (22) through `tsh ssh -L` so reports and `vnetmap`/port mapping work against Teleport-only clusters. Requires an authenticated `tsh` session (the app auto-runs `tsh login` on expiry). `tsh` is auto-discovered on PATH and in well-known install locations; manage the path under Advanced Configuration -> Teleport Settings. A green/yellow tsh install-status pill appears above the Teleport Mode option. See [docs/TELEPORT-MODE.md](docs/TELEPORT-MODE.md). |
 
 ### Command-line interface
 
@@ -295,14 +292,14 @@ python3 scripts/regenerate_report.py path/to/vast_data_CLUSTER_TIMESTAMP.json ou
 ## Health check
 
 The Health Check module runs tiered cluster validation:
-- **Tier 1 (API):** 26 read-only API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
+- **Tier 1 (API):** 27 read-only API checks (RAID, nodes, alarms, VIPs, license, capacity, firmware, etc.)
 - **Tier 3 (Switch SSH):** 6 switch checks (MLAG status, NTP, config backup readability)
 
 **Standalone Health Check:** Use the **Health** page in the web UI to run checks with real-time log streaming. A remediation report with correlated findings and resolution guidance is auto-generated.
 
 **Include in Report:** Enable the **Include Health Check** toggle on the Generate page to add health check results to the PDF report:
-- **Port Mapping disabled:** Runs Tier 1 only (26 API checks)
-- **Port Mapping enabled with SSH credentials:** Runs Tier 1 + 3 (32 total checks)
+- **Port Mapping disabled:** Runs Tier 1 only (27 API checks)
+- **Port Mapping enabled with SSH credentials:** Runs Tier 1 + 3 (33 total checks)
 
 **VIP Pools:** When no VIP pools are configured, the check returns `warning` (not `fail`) — an unconfigured VIP pool is informational. Reports regenerated from older JSON files automatically correct stale statuses.
 
@@ -576,4 +573,4 @@ Design and change-control docs live in `docs/confluence/` and `.cursor/rules/` (
 
 ---
 
-**Version:** 1.6.1 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 1279 passing, 60%+ coverage threshold
+**Version:** 1.6.2 · **VAST:** 5.3+ · **API:** v7 (v1 fallback) · **Python:** 3.10+ (3.12 tested) · **Tests:** 2,040 unit + 16 integration + 30 UI passing, 60%+ coverage threshold

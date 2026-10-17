@@ -1,5 +1,5 @@
 /**
- * VAST As-Built Reporter - Web UI JavaScript
+ * asbuilt-reporter - Web UI JavaScript
  *
  * Handles: form submission, SSE log streaming, and job status polling.
  */

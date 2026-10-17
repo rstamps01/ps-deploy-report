@@ -14,6 +14,11 @@ Usage:
 manifest's "last-triaged" date that are not listed, and (b) archived copies
 that differ from their redacted source. It never writes.
 
+Customer and site names are not listed here (that would publish them). They
+live in the gitignored config/redact-patterns.local.txt, one
+"<regex><TAB><replacement>" per line; see the .template next to it. Syncing
+refuses to write without that file.
+
 Stdlib only; exit code 0 = in sync, 1 = drift or missing sources.
 """
 
@@ -30,6 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SOURCE = Path.home() / ".cursor" / "plans"
 DEST_DIR = REPO_ROOT / "docs" / "plans"
 MANIFEST = DEST_DIR / "MANIFEST.txt"
+LOCAL_PATTERNS = REPO_ROOT / "config" / "redact-patterns.local.txt"
 
 # Addresses that are safe to publish: loopback/any, and the fixed CBox Tech
 # Port address that the product documentation already names.
@@ -42,18 +48,15 @@ CRED_RE = re.compile(
 )
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
-# Lab hostnames and customer/site identifiers. Extend when a sync report or
-# review turns up a new one; order matters only where patterns overlap.
+# Generic lab and naming-convention patterns. Customer-specific names go in
+# LOCAL_PATTERNS and run after these, so a full cluster name collapses to one
+# placeholder before its parts are matched.
 REDACT_PATTERNS: List[Tuple[str, str]] = [
     (r"(?i)\bselab-[a-z0-9-]+\b", "<lab-cluster>"),
     (r"(?i)\b[a-z0-9-]+\.selab\.vastdata\.com\b", "<lab-host>"),
     (r"(?i)\bstamps-win-\d+\b", "<lab-host>"),
     (r"\bvast_data_[A-Za-z0-9-]+_(\d{8})", r"vast_data_<cluster>_\1"),
     (r"(?<![A-Za-z0-9])[A-Za-z0-9]+-VAST-[A-Za-z0-9-]*[A-Za-z0-9]", "<customer-cluster>"),
-    (r"\bLAX-01\b", "<customer-site>"),
-    (r"(?<![A-Za-z0-9])(?:Lambda|LAMBDA)(?![a-z])", "<customer>"),
-    (r"(?i)\bmammoth\b", "<customer-cluster>"),
-    (r"(?i)\bm-pr-xpvast-[a-z0-9]+\b", "<customer-cluster>"),
     (r"(?<![\w])Vastdata1!", "<default-password>"),
     (r"\b123456\b", "<default-password>"),
 ]
@@ -65,7 +68,30 @@ _CODE_VALUE_RE = re.compile(r"^(?:str|int|bool|None|True|False|Optional\[?.*|[A-
 LAST_TRIAGED_RE = re.compile(r"^#\s*last-triaged:\s*(\d{4}-\d{2}-\d{2})\s*$")
 
 
-def redact(text: str) -> Tuple[str, int]:
+def load_local_patterns(path: Path) -> Optional[List[Tuple[str, str]]]:
+    """Return (regex, replacement) pairs from a local pattern file, or None if absent.
+
+    Blank lines and lines starting with '#' are skipped; each other line is
+    "<regex><TAB><replacement>". Raises ValueError on a malformed line or regex.
+    """
+    if not path.is_file():
+        return None
+    patterns: List[Tuple[str, str]] = []
+    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        parts = raw.split("\t")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise ValueError(f"{path}:{lineno}: expected '<regex><TAB><replacement>'")
+        try:
+            re.compile(parts[0])
+        except re.error as exc:
+            raise ValueError(f"{path}:{lineno}: bad regex: {exc}") from exc
+        patterns.append((parts[0], parts[1]))
+    return patterns
+
+
+def redact(text: str, local_patterns: Optional[List[Tuple[str, str]]] = None) -> Tuple[str, int]:
     """Return (redacted_text, number_of_replacements). Idempotent."""
     count = 0
 
@@ -91,7 +117,7 @@ def redact(text: str) -> Tuple[str, int]:
     text = CRED_RE.sub(_cred, text)
     text, n = EMAIL_RE.subn("<email>", text)
     count += n
-    for pattern, replacement in REDACT_PATTERNS:
+    for pattern, replacement in REDACT_PATTERNS + list(local_patterns or []):
         text, n = re.subn(pattern, replacement, text)
         count += n
     return text, count
@@ -132,11 +158,26 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE, help="Cursor plans directory")
     parser.add_argument("--check", action="store_true", help="report drift without writing")
+    parser.add_argument("--patterns", type=Path, default=LOCAL_PATTERNS, help="local customer-name pattern file")
     args = parser.parse_args(argv)
 
     if not MANIFEST.is_file():
         print(f"error: manifest not found: {MANIFEST}", file=sys.stderr)
         return 1
+    try:
+        local_patterns = load_local_patterns(args.patterns)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if local_patterns is None:
+        if not args.check:
+            print(
+                f"error: {args.patterns} not found; customer names would not be redacted. "
+                f"Copy {args.patterns.name}.template and fill it in.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"warning: {args.patterns} not found; drift results may be spurious.", file=sys.stderr)
     entries, last_triaged = read_manifest(MANIFEST)
     problems = 0
 
@@ -149,7 +190,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"missing   {name} (no source, no archived copy)")
                 problems += 1
             continue
-        redacted, hits = redact(src.read_text(encoding="utf-8"))
+        redacted, hits = redact(src.read_text(encoding="utf-8"), local_patterns)
         current = dest.read_text(encoding="utf-8") if dest.is_file() else None
         if current == redacted:
             continue

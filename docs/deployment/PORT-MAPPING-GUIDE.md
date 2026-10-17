@@ -2,7 +2,7 @@
 
 ## Overview
 
-The VAST As-Built Report Generator can automatically collect port mapping data by connecting to switches via SSH. This feature provides detailed information about which node interfaces are connected to which switch ports.
+asbuilt-reporter can automatically collect port mapping data by connecting to switches via SSH. This feature provides detailed information about which node interfaces are connected to which switch ports.
 
 ## Requirements
 

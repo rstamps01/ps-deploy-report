@@ -1,5 +1,5 @@
 #!/bin/bash
-# VAST As-Built Report Generator - macOS Installation Script
+# asbuilt-reporter - macOS Installation Script
 # For VAST Professional Services Engineers
 # Version: 1.0.0-dev
 # Date: September 27, 2025
@@ -511,7 +511,7 @@ create_launch_script() {
 
     cat > run-vast-asbuilt-reporter.sh << 'EOF'
 #!/bin/bash
-# VAST As-Built Report Generator Launch Script for macOS
+# asbuilt-reporter Launch Script for macOS
 
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -540,7 +540,7 @@ create_desktop_shortcut() {
 
     cat > "$desktop_file" << EOF
 #!/bin/bash
-# VAST As-Built Report Generator Desktop Shortcut
+# asbuilt-reporter Desktop Shortcut
 
 cd "$project_dir"
 ./run-vast-asbuilt-reporter.sh
@@ -956,7 +956,7 @@ main() {
     echo "STARTING INSTALLATION - $INSTALL_MODE MODE"
     echo "=================================================================="
     echo
-    echo "This script will install the VAST As-Built Report Generator on your Mac."
+    echo "This script will install asbuilt-reporter on your Mac."
     echo "The installation includes Python, dependencies, and creates shortcuts."
     echo
     echo "📋 Installation will be logged to: $LOG_FILE"

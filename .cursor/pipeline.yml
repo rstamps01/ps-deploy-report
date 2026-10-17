@@ -15,7 +15,7 @@ project:
   name: vast-asbuilt-reporter
   language: python
   python_version: "3.12"       # CI matrix also runs 3.11 on develop/main
-  description: VAST As-Built Report Generator
+  description: asbuilt-reporter
 
 # Version source of truth + all mirrored locations (enforced by version_sync cmd).
 version:

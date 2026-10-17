@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Report Builder Module.
+Unit tests for asbuilt-reporter Report Builder Module.
 
 This module contains comprehensive unit tests for the report builder,
 including PDF generation, report formatting, and error handling.
@@ -582,7 +582,7 @@ class TestNodeManagementMap(unittest.TestCase):
     def _data(self):
         return {
             "metadata": {"enhanced_features": {}},
-            "cluster_summary": {"name": "LAMBDA-VAST-LAX-01", "psnt": "VA2553454"},
+            "cluster_summary": {"name": "ACME-VAST-NYC-01", "psnt": "VA0000001"},
             "hardware_inventory": {
                 "cnodes": [
                     {
@@ -591,6 +591,7 @@ class TestNodeManagementMap(unittest.TestCase):
                         "hostname": "RackP01C01-CB6-U22-CN1",
                         "mgmt_ip": "10.208.59.22",
                         "ipmi_ip": "192.168.3.1",
+                        "serial_number": "CN-SERIAL-001",
                     }
                 ],
                 "dnodes": [
@@ -600,6 +601,7 @@ class TestNodeManagementMap(unittest.TestCase):
                         "hostname": "RackP01C01-DB2-U4-DN1",
                         "mgmt_ip": "10.208.59.106",
                         "ipmi_ip": "192.168.3.21",
+                        "serial_number": "DN-SERIAL-104",
                     }
                 ],
             },
@@ -613,6 +615,7 @@ class TestNodeManagementMap(unittest.TestCase):
         self.assertIn("CNode Management Map", text)
         self.assertIn("DNode Management Map", text)
         self.assertIn("Device Name (VMS)", text)
+        self.assertIn("Serial", text)
 
     def test_management_map_maps_name_hostname_mgmt_ip(self):
         """Each node row carries VMS name, hostname, and external mgmt IP together."""
@@ -624,6 +627,13 @@ class TestNodeManagementMap(unittest.TestCase):
         self.assertIn("10.208.59.22", text)
         self.assertIn("RackP01C01-DB2-U4-DN1", text)
         self.assertIn("dnode-128-104", text)
+
+    def test_management_map_includes_serial_numbers(self):
+        """INV-1: Serial column shows node serial_number already collected by the API path."""
+        builder = VastReportBuilder()
+        text = _flowable_text(builder._create_comprehensive_network_configuration(self._data()))
+        self.assertIn("CN-SERIAL-001", text)
+        self.assertIn("DN-SERIAL-104", text)
 
 
 class TestVnetmapTopologySwitchIdentity(unittest.TestCase):
@@ -699,6 +709,153 @@ class TestSwitchConfigActivePortsMtu(unittest.TestCase):
         self.assertIn("Active Ports", text)
         self.assertIn("38", text)
         self.assertIn("4096", text)
+
+
+class TestHardwareInventorySerialColumn(unittest.TestCase):
+    """INV-1: Hardware Inventory exposes a dedicated Serial column."""
+
+    def test_consolidated_inventory_includes_node_serials(self):
+        builder = VastReportBuilder()
+        cboxes = {
+            "cbox-1": {
+                "id": 1,
+                "name": "cbox-S123",
+                "rack_name": "Rack-1",
+                "rack_unit": "U24",
+            }
+        }
+        cnodes = [
+            {
+                "id": 10,
+                "name": "cnode-1-1",
+                "cbox_id": 1,
+                "box_vendor": "dell_turin_cbox",
+                "status": "ACTIVE",
+                "serial_number": "CN-SER-AAA",
+            }
+        ]
+        dboxes = {
+            "dbox-1": {
+                "id": 2,
+                "name": "dbox-S456",
+                "hardware_type": "ceres",
+                "state": "ACTIVE",
+                "rack_name": "Rack-1",
+                "rack_unit": "U20",
+            }
+        }
+        dnodes = [
+            {
+                "id": 20,
+                "name": "dnode-1-1",
+                "dbox_id": 2,
+                "status": "ACTIVE",
+                "serial_number": "DN-SER-BBB",
+            }
+        ]
+        text = _flowable_text(builder._create_consolidated_inventory_table(cboxes, cnodes, dboxes, dnodes, switches=[]))
+        self.assertIn("Serial", text)
+        self.assertIn("CN-SER-AAA", text)
+        self.assertIn("DN-SER-BBB", text)
+        self.assertNotIn("Name/Serial Number", text)
+
+
+class TestHealthCheckSummaryTotal(unittest.TestCase):
+    """The checker's summary has no 'total' key; the PDF must still show the real total."""
+
+    @staticmethod
+    def _summary_row(flowables):
+        for f in flowables:
+            rows = getattr(f, "_cellvalues", None)
+            if rows and [str(getattr(c, "text", c)) for c in rows[0]][:1] == ["Pass"]:
+                return [str(getattr(c, "text", c)) for c in rows[1]]
+        raise AssertionError("summary table not found")
+
+    def test_total_computed_when_summary_has_no_total(self):
+        builder = VastReportBuilder()
+        result = {"check_name": "Expansion State", "category": "api", "status": "pass", "message": "ok", "details": {}}
+        health_data = {
+            "summary": {"pass": 23, "fail": 0, "warning": 3, "skipped": 2, "error": 0},
+            "results": [result],
+        }
+        row = self._summary_row(builder._create_health_check_section(health_data))
+        self.assertEqual(row, ["23", "0", "3", "2", "0", "28"])
+
+
+class TestHealthCheckDetailsRendering(unittest.TestCase):
+    """HCF-6 / RPT-LAYOUT-1: non-empty check details render in their functional-area group."""
+
+    def test_alarm_details_rendered_in_alarms_group(self):
+        builder = VastReportBuilder()
+        health_data = {
+            "summary": {"pass": 0, "fail": 0, "warning": 1, "skipped": 0, "error": 0, "total": 1},
+            "results": [
+                {
+                    "check_name": "Active Alarms",
+                    "category": "api",
+                    "status": "warning",
+                    "message": "2 unresolved critical/major alarm(s)",
+                    "details": {
+                        "total_alarms": 2,
+                        "critical_unresolved": 2,
+                        "alarms": [
+                            {
+                                "severity": "CRITICAL",
+                                "object_name": "ssd-1",
+                                "description": "Drive predictive failure",
+                            },
+                            {
+                                "severity": "MAJOR",
+                                "object_name": "cnode-2",
+                                "description": "High CPU",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        text = _flowable_text(builder._create_health_check_section(health_data))
+        self.assertIn("Health Check Details — Alarms & Events", text)
+        self.assertIn("Unresolved critical/major alarms", text)
+        self.assertIn("Drive predictive failure", text)
+        self.assertIn("CRITICAL", text)
+        self.assertNotIn("— details", text)
+
+    def test_performance_details_not_shown(self):
+        builder = VastReportBuilder()
+        health_data = {
+            "summary": {"pass": 1, "fail": 0, "warning": 0, "skipped": 0, "error": 0, "total": 1},
+            "results": [
+                {
+                    "check_name": "Performance Baseline",
+                    "category": "performance",
+                    "status": "pass",
+                    "message": "Performance baseline captured (2 metrics)",
+                    "details": {"iops": 1200, "latency": 0.4},
+                }
+            ],
+        }
+        text = _flowable_text(builder._create_health_check_section(health_data))
+        self.assertIn("Performance baseline captured (2 metrics)", text)
+        self.assertNotIn("Health Check Details — Performance", text)
+        self.assertNotIn("1200", text)
+
+    def test_empty_details_omitted(self):
+        builder = VastReportBuilder()
+        health_data = {
+            "summary": {"pass": 1, "fail": 0, "warning": 0, "skipped": 0, "error": 0, "total": 1},
+            "results": [
+                {
+                    "check_name": "Expansion State",
+                    "category": "api",
+                    "status": "pass",
+                    "message": "No expansion in progress",
+                    "details": {},
+                }
+            ],
+        }
+        text = _flowable_text(builder._create_health_check_section(health_data))
+        self.assertNotIn("Expansion State — details", text)
 
 
 if __name__ == "__main__":

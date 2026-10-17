@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VAST As-Built Report Generator - Report Regeneration Utility
+asbuilt-reporter - Report Regeneration Utility
 
 This utility script allows you to regenerate PDF reports from existing JSON data files.
 This is useful for working on report formatting without needing cluster access.
@@ -10,10 +10,10 @@ Usage:
 
 Examples:
     # Regenerate from latest JSON file
-    python scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json
+    python scripts/regenerate_report.py output/vast_data_ACME-VAST-SFO-02_20251106_122547.json
 
     # Specify custom output file
-    python scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json output/test_report.pdf
+    python scripts/regenerate_report.py output/vast_data_ACME-VAST-SFO-02_20251106_122547.json output/test_report.pdf
 
 Author: Manus AI
 Date: November 6, 2025
@@ -122,13 +122,13 @@ def main():
         epilog="""
 Examples:
   # Regenerate from JSON file (uses default output name)
-  python scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json
+  python scripts/regenerate_report.py output/vast_data_ACME-VAST-SFO-02_20251106_122547.json
 
   # Specify custom output file
-  python scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json output/test_report.pdf
+  python scripts/regenerate_report.py output/vast_data_ACME-VAST-SFO-02_20251106_122547.json output/test_report.pdf
 
   # Use latest JSON file in output directory
-  python scripts/regenerate_report.py output/vast_data_LAMBDA-VAST-SLC-02_20251106_122547.json
+  python scripts/regenerate_report.py output/vast_data_ACME-VAST-SFO-02_20251106_122547.json
         """,
     )
 
@@ -188,7 +188,7 @@ Examples:
         output_path = output_dir / f"{pdf_stem}.pdf"
     else:
         # Generate output filename from JSON filename
-        json_stem = json_path.stem  # e.g., "vast_data_LAMBDA-VAST-SLC-02_20251106_122547"
+        json_stem = json_path.stem  # e.g., "vast_data_ACME-VAST-SFO-02_20251106_122547"
         # Replace "vast_data" with "vast_asbuilt_report"
         pdf_stem = json_stem.replace("vast_data_", "vast_asbuilt_report_")
         output_path = output_dir / f"{pdf_stem}.pdf"
@@ -197,7 +197,7 @@ Examples:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info("=" * 60)
-    logger.info("VAST As-Built Report Regeneration Utility")
+    logger.info("asbuilt-reporter report regeneration utility")
     logger.info("=" * 60)
     logger.info(f"JSON file: {json_path}")
     logger.info(f"Output file: {output_path}")

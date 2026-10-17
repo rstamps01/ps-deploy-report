@@ -7,7 +7,7 @@ todos:
     status: completed
   - id: tracking
     content: Update TODO-ROADMAP (field-feedback section, DOC-16 Done, Next steps), DECISIONS, PROJECT-STATUS, AGENTS.md
-    status: in_progress
+    status: completed
   - id: plans-sync
     content: Add scripts/sync-cursor-plans.py (manifest-driven copy + redaction + --check) with a redaction unit test
     status: completed
@@ -16,16 +16,16 @@ todos:
     status: completed
   - id: plans-wiring
     content: Register docs/plans/ in REPO-STRUCTURE.md, repo-structure-17.mdc, AGENTS.md and PLANS-INDEX.md; add roadmap item PLN-1 (plan audit, next thread)
-    status: pending
+    status: completed
   - id: pr
     content: Validate roadmap structure, run black/flake8 on the new test, commit, push, open PR to develop, merge when green
-    status: pending
+    status: completed
   - id: cleanup
     content: Remove psdr-161 worktree; delete merged local branches; leave main worktree on updated develop
-    status: pending
+    status: completed
   - id: handoff
     content: Deliver copy/paste handoff prompt and simpler thread-transition advice
-    status: pending
+    status: in_progress
 isProject: false
 ---
 

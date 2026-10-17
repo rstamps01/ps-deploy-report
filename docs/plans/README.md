@@ -18,9 +18,12 @@ The repository is public, so every copy passes through the redaction in [`script
 | Host IPv4 addresses. Loopback, `0.0.0.0`, the documented Tech Port address `192.168.2.2`, and network ranges such as `10.0.0.0/8` are kept. | `<ip>` |
 | Values after `password`/`token`/`secret`/`api_key`-style keys. Code expressions such as `password: str` are kept. | `<redacted>` |
 | Email addresses | `<email>` |
-| Lab hostnames and clusters, customer cluster and site names, and factory-default passwords (the `REDACT_PATTERNS` list) | `<lab-host>`, `<lab-cluster>`, `<customer-cluster>`, `<customer-site>`, `<customer>`, `<default-password>` |
+| Lab hostnames and clusters, `<NAME>-VAST-<SITE>` cluster names, and factory-default passwords (the script's `REDACT_PATTERNS` list) | `<lab-host>`, `<lab-cluster>`, `<customer-cluster>`, `<default-password>` |
+| Customer and site names (the local pattern file below) | `<customer>`, `<customer-cluster>`, `<customer-site>`, as set per line |
 
-If a plan still identifies a customer after redaction, remove it from `MANIFEST.txt` and keep it local. Add a new name to `REDACT_PATTERNS` when a sync report or review turns one up.
+Customer names are kept out of the repository. They live in `config/redact-patterns.local.txt`, which is gitignored: one `<regex><TAB><replacement>` per line, applied after the generic patterns. Copy [`config/redact-patterns.local.txt.template`](../../config/redact-patterns.local.txt.template) to start one. Syncing refuses to write without it; `--check` warns and continues.
+
+If a plan still identifies a customer after redaction, remove it from `MANIFEST.txt` and keep it local. Add the name to your local pattern file when a sync report or review turns one up.
 
 ## Keeping it current
 

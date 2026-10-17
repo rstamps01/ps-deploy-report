@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Web UI Application
+asbuilt-reporter - Web UI Application
 
 Flask-based web interface providing a browser GUI for generating reports,
 browsing output, editing configuration, and streaming live progress.
@@ -45,7 +45,7 @@ from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
 logger = get_logger(__name__)
 
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 
 # QP-3 (3): auto-shutdown when the operator closes the browser.
 # OPT-IN and OFF by default.  When enabled, the page sends a lightweight
@@ -142,7 +142,7 @@ _DOC_REGISTRY = [
     },
     {
         "id": "teleport-mode",
-        "title": "Teleport Mode (Beta)",
+        "title": "Teleport Mode",
         "category": "Using the Tool",
         "path": "docs/TELEPORT-MODE.md",
     },
@@ -2803,6 +2803,9 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                     for step_id in range(1, 7):
                         _check_cancel(app)
                         step_result = vnetmap_wf.run_step(step_id)
+                        if step_result.get("skipped"):
+                            job_logger.info("Vnetmap skipped: %s", step_result.get("message"))
+                            break
                         if not step_result.get("success"):
                             job_logger.warning(
                                 "Vnetmap step %d failed: %s — continuing without fresh vnetmap",

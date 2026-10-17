@@ -120,42 +120,83 @@ class TestBuildSwitchCredentialCombos(unittest.TestCase):
         )
 
 
+def _mock_popen(returncode=0, stdout=b"", stderr=b"", communicate_side_effect=None):
+    """Build a Popen mock that matches ``_run_ssh_popen``'s communicate contract."""
+    proc = MagicMock()
+    proc.pid = 1111
+    proc.returncode = returncode
+    if communicate_side_effect is not None:
+        proc.communicate.side_effect = communicate_side_effect
+    else:
+        proc.communicate.return_value = (stdout, stderr)
+    return proc
+
+
 class TestSubprocessSSH(unittest.TestCase):
     """Tests for the macOS/Linux subprocess SSH path.
 
-    Must patch subprocess.run and shutil.which at the use site (utils.ssh_adapter).
-    When which('sshpass') returns a path, the code uses subprocess.run; when None,
+    Must patch subprocess.Popen and shutil.which at the use site (utils.ssh_adapter).
+    When which('sshpass') returns a path, the code uses Popen; when None,
     it falls back to _paramiko_exec. So subprocess-path tests need which to return
     a path so the subprocess branch is exercised.
     """
 
-    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_successful_command(self, _which, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="ok\n", stderr="")
+    def test_successful_command(self, _which, mock_popen):
+        mock_popen.return_value = _mock_popen(returncode=0, stdout=b"ok\n", stderr=b"")
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 10, "/dev/null")
         self.assertEqual(rc, 0)
         self.assertEqual(out, "ok\n")
-        mock_run.assert_called_once()
+        mock_popen.assert_called_once()
+        self.assertTrue(mock_popen.call_args.kwargs.get("start_new_session"))
 
-    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_uses_sshpass_when_available(self, _which, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    def test_uses_sshpass_when_available(self, _which, mock_popen):
+        mock_popen.return_value = _mock_popen()
         _subprocess_ssh("host", "user", "pass", "ls", 10, "/dev/null")
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertEqual(cmd[0], "sshpass")
 
-    @patch("utils.ssh_adapter.subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="ssh", timeout=5))
+    @patch("utils.ssh_adapter.os.killpg")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_timeout_returns_error(self, _which, _run):
+    def test_timeout_returns_error(self, _which, mock_popen, _killpg):
+        mock_popen.return_value = _mock_popen(
+            communicate_side_effect=[
+                subprocess.TimeoutExpired(cmd="ssh", timeout=5),
+                (b"", b""),
+            ]
+        )
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 5, "/dev/null")
         self.assertEqual(rc, 1)
         self.assertIn("timed out", err)
 
-    @patch("utils.ssh_adapter.subprocess.run", side_effect=OSError("no such file"))
+    @patch("utils.ssh_adapter.os.killpg")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_os_error_returns_error(self, _which, _run):
+    def test_timeout_keeps_partial_output(self, _which, mock_popen, mock_killpg):
+        """A timed-out long command (vperfsanity burst wait) must keep what it printed so far."""
+        mock_popen.return_value = _mock_popen(
+            communicate_side_effect=[
+                subprocess.TimeoutExpired(cmd="ssh", timeout=3600),
+                (
+                    b"write test done\nWaiting for burst / post-burst phase to finish...\n",
+                    b"elbencho: warning\n",
+                ),
+            ]
+        )
+        rc, out, err = _subprocess_ssh("host", "user", "pass", "run", 3600, "/dev/null")
+        self.assertEqual(rc, 1)
+        self.assertIn("Waiting for burst", out)
+        self.assertIn("elbencho: warning", err)
+        self.assertIn("timed out after 3600s", err)
+        mock_killpg.assert_called_once()
+
+    @patch("utils.ssh_adapter.subprocess.Popen", side_effect=OSError("no such file"))
+    @patch("shutil.which", return_value="/usr/bin/sshpass")
+    def test_os_error_returns_error(self, _which, _popen):
         rc, out, err = _subprocess_ssh("host", "user", "pass", "ls", 5, "/dev/null")
         self.assertEqual(rc, 1)
         self.assertIn("no such file", err)
@@ -251,21 +292,21 @@ class TestExplicitPort(unittest.TestCase):
     """Teleport mode forwards a CNode's SSH (22) to an ephemeral local port,
     so the adapter must honor an explicit ``port`` instead of always using 22."""
 
-    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_subprocess_adds_port_flag_when_non_default(self, _which, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    def test_subprocess_adds_port_flag_when_non_default(self, _which, mock_popen):
+        mock_popen.return_value = _mock_popen()
         _subprocess_ssh("127.0.0.1", "user", "pass", "ls", 10, "/dev/null", port=50022)
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertIn("-p", cmd)
         self.assertIn("50022", cmd)
 
-    @patch("utils.ssh_adapter.subprocess.run")
+    @patch("utils.ssh_adapter.subprocess.Popen")
     @patch("shutil.which", return_value="/usr/bin/sshpass")
-    def test_subprocess_omits_port_flag_for_default_22(self, _which, mock_run):
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+    def test_subprocess_omits_port_flag_for_default_22(self, _which, mock_popen):
+        mock_popen.return_value = _mock_popen()
         _subprocess_ssh("host", "user", "pass", "ls", 10, "/dev/null", port=22)
-        cmd = mock_run.call_args[0][0]
+        cmd = mock_popen.call_args[0][0]
         self.assertNotIn("-p", cmd)
 
     @patch.dict("sys.modules", {})

@@ -268,6 +268,29 @@ class TestSummaryGeneration:
         summary = bundler.generate_summary()
         assert "Health Check Results" in summary or "Included Files" in summary
 
+    def test_summary_shows_failure_and_skip_reasons(self, bundler, tmp_path):
+        """A ran-but-failed operation must state its reason, not claim it produced nothing."""
+        empty = tmp_path / "empty_output"
+        empty.mkdir()
+        bundler.set_metadata("test", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            empty,
+            cluster_ip=CLUSTER_A_IP,
+            operation_status={"vperfsanity": "failed", "vnetmap": "skipped", "log_bundle": "skipped"},
+            operation_details={
+                "vperfsanity": "Step 3 (Prepare Infrastructure): VIP pool 'main' has no VIPs",
+                "vnetmap": "Step 2 (Generate Export Commands): L3 node config not supported",
+            },
+        )
+        summary = bundler.generate_summary()
+        assert (
+            "**vperfsanity Performance Results**: FAILED — "
+            "Step 3 (Prepare Infrastructure): VIP pool 'main' has no VIPs"
+        ) in summary
+        assert "**vnetmap Topology Validation**: SKIPPED — Step 2 (Generate Export Commands)" in summary
+        assert "**VMS Log Bundle**: SKIPPED (operation not selected)" in summary
+        assert "did not produce output" not in summary
+
 
 # ===================================================================
 # TestBundleCreation
@@ -653,6 +676,26 @@ class TestPriorVperfsanity:
 
         assert f"vperfsanity_PRIOR_{stale_file.name}" in summary
         assert "included as PRIOR with banner" in summary
+
+    def test_summary_reports_this_run_failure_before_prior(self, bundler, mock_results):
+        """A failed run must not read as merely STALE because an older result was attached."""
+        stale_file = self._prepare_stale_vperfsanity(mock_results)
+
+        bundler.set_metadata("cluster-a", CLUSTER_A_IP, "5.0")
+        bundler.collect_results(
+            mock_results,
+            cluster_ip=CLUSTER_A_IP,
+            since=datetime.now() - timedelta(minutes=5),
+            operation_status={"vperfsanity": "failed"},
+            operation_details={"vperfsanity": "Step 4 (Run Performance Tests): Tests failed (rc=1)"},
+        )
+        bundler.create_bundle()
+        summary = bundler.generate_summary()
+
+        assert (
+            "**vperfsanity Performance Results**: FAILED — Step 4 (Run Performance Tests): Tests failed (rc=1). "
+            f"Prior result included as PRIOR with banner — `vperfsanity_PRIOR_{stale_file.name}`"
+        ) in summary
 
     def test_include_prior_vperfsanity_false_falls_back_to_placeholder(self, tmp_path, mock_results):
         """With the opt-out flag off, the bundler must keep the pre-RM-5

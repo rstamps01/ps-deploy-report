@@ -28,7 +28,9 @@ from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, letter
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm, inch
+from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     KeepTogether,
     PageBreak,
@@ -39,6 +41,49 @@ from reportlab.platypus import (
 )
 
 from utils.logger import get_logger
+from utils.pdf_layout import make_table
+
+BRAND_TITLE_FONT = "FiraSans-Bold"
+BRAND_TITLE_FALLBACK_FONT = "Helvetica-Bold"
+BRAND_PRODUCT_NAME = "asbuilt-reporter"
+BRAND_TITLE_BLACK = "#000000"
+BRAND_TITLE_ACCENT = "#1a6fb5"
+
+_title_font_name: Optional[str] = None
+
+
+def _brand_font_path():
+    """Return the bundled Fira Sans Bold TTF path (frozen-app aware)."""
+    from utils import get_bundle_dir
+
+    return get_bundle_dir() / "assets" / "fonts" / "FiraSans-Bold.ttf"
+
+
+def register_brand_title_font(force: bool = False) -> str:
+    """Register the one-pager title font with ReportLab.
+
+    Args:
+        force: Re-check the font file even if registration already ran.
+
+    Returns:
+        str: The font name to use for the report title — ``FiraSans-Bold`` when the
+        bundled TTF loads, otherwise ``Helvetica-Bold``.
+    """
+    global _title_font_name
+    if _title_font_name is not None and not force:
+        return _title_font_name
+
+    path = _brand_font_path()
+    try:
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        if BRAND_TITLE_FONT not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(BRAND_TITLE_FONT, str(path)))
+        _title_font_name = BRAND_TITLE_FONT
+    except Exception as e:  # noqa: BLE001 - any font failure must degrade to Helvetica
+        logging.getLogger(__name__).warning(f"Brand title font unavailable ({e}); using {BRAND_TITLE_FALLBACK_FONT}")
+        _title_font_name = BRAND_TITLE_FALLBACK_FONT
+    return _title_font_name
 
 
 @dataclass
@@ -116,6 +161,7 @@ class VastBrandCompliance:
         self.logger = get_logger(__name__)
         self.colors = VastColorPalette()
         self.typography = VastTypography()
+        self.title_font = register_brand_title_font()
 
         # Create brand-compliant paragraph styles
         self.styles = self._create_paragraph_styles()
@@ -208,6 +254,27 @@ class VastBrandCompliance:
 
         return styles
 
+    def format_title_markup(self, title: str) -> str:
+        """Return Paragraph markup for a report title.
+
+        The product name gets the one-pager treatment: "asbuilt" in black and
+        "-reporter" in the accent blue, both in the brand title font. Any other
+        title renders as plain bold text.
+
+        Args:
+            title: Title text.
+
+        Returns:
+            str: ReportLab Paragraph markup.
+        """
+        if title != BRAND_PRODUCT_NAME:
+            return f"<b>{title}</b>"
+        head, tail = "asbuilt", "-reporter"
+        return (
+            f'<font name="{self.title_font}" color="{BRAND_TITLE_BLACK}">{head}</font>'
+            f'<font name="{self.title_font}" color="{BRAND_TITLE_ACCENT}">{tail}</font>'
+        )
+
     def create_vast_header(self, title: str, subtitle: str = None, cluster_info: Dict[str, Any] = None) -> List[Any]:
         """
         Create VAST Light gradient header with brand-compliant styling.
@@ -228,7 +295,7 @@ class VastBrandCompliance:
             parent=self.styles["vast_title"],
             alignment=TA_CENTER,
         )
-        title_para = Paragraph(f"<b>{title}</b>", title_style)
+        title_para = Paragraph(self.format_title_markup(title), title_style)
         elements.append(title_para)
         elements.append(Spacer(1, 20))
 
@@ -370,7 +437,7 @@ class VastBrandCompliance:
             computed_widths = [col_width] * num_cols
 
         # Create table with repeat headers on page breaks
-        table = Table(table_data, colWidths=computed_widths, repeatRows=1)
+        table = make_table(table_data, colWidths=computed_widths, repeatRows=1)
 
         # Apply VAST brand table styling
         font_sz = (self.typography.BODY_SIZE - 2) if compact else self.typography.BODY_SIZE
@@ -408,11 +475,8 @@ class VastBrandCompliance:
         table.setStyle(table_style)
         table_elements.append(table)
 
-        # Keep title and table together if title provided
-        if title:
-            elements.append(KeepTogether(table_elements))
-        else:
-            elements.extend(table_elements)
+        # The report builder keeps titles with their tables, so long tables may split across pages.
+        elements.extend(table_elements)
 
         elements.append(Spacer(1, 12))
 
@@ -536,8 +600,8 @@ class VastBrandCompliance:
             page_width = A4[0] - 1.0 * inch
         num_cols = len(headers)
 
-        # Hardware Inventory: content-based column widths (6-col or 5-col EBox-only)
-        if headers and headers[0] == "Rack" and (num_cols == 6 or num_cols == 5):
+        # Hardware Inventory: content-based column widths (7-col standard, 6-col EBox-only, legacy 5-col)
+        if headers and headers[0] == "Rack" and num_cols in (5, 6, 7):
             col_widths = self._content_based_column_widths(
                 full_table_data,
                 page_width,
@@ -549,10 +613,14 @@ class VastBrandCompliance:
             )
         else:
             # Other tables: fixed ratios
-            if num_cols == 5:
+            if num_cols == 4:
+                col_ratios = [0.28, 0.28, 0.22, 0.22]
+            elif num_cols == 5:
                 col_ratios = [0.06, 0.45, 0.25, 0.12, 0.12]
             elif num_cols == 6:
                 col_ratios = [0.08, 0.28, 0.15, 0.15, 0.20, 0.14]
+            elif num_cols == 7:
+                col_ratios = [0.08, 0.18, 0.14, 0.18, 0.16, 0.14, 0.12]
             else:
                 col_ratios = [0.15, 0.35, 0.25, 0.15, 0.1]
             if len(col_ratios) == num_cols:
@@ -581,7 +649,7 @@ class VastBrandCompliance:
                 processed_table_data.append(processed_row)
 
         # Create table with calculated column widths and repeat headers on page breaks
-        table = Table(processed_table_data, colWidths=col_widths, repeatRows=1)
+        table = make_table(processed_table_data, colWidths=col_widths, repeatRows=1)
 
         # Apply VAST brand table styling with text wrapping - match create_vast_table styling
         table_style = TableStyle(
@@ -617,9 +685,7 @@ class VastBrandCompliance:
 
         table.setStyle(table_style)
         table_elements.append(table)
-
-        # Keep title and table together to prevent page breaks
-        elements.append(KeepTogether(table_elements))
+        elements.extend(table_elements)
         elements.append(Spacer(1, 12))
 
         return elements
@@ -628,8 +694,10 @@ class VastBrandCompliance:
         self, table_data: List[List[str]], title: str, headers: List[str]
     ) -> List[Any]:
         """
-        Create VAST brand-compliant hardware table with pagination support for large tables.
-        Automatically splits large tables across multiple pages with repeated headers.
+        Create VAST brand-compliant hardware table that splits across pages with repeated headers.
+
+        Wrapped rows vary in height, so the table flows as one and ReportLab splits it,
+        repeating the header row on each page.
 
         Args:
             table_data (List[List[str]]): Table data
@@ -637,46 +705,11 @@ class VastBrandCompliance:
             headers (List[str]): Column headers
 
         Returns:
-            List[Any]: Table elements with pagination
+            List[Any]: Table elements
         """
         if not table_data:
             return []
-
-        elements = []
-
-        # Define rows per page (adjust based on page size and row height)
-        # Assuming ~25 rows per page for A4 with current styling
-        rows_per_page = 25
-
-        # Calculate number of pages needed
-        total_rows = len(table_data)
-        num_pages = (total_rows + rows_per_page - 1) // rows_per_page
-
-        # If only one page needed, use the regular method
-        if num_pages <= 1:
-            return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
-
-        # Split data into pages
-        for page_num in range(num_pages):
-            start_idx = page_num * rows_per_page
-            end_idx = min(start_idx + rows_per_page, total_rows)
-            page_data = table_data[start_idx:end_idx]
-
-            # Create page title with pagination info
-            if num_pages > 1:
-                page_title = f"{title} (Page {page_num + 1} of {num_pages})"
-            else:
-                page_title = title
-
-            # Create table for this page
-            page_elements = self.create_vast_hardware_table_with_auto_width(page_data, page_title, headers)
-            elements.extend(page_elements)
-
-            # Add page break between pages (except for the last page)
-            if page_num < num_pages - 1:
-                elements.append(PageBreak())
-
-        return elements
+        return self.create_vast_hardware_table_with_auto_width(table_data, title, headers)
 
     def create_vast_2d_diagram_placeholder(self, title: str, description: str) -> List[Any]:
         """

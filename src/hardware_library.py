@@ -1,5 +1,5 @@
 """
-Consolidated Hardware Library for VAST As-Built Reporter.
+Consolidated Hardware Library for asbuilt-reporter.
 
 This module provides a single source of truth for all hardware device definitions,
 including CBoxes, DBoxes, EBoxes, and Switches. All other modules should import
@@ -162,6 +162,12 @@ BUILTIN_DEVICES: Dict[str, Dict[str, Any]] = {
         "image_filename": "cisco_ebox_1u.png",
         "description": "Cisco UCS C225 EBox",
     },
+    "supermicro_turin_ebox24": {
+        "type": "ebox",
+        "height_u": 2,
+        "image_filename": "supermicro_turin_ebox24_2u.png",
+        "description": "Supermicro Turin 2U EBox",
+    },
     # =========================================================================
     # Switches
     # =========================================================================
@@ -312,12 +318,14 @@ def get_device_height(model: str, user_library: Optional[Dict[str, Any]] = None)
         return 1
 
     model_lower = model.lower()
-
-    # EBox/enclosure default to 1U
-    if "ebox" in model_lower or "enclosure" in model_lower:
-        return 1
-
     device = match_device(model, user_library)
+
+    # An EBox/enclosure only takes a catalog height from an EBox entry; a vendor
+    # fallback such as "hpe" (a 2U CBox) must not size an unknown EBox.
+    if "ebox" in model_lower or "enclosure" in model_lower:
+        if device is None or str(device.get("type", "")).lower() != "ebox":
+            return 1
+
     if device is None:
         return 1
 

@@ -3,7 +3,7 @@
 
 <head>
     <!--
-  VAST As-Built Reporter — Internal SE/PSE Marketing One-Pager
+  asbuilt-reporter — Internal SE/PSE Marketing One-Pager
 
   SCREENSHOT INSTRUCTIONS:
   To add real screenshots, replace the placeholder <div class="screenshot-placeholder">
@@ -25,7 +25,7 @@
 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VAST As-Built Reporter — For SEs &amp; PSEs</title>
+    <title>asbuilt-reporter — For SEs &amp; PSEs</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -980,10 +980,10 @@
                 <img src="screenshots/VAST-Data-Horizontal-Logo-White.png" alt="VAST Data"
                     style="height: 2.4rem; filter: brightness(0) invert(1);">
                 <span><span class="brand-white">asbuilt</span><span class="accent">-reporter</span></span>
-                <span class="brand-version" id="appVersion" data-app-version>v1.6.1</span>
+                <span class="brand-version" id="appVersion" data-app-version>v1.6.2</span>
             </h1>
             <p class="tagline">Generate customer-ready as-built reports in minutes &mdash; not hours.</p>
-            <p class="subtext">No Python. No terminal. Tech Port, VMS, or Teleport (Beta) &mdash; just download,
+            <p class="subtext">No Python. No terminal. Tech Port, VMS, or Teleport &mdash; just download,
                 connect, and go.</p>
             <div class="cta-row">
                 <a href="https://github.com/rstamps01/ps-deploy-report/releases/latest" class="btn btn-accent">
@@ -1082,7 +1082,7 @@
                         </svg>
                     </div>
                     <h3>Customer-Ready Output</h3>
-                    <p>VAST-branded PDF with executive summary, 42U rack diagrams, subnet-colored network topology with
+                    <p>VAST-branded PDF with executive summary, rack diagrams (42U to 52U), subnet-colored network topology with
                         mis-cabling detection, and health results. Plus machine-readable JSON for CMDB or scripted
                         workflows.</p>
                 </div>
@@ -1095,7 +1095,7 @@
                         </svg>
                     </div>
                     <h3>Field-Ready Design</h3>
-                    <p>Connect over Tech Port, VMS, or Teleport (Beta); SSH proxy hop for unreachable switches,
+                    <p>Connect over Tech Port, VMS, or Teleport; SSH proxy hop for unreachable switches,
                         same-named switch handling, and graceful degradation when data is partial. Runs on Apple
                         Silicon &amp; Intel macOS and Windows &mdash; no Python install needed.</p>
                 </div>
@@ -1141,7 +1141,7 @@
                         class="screenshot-img">
                     <div class="showcase-caption">
                         <h4>Reporter</h4>
-                        <p>Guided 3-step workflow with Tech Port, VMS, or Teleport (Beta) connection modes &mdash;
+                        <p>Guided 3-step workflow with Tech Port, VMS, or Teleport connection modes &mdash;
                             Discover, place switches, generate the report, and run a one-click Health Check.</p>
                     </div>
                 </div>
@@ -1218,10 +1218,10 @@
                 <div>
                     <div class="report-mock">
                         <div class="report-mock-bar"></div>
-                        <h4>VAST As-Built Report</h4>
+                        <h4>asbuilt-reporter</h4>
                         <p class="cluster-name">ACME-PROD-01 &mdash; Acme Corporation</p>
                         <div style="margin: 1.25rem 0; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                            <img src="screenshots/Report-Rack-Diagram.png" alt="42U Rack Diagram" class="screenshot-img"
+                            <img src="screenshots/Report-Rack-Diagram.png" alt="Rack Diagram" class="screenshot-img"
                                 style="border-radius: 4px; border: 1px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
                             <img src="screenshots/Logical-Network-Diagram.png" alt="Logical Network Topology"
                                 class="screenshot-img"
@@ -1248,7 +1248,7 @@
                             </svg> Hardware Inventory &amp; Capacity</li>
                         <li><svg viewBox="0 0 24 24">
                                 <polyline points="20 6 9 17 4 12" />
-                            </svg> Physical Rack Layout (42U diagrams)</li>
+                            </svg> Physical Rack Layout (42U to 52U racks)</li>
                         <li><svg viewBox="0 0 24 24">
                                 <polyline points="20 6 9 17 4 12" />
                             </svg> Network Configuration</li>
@@ -1385,7 +1385,7 @@
             <span style="font-weight: 600; font-size: 0.85rem;"><span
                     style="color: var(--text-primary);">asbuilt</span><span
                     style="color: var(--accent);">-reporter</span></span>
-            <span class="version-badge" id="appVersionFooter" data-app-version>v1.6.1</span>
+            <span class="version-badge" id="appVersionFooter" data-app-version>v1.6.2</span>
         </div>
         <p>Built by PS Engineering</p>
     </footer>

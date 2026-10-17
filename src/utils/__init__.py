@@ -1,7 +1,7 @@
 """
-VAST As-Built Report Generator - Utilities Package
+asbuilt-reporter - Utilities Package
 
-This package contains utility modules for the VAST As-Built Report Generator,
+This package contains utility modules for asbuilt-reporter,
 including logging infrastructure, configuration management, and helper functions.
 """
 

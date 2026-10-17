@@ -10,10 +10,11 @@ VAST Support Tools Workflow
 """
 
 import json
+import posixpath
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from script_runner import ScriptRunner
 from utils.ssh_adapter import run_ssh_command
@@ -84,6 +85,10 @@ class SupportToolWorkflow:
     VMS_PATH = "/vast/data/vms.sh"
     CONTAINER_SCRIPT_PATH = "/vast/data/vast_support_tools.py"
     OUTPUT_DIR = "/vast/data/support-checks"
+    # EBox clusters ship the wrapper inside the CNode container dir
+    # (e.g. /vast/data/C-4200/vms.sh) and the script must sit beside it.
+    WRAPPER_PROBE_CMD = 'for f in /vast/data/vms.sh /vast/data/C-*/vms.sh; do [ -e "$f" ] && echo "$f" && break; done'
+    INSPECT_TIMEOUT_S = 600
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -183,6 +188,70 @@ class SupportToolWorkflow:
         except Exception as e:
             logger.exception(f"Step {step_id} failed")
             return {"success": False, "message": str(e)}
+
+    def _vms_target(self) -> Tuple[str, Dict[str, Any]]:
+        """Return the SSH target and connection kwargs for the host running the VMS container."""
+        host = self._credentials.get("cluster_ip")
+        user = self._credentials.get("node_user", "vastdata")
+        password = self._credentials.get("node_password")
+        vms_internal_ip = self._credentials.get("vms_internal_ip")
+        if vms_internal_ip:
+            return str(vms_internal_ip), {"jump_host": host, "jump_user": user, "jump_password": password}
+        return self._ssh_host(), {"port": self._ssh_port()}
+
+    def _resolve_container_paths(self) -> Tuple[str, str, str]:
+        """Find the VMS container wrapper and the script path beside it.
+
+        Returns:
+            Tuple of (wrapper path, container script path, container base dir).  Falls back
+            to the legacy ``/vast/data`` layout when the probe finds nothing, so a missing
+            wrapper surfaces as an explicit Step 3 failure rather than a silent skip.
+        """
+        user = self._credentials.get("node_user", "vastdata")
+        password = self._credentials.get("node_password")
+        target, conn_kwargs = self._vms_target()
+        # Advanced Ops reuses one workflow instance across runs, so the cache is keyed
+        # by target and only kept for a successful probe.
+        target_key = f"{target}:{conn_kwargs.get('port', 22)}"
+        cached = self._step_data.get("vms_wrapper")
+        if cached and self._step_data.get("vms_wrapper_found") and self._step_data.get("vms_wrapper_key") == target_key:
+            return (
+                str(cached),
+                str(self._step_data.get("container_script_path", self.CONTAINER_SCRIPT_PATH)),
+                str(self._step_data.get("container_base_dir", posixpath.dirname(str(cached)))),
+            )
+
+        wrapper = self.VMS_PATH
+        found = False
+        try:
+            _rc, stdout, _err = run_ssh_command(
+                target, user, password, self.WRAPPER_PROBE_CMD, timeout=15, **conn_kwargs
+            )
+            for line in (stdout or "").splitlines():
+                candidate = line.strip()
+                if candidate.startswith("/vast/data/") and candidate.endswith("/vms.sh"):
+                    wrapper = candidate
+                    found = True
+                    break
+        except Exception as exc:  # noqa: BLE001 - probe is best-effort; Step 3 reports the real failure
+            logger.debug("VMS wrapper probe failed: %s", exc)
+
+        base_dir = posixpath.dirname(wrapper)
+        script = f"{base_dir}/vast_support_tools.py"
+        self._step_data.update(
+            {
+                "vms_wrapper": wrapper,
+                "container_script_path": script,
+                "container_base_dir": base_dir,
+                "vms_wrapper_found": found,
+                "vms_wrapper_key": target_key,
+            }
+        )
+        if found and base_dir != posixpath.dirname(self.VMS_PATH):
+            self.emit("info", f"EBox container layout detected: using {wrapper}")
+        elif not found:
+            self.emit("warn", f"VMS container wrapper not found; trying legacy {self.VMS_PATH}")
+        return wrapper, script, base_dir
 
     def _scp_to_vms(
         self,
@@ -325,15 +394,22 @@ class SupportToolWorkflow:
             "remote_script_path", "/tmp/vast_scripts/vast_support_tools.py"  # nosec B108
         )
 
+        # Locate the VMS container wrapper first: on EBox the script must sit in
+        # the container dir beside it (/vast/data/C-<port>/), not in /vast/data/.
+        _wrapper, container_script, _base_dir = self._resolve_container_paths()
+        # Direct mode copies straight into the container path on the VMS host.
+        # Tech Port stages on the CNode's /vast/data/ and pushes to the VMS below.
+        local_copy_dst = self.CONTAINER_SCRIPT_PATH if vms_internal_ip else container_script
+
         # Copy script to /vast/data/ so it is visible inside the VMS container.
         # /vast/data/ is typically owned by root; the vastdata user needs sudo
         # to write there on most clusters (see observed "Permission denied" on
         # plain cp).  We also fix ownership so subsequent chmod/exec succeed.
         self.emit("info", "Copying script to container-accessible path...")
         copy_cmd = (
-            f"sudo cp {remote_script} {self.CONTAINER_SCRIPT_PATH} && "
-            f"sudo chown {user}:{user} {self.CONTAINER_SCRIPT_PATH} && "
-            f"sudo chmod 755 {self.CONTAINER_SCRIPT_PATH}"
+            f"sudo cp {remote_script} {local_copy_dst} && "
+            f"sudo chown {user}:{user} {local_copy_dst} && "
+            f"sudo chmod 755 {local_copy_dst}"
         )
         self.emit("info", f"$ ssh {user}@{host}")
         self.emit("info", f"$ {copy_cmd}")
@@ -345,7 +421,7 @@ class SupportToolWorkflow:
             combined = (stdout + stderr).lower()
             if "permission denied" in combined:
                 hint = (
-                    f"{self.CONTAINER_SCRIPT_PATH} is not writable by {user}. "
+                    f"{local_copy_dst} is not writable by {user}. "
                     f"Confirm {user} has passwordless sudo on this CNode "
                     f"(the workflow uses `sudo cp` because /vast/data/ is typically root-owned)."
                 )
@@ -358,14 +434,14 @@ class SupportToolWorkflow:
                 self.emit("warn", f"Hint: {hint}")
             return {"success": False, "message": f"Failed to copy script to /vast/data/: {stderr}"}
 
-        self.emit("success", f"Copied to {self.CONTAINER_SCRIPT_PATH}")
+        self.emit("success", f"Copied to {local_copy_dst}")
 
         if vms_internal_ip:
             # Tech Port: the Docker container bind-mounts the VMS host's
             # /vast/data/, not the CNode's.  Push the script from CNode → VMS
             # so docker exec can find it.
             self.emit("info", f"Tech Port mode: pushing script to VMS {vms_internal_ip}...")
-            self.emit("info", f"  CNode {host} → VMS {vms_internal_ip}:{self.CONTAINER_SCRIPT_PATH}")
+            self.emit("info", f"  CNode {host} → VMS {vms_internal_ip}:{container_script}")
 
             push_ok, push_msg = self._scp_to_vms(
                 host,
@@ -373,7 +449,7 @@ class SupportToolWorkflow:
                 password,
                 vms_internal_ip,
                 self.CONTAINER_SCRIPT_PATH,
-                self.CONTAINER_SCRIPT_PATH,
+                container_script,
             )
             if not push_ok:
                 self.emit("error", f"Failed to push script to VMS: {push_msg}")
@@ -384,7 +460,7 @@ class SupportToolWorkflow:
             # Set permissions and verify on VMS via jump SSH.  /vast/data/
             # on the VMS is typically root-owned, so use sudo.
             self.emit("info", "Setting execute permissions on VMS...")
-            chmod_cmd = f"sudo chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            chmod_cmd = f"sudo chmod +x {container_script}"
             self.emit("info", f"$ {chmod_cmd}")
 
             rc, stdout, stderr = run_ssh_command(
@@ -401,7 +477,7 @@ class SupportToolWorkflow:
                 self.emit("error", f"chmod failed: {stderr}")
                 return {"success": False, "message": f"Failed to set permissions: {stderr}"}
 
-            verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
+            verify_cmd = f"ls -la {container_script}"
             rc, stdout, _ = run_ssh_command(
                 vms_internal_ip,
                 user,
@@ -418,7 +494,7 @@ class SupportToolWorkflow:
             # Set execute permissions on the container copy.  /vast/data/ is
             # typically root-owned so sudo is required.
             self.emit("info", "Setting execute permissions...")
-            chmod_cmd = f"sudo chmod +x {self.CONTAINER_SCRIPT_PATH}"
+            chmod_cmd = f"sudo chmod +x {container_script}"
             self.emit("info", f"$ {chmod_cmd}")
 
             rc, stdout, stderr = run_ssh_command(ssh_host, user, password, chmod_cmd, timeout=30, port=ssh_port)
@@ -427,7 +503,7 @@ class SupportToolWorkflow:
                 return {"success": False, "message": f"Failed to set permissions: {stderr}"}
 
             # Verify
-            verify_cmd = f"ls -la {self.CONTAINER_SCRIPT_PATH}"
+            verify_cmd = f"ls -la {container_script}"
             rc, stdout, _ = run_ssh_command(ssh_host, user, password, verify_cmd, timeout=10, port=ssh_port)
             if stdout:
                 self.emit("info", stdout.strip())
@@ -445,8 +521,9 @@ class SupportToolWorkflow:
         self.emit("info", "This may take several minutes...")
         self.emit("info", "")
 
-        script = self.CONTAINER_SCRIPT_PATH
-        run_cmd = f"{self.VMS_PATH} {script} inspect"
+        wrapper, script, _base_dir = self._resolve_container_paths()
+        run_cmd = f"{wrapper} {script} inspect"
+        timeout = self.INSPECT_TIMEOUT_S
 
         if vms_internal_ip:
             self.emit("info", f"Tech Port mode: routing through CNode {host} → VMS {vms_internal_ip}")
@@ -459,7 +536,7 @@ class SupportToolWorkflow:
                 user,
                 password,
                 run_cmd,
-                timeout=600,
+                timeout=timeout,
                 force_tty=True,
                 jump_host=host,
                 jump_user=user,
@@ -471,7 +548,7 @@ class SupportToolWorkflow:
             self.emit("info", "")
 
             rc, stdout, stderr = run_ssh_command(
-                self._ssh_host(), user, password, run_cmd, timeout=600, force_tty=True, port=self._ssh_port()
+                self._ssh_host(), user, password, run_cmd, timeout=timeout, force_tty=True, port=self._ssh_port()
             )
 
         # Show output
@@ -497,10 +574,41 @@ class SupportToolWorkflow:
                 self.emit("info", line)
 
         self._step_data["support_tools_output"] = output
+        self._step_data["support_tools_rc"] = rc
+        error_tail = (output.strip().splitlines() or [""])[-1][:300]
+        self._step_data["support_tools_error"] = error_tail if rc != 0 else ""
 
         if rc != 0:
             self.emit("warn", f"Command exited with code {rc}")
-            # Don't fail - the tool may return non-zero for warnings
+            # inspect's own findings can mention timeouts and missing files, so only the
+            # launcher's failure signatures count here, not arbitrary output text.
+            launch_markers = (
+                f"{wrapper}: no such file or directory",
+                f"{script}: no such file or directory",
+                "no such container",
+                "docker daemon",
+            )
+            launch_failed = rc in (126, 127) or any(
+                marker.lower() in line.lower() for line in output.splitlines() for marker in launch_markers
+            )
+            if launch_failed:
+                self.emit(
+                    "error",
+                    f"The VMS container wrapper or script could not be executed ({wrapper}). "
+                    "EBox clusters keep vms.sh in the CNode container dir (for example "
+                    "/vast/data/C-4200/vms.sh); confirm SSH lands on the VMS CNode.",
+                )
+                return {
+                    "success": False,
+                    "message": f"Support tools did not start (rc={rc}): {error_tail}",
+                    "details": output,
+                }
+            if "ssh command timed out after" in (stderr or "").lower():
+                self.emit("error", f"vast_support_tools.py inspect did not finish within {timeout}s")
+                return {"success": False, "message": f"Support tools timed out (rc={rc})", "details": output}
+            if not output.strip():
+                return {"success": False, "message": f"Support tools exited with rc={rc} and no output"}
+            # inspect exits non-zero when it reports findings; keep going so they get archived.
 
         self.emit("success", "Support tools inspection completed")
         return {"success": True, "message": "Support tools completed", "details": output}
@@ -549,6 +657,9 @@ class SupportToolWorkflow:
             "/vast/data/support_checks",
             "/userdata/support-checks",
         ]
+        base_dir = self._step_data.get("container_base_dir")
+        if base_dir and base_dir != posixpath.dirname(self.CONTAINER_SCRIPT_PATH):
+            possible_dirs.insert(0, f"{base_dir}/support-checks")
 
         output_dir = None
         for dir_path in possible_dirs:
@@ -585,7 +696,11 @@ class SupportToolWorkflow:
                 for line in stdout.strip().split("\n"):
                     self.emit("info", f"  {line}")
 
-            return {"success": False, "message": "Support tools output directory not found. Check Step 3 output."}
+            message = "Support tools output directory not found. Check Step 3 output."
+            step3_rc = self._step_data.get("support_tools_rc")
+            if step3_rc not in (None, 0):
+                message += f" Step 3 exited rc={step3_rc}: {self._step_data.get('support_tools_error', '')}"
+            return {"success": False, "message": message}
 
         # Create tarball from the found directory
         tar_cmd = f"sudo tar cvfz {archive_path} {output_dir}/"

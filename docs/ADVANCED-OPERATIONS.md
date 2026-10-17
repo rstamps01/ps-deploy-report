@@ -42,7 +42,7 @@ When enabled, the following links appear in the navigation bar:
 | **API Username/Password** | All workflows | `support` / `654321` | VAST API credentials (support account) |
 | **Node SSH User/Password** | Most workflows | `vastdata` / `vastdata` | SSH credentials for CNodes |
 | **Switch SSH User/Password** | Switch workflows | `cumulus` / `Vastdata1!` | SSH credentials for switches |
-| **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing |
+| **VIP Pool Name** | vperfsanity | `main` | VIP pool name for performance testing. Must exist and have VIPs assigned to CNodes; One-Shot pre-validation checks this and lists the cluster's protocol pools when it does not. |
 
 **Global Setting — Autofill Passwords:** A toggle switch in the Connection Settings tile (above the Advanced menu) auto-populates standard credentials when set to Enable (default). Set to Disable to enter custom credentials for non-standard configurations. When default passwords are enabled, `support`/`654321` is used for all operations except vperfsanity, which is automatically overridden to `admin`/`123456` (the only operation requiring admin access). If the admin password has been changed on the cluster, disable the toggle and enter the current admin credentials manually.
 
@@ -81,17 +81,31 @@ Validates network topology using VAST's vnetmap.py script.
 > When this signature is detected the Reporter now surfaces a single
 > plain-language hint in the log instead of the raw traceback.
 
+> **Node network config check, L3 and EBox clusters.** Before running vnetmap, the
+> Reporter reads `/etc/vast-configure_network.py-params.ini` on the CNode with the
+> same rules `vnetmap.py` uses. It needs `internal_interfaces=`, `data_vlan=` and
+> `eth_mtu=` (or `ib_mtu=` on InfiniBand). If any is missing, vnetmap is reported as
+> **SKIPPED** with the missing entries named, because `vnetmap.py` would fail on every
+> node. When the file records `l3_network_mode=True`, `-l3` is passed so Cumulus
+> switch ports are mapped from LLDP. On EBox clusters, where every host is both a
+> CNode and a DNode, each host is passed to vnetmap once.
+
 ### VAST Support Tools (5 steps)
 
 Runs VAST's diagnostic script inside the cluster container.
 
 | Step | Name | Description |
 |------|------|-------------|
-| 1 | Download Script | Download vast_support_tools.py to CNode |
-| 2 | Run in Container | Execute script inside VAST container |
-| 3 | Validate Results | Check output for errors and warnings |
-| 4 | Package Results | Create archive of diagnostic output |
-| 5 | Download Archive | SCP archive to local laptop |
+| 1 | Download Script to CNode | Download vast_support_tools.py next to the VMS container wrapper |
+| 2 | Set Permissions | Make the script executable |
+| 3 | Run Support Tools | Run `vast_support_tools.py inspect` inside the VAST container |
+| 4 | Create Archive | Create a tarball of the support-checks output |
+| 5 | Download Results | SCP the tarball to the laptop |
+
+**EBox clusters.** The VMS container wrapper is `/vast/data/vms.sh` on CBox clusters, but EBox
+clusters keep it in the CNode container directory (for example `/vast/data/C-4200/vms.sh`). The
+workflow finds the wrapper on the VMS host and places the script beside it. Step 3 fails, with the
+reason, when the tool cannot start (exit code 127), times out, or exits non-zero without output.
 
 ### vperfsanity Performance Test (7 steps)
 
@@ -107,9 +121,21 @@ User-initiated storage performance validation using the vperfsanity test suite. 
 | 6 | Upload Results | Upload results to VAST (requires cluster internet access; skipped gracefully if unavailable) |
 | 7 | Cleanup | Delete test data, remove infrastructure (user, view, policy), and clean up package files |
 
-**Environment variables:** `VAST_VMS` (cluster IP), `ADMIN_USER`, and `ADMIN_PASSWORD` are explicitly passed to all remote script executions.
+**Environment variables:** `ADMIN_USER` and `ADMIN_PASSWORD` are passed to the prepare and cleanup scripts. The scripts find the VMS address themselves from `/vast/vman/mgmt-vip` on the CNode.
 
 **Cross-tenant cleanup:** Step 3 queries `GET /api/views/` to find any `vperfsanity` views across all tenants and deletes them before running the prepare script, preventing HTTP 400 "bucket name already in use" errors from prior runs in different tenant contexts.
+
+**Run time.** Step 4 allows 4 hours: writes, the script's burst-recovery wait of up to 2 hours, then
+reads. A timeout says whether it happened during the burst wait. On large clusters, where one object
+per thread would exceed the S3 limit of 10,000 parts, Step 4 reads the script's suggested object count
+and re-runs once with `-n`.
+
+**Cleanup always runs.** If any step fails or the run is cancelled after cluster objects may exist,
+Step 7 still runs, so test data, the view, policy and user, and elbencho are removed. This applies to
+Run All and to the Test Suite.
+
+**VIP pool.** One-Shot pre-validation fails if the chosen pool does not exist or has no VIPs on
+CNodes, and lists the cluster's protocol pools.
 
 ### VMS Log Bundle (5 steps)
 
@@ -117,11 +143,17 @@ Collects VMS logs for support analysis.
 
 | Step | Name | Description |
 |------|------|-------------|
-| 1 | Discover Sizes | Check log sizes before collection |
+| 1 | Discover Log Sizes | Check log sizes before collection, including recent `/vast/log` files |
 | 2 | Confirm Collection | Review sizes and confirm (skip large bundles) |
 | 3 | Create Archive | Compress logs into tar.gz |
-| 4 | Download Bundle | Transfer archive to laptop |
-| 5 | Verify Contents | Check archive integrity |
+| 4 | Download to Laptop | SCP the archive to the laptop |
+| 5 | Verify Contents | Check archive integrity and contents |
+
+**What is collected.** `/var/log/messages`, `/var/log/vast` and `/var/log/syslog` when present, plus
+files under `/vast/log` changed in the last 24 hours (capped at 2 GB). On 5.x CNodes most VAST logs are
+under `/vast/log`; the `/var/log/vast` and `/var/log/syslog` paths often do not exist. Each source is
+recorded, and when one is missing the result reads **partial** and names what was not collected.
+Remote archives are not yet removed from the CNode after download (FR-11).
 
 ### Switch Configuration Extraction (3 steps)
 
@@ -194,7 +226,7 @@ This exposes the VMS REST API (443) and the CNode's SSH (22) on local ephemeral 
 
 The tool runs a preflight check (`tsh` present + active session) before launching and reports an actionable error if either is missing. Configurable via the `teleport` block in `config/config.yaml` (`enabled`, `ssh_user`, `tsh_path`).
 
-For the full guide, see [Teleport Mode (Beta)](TELEPORT-MODE.md).
+For the full guide, see [Teleport Mode](TELEPORT-MODE.md).
 
 ### Starting a Workflow
 
@@ -242,7 +274,10 @@ Run multiple operations sequentially in a single pass with automated pre-validat
 - Switch SSH connectivity (warn with proceed/stop option on failure)
 - Cluster outbound internet access (required when vnetmap, support tools, or vperfsanity is selected)
 - Tool freshness (warn if any cached tools are >10 days old)
-- vperfsanity duration notice (~30 minutes)
+- vperfsanity VIP pool (fail if the pool does not exist or none of its VIPs are assigned to a CNode)
+- vperfsanity duration notice (1-4 hours on large clusters)
+
+The Test Suite waits up to 15 minutes for pre-validation and never starts execution without its results.
 
 **Cancellation:** Cancel at any point between phases. The current phase completes its in-progress step before stopping.
 
@@ -284,6 +319,11 @@ The bundle contains (when available):
 - As-Built report PDF (matched via sidecar `.meta.json` cluster_ip)
 - As-Built report JSON data file (matched via `cluster_ip` field)
 - SUMMARY.md and manifest.json
+- `diagnostics/operation_log.jsonl`: the session's Output Results log
+
+When an operation failed or was skipped, its placeholder and its `SUMMARY.md` line name the step
+and the error, for example `FAILED — Step 3 (Prepare Infrastructure): Prepare failed (rc=1)`.
+`manifest.json` records per-operation details.
 
 ---
 
@@ -294,7 +334,7 @@ The **Validation Results** page (`/validation-results`) provides a browser for a
 ### Features
 
 - **Operation Tabs:** 9 tabs for each operation type (As-Built Reports, Health Checks, Network Config, Switch Config, vnetmap, vperfsanity, Support Tools, Log Bundles, Bundles)
-- **Profile Filter Dropdown:** Filter all tabs by a saved cluster profile, view all clusters at once, or view only "Unsaved Cluster Results"
+- **Profile Filter Dropdown:** Filter all tabs by a saved cluster profile, view all clusters at once, or view only "Unsaved Cluster Results". Known issue (TP-4): clusters reached through the Tech Port all use `192.168.2.2`, so filtering by one of them also lists the others' results. Check the cluster name in the file name before sharing.
 - **Per-Tab Tables:** Each tab shows file name, type, size, cluster IP, generation date, and View/Download/Delete actions
 - **Tab Badges:** Each tab shows the count of results for the active filter
 

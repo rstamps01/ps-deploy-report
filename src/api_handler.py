@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - API Handler Module
+asbuilt-reporter - API Handler Module
 
 This module provides comprehensive VAST API integration for the As-Built Report Generator.
 It implements session-based authentication, retry logic, and enhanced data collection

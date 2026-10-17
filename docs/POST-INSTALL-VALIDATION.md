@@ -18,24 +18,28 @@ By default, switch SSH connections tunnel through the CNode for field deployment
 
 These checks run automatically via the **Health Check** module.
 
-### Tier 1: API Checks (26 checks)
+### Tier 1: API Checks (27 checks)
 
 | Validation | Health Check | Status |
 |------------|--------------|--------|
-| **RAID Health** | `_check_raid_health()` | Automated |
+| **RAID Health / Rebuild** | `_check_cluster_raid_health()`, `_check_raid_rebuild_progress()` | Automated |
+| **Leader, Cluster and Expansion State** | `_check_leader_state()`, `_check_cluster_state()`, `_check_expansion_state()` | Automated |
 | **Node Status** | `_check_cnode_status()`, `_check_dnode_status()` | Automated |
-| **DBox Status** | `_check_dbox_status()` | Automated |
-| **CBox Status** | `_check_cbox_status()` | Automated |
-| **Active Alarms** | `_check_active_alarms()` | Automated |
-| **VIP Status** | `_check_vip_status()` | Automated |
-| **License Status** | `_check_license_status()` | Automated + Reminder |
-| **Capacity** | `_check_capacity()` | Automated |
+| **Enclosure Status** | `_check_dbox_status()`, `_check_cbox_status()`, `_check_ebox_status()` | Automated |
 | **Firmware** | `_check_firmware_consistency()` | Automated |
-| **Leader Election** | `_check_leader_state()` | Automated |
-| **Upgrade State** | `_check_upgrade_status()` | Automated |
+| **Alarms and Events** | `_check_active_alarms()`, `_check_events()` | Automated |
+| **VIP Pools and Network Settings** | `_check_vip_pools()`, `_check_network_settings()` | Automated |
+| **License** | `_check_license()` | Automated + Reminder |
+| **Capacity and Handles** | `_check_capacity()`, `_check_handle_usage()` | Automated |
+| **Performance Baseline** | `_check_performance_baseline()` | Automated |
+| **Replication, Snapshots, Quotas, Data Protection** | `_check_replication()`, `_check_snapshots()`, `_check_quotas()`, `_check_data_protection()` | Automated |
+| **Device Health** | `_check_device_health()` | Automated |
 | **Call Home** | `_check_call_home_status()` | Automated + Reminder |
 | **Rack/U-Height** | `_check_rack_uheight_config()` | Automated + Reminder |
 | **Switches Registered** | `_check_switches_registered()` | Automated + Reminder |
+
+Checks that do not apply are reported as **skipped** with the reason, for example CBox Status on a
+converged EBox cluster. In the PDF, the results are grouped by functional area under Health Check Details.
 
 ### Tier 3: Switch SSH Checks (6 checks)
 
@@ -43,9 +47,9 @@ These checks run automatically via the **Health Check** module.
 
 | Validation | Health Check | Status |
 |------------|--------------|--------|
-| **MLAG Status** | `_check_switch_mlag()` | Automated |
-| **NTP Status** | `_check_switch_ntp()` | Automated |
-| **Config Backup** | `_check_switch_config()` | Automated |
+| **MLAG Status** | `_check_mlag_status()` (Onyx and Cumulus) | Automated |
+| **NTP Status** | `_check_switch_ntp()` (Onyx and Cumulus) | Automated |
+| **Config Backup** | `_check_switch_config_backup()` | Automated |
 
 ---
 
@@ -73,11 +77,11 @@ These validations require user-initiated workflows via **Advanced Operations** (
 
 **Advanced Ops Workflow:** `support_tool` (5 steps)
 
-1. Download script
-2. Run in VAST container
-3. Validate results
-4. Package output
-5. Download archive
+1. Download script to the CNode, beside the VMS container wrapper (on EBox clusters, `/vast/data/C-*/vms.sh`)
+2. Set permissions
+3. Run `vast_support_tools.py inspect` in the VAST container
+4. Create archive
+5. Download results
 
 ### vperfsanity Performance Validation
 
@@ -91,7 +95,7 @@ These validations require user-initiated workflows via **Advanced Operations** (
 4. Run tests
 5. Collect
 6. Upload
-7. Cleanup
+7. Cleanup (also runs after a failed or cancelled run)
 
 ### VMS Log Bundle Collection
 
@@ -101,7 +105,7 @@ These validations require user-initiated workflows via **Advanced Operations** (
 
 1. Discover log sizes
 2. Confirm collection (based on size)
-3. Create archive
+3. Create archive (`/var/log` sources plus `/vast/log` files from the last 24 hours, capped at 2 GB; marked partial if a source is missing)
 4. Download bundle
 5. Verify contents
 

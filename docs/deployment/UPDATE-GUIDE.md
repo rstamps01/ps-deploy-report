@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Update & Upgrade Guide
+# asbuilt-reporter - Update & Upgrade Guide
 
 **For VAST Professional Services Engineers**
 
@@ -20,7 +20,7 @@
 
 ## Overview
 
-VAST As-Built Report Generator is a desktop application. Updating means downloading
+asbuilt-reporter is a desktop application. Updating means downloading
 a new release artifact and replacing the copy you already have — there is no
 in-place auto-updater, no package manager, and no server to restart.
 

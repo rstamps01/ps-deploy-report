@@ -2,7 +2,7 @@
 
 ## Overview
 
-This directory contains all documentation for the VAST As-Built Report Generator, organized into four categories: top-level operational guides, deployment guides for end users, development references for contributors, and project design documents synced from Confluence.
+This directory contains all documentation for asbuilt-reporter, organized into four categories: top-level operational guides, deployment guides for end users, development references for contributors, and project design documents synced from Confluence.
 
 ---
 

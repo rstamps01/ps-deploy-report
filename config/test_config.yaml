@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Test Configuration
+# asbuilt-reporter - Test Configuration
 # This configuration disables SSL verification for testing environments
 
 api:

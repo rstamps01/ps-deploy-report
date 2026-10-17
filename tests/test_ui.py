@@ -1,5 +1,5 @@
 """
-Browser-based UI tests for the VAST As-Built Reporter web interface.
+Browser-based UI tests for asbuilt-reporter web interface.
 
 Uses Playwright to verify critical UI flows: page navigation, form
 interactions, profile management, report browsing, and config editing.

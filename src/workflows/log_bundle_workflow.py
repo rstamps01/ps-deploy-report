@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from script_runner import ScriptRunner
 from utils.logger import get_logger
+from utils.ssh_adapter import is_ssh_transport_failure, ssh_transport_failure_message
 
 logger = get_logger(__name__)
 
@@ -33,6 +34,13 @@ class LogBundleWorkflow:
         "/var/log/messages",
         "/var/log/syslog",
     ]
+    # VAST container logs live under /vast/log on 5.x CNodes (the legacy dirs above are
+    # often absent).  Only recent files are taken, and only below a size cap, so the
+    # bundle stays small enough to download from the field.
+    RECENT_LOG_DIRS = ["/vast/log"]
+    RECENT_LOG_MINUTES = 24 * 60
+    RECENT_LOG_MAX_MB = 2048
+    MAX_BUNDLE_MB = 5120
     # Intentional [B108]: staging directory on the remote VAST CNode (populated via SSH), not a local tempfile.
     BUNDLE_DIR = "/tmp/vast_log_bundle"  # nosec B108
 
@@ -156,6 +164,28 @@ class LogBundleWorkflow:
                     except ValueError:
                         pass
 
+        # Recent /vast/log is the bulk of a 5.x bundle; include it in the total so
+        # operators are not told "~1 MB" when Step 3 will archive hundreds of MB.
+        minutes = self.RECENT_LOG_MINUTES
+        for log_dir in self.RECENT_LOG_DIRS:
+            size_cmd = (
+                f"sudo find {log_dir} -type f -mmin -{minutes} -printf '%s\\n' 2>/dev/null "
+                "| awk '{s+=$1} END {printf \"%d\\n\", s}'"
+            )
+            result = self._script_runner.execute_remote(host, user, password, size_cmd, timeout=120)
+            try:
+                recent_bytes = int((result.stdout or "0").strip().splitlines()[-1])
+            except (ValueError, IndexError):
+                recent_bytes = 0
+            if recent_bytes <= 0:
+                sizes[f"{log_dir} (recent {minutes // 60}h)"] = "0"
+                size_details.append(f"{log_dir} (recent {minutes // 60}h): 0")
+                continue
+            recent_mb = recent_bytes / 1048576
+            sizes[f"{log_dir} (recent {minutes // 60}h)"] = f"{recent_mb:.0f}M"
+            size_details.append(f"{log_dir} (recent {minutes // 60}h): {recent_mb:.0f}M")
+            total_size += recent_mb
+
         self._step_data["log_sizes"] = sizes
         self._step_data["total_size_mb"] = total_size
 
@@ -165,7 +195,7 @@ class LogBundleWorkflow:
 
         return {
             "success": True,
-            "message": f"Discovered {len(sizes)} log directories, total ~{total_size:.0f} MB",
+            "message": f"Discovered {len(sizes)} log sources, total ~{total_size:.0f} MB",
             "details": "\n".join(size_details) + size_warning,
             "data": {"sizes": sizes, "total_mb": total_size},
         }
@@ -177,7 +207,7 @@ class LogBundleWorkflow:
         total_size = self._step_data.get("total_size_mb", 0)
 
         # Check if size is reasonable
-        if total_size > 5120:  # 5GB limit
+        if total_size > self.MAX_BUNDLE_MB:
             return {
                 "success": False,
                 "message": f"Log bundle too large ({total_size:.0f} MB). Max: 5GB",
@@ -209,19 +239,40 @@ class LogBundleWorkflow:
         # Intentional [B108]: archive is created on the remote CNode with a timestamped name, not a local tempfile.
         archive_path = f"/tmp/{archive_name}"  # nosec B108
 
-        # Create bundle directory and copy logs
-        self._script_runner.execute_remote(host, user, password, f"sudo mkdir -p {self.BUNDLE_DIR}", timeout=30)
+        # Start from an empty staging dir so files from earlier runs are never re-bundled.
+        self._script_runner.execute_remote(
+            host, user, password, f"sudo rm -rf {self.BUNDLE_DIR} && sudo mkdir -p {self.BUNDLE_DIR}", timeout=60
+        )
 
-        # Copy logs to bundle directory
+        # Copy logs to bundle directory, recording which sources actually existed.
+        sources: Dict[str, str] = {}
         for log_dir in self.LOG_DIRS:
-            cmd = f"sudo cp -r {log_dir} {self.BUNDLE_DIR}/ 2>/dev/null || true"
-            self._script_runner.execute_remote(host, user, password, cmd, timeout=120)
+            cmd = f"test -e {log_dir} && sudo cp -r {log_dir} {self.BUNDLE_DIR}/ && echo COPIED || echo MISSING"
+            copy_result = self._script_runner.execute_remote(host, user, password, cmd, timeout=120)
+            sources[log_dir] = "copied" if "COPIED" in (copy_result.stdout or "") else "missing"
 
-        # Create archive
+        for log_dir in self.RECENT_LOG_DIRS:
+            sources[log_dir] = self._copy_recent_logs(host, user, password, log_dir)
+
+        self._step_data["log_sources"] = sources
+        missing = [src for src, state in sources.items() if state != "copied"]
+        for src in missing:
+            self.emit("warn", f"Log source not collected ({sources[src]}): {src}")
+
+        # Create archive, then drop the staging copy so it doesn't accumulate in the CNode's /tmp.
         cmd = f"sudo tar -czf {archive_path} -C {self.BUNDLE_DIR} . 2>&1"
         result = self._script_runner.execute_remote(host, user, password, cmd, timeout=600)
+        self._script_runner.execute_remote(host, user, password, f"sudo rm -rf {self.BUNDLE_DIR}", timeout=120)
 
         if not result.success:
+            rc = result.returncode if result.returncode is not None else 1
+            if is_ssh_transport_failure(rc, result.stdout or "", result.stderr or ""):
+                msg = ssh_transport_failure_message(rc, result.stdout or "", result.stderr or "")
+                return {
+                    "success": False,
+                    "message": f"Failed to create archive — {msg}",
+                    "details": result.stderr or result.stdout,
+                }
             return {
                 "success": False,
                 "message": "Failed to create archive",
@@ -239,11 +290,60 @@ class LogBundleWorkflow:
         self._step_data["archive_path"] = archive_path
         self._step_data["archive_name"] = archive_name
 
+        message = f"Created archive: {archive_name}"
+        if missing:
+            message += f" (partial: not collected {', '.join(missing)})"
         return {
             "success": True,
-            "message": f"Created archive: {archive_name}",
+            "message": message,
             "details": f"Size: {size_result.stdout.strip() if size_result.success else 'unknown'}",
         }
+
+    def _copy_recent_logs(self, host: str, user: str, password: str, log_dir: str) -> str:
+        """Copy files under ``log_dir`` modified in the recent window, if below the size cap.
+
+        Returns:
+            "copied", "missing" (nothing recent / dir absent), "skipped_too_large", or
+            "copy_failed" (the copy staged no files).
+        """
+        assert self._script_runner is not None
+        minutes = self.RECENT_LOG_MINUTES
+        size_cmd = (
+            f"sudo find {log_dir} -type f -mmin -{minutes} -printf '%s\\n' 2>/dev/null "
+            "| awk '{s+=$1} END {printf \"%d\\n\", s}'"
+        )
+        size_result = self._script_runner.execute_remote(host, user, password, size_cmd, timeout=120)
+        try:
+            recent_bytes = int((size_result.stdout or "0").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            recent_bytes = 0
+        if recent_bytes <= 0:
+            return "missing"
+        recent_mb = recent_bytes / 1048576
+        # Keep the whole bundle inside Step 2's 5 GB limit as well as this source's own cap.
+        remaining_mb = self.MAX_BUNDLE_MB - float(self._step_data.get("total_size_mb", 0) or 0)
+        limit_mb = min(self.RECENT_LOG_MAX_MB, remaining_mb)
+        if recent_mb > limit_mb:
+            self.emit(
+                "warn",
+                f"{log_dir}: {recent_mb:.0f} MB changed in the last {minutes // 60}h exceeds the "
+                f"{limit_mb:.0f} MB allowance; not included",
+            )
+            return "skipped_too_large"
+        copy_cmd = (
+            f"cd / && sudo find {log_dir} -type f -mmin -{minutes} -print0 2>/dev/null "
+            f"| sudo xargs -0 -r cp --parents -t {self.BUNDLE_DIR}/ 2>/dev/null; "
+            f"sudo find {self.BUNDLE_DIR}{log_dir} -type f 2>/dev/null | wc -l"
+        )
+        copy_result = self._script_runner.execute_remote(host, user, password, copy_cmd, timeout=600)
+        try:
+            staged = int((copy_result.stdout or "0").strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            staged = 0
+        if not copy_result.success or staged <= 0:
+            self.emit("warn", f"{log_dir}: copying recent logs staged no files; not included")
+            return "copy_failed"
+        return "copied"
 
     def _step_download_to_laptop(self) -> Dict[str, Any]:
         """Step 4: Download archive to local system."""
@@ -302,6 +402,8 @@ class LogBundleWorkflow:
             file_count = len(files)
 
             # Save verification results
+            sources = self._step_data.get("log_sources", {})
+            not_collected = [src for src, state in sources.items() if state != "copied"]
             verification = {
                 "timestamp": datetime.now().isoformat(),
                 "archive_path": local_path,
@@ -309,14 +411,19 @@ class LogBundleWorkflow:
                 "archive_size": self._step_data.get("archive_size", 0),
                 "sample_files": files[:10],
                 "cluster_ip": self._credentials.get("cluster_ip", ""),
+                "sources": sources,
+                "partial": bool(not_collected),
             }
 
             verification_file = Path(local_path).with_suffix(".verification.json")
             verification_file.write_text(json.dumps(verification, indent=2))
 
+            message = f"Archive verified: {file_count} files"
+            if not_collected:
+                message += f" (partial: not collected {', '.join(not_collected)})"
             return {
                 "success": True,
-                "message": f"Archive verified: {file_count} files",
+                "message": message,
                 "details": f"Sample contents:\n" + "\n".join(files[:10]),
                 "data": verification,
             }

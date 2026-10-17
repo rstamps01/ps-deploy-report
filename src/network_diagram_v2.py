@@ -366,7 +366,7 @@ class RackCentricDiagramGenerator:
         """Return ``"spine"`` or ``"leaf"`` from a switch's name.
 
         Leaf/spine fabrics name switches with ``-LF-`` (leaf) and ``-SP-``
-        (spine) segments, e.g. ``SW-LF-01``, ``LAX-01-SW-LF-02``,
+        (spine) segments, e.g. ``SW-LF-01``, ``NYC-01-SW-LF-02``,
         ``SW-SP-01``.  Role is taken from switch discovery naming rather
         than port-map membership: vnetmap only reaches some switches, so a
         membership test would misclassify real leaf switches it could not

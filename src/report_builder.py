@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Report Builder Module
+asbuilt-reporter - Report Builder Module
 
 This module generates professional PDF reports from processed VAST cluster data.
 It creates comprehensive as-built reports with enhanced features including
@@ -24,16 +24,19 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, cast
+from xml.sax.saxutils import escape as xml_escape
 
 # Add src directory to Python path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from brand_compliance import VastBrandCompliance, create_vast_brand_compliance
+from brand_compliance import BRAND_PRODUCT_NAME, VastBrandCompliance, create_vast_brand_compliance
 
 # Import rack diagram module
 from rack_diagram import RackDiagram
 from utils import get_bundle_dir, get_data_dir
+from utils.health_detail_groups import DetailGroup, build_health_detail_groups
 from utils.logger import get_logger
+from utils.pdf_layout import bind_titles_to_content, make_table
 
 try:
     from reportlab.lib import colors
@@ -287,6 +290,16 @@ class VastReportBuilder:
         family = _MAP.get(base, _MAP["Helvetica"])
         return family.get(variant, family["normal"])
 
+    def _table(self, data: Any, **kwargs: Any) -> Any:
+        """Build a report data table (wrapped, centered cells)."""
+        return make_table(data, **kwargs)
+
+    def _finalize_story(self, story: List[Any]) -> List[Any]:
+        """Keep titles on the same page as their tables/sections."""
+        frame_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+        frame_height = getattr(self, "_frame_height", A4[1] - 1.5 * inch)
+        return list(bind_titles_to_content(story, frame_width, frame_height))
+
     def generate_pdf_report(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """
         Generate a professional PDF report from processed data.
@@ -505,7 +518,7 @@ class VastReportBuilder:
             )
             story.append(PageBreak())
 
-        return story
+        return self._finalize_story(story)
 
     @staticmethod
     def _normalize_boxes_to_dict(boxes: Any) -> Dict[str, Any]:
@@ -631,6 +644,98 @@ class VastReportBuilder:
         except Exception:  # pragma: no cover - never block report generation
             pass
 
+    def generate_rack_validation_pdf(
+        self,
+        racks: List[Dict[str, Any]],
+        node_status_map: Dict[str, Any],
+        output_path: str,
+        title: str = "Rack Layout Validation",
+    ) -> Dict[str, int]:
+        """Render rack specs through the report's page template and rack section code.
+
+        Used by ``scripts/generate_rack_validation_report.py`` (RACK-2) so validation
+        racks are drawn exactly as the Physical Rack Layout section draws them.
+
+        Args:
+            racks: Rack specs (see ``_build_rack_layout_flowables``); each is annotated
+                in place with ``placed_devices``, ``u_height_pt`` and ``drawn_height_u``.
+            node_status_map: Status indicator data.
+            output_path: PDF path to write.
+            title: Heading of the summary page.
+
+        Returns:
+            Dict[str, int]: Page number of every rack heading and diagram.
+        """
+        from reportlab.platypus import BaseDocTemplate
+
+        page_size = A4 if self.config.page_size == "A4" else letter
+        page_template = self.brand_compliance.create_vast_page_template(
+            {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "completeness": 1.0, "mgmt_vip": "validation"},
+            page_size=page_size,
+            margins={
+                "margin_left": self.config.margin_left,
+                "margin_right": self.config.margin_right,
+                "margin_top": self.config.margin_top,
+                "margin_bottom": self.config.margin_bottom,
+            },
+            organization=getattr(self.config, "organization", None),
+            include_page_numbers=True,
+        )
+        em = self.brand_compliance.effective_margins
+        self._frame_width = page_size[0] - em["left"] - em["right"]
+        self._frame_height = page_size[1] - em["top"] - em["bottom"]
+
+        styles = getSampleStyleSheet()
+        story: List[Any] = [NextPageTemplate("VastPage"), Paragraph(title, styles["Title"])]
+        pitch = RackDiagram.report_u_height(self._frame_width, self._frame_height, [r["height_u"] for r in racks])
+        story.append(
+            Paragraph(
+                f"{len(racks)} racks, one of each library device per rack, bottom to top in library order. "
+                f"Every rack is drawn at {pitch:.2f}pt per U. Page size {self.config.page_size}.",
+                styles["Normal"],
+            )
+        )
+        story.append(Spacer(1, 0.15 * inch))
+
+        fit_tracker: Dict[str, int] = {}
+        rack_flowables = self._build_rack_layout_flowables(racks, node_status_map, fit_tracker=fit_tracker)
+
+        summary = [["Rack", "Height", "Devices", "U filled", "Fallback images"]]
+        for r in racks:
+            placed = r.get("placed_devices", [])
+            filled = sum(d["u_height"] for d in placed)
+            fallback = [str(d["model"]) for d in placed if d["image_fallback"]]
+            summary.append(
+                [r["name"], f"{r['height_u']}U", str(len(placed)), f"{filled}/{r['height_u']}", ", ".join(fallback)]
+            )
+        story.append(self._table(summary, colWidths=[1.4 * inch, 0.8 * inch, 0.8 * inch, 0.9 * inch, 2.3 * inch]))
+        story.append(PageBreak())
+        story.extend(rack_flowables)
+
+        story.append(PageBreak())
+        story.append(Paragraph("Appendix: U map per rack", styles["Heading2"]))
+        for r in racks:
+            rows = [["U", "Device", "Type", "Image", "Indicators"]]
+            for d in sorted(r.get("placed_devices", []), key=lambda d: d["u_position"]):
+                top = d["u_position"] + d["u_height"] - 1
+                span = f"U{d['u_position']}" if top == d["u_position"] else f"U{d['u_position']}-U{top}"
+                image = f"fallback ({d['image']})" if d["image_fallback"] and d["image"] else d["image"] or "fallback"
+                rows.append([span, str(d["model"]), d["type"], image, str(len(d["indicators"]))])
+            story.append(Paragraph(f"{r['name']} ({r['height_u']}U)", styles["Heading3"]))
+            story.append(self._table(rows, colWidths=[0.8 * inch, 2 * inch, 0.7 * inch, 2.4 * inch, 0.8 * inch]))
+
+        doc = BaseDocTemplate(
+            output_path,
+            pagesize=page_size,
+            rightMargin=em["right"],
+            leftMargin=em["left"],
+            topMargin=em["top"],
+            bottomMargin=em["bottom"],
+        )
+        doc.addPageTemplates([page_template])
+        doc.build(story)
+        return fit_tracker
+
     def _generate_with_reportlab(self, processed_data: Dict[str, Any], output_path: str) -> bool:
         """Generate PDF using ReportLab with two-pass generation for dynamic TOC."""
         try:
@@ -752,7 +857,7 @@ class VastReportBuilder:
         switches = hardware_inventory.get("switches") or []
 
         # Create VAST brand-compliant header
-        title = "VAST As-Built Report"
+        title = BRAND_PRODUCT_NAME
         subtitle = "Customer Deployment Documentation"
 
         header_elements = self.brand_compliance.create_vast_header(
@@ -1609,7 +1714,7 @@ class VastReportBuilder:
 
         content.append(
             Paragraph(
-                "This VAST As-Built Report provides a comprehensive technical documentation of the deployed VAST Data cluster infrastructure, configuration, and operational status. The report serves as a critical reference for system administrators, storage engineers, and technical stakeholders to understand the current state of the cluster deployment, validate configuration compliance, and support ongoing operations and troubleshooting. The Executive Summary consolidates key operational metrics, hardware inventory, and cluster health indicators into high-level overview tables that enable rapid assessment of cluster status and capacity utilization.",
+                "This as-built report provides a comprehensive technical documentation of the deployed VAST Data cluster infrastructure, configuration, and operational status. The report serves as a critical reference for system administrators, storage engineers, and technical stakeholders to understand the current state of the cluster deployment, validate configuration compliance, and support ongoing operations and troubleshooting. The Executive Summary consolidates key operational metrics, hardware inventory, and cluster health indicators into high-level overview tables that enable rapid assessment of cluster status and capacity utilization.",
                 overview_style,
             )
         )
@@ -1727,7 +1832,7 @@ class VastReportBuilder:
         row order EBox → CNode → 2× DNodes per EBox, model from CNode box_vendor, switches at bottom.
         Returns None if no rows (e.g. no eboxes with rack_unit).
         """
-        headers_5 = ["Rack", "Model", "Name/Serial Number", "Status", "Height"]
+        headers_5 = ["Rack", "Model", "Name", "Serial", "Status", "Height"]
         ebox_list = list(eboxes.values())
 
         def ebox_sort_key(e: Dict[str, Any]) -> tuple:
@@ -1748,6 +1853,7 @@ class VastReportBuilder:
             ebox_name = ebox.get("name", "Unknown")
             ebox_state = ebox.get("state", "Unknown")
             rack_unit = ebox.get("rack_unit") or "1U"
+            ebox_serial = ebox.get("serial_number") or ebox.get("serial") or ebox.get("uid") or ""
 
             # Find associated CNode and DNodes by ebox_id
             cnode = None
@@ -1761,15 +1867,16 @@ class VastReportBuilder:
                 model = (bv.split(",")[0].strip()) if isinstance(bv, str) and bv else "Unknown"
 
             # EBox row
-            all_rows.append([rack_name, model, ebox_name, ebox_state, rack_unit])
+            all_rows.append([rack_name, model, ebox_name, ebox_serial or "—", ebox_state, rack_unit])
 
             # CNode row (no Model value)
             if cnode:
                 cnode_name = cnode.get("name") or f"cnode-{cnode.get('id', 'Unknown')}"
                 cnode_status = cnode.get("status", "Unknown")
-                all_rows.append([rack_name, "", cnode_name, cnode_status, rack_unit])
+                cnode_serial = cnode.get("serial_number") or cnode.get("serial") or ""
+                all_rows.append([rack_name, "", cnode_name, cnode_serial or "—", cnode_status, rack_unit])
             else:
-                all_rows.append([rack_name, "", "N/A", "Unknown", rack_unit])
+                all_rows.append([rack_name, "", "N/A", "—", "Unknown", rack_unit])
 
             # Up to 2 DNode rows (no Model value; Status = ACTIVE/FAILED from API)
             matching_dnodes = sorted(
@@ -1780,9 +1887,10 @@ class VastReportBuilder:
             for d in matching_dnodes[:2]:
                 dnode_name = d.get("name") or f"dnode-{d.get('id', 'Unknown')}"
                 dnode_state = d.get("status") or d.get("state") or ""
-                all_rows.append([rack_name, "", dnode_name, dnode_state, rack_unit])
+                dnode_serial = d.get("serial_number") or d.get("serial") or ""
+                all_rows.append([rack_name, "", dnode_name, dnode_serial or "—", dnode_state, rack_unit])
             if len(matching_dnodes) == 0:
-                all_rows.append([rack_name, "", "N/A", "", rack_unit])
+                all_rows.append([rack_name, "", "N/A", "—", "", rack_unit])
 
         # Switches at bottom
         if switches:
@@ -1816,7 +1924,7 @@ class VastReportBuilder:
                 position = ""
                 if hasattr(self, "switch_positions") and switch_num in self.switch_positions:
                     position = f"U{self.switch_positions[switch_num]}"
-                all_rows.append([rack_name_sw, model_sw, serial, state_sw, position])
+                all_rows.append([rack_name_sw, model_sw, sw_name, serial or "—", state_sw, position])
 
         if not all_rows:
             return None
@@ -1861,7 +1969,7 @@ class VastReportBuilder:
 
         # Prepare table data - will be grouped by rack
         all_rows = []
-        headers = ["Rack", "Node", "Model", "Name/Serial Number", "Status", "Height"]
+        headers = ["Rack", "Node", "Model", "Name", "Serial", "Status", "Height"]
 
         # Build mapping of cbox_id to rack_name for CNodes
         cbox_id_to_rack_name = {}
@@ -1912,6 +2020,7 @@ class VastReportBuilder:
                 name = cbox_data.get("name", "Unknown")
                 rack_unit = cbox_data.get("rack_unit", "Unknown")
                 rack_name = cbox_data.get("rack_name") or "Unknown"
+                box_serial = cbox_data.get("serial_number") or cbox_data.get("serial") or cbox_data.get("uid") or ""
 
                 # Get model and status from cnodes data using cbox_id (strip NIC description after comma)
                 model = cbox_vendor_map.get(cbox_id, "Unknown")
@@ -1924,11 +2033,12 @@ class VastReportBuilder:
                 if cnode_names:
                     # Create one row for each CNode
                     for cnode_name in cnode_names:
-                        row = [rack_name, cnode_name, model, name, status, rack_unit]
+                        serial = cnode_name_to_serial.get(cnode_name, "") or box_serial
+                        row = [rack_name, cnode_name, model, name, serial or "—", status, rack_unit]
                         cbox_rows.append((rack_name, cbox_id, cnode_name, row))
                 else:
                     # No CNodes found, create one row with N/A
-                    row = [rack_name, "N/A", model, name, status, rack_unit]
+                    row = [rack_name, "N/A", model, name, box_serial or "—", status, rack_unit]
                     cbox_rows.append((rack_name, cbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by CNode name
@@ -1937,16 +2047,17 @@ class VastReportBuilder:
 
         # Add DBoxes with DNode names
         if dboxes and dnodes:
-            # Create a mapping of dbox_id to list of (dnode_name, dnode_state)
-            dbox_to_dnodes: dict[str, list[tuple[str, str]]] = {}
+            # Create a mapping of dbox_id to list of (dnode_name, dnode_state, serial)
+            dbox_to_dnodes: dict[str, list[tuple[str, str, str]]] = {}
             for dnode in dnodes:
                 dbox_id = dnode.get("dbox_id")
                 dnode_name = dnode.get("name") or f"dnode-{dnode.get('id', 'Unknown')}"
                 dnode_state = dnode.get("status") or dnode.get("state") or "Unknown"
+                dnode_serial = dnode.get("serial_number") or dnode.get("serial") or ""
                 if dbox_id:
                     if dbox_id not in dbox_to_dnodes:
                         dbox_to_dnodes[dbox_id] = []
-                    dbox_to_dnodes[dbox_id].append((dnode_name, dnode_state))
+                    dbox_to_dnodes[dbox_id].append((dnode_name, dnode_state, dnode_serial))
 
             dbox_rows = []
             for dbox_name, dbox_data in dboxes.items():
@@ -1958,23 +2069,25 @@ class VastReportBuilder:
                 state = dbox_data.get("state", "Unknown")
                 rack_unit = dbox_data.get("rack_unit", "Unknown")
                 rack_name = dbox_data.get("rack_name") or "Unknown"
+                box_serial = dbox_data.get("serial_number") or dbox_data.get("serial") or dbox_data.get("uid") or ""
 
                 # Get DNodes for this DBox - create one row per DNode with Model and Status (ACTIVE/FAILED)
                 dnode_list = dbox_to_dnodes.get(dbox_id, [])
                 if dnode_list:
-                    for dnode_name, dnode_state in dnode_list:
+                    for dnode_name, dnode_state, dnode_serial in dnode_list:
                         row = [
                             rack_name,
                             dnode_name,
                             hardware_type,
                             name,
+                            dnode_serial or box_serial or "—",
                             dnode_state,
                             rack_unit,
                         ]
                         dbox_rows.append((rack_name, dbox_id, dnode_name, row))
                 else:
                     # No DNodes found, create one row with N/A
-                    row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                    row = [rack_name, "N/A", hardware_type, name, box_serial or "—", state, rack_unit]
                     dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID, then by DNode name
@@ -1994,7 +2107,8 @@ class VastReportBuilder:
                 rack_name = dbox_data.get("rack_name") or "Unknown"
 
                 # Create row data with N/A for DNode column (4-tuple to match dnode branch)
-                row = [rack_name, "N/A", hardware_type, name, state, rack_unit]
+                box_serial = dbox_data.get("serial_number") or dbox_data.get("serial") or dbox_data.get("uid") or ""
+                row = [rack_name, "N/A", hardware_type, name, box_serial or "—", state, rack_unit]
                 dbox_rows.append((rack_name, dbox_id, "N/A", row))
 
             # Sort by rack name, then by numeric ID
@@ -2009,7 +2123,8 @@ class VastReportBuilder:
                 name = ebox_data.get("name", "Unknown")
                 state = ebox_data.get("state", "Unknown")
                 rack_unit = ebox_data.get("rack_unit", "N/A")
-                row = [rack_name, "EBox", "Enclosure", name, state, rack_unit]
+                box_serial = ebox_data.get("serial_number") or ebox_data.get("serial") or ebox_data.get("uid") or ""
+                row = [rack_name, "EBox", "Enclosure", name, box_serial or "—", state, rack_unit]
                 ebox_rows.append((rack_name, ebox_data.get("id"), row))
             ebox_rows.sort(key=lambda x: (x[0], int(x[1]) if x[1] is not None and str(x[1]).isdigit() else 0))
             all_rows.extend([row for _, _, row in ebox_rows])
@@ -2058,7 +2173,7 @@ class VastReportBuilder:
                     u_pos = self.switch_positions[switch_num]
                     position = f"U{u_pos}"
 
-                row = [rack_name, "N/A", model, serial, state, position]
+                row = [rack_name, "N/A", model, hostname, serial or "—", state, position]
                 switch_rows.append((rack_name, hostname, row))
 
             switch_rows.sort(key=lambda x: (x[0], x[1]))
@@ -2066,7 +2181,7 @@ class VastReportBuilder:
             for idx, (_rn, _hn, row) in enumerate(switch_rows, start=1):
                 if hasattr(self, "switch_positions") and idx in self.switch_positions:
                     u_pos = self.switch_positions[idx]
-                    row[5] = f"U{u_pos}"
+                    row[6] = f"U{u_pos}"
 
             all_rows.extend([row for _, _, row in switch_rows])
 
@@ -2100,8 +2215,9 @@ class VastReportBuilder:
 
         # Two-pass stable sort: name descending first, then primary criteria ascending.
         # Python's stable sort preserves name order within identical primary keys.
+        # Columns: Rack, Node, Model, Name, Serial, Status, Height
         all_rows.sort(key=lambda r: (r[3] or r[1] or ""), reverse=True)
-        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[5] or ""), _dev_order(r)))
+        all_rows.sort(key=lambda r: (r[0] or "Unknown", -_parse_u(r[6] or ""), _dev_order(r)))
 
         # Create table with VAST styling
         return cast(
@@ -2234,6 +2350,108 @@ class VastReportBuilder:
         )
         content.extend(table_elements)
 
+        return content
+
+    def _build_rack_layout_flowables(
+        self,
+        racks: List[Dict[str, Any]],
+        node_status_map: Optional[Dict[str, Any]] = None,
+        section_marker: Optional[Any] = None,
+        first_heading_prefix: str = "Physical Rack Layout - ",
+        fit_tracker: Optional[Dict[str, int]] = None,
+    ) -> List[Any]:
+        """Build one page per rack: heading plus rack diagram, all at one U pitch.
+
+        Every rack in the list is drawn with the same points-per-U value (capped at
+        the 42U pitch, reduced only as far as the tallest rack needs), so racks and
+        devices share one scale across the section and each rack fits its page.
+
+        Args:
+            racks: Rack specs with keys ``name``, ``height_u``, ``cboxes``, ``dboxes``,
+                ``eboxes`` and ``switches`` (device dicts as for ``generate_rack_diagram``).
+            node_status_map: Status indicator data passed to every diagram.
+            section_marker: Optional flowable (e.g. a ``PageMarker``) placed right after
+                the first heading.
+            first_heading_prefix: Prefix for the first rack's heading.
+            fit_tracker: When given, records the page of each rack heading
+                (``rack:<name>:heading``) and of its diagram (``rack:<name>:diagram``).
+
+        Returns:
+            List[Any]: Flowables for the section.
+        """
+        content: List[Any] = []
+        if not racks:
+            return content
+
+        fw = getattr(self, "_frame_width", 7.27 * inch)
+        fh = getattr(self, "_frame_height", 8.5 * inch)
+        pitch = RackDiagram.report_u_height(fw, fh, [r.get("height_u") or 42 for r in racks])
+        drawing_h = RackDiagram.report_drawing_height(fh)
+        styles = getSampleStyleSheet()
+
+        for idx, rack in enumerate(racks):
+            rack_name = rack["name"]
+            rack_gen = RackDiagram(
+                page_width=fw,
+                page_height=drawing_h,
+                rack_height_u=rack.get("height_u") or 42,
+                library_path=self.library_path,
+                user_images_dir=self.user_images_dir,
+                u_height_pt=pitch,
+                show_rack_label=False,
+            )
+            rack_drawing, _ = rack_gen.generate_rack_diagram(
+                rack.get("cboxes") or [],
+                rack.get("dboxes") or [],
+                rack.get("switches"),
+                rack_name=rack_name,
+                eboxes=rack.get("eboxes") or [],
+                node_status_map=node_status_map,
+            )
+            rack["placed_devices"] = rack_gen.placed_devices
+            rack["u_height_pt"] = rack_gen.u_height
+            rack["drawn_height_u"] = rack_gen.rack_height_u
+
+            heading_style = ParagraphStyle(
+                "Rack_Heading",
+                parent=styles["Heading2"],
+                fontSize=14,
+                spaceAfter=8,
+                spaceBefore=(12 if idx > 0 else 0),
+                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
+            )
+            heading = f"{first_heading_prefix}Rack: {rack_name}" if idx == 0 else f"Rack: {rack_name}"
+            content.append(Paragraph(heading, heading_style))
+            if idx == 0 and section_marker is not None:
+                content.append(section_marker)
+            if fit_tracker is not None:
+                content.append(PageMarker(f"rack:{rack_name}:heading", fit_tracker))
+            content.append(Spacer(1, 0.1 * inch))
+
+            rack_table = Table([[rack_drawing]], colWidths=[fw])
+            rack_table.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                )
+            )
+            content.append(rack_table)
+            if fit_tracker is not None:
+                content.append(PageMarker(f"rack:{rack_name}:diagram", fit_tracker))
+            if idx < len(racks) - 1:
+                content.append(PageBreak())
+
+            self.logger.info(
+                f"Added rack diagram for {rack_name} ({rack_gen.rack_height_u}U at {pitch:.2f}pt/U): "
+                f"{len(rack.get('cboxes') or [])} CBoxes, {len(rack.get('dboxes') or [])} DBoxes, "
+                f"{len(rack.get('eboxes') or [])} EBoxes, {len(rack.get('switches') or [])} Switches"
+            )
         return content
 
     def _create_hardware_inventory(
@@ -2818,99 +3036,33 @@ class VastReportBuilder:
                         if "Unknown" in racks_data:
                             self.logger.info("Physical Rack Layout: excluding 'Unknown' rack (not in VMS)")
 
-                    for idx, rack_name in enumerate(sorted_racks):
+                    rack_specs: List[Dict[str, Any]] = []
+                    for rack_name in sorted_racks:
                         rack_hw = racks_data[rack_name]
                         rack_cboxes = rack_hw["cboxes"]
                         rack_dboxes = rack_hw["dboxes"]
                         rack_eboxes = rack_hw.get("eboxes") or []
-                        rack_switches = rack_hw["switches"] if rack_hw["switches"] else None
-
                         # Only generate diagram if rack has hardware (cboxes, dboxes, or eboxes)
-                        if rack_cboxes or rack_dboxes or rack_eboxes:
-                            # Get rack height for this rack (default to 42U if not found)
-                            rack_height_u = rack_height_map.get(rack_name, 42)
+                        if not (rack_cboxes or rack_dboxes or rack_eboxes):
+                            continue
+                        # EBox clusters: use ebox U height in diagram; disregard dbox in diagram
+                        rack_specs.append(
+                            {
+                                "name": rack_name,
+                                "height_u": rack_height_map.get(rack_name, 42),
+                                "cboxes": rack_cboxes,
+                                "dboxes": [] if is_ebox_cluster else rack_dboxes,
+                                "eboxes": rack_eboxes if is_ebox_cluster else [],
+                                "switches": rack_hw["switches"] or None,
+                            }
+                        )
 
-                            # Create rack diagram generator with appropriate rack height
-                            # Reserve headroom for the heading, spacer, and table padding
-                            # that share the page with the diagram
-                            fw = getattr(self, "_frame_width", 7.27 * inch)
-                            fh = getattr(self, "_frame_height", 8.5 * inch)
-                            rack_page_h = fh - 1.0 * inch
-                            rack_gen = RackDiagram(
-                                page_width=fw,
-                                page_height=rack_page_h,
-                                rack_height_u=rack_height_u,
-                                library_path=self.library_path,
-                                user_images_dir=self.user_images_dir,
-                            )
-
-                            # EBox clusters: use ebox U height in diagram; disregard dbox in diagram
-                            diagram_dboxes = [] if is_ebox_cluster else rack_dboxes
-                            diagram_eboxes = rack_eboxes if is_ebox_cluster else []
-
-                            rack_drawing, switch_positions_map = rack_gen.generate_rack_diagram(
-                                rack_cboxes,
-                                diagram_dboxes,
-                                rack_switches,
-                                rack_name=rack_name,
-                                eboxes=diagram_eboxes,
-                                node_status_map=node_status_map,
-                            )
-
-                            # Add rack name heading before diagram
-                            # First rack gets combined heading, subsequent racks get simple heading
-                            rack_heading_style = ParagraphStyle(
-                                "Rack_Heading",
-                                parent=styles["Heading2"],
-                                fontSize=14,
-                                spaceAfter=8,
-                                spaceBefore=(12 if idx > 0 else 0),  # No space before first heading
-                                textColor=self.brand_compliance.colors.BACKGROUND_DARK,
-                            )
-
-                            if idx == 0:
-                                # First rack: Combined heading with section title
-                                heading_text = f"Physical Rack Layout - Rack: {rack_name}"
-                                # Place page marker for Physical Rack Layout section immediately after first heading
-                                if page_tracker is not None and rack_layout_key == "rack_layout":
-                                    content.append(PageMarker("rack_layout", page_tracker))
-                            else:
-                                # Subsequent racks: Simple heading
-                                heading_text = f"Rack: {rack_name}"
-
-                            content.append(Paragraph(heading_text, rack_heading_style))
-                            content.append(Spacer(1, 0.2 * inch))
-
-                            # Center the rack diagram on the page using a table
-                            from reportlab.platypus import Table as RLTable
-
-                            fw = getattr(self, "_frame_width", 7.5 * inch)
-                            rack_table = RLTable(
-                                [[rack_drawing]],
-                                colWidths=[fw],
-                            )
-                            rack_table.setStyle(
-                                TableStyle(
-                                    [
-                                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-                                        ("TOPPADDING", (0, 0), (-1, -1), 0),
-                                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-                                    ]
-                                )
-                            )
-                            content.append(rack_table)
-
-                            # Add page break between racks (except for last one)
-                            if rack_name != sorted_racks[-1]:
-                                content.append(PageBreak())
-
-                            switch_msg = f", {len(rack_switches)} Switches" if rack_switches else ""
-                            self.logger.info(
-                                f"Added rack diagram for {rack_name}: {len(rack_cboxes)} CBoxes, {len(rack_dboxes)} DBoxes{switch_msg}"
-                            )
+                    marker = (
+                        PageMarker("rack_layout", page_tracker)
+                        if page_tracker is not None and rack_layout_key == "rack_layout"
+                        else None
+                    )
+                    content.extend(self._build_rack_layout_flowables(rack_specs, node_status_map, marker))
                 else:
                     # Fallback to placeholder if no position data
                     layout_elements = self.brand_compliance.create_vast_2d_diagram_placeholder(
@@ -3248,7 +3400,7 @@ class VastReportBuilder:
                 )
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
-            table = Table(
+            table = self._table(
                 table_data,
                 colWidths=[
                     page_width * 0.08,  # ID
@@ -3357,7 +3509,7 @@ class VastReportBuilder:
                 )
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
-            table = Table(
+            table = self._table(
                 table_data,
                 colWidths=[
                     page_width * 0.08,  # ID
@@ -3588,19 +3740,21 @@ class VastReportBuilder:
                 content.extend(network_table_elements)
                 content.append(Spacer(1, 16))
 
-        # Node Management Map: VMS device name -> assigned hostname -> external mgmt IP.
-        # Sourced from hardware_inventory so all three identifiers appear together;
-        # the per-node network tables below show name + mgmt IP but not hostname.
+        # Node Management Map: VMS device name -> assigned hostname -> serial -> external mgmt IP.
+        # Sourced from hardware_inventory so identifiers appear together;
+        # the per-node network tables below show name + mgmt IP but not hostname/serial.
         hw_inv = data.get("hardware_inventory", {})
-        map_headers = ["Device Name (VMS)", "Hostname", "Mgmt IP"]
+        map_headers = ["Device Name (VMS)", "Hostname", "Serial", "Mgmt IP"]
 
         def _management_map_rows(nodes: Any) -> List[List[str]]:
             rows: List[List[str]] = []
             for node in sorted(nodes or [], key=self._ip_sort_key):
+                serial = node.get("serial_number") or node.get("serial") or ""
                 rows.append(
                     [
                         node.get("name") or node.get("hostname", "Unknown"),
                         node.get("hostname", "Unknown"),
+                        serial or "—",
                         node.get("mgmt_ip", "Unknown"),
                     ]
                 )
@@ -4631,7 +4785,7 @@ class VastReportBuilder:
                 full_table_data = [headers] + summary_table_data
 
                 # Create table with custom column widths
-                port_table = Table(full_table_data, colWidths=col_widths, repeatRows=1)
+                port_table = self._table(full_table_data, colWidths=col_widths, repeatRows=1)
 
                 # Apply VAST brand table styling
                 table_style = TableStyle(
@@ -5140,7 +5294,6 @@ class VastReportBuilder:
                     bucket = r.get("status", "error")
                     if bucket in summary:
                         summary[bucket] = max(0, summary[bucket] - 1)
-                summary["total"] = sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))
 
         cluster_summary = (processed_data or {}).get("cluster_summary", {})
         mgmt_cnode = cluster_summary.get("mgmt_cnode", "")
@@ -5283,12 +5436,12 @@ class VastReportBuilder:
                 self._safe_table_value(summary.get("warning", 0)),
                 self._safe_table_value(summary.get("skipped", 0)),
                 self._safe_table_value(summary.get("error", 0)),
-                self._safe_table_value(summary.get("total", 0)),
+                self._safe_table_value(sum(summary.get(k, 0) for k in ("pass", "fail", "warning", "skipped", "error"))),
             ]
 
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_width = page_width / len(summary_headers)
-            summary_table = Table(
+            summary_table = self._table(
                 [summary_headers, summary_row],
                 colWidths=[col_width] * len(summary_headers),
                 repeatRows=1,
@@ -5365,7 +5518,7 @@ class VastReportBuilder:
                 page_width * 0.56,  # Message
             ]
 
-            detail_table = Table(detail_data, colWidths=col_widths, repeatRows=1)
+            detail_table = self._table(detail_data, colWidths=col_widths, repeatRows=1)
 
             detail_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
@@ -5403,6 +5556,8 @@ class VastReportBuilder:
             content.append(Spacer(1, 4))
             content.append(detail_table)
             content.append(Spacer(1, 12))
+
+            content.extend(self._create_health_detail_group_tables(results, styles))
         elif not summary:
             content.append(
                 Paragraph(
@@ -5412,6 +5567,63 @@ class VastReportBuilder:
             )
 
         return content
+
+    def _create_health_detail_group_tables(self, results: List[Dict[str, Any]], styles: Any) -> List[Any]:
+        """Render health check details as consolidated group tables (RPT-LAYOUT-1)."""
+        caption_style = ParagraphStyle(
+            "HealthGroupCaption",
+            parent=styles["Normal"],
+            fontSize=self.config.font_size - 1,
+            leading=self.config.font_size + 2,
+            textColor=self.brand_compliance.colors.DARK_GRAY,
+        )
+        content: List[Any] = []
+        for group in build_health_detail_groups(results):
+            content.append(Paragraph(f"<b>{xml_escape(group.title)}</b>", styles["Normal"]))
+            content.append(Spacer(1, 2))
+            content.append(Paragraph(xml_escape(group.caption), caption_style))
+            content.append(Spacer(1, 4))
+            content.extend(self._health_group_table_flowables(group, styles))
+            content.append(Spacer(1, 6))
+        return content
+
+    def _health_group_table_flowables(self, group: DetailGroup, styles: Any) -> List[Any]:
+        page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
+        flowables: List[Any] = []
+        for detail in group.tables:
+            if not detail.rows:
+                continue
+            if detail.title:
+                flowables.append(Paragraph(f"<b>{xml_escape(detail.title)}</b>", styles["Normal"]))
+                flowables.append(Spacer(1, 2))
+            total = sum(detail.col_weights) or 1.0
+            col_widths = [page_width * w / total for w in detail.col_weights]
+            flowables.append(self._build_health_group_table(detail.headers, detail.rows, col_widths))
+            flowables.append(Spacer(1, 6))
+        return flowables
+
+    def _build_health_group_table(self, headers: List[str], rows: List[List[str]], col_widths: List[float]) -> Any:
+        """Branded table for one consolidated health detail group."""
+        table = self._table([headers] + rows, colWidths=col_widths, repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), self.brand_compliance.colors.PURE_WHITE),
+                    ("FONTNAME", (0, 0), (-1, 0), self._font("bold")),
+                    ("FONTSIZE", (0, 0), (-1, -1), max(self.config.font_size - 1, 7)),
+                    ("GRID", (0, 0), (-1, -1), 0.5, self.brand_compliance.colors.BACKGROUND_DARK),
+                    ("PADDING", (0, 0), (-1, -1), 5),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [self.brand_compliance.colors.PURE_WHITE, self.brand_compliance.colors.ALTERNATING_ROW],
+                    ),
+                ]
+            )
+        )
+        return table
 
     def _create_post_deployment_activities_section(
         self,
@@ -5528,7 +5740,7 @@ class VastReportBuilder:
             page_width = getattr(self, "_frame_width", A4[0] - 1.0 * inch)
             col_widths = [page_width * 0.25, page_width * 0.55, page_width * 0.20]
 
-            checklist_table = Table(checklist_data, colWidths=col_widths, repeatRows=1)
+            checklist_table = self._table(checklist_data, colWidths=col_widths, repeatRows=1)
 
             checklist_styles = [
                 ("BACKGROUND", (0, 0), (-1, 0), self.brand_compliance.colors.BACKGROUND_DARK),

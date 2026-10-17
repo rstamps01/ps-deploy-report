@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Main CLI Application.
+Unit tests for asbuilt-reporter Main CLI Application.
 
 This module contains comprehensive unit tests for the main CLI application,
 including argument parsing, workflow orchestration, and error handling.

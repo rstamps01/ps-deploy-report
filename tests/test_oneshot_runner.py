@@ -268,7 +268,7 @@ class TestOneShotPrevalidation(unittest.TestCase):
 
         perf_check = next(r for r in results if r["name"] == "vperfsanity Duration")
         self.assertEqual(perf_check["status"], "info")
-        self.assertIn("30 minutes", perf_check["message"])
+        self.assertIn("hours", perf_check["message"])
 
 
 class TestOneShotExecution(unittest.TestCase):
