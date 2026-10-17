@@ -11,6 +11,10 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-10-17 — v1.6.2 shipped
+- **Decision:** ship v1.6.2: merge [PR #38](https://github.com/rstamps01/ps-deploy-report/pull/38) into `develop`, merge `develop` into `main` (`9111ca2`, pushed with the admin bypass for the PR-only rule, as for v1.6.1), tag `v1.6.2`. The build-release run passed its gates and published the two macOS `.dmg` files and the Windows `.zip` as the latest release.
+- **Rationale:** PR and `develop` CI were green, the release was prepared and reviewed, and the remaining live-test sections were waived on 2026-10-16. **Approver:** user (2026-10-17).
+
 ### 2026-10-16 — v1.6.2 release scope, live validation and product name
 - **Live validation:** the EBox cluster report came back clean; the remaining live-test-plan sections (Test Suite, vperfsanity full and forced-failure runs, C/DBox regression, bundle inspection) are waived for v1.6.2. Field findings go to v1.6.3.
 - **Product name:** "asbuilt-reporter" replaces "VAST As-Built Reporter / Report Generator" in visible text (tab titles, footer, CLI, log banners, bundle README, README and in-app guides, marketing). The packaged app name "VAST Reporter", download file names and legacy installer shortcut names stay, because the updater, installers and uninstallers depend on them. CHANGELOG history, past release notes and Confluence page titles are not rewritten.
