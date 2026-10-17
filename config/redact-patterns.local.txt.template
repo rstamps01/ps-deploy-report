@@ -1,0 +1,6 @@
+# Customer and site names that scripts/sync-cursor-plans.py redacts.
+# Copy to config/redact-patterns.local.txt (gitignored) and add real names
+# there; never commit them. Format: <python regex><TAB><replacement>.
+# Local patterns run after the script's generic ones.
+(?i)\bexample-customer\b	<customer>
+(?i)\bexample-cluster-[a-z0-9]+\b	<customer-cluster>

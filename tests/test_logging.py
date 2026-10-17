@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator logging infrastructure.
+Unit tests for asbuilt-reporter logging infrastructure.
 
 This module contains comprehensive unit tests for the logging system,
 including configuration loading, handler setup, filtering, and error handling.

@@ -11,6 +11,30 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-10-16 — v1.6.2 release scope, live validation and product name
+- **Live validation:** the EBox cluster report came back clean; the remaining live-test-plan sections (Test Suite, vperfsanity full and forced-failure runs, C/DBox regression, bundle inspection) are waived for v1.6.2. Field findings go to v1.6.3.
+- **Product name:** "asbuilt-reporter" replaces "VAST As-Built Reporter / Report Generator" in visible text (tab titles, footer, CLI, log banners, bundle README, README and in-app guides, marketing). The packaged app name "VAST Reporter", download file names and legacy installer shortcut names stay, because the updater, installers and uninstallers depend on them. CHANGELOG history, past release notes and Confluence page titles are not rewritten.
+- **TP-4 logged** for v1.6.3 (Results page cluster filter keyed on the shared Tech Port IP).
+- **Rationale:** the report title already dropped "VAST"; one name everywhere avoids confusing field engineers. **Approver:** user (2026-10-16).
+
+### 2026-09-26 — NET-6, HCF-7 and HCF-8 fold into v1.6.2
+- **Decision:** three more bugs from the EBox field report ship in v1.6.2. NET-6 fixes `local.cfg` group resolution in Network Extraction and vnetmap; HCF-7 compares firmware on version tokens; HCF-8 gives skipped checks a `[SKIP]` icon and shows their reason. NET-6 is implemented as a shared parser with ClusterShell's semantics (every definition of a group is unioned), not as a remote `nodeset -e` call.
+- **Rationale:** all three are small, customer-visible and were confirmed from field artifacts. The field run itself confirms the union semantics: vperfsanity's `clush` reached all 12 hosts that our parsers missed one of. A local parser keeps discovery to the existing single `cat`, adds no remote dependency, and is deterministic to test. **Approver:** user ("execute the plan", 2026-09-26).
+
+### 2026-09-26 — Roadmap gap closure
+- **Decision:** TP-1 marked done (it shipped in v1.5.7 and is archived; the Planned row was a duplicate). DOC-9 closed as obsolete. UPL-1 superseded by HUB-10. UI-5 removed from In progress (it stays Planned). CFG-1 re-scoped with a CI key-parity check. New IDs: HUB-1–23, DATA-1, FR-11–15, OBS-1, TP-3, GOV-1–3, SEC-5, PIPE-1. NET-3 and TP-2 were already in use, so the new items are NET-6 and TP-3.
+- **Rationale:** the roadmap is the live register; stale Planned rows and items discussed but never recorded made status reports wrong. **Approver:** user (2026-09-26).
+
+### 2026-09-26 — Results Hub architecture
+- **Decisions** (from the field diagnostics plan, approved during planning on 2026-09-25/26):
+  1. **Upload target:** a VAST-owned AWS S3 intake reached through presigned URLs. No cloud credentials on laptops.
+  2. **Hybrid topology:** laptops upload to the always-reachable S3 intake; Mission Control (VPN-only) pulls from it via SQS and holds the database, dashboards and read API.
+  3. **Tiered collection:** Tier-0 anonymous counts on by default; run content uploads only after the installation is enrolled. This reverses today's opt-in telemetry default and needs a `TELEMETRY.md` rewrite and Legal notice text (HUB-11).
+  4. **Private triage store first:** diagnostics are triaged in a private store; a sanitized public issue is created only when a fix is scheduled.
+  5. **Destination delivery via the Mission Control relay:** Slack, SFDC, vperfsanity DB and LaunchPad deliveries run server-side with service credentials, never from the laptop.
+  6. **Account mapping:** PSNT lookup suggests the SFDC Account and `#internal-<customer>` channel; the engineer confirms once and the result is cached.
+- **Rationale:** field failures could not be diagnosed without the engineer sending files by hand, and results posting (Field Procedure step 13) is manual. S3 is reachable from customer sites where the VPN is not; keeping connectors server-side keeps destination tokens off field laptops. Customer names stay intact in the internal hub; only material leaving it is sanitized. **Approver:** user (2026-09-25/26).
+
 ### 2026-09-25 — Project plan archive committed, redacted
 - **Decision:** the Cursor plans that belong to this repo are copied into `docs/plans/` by `scripts/sync-cursor-plans.py`. `docs/plans/MANIFEST.txt` is the allow-list, and the originals stay in the shared `~/.cursor/plans/`. Every copy is redacted: IP addresses, credential values, emails, and the lab and customer names in the script's pattern list. Plans that still identify a customer after redaction are withheld and stay local. The audit of the archive is deferred to PLN-1.
 - **Rationale:** the shared plans directory is local to one machine, mixes several projects, and isn't versioned, so past activity couldn't be audited from the repo. The repo is public, so verbatim copies would publish lab addresses and customer names. **Approver:** user (2026-09-25).
@@ -81,6 +105,52 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 ---
 
 ## Memlog (newest first)
+
+### 2026-10-08 — Teleport Beta removal carried onto the v1.6.2 branch
+- The Beta Feature pill was still visible in field testing because PR #36 had not merged. Its UI and doc changes are now applied on `fix/v1.6.2-field-feedback` as well, so the v1.6.2 build ships without the badge either way. The changes match PR #36 line for line, so merging both should not conflict, except possibly in the CHANGELOG `[Unreleased]` entry.
+
+### 2026-09-29 — EBox QA run (EBox lab cluster): intermittent SSH login rejection
+- The fixes from 2026-09-28 held: vnetmap ran and produced results, and vperfsanity Prepare succeeded on an existing protocol pool. Failed: Support Tools Step 2 (`sudo chmod`) and vperfsanity Step 4 (`vperfsanity_run.sh -w -r`, 912 ms). Both were refused at SSH login (`Permission denied, please try again` → `Too many authentication failures`, rc=255), one second after a successful login to the same VMS IP with the same credentials. The tests never started; FR-3 cleanup ran and succeeded.
+- Only one node holds the VMS IP, so this is not an IP conflict. The app never tries alternative node passwords, so it is not locking itself out. The `sshpass` path offered 4 keys before the password (2 Teleport agent entries plus `id_ed25519` and `id_rsa`), while paramiko uses `look_for_keys=False, allow_agent=False`. Why the server refused the password twice is not visible from the laptop; check the node's sshd journal and faillock.
+- Implemented: `PreferredAuthentications=keyboard-interactive,password,publickey` when a password is supplied; one retry after 3 s for rc=255 login rejections with no command output (a wrong password is sshpass rc=5 and is not retried); `is_ssh_auth_failure` / `ssh_auth_failure_message`; vperfsanity reports the rejection as a login failure; SSH banner noise stripped from stderr.
+
+### 2026-09-28 — EBox L3 field run (4× EBox, L3/VXLAN, Cumulus)
+- Bundle: support tools, log bundle, switches, network, health and report OK. vnetmap and vperfsanity failed. A separate 409 "One-shot execution already running" came from the Test Suite page auto-starting after its 120 s pre-validation poll ran out while Switch SSH probes were still running (~2.5 min).
+- vperfsanity: Prepare ran with the default VIP pool `main`, which does not exist on this cluster (the cluster has one replication pool and three protocol pools). vperfsanity's `vast_get_vippool_cnodes.sh` queries `/api/vips/?vippool__name=<pool>`; the empty result failed Prepare, and FR-3 cleanup ran.
+- vnetmap: `/etc/vast-configure_network.py-params.ini` was read on all 4 nodes, but `get_internal_interfaces()` raised (bare except), so every node logged "Failed to get network configure", followed by `IndexError` at `all_nodes[0]['configure_network'][0]`. The parser needs `internal_interfaces=`, `data_vlan=` and `eth_mtu=` tokens. Most likely cause: no `data_vlan` in L3 network mode. Not yet confirmed; the file was not captured. `-l3` alone would not help, because it only changes switch-side mapping (LLDP instead of the MAC table) and node parsing runs first. The `jsonrpclib` warning only affects Arista, so running via EBox `vms.sh` is not required here.
+- Implemented (uncommitted, no version bump): VIP pool pre-validation; vnetmap node-config pre-check that mirrors vnetmap's parser (skip with reason, log the relevant keys), `-l3` when `l3_network_mode=True`, de-duplicated EBox hosts in `-i`; SUMMARY reasons for failed/skipped operations; Test Suite waits up to 15 min and never starts without results.
+- If vnetmap still cannot parse L3 node configs, that is a vnetmap.py limitation to raise with the vnetmap owners, not an app defect.
+
+### 2026-09-27 — SE Lab C/DBox validation: SSH transport diagnostics
+- Lab run on selab-var-202: vperfsanity Step 4 and Log Bundle Step 3 failed with laptop SSH drops (`Can't assign requested address` / `Broken pipe`, rc=255) mid-elbencho write and mid-tar. FR-3 cleanup still ran and removed view/policy/user. Cross-tenant views SSH appeared to hang ~31 min (likely laptop sleep freezing the timeout timer).
+- Implemented: `is_ssh_transport_failure` / process-group kill on SSH timeout; vperfsanity + log_bundle report "SSH connection lost"; Network Extraction emits the SSH error for a failed `local.cfg` read; Log Bundle Step 1 includes recent `/vast/log` size. Still uncommitted; no version bump. Retest with laptop plugged in / awake.
+
+### 2026-09-26 — Roadmap gap closure + NET-6 / HCF-7 / HCF-8
+- Status-and-roadmap-gaps plan executed on `fix/v1.6.2-field-feedback` (still uncommitted). Roadmap: Results Hub section, FR follow-ups, new bugs, governance rows, stale entries fixed, Next steps and Execution status refreshed. PLANS-INDEX re-bucketed.
+- Code, failing-first: `src/utils/clustershell_groups.py` + both workflow parsers (NET-6); `_firmware_compare_key` in `health_checker` (HCF-7); `_emit_health_results` and shared status icons in `oneshot_runner` (HCF-8).
+- Quality gate: version-sync, black, flake8 (+E722), mypy (CI flags) clean; 1783 passed, 70.86% coverage; plan archive in sync.
+- Next: the live-cluster validation pass before any commit or version bump. Open question for that pass: on 5.x, `/var/log/vast` and `/var/log/syslog` are usually absent, so FR-5 may label every bundle partial.
+
+### 2026-09-26 — EBox field report: root cause + FR-1–6 on the v1.6.2 branch
+- Engineer's ops log and app log confirmed four tool bugs: EBox `vms.sh` path (support tools), a 60-min vperfsanity cap inside the script's 2 h burst wait, skipped cleanup after a failed step (~53 TB left on the cluster), and switch ops failing when VMS has no switches. The log bundle was also near-empty.
+- Decision (user): ship the fixes as v1.6.2 on the current branch; recorder/export and FR-7–10 go to v1.6.3. Plan archived as `docs/plans/field_diagnostics_pipeline_9b6d157c.plan.md` (customer names added to the sync redaction list).
+- Implemented with failing-first tests: FR-1 to FR-6 and `NOT_UPLOADED` idle. Not committed; no version bump. Lab verification of the EBox wrapper and `/vast/log` paths is still required before release.
+
+### 2026-09-25 — Ross follow-up intake + DIAG-1 expand
+- Slack ask (Cooper-Smith): friendly model names w/ drive size; RLR quantity; metadata triplication; 1-strip; vperfsanity in Cluster Info.
+- Roadmap: **RCS-1–5** added (target v1.7.0). DIAG-1 script expanded: `dboxes/`/`eboxes/` + capacity/RLR/strip/triplication highlights.
+- Parallel plan for this branch: after DIAG-1 expand → SR-2 → RPT-VALIDATION-1/2. Teleport beta exit + Dashboard Before-you-begin = separate PRs (user-directed).
+
+### 2026-09-25 — v1.6.2 implementation (DIAG-1 + HCF-1/2/5/6 + INV-1)
+- Branch `fix/v1.6.2-field-feedback`: all six v1.6.2 code items implemented with TDD.
+- DIAG-1 script ready; live probe still needs lab credentials from operator.
+- Pending before PR: quality-gate. Pending leftovers (not blocking PR): SW-1 logs, 1.6.0→1.6.1 update-pill check, Slack/Confluence draft.
+
+### 2026-09-25 — v1.6.2 start-work
+- Branch: `fix/v1.6.2-field-feedback` off `develop` @ `e28d524` (CI green: run `36127788711`).
+- Scaffold: `docs/issues/v1.6.2/{spec,plan,tasks}.md`.
+- DIAG-1: `scripts/discover_api_fields.py` is multi-rack-only (cnodes/dnodes/boxes/switches — no ssds/nvrams/licenses/clusters). Adding `scripts/diag_api_fields.py` instead. Live lab run still needs credentials from operator.
+- Next: HCF-1 failing-first tests, then HCF-2/5/6 and INV-1.
 
 ### 2026-09-25 — Thread handoff
 - Tracking brought current: v1.6.1 shipped, DOC-16 done ([PR #33](https://github.com/rstamps01/ps-deploy-report/pull/33)), field-feedback items added to the roadmap, and the plan archive added at `docs/plans/`.

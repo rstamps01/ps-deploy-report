@@ -2160,7 +2160,7 @@ class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
     the workflow silently mis-classifies the cluster as InfiniBand.
 
     Repro evidence: ``import/cluster202/output-logs-043026`` (Eth) +
-    the 02:05:21 line of the mammoth Tech-Port run on 2026-04-30
+    the 02:05:21 line of an IB-cluster Tech-Port run on 2026-04-30
     (``$ curl -k https://192.168.2.2/api/switches/``).
 
     Fix: ``vnetmap_creds["tunnel_address"]`` must be set to the

@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Uninstallation Guide
+# asbuilt-reporter - Uninstallation Guide
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@
 
 ## Overview
 
-This guide provides comprehensive instructions for uninstalling the VAST As-Built Report Generator from your system. You can choose between automated scripts or manual procedures based on your preference.
+This guide provides comprehensive instructions for uninstalling asbuilt-reporter from your system. You can choose between automated scripts or manual procedures based on your preference.
 
 ### What Gets Removed
 

@@ -1,8 +1,8 @@
-# VAST As-Built Report Generator - Permissions Guide
+# asbuilt-reporter - Permissions Guide
 
 ## Overview
 
-The VAST As-Built Report Generator requires **elevated read permissions** to access all necessary API endpoints for comprehensive report generation. This guide explains the permission requirements and provides troubleshooting steps.
+asbuilt-reporter requires **elevated read permissions** to access all necessary API endpoints for comprehensive report generation. This guide explains the permission requirements and provides troubleshooting steps.
 
 ---
 

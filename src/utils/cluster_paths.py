@@ -47,7 +47,7 @@ def sanitize_component(value: Optional[str], max_len: int = 64) -> str:
     Keeps ``[A-Za-z0-9._-]``, collapses any other run of characters to a single
     ``-``, strips leading/trailing separators, and truncates to ``max_len``.
     Returns ``""`` for ``None``/empty/all-unsafe input. Case is preserved so
-    names such as ``LAMBDA-VAST-LAX-01`` stay readable.
+    names such as ``ACME-VAST-NYC-01`` stay readable.
     """
     if not value:
         return ""

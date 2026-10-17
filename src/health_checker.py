@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Health Checker Module
+asbuilt-reporter - Health Checker Module
 
 Standalone module that runs cluster health checks via the VAST REST API.
 Produces HealthCheckReport containing HealthCheckResult items consumed by
@@ -11,6 +11,7 @@ Module boundary: must NOT import report_builder or data_extractor.
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -21,6 +22,21 @@ from utils.ssh_adapter import (
     run_ssh_command,
     run_interactive_ssh,
 )
+
+_VERSION_TOKEN_RE = re.compile(r"\d+(?:\.\d+)+(?:[-_+.][0-9A-Za-z]+)*")
+
+
+def _firmware_compare_key(value: Any) -> str:
+    """Comparison key for a firmware/version string.
+
+    The same firmware is reported in different formats (EBox DNode containers
+    on one host report one BIOS as ``2.90`` and ``A56 v2.90 (01/09/2026)``),
+    so only the dotted version tokens are compared.  Strings without a dotted
+    version compare as-is (case-insensitive).
+    """
+    text = str(value).strip()
+    tokens = _VERSION_TOKEN_RE.findall(text)
+    return " ".join(tokens) if tokens else text.lower()
 
 
 class CancelledError(Exception):
@@ -107,6 +123,7 @@ class HealthChecker:
         self.thresholds = {**self.DEFAULT_THRESHOLDS, **(thresholds or {})}
         self.progress_callback = progress_callback
         self._cluster_cache: Optional[Dict[str, Any]] = None
+        self._ebox_cluster_cached: Optional[bool] = None
         self._original_timeout: Optional[int] = None
         self._original_retries: Optional[int] = None
 
@@ -327,15 +344,6 @@ class HealthChecker:
                 "Verify the leader CNode is active and healthy (cross-reference with CNode Status).",
                 "If leader CNode is inactive: cluster should auto-elect a new leader; monitor progress.",
                 "Persistent non-steady states may indicate split-brain: contact VAST Support immediately.",
-            ],
-        },
-        "Upgrade State": {
-            "severity": "LOW",
-            "impact": "Active upgrades temporarily reduce cluster availability during rolling restarts.",
-            "steps": [
-                "If upgrade is 'DONE': no action needed; previous upgrade completed successfully.",
-                "If upgrade is in progress: monitor VAST Management UI > System > Upgrade for progress.",
-                "Do not perform other maintenance operations during an active upgrade.",
             ],
         },
     }
@@ -634,10 +642,27 @@ class HealthChecker:
                 session.mount("http://", adapter)
                 session.mount("https://", adapter)
         self._cluster_cache = None
+        self._ebox_cluster_cached = None
 
-    # ------------------------------------------------------------------
-    # Tier 1 -- API checks
-    # ------------------------------------------------------------------
+    def _is_ebox_cluster(self) -> bool:
+        """Return True when the cluster has one or more EBoxes (converged topology).
+
+        Result is cached for the duration of a health-check run so CBox/DBox
+        messaging can explain topology without repeating the eboxes/ GET.
+        """
+        if self._ebox_cluster_cached is not None:
+            return self._ebox_cluster_cached
+        try:
+            data = self.api_handler._make_api_request("eboxes/")
+            if data is None:
+                self._ebox_cluster_cached = False
+            else:
+                if not isinstance(data, list):
+                    data = [data] if data else []
+                self._ebox_cluster_cached = len(data) > 0
+        except Exception:
+            self._ebox_cluster_cached = False
+        return bool(self._ebox_cluster_cached)
 
     def run_api_checks(self) -> List[HealthCheckResult]:
         checks = [
@@ -646,7 +671,6 @@ class HealthChecker:
             self._check_leader_state,
             self._check_cluster_state,
             self._check_expansion_state,
-            self._check_upgrade_state,
             self._check_cnode_status,
             self._check_dnode_status,
             self._check_dbox_status,
@@ -969,65 +993,6 @@ class HealthChecker:
                 duration_seconds=time.time() - start,
             )
 
-    # --- 6. Upgrade State -------------------------------------------------
-
-    def _check_upgrade_state(self) -> HealthCheckResult:
-        start = time.time()
-        try:
-            data = self._get_cluster_data()
-            if not data:
-                return HealthCheckResult(
-                    check_name="Upgrade State",
-                    category="api",
-                    status="error",
-                    message="Failed to retrieve cluster data",
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-
-            upgrade_state = data.get("upgrade_state")
-            details = {"upgrade_state": upgrade_state}
-
-            if not upgrade_state or str(upgrade_state).upper() in (
-                "",
-                "NONE",
-                "NULL",
-                "DONE",
-            ):
-                return HealthCheckResult(
-                    check_name="Upgrade State",
-                    category="api",
-                    status="pass",
-                    message=(
-                        "No upgrade in progress"
-                        if str(upgrade_state).upper() != "DONE"
-                        else "Previous upgrade completed successfully"
-                    ),
-                    details=details,
-                    timestamp=self._now(),
-                    duration_seconds=time.time() - start,
-                )
-            return HealthCheckResult(
-                check_name="Upgrade State",
-                category="api",
-                status="warning",
-                message=f"Upgrade active: {upgrade_state}",
-                details=details,
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-        except CancelledError:
-            raise
-        except Exception as e:
-            return HealthCheckResult(
-                check_name="Upgrade State",
-                category="api",
-                status="error",
-                message=f"Check failed: {e}",
-                timestamp=self._now(),
-                duration_seconds=time.time() - start,
-            )
-
     # --- 7. CNode Status --------------------------------------------------
 
     def _check_cnode_status(self) -> HealthCheckResult:
@@ -1212,11 +1177,15 @@ class HealthChecker:
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
                 )
+            if self._is_ebox_cluster():
+                msg = f"All {total} EBox storage enclosures ACTIVE"
+            else:
+                msg = f"All {total} DBoxes are ACTIVE"
             return HealthCheckResult(
                 check_name="DBox Status",
                 category="api",
                 status="pass",
-                message=f"All {total} DBoxes are ACTIVE",
+                message=msg,
                 details=details,
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
@@ -1242,11 +1211,15 @@ class HealthChecker:
             data = self.api_handler._make_api_request("cboxes/")
             if data is None:
                 # CBox endpoint may not exist on all clusters
+                if self._is_ebox_cluster():
+                    msg = "Not applicable — converged EBox cluster (covered by EBox Status)"
+                else:
+                    msg = "CBox endpoint not available (standard cluster)"
                 return HealthCheckResult(
                     check_name="CBox Status",
                     category="api",
                     status="skipped",
-                    message="CBox endpoint not available (standard cluster)",
+                    message=msg,
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
                 )
@@ -1254,11 +1227,15 @@ class HealthChecker:
                 data = [data] if data else []
 
             if not data:
+                if self._is_ebox_cluster():
+                    msg = "Not applicable — converged EBox cluster (covered by EBox Status)"
+                else:
+                    msg = "No CBoxes found on this cluster"
                 return HealthCheckResult(
                     check_name="CBox Status",
                     category="api",
                     status="skipped",
-                    message="No CBoxes found on this cluster",
+                    message=msg,
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
                 )
@@ -1409,18 +1386,23 @@ class HealthChecker:
 
             firmware_fields = ["bios_version", "bmc_version", "os_version", "fw_version", "sw_version"]
             mismatches: Dict[str, Dict[str, List[str]]] = {}
+            format_only: List[str] = []
 
             for node_type, nodes in [("cnode", cnodes), ("dnode", dnodes)]:
                 if not nodes or not isinstance(nodes, list):
                     continue
                 for fw_field in firmware_fields:
                     versions: Dict[str, List[str]] = {}
+                    keys = set()
                     for node in nodes:
                         val = node.get(fw_field)
                         if val is not None and val != "":
                             versions.setdefault(str(val), []).append(str(node.get("name", node.get("id", "?"))))
-                    if len(versions) > 1:
+                            keys.add(_firmware_compare_key(val))
+                    if len(keys) > 1:
                         mismatches[f"{node_type}.{fw_field}"] = versions
+                    elif len(versions) > 1:
+                        format_only.append(f"{node_type}.{fw_field}")
 
             if not mismatches and not cnodes and not dnodes:
                 return HealthCheckResult(
@@ -1442,11 +1424,14 @@ class HealthChecker:
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,
                 )
+            message = "Firmware versions are consistent across all nodes"
+            if format_only:
+                message += f" (reported in different formats: {', '.join(format_only)})"
             return HealthCheckResult(
                 check_name="Firmware Consistency",
                 category="api",
                 status="pass",
-                message="Firmware versions are consistent across all nodes",
+                message=message,
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,
             )
@@ -2062,11 +2047,22 @@ class HealthChecker:
             ]
             details = {k: data.get(k) for k in perf_fields if data.get(k) is not None}
 
+            if not details:
+                return HealthCheckResult(
+                    check_name="Performance Baseline",
+                    category="performance",
+                    status="skipped",
+                    message="No performance metrics available on cluster object",
+                    details=details,
+                    timestamp=self._now(),
+                    duration_seconds=time.time() - start,
+                )
+
             return HealthCheckResult(
                 check_name="Performance Baseline",
                 category="performance",
                 status="pass",
-                message="Performance baseline captured (informational)",
+                message=f"Performance baseline captured ({len(details)} metrics)",
                 details=details,
                 timestamp=self._now(),
                 duration_seconds=time.time() - start,

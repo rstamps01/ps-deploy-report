@@ -1,7 +1,7 @@
 """
-VAST As-Built Report Generator - Logging Infrastructure
+asbuilt-reporter - Logging Infrastructure
 
-This module provides comprehensive logging infrastructure for the VAST As-Built Report Generator.
+This module provides comprehensive logging infrastructure for asbuilt-reporter.
 It implements dual-output logging (console with colors + file with rotation), configurable
 log levels, and professional formatting suitable for both development and production use.
 
@@ -23,7 +23,7 @@ import queue
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Iterable, List, Optional
 import yaml
 import colorlog
 
@@ -183,9 +183,31 @@ class SensitiveDataFilter(logging.Filter):
         return f"{key}_[REDACTED]"
 
 
+def redact_log_entries(
+    entries: Iterable[Dict[str, Any]], secrets: Optional[Iterable[str]] = None
+) -> List[Dict[str, Any]]:
+    """Mask credentials in Output Results entries before they are written anywhere.
+
+    Args:
+        entries: Output Results entries (``message``, ``details``, ...).
+        secrets: Credential values used by the run; every occurrence becomes ``[REDACTED]``.
+
+    Returns:
+        List[Dict[str, Any]]: Copies of the entries with string fields redacted.
+    """
+    ordered = sorted({s for s in (secrets or []) if s}, key=len, reverse=True)
+
+    def redact(text: str) -> str:
+        for secret in ordered:
+            text = text.replace(secret, "[REDACTED]")
+        return str(SensitiveDataFilter._CREDENTIAL_RE.sub(SensitiveDataFilter._redact_match, text))
+
+    return [{k: redact(v) if isinstance(v, str) else v for k, v in entry.items()} for entry in entries]
+
+
 def setup_logging(config: Optional[Dict[str, Any]] = None, config_file: Optional[str] = None) -> logging.Logger:
     """
-    Set up comprehensive logging infrastructure for the VAST As-Built Report Generator.
+    Set up comprehensive logging infrastructure for asbuilt-reporter.
 
     This function configures both console and file logging with appropriate formatters,
     handlers, and security measures. It supports configuration via dictionary or YAML file.

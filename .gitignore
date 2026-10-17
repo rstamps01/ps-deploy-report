@@ -144,6 +144,8 @@ config/local_config.yaml
 # Local runtime config (may contain site-specific credentials); only the
 # sanitized ``config/config.yaml.template`` is tracked.
 config/config.yaml
+# Customer/site names redacted by scripts/sync-cursor-plans.py (never published).
+config/redact-patterns.local.txt
 # .vscode/  # Commented out to allow VSCode configuration to be committed
 # VSCode user-specific settings (keep project config, exclude user settings)
 .vscode/settings.json.user

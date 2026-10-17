@@ -75,20 +75,53 @@ class TestRedact:
         assert text == "ping <email> about <lab-cluster>"
 
     def test_customer_cluster_names_redacted(self, sync):
-        text, _ = sync.redact("replay vast_data_LAMBDA-VAST-LAX-01_20260609_162644.json; mammoth fixtures")
-        assert text == "replay vast_data_<cluster>_20260609_162644.json; <customer-cluster> fixtures"
-        text, _ = sync.redact("see RCA_LAMBDA-VAST-SLC-02_DBox.md")
+        text, _ = sync.redact("replay vast_data_ACME-VAST-NYC-01_20260609_162644.json")
+        assert text == "replay vast_data_<cluster>_20260609_162644.json"
+        text, _ = sync.redact("see RCA_ACME-VAST-SFO-02_DBox.md")
         assert text == "see RCA_<customer-cluster>_DBox.md"
 
-    def test_python_lambda_keyword_kept(self, sync):
-        text, _ = sync.redact("key=lambda d: d.name")
-        assert text == "key=lambda d: d.name"
+    def test_local_patterns_applied_after_generic(self, sync):
+        local = [(r"\bNYC-01\b", "<customer-site>"), (r"(?i)\bacme\b", "<customer>")]
+        text, hits = sync.redact("ACME-VAST-NYC-01 racks; acme switch at NYC-01", local)
+        assert text == "<customer-cluster> racks; <customer> switch at <customer-site>"
+        assert hits == 3
 
     def test_idempotent(self, sync):
         once, _ = sync.redact("10.0.0.5 password: x user@example.com selab-var-203")
         twice, hits = sync.redact(once)
         assert twice == once
         assert hits == 0
+
+
+class TestLocalPatterns:
+    def test_missing_file_returns_none(self, sync, tmp_path):
+        assert sync.load_local_patterns(tmp_path / "absent.txt") is None
+
+    def test_parses_tab_separated_lines(self, sync, tmp_path):
+        path = tmp_path / "p.txt"
+        path.write_text("# comment\n\n(?i)\\bacme\\b\t<customer>\n")
+        assert sync.load_local_patterns(path) == [(r"(?i)\bacme\b", "<customer>")]
+
+    @pytest.mark.parametrize("line", ["no-tab-here", "(unclosed\t<x>", "\t<x>"])
+    def test_malformed_line_rejected(self, sync, tmp_path, line):
+        path = tmp_path / "p.txt"
+        path.write_text(line + "\n")
+        with pytest.raises(ValueError):
+            sync.load_local_patterns(path)
+
+    def test_sync_refuses_to_write_without_local_file(self, sync, tmp_path, monkeypatch, capsys):
+        dest = tmp_path / "plans"
+        dest.mkdir()
+        (dest / "MANIFEST.txt").write_text("a.plan.md\n")
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.plan.md").write_text("acme")
+        monkeypatch.setattr(sync, "DEST_DIR", dest)
+        monkeypatch.setattr(sync, "MANIFEST", dest / "MANIFEST.txt")
+        rc = sync.main(["--source", str(src), "--patterns", str(tmp_path / "absent.txt")])
+        assert rc == 1
+        assert not (dest / "a.plan.md").exists()
+        assert "not found" in capsys.readouterr().err
 
 
 class TestManifest:

@@ -1,5 +1,5 @@
 """
-Unit tests for VAST As-Built Report Generator Health Checker Module.
+Unit tests for asbuilt-reporter Health Checker Module.
 
 Covers HealthCheckResult, HealthCheckReport, HealthChecker (tier-1 API checks,
 orchestration, serialisation), and the Prometheus text-format parser.
@@ -235,6 +235,124 @@ class TestHealthChecker:
         result = checker._check_expansion_state()
         assert result.status == "warning"
         assert "EXPANDING" in result.message
+
+    # --- Upgrade State (removed) ---------------------------------------
+
+    def test_upgrade_state_check_not_run(self, checker, mock_api_handler):
+        """VMS reports upgrade_state as UNKNOWN on idle clusters, so the check was removed."""
+        mock_api_handler._make_api_request.return_value = _cluster_data(upgrade_state="UNKNOWN")
+        names = [r.check_name for r in checker.run_api_checks()]
+        assert names
+        assert "Upgrade State" not in names
+        assert not hasattr(checker, "_check_upgrade_state")
+
+    # --- EBox topology messaging (HCF-2) --------------------------------
+
+    def test_cbox_skipped_on_ebox_cluster_explains_topology(self, checker, mock_api_handler):
+        """Empty cboxes/ on an EBox cluster should explain converged topology (still skipped)."""
+
+        def side_effect(endpoint, *args, **kwargs):
+            if endpoint == "cboxes/":
+                return []
+            if endpoint == "eboxes/":
+                return [{"name": "ebox-1", "state": "ACTIVE"}]
+            return None
+
+        mock_api_handler._make_api_request.side_effect = side_effect
+        result = checker._check_cbox_status()
+        assert result.status == "skipped"
+        assert "converged EBox" in result.message
+        assert "Not applicable" in result.message
+
+    def test_dbox_pass_on_ebox_cluster_mentions_ebox_enclosures(self, checker, mock_api_handler):
+        """dboxes/ on EBox clusters are storage enclosures — message should say so."""
+
+        def side_effect(endpoint, *args, **kwargs):
+            if endpoint == "dboxes/":
+                return [
+                    {"name": "ebox-stor-1", "state": "ACTIVE"},
+                    {"name": "ebox-stor-2", "state": "ACTIVE"},
+                ]
+            if endpoint == "eboxes/":
+                return [{"name": "ebox-1", "state": "ACTIVE"}]
+            return None
+
+        mock_api_handler._make_api_request.side_effect = side_effect
+        result = checker._check_dbox_status()
+        assert result.status == "pass"
+        assert "EBox storage enclosures" in result.message
+        assert "2" in result.message
+
+    def test_cbox_empty_standard_cluster_unchanged(self, checker, mock_api_handler):
+        def side_effect(endpoint, *args, **kwargs):
+            if endpoint == "cboxes/":
+                return []
+            if endpoint == "eboxes/":
+                return []
+            return None
+
+        mock_api_handler._make_api_request.side_effect = side_effect
+        result = checker._check_cbox_status()
+        assert result.status == "skipped"
+        assert "No CBoxes found" in result.message
+
+    # --- Firmware Consistency (HCF-7) -----------------------------------
+
+    @staticmethod
+    def _nodes_side_effect(cnodes, dnodes):
+        def side_effect(endpoint, *args, **kwargs):
+            return {"cnodes/": cnodes, "dnodes/": dnodes}.get(endpoint)
+
+        return side_effect
+
+    def test_firmware_equivalent_bios_formats_pass(self, checker, mock_api_handler):
+        """EBox: the -4000 and -4100 DNode containers on one host report the
+        same BIOS as '2.90' and 'A56 v2.90 (01/09/2026)'."""
+        dnodes = [{"name": f"dnode-128-{i}-4000", "bios_version": "2.90"} for i in range(1, 13)] + [
+            {"name": f"dnode-128-{i}-4100", "bios_version": "A56 v2.90 (01/09/2026)"} for i in range(1, 13)
+        ]
+        mock_api_handler._make_api_request.side_effect = self._nodes_side_effect([], dnodes)
+        result = checker._check_firmware_consistency()
+        assert result.status == "pass", result.message
+
+    def test_firmware_real_bios_mismatch_still_warns(self, checker, mock_api_handler):
+        dnodes = [
+            {"name": "dnode-1", "bios_version": "A56 v2.90 (01/09/2026)"},
+            {"name": "dnode-2", "bios_version": "A56 v2.80 (06/01/2025)"},
+        ]
+        mock_api_handler._make_api_request.side_effect = self._nodes_side_effect([], dnodes)
+        result = checker._check_firmware_consistency()
+        assert result.status == "warning"
+        assert set(result.details["mismatches"]["dnode.bios_version"]) == {
+            "A56 v2.90 (01/09/2026)",
+            "A56 v2.80 (06/01/2025)",
+        }
+
+    def test_firmware_os_kernel_build_difference_still_warns(self, checker, mock_api_handler):
+        cnodes = [
+            {"name": "cnode-1", "os_version": "4.18.0-553.el8"},
+            {"name": "cnode-2", "os_version": "4.18.0-477.el8"},
+        ]
+        mock_api_handler._make_api_request.side_effect = self._nodes_side_effect(cnodes, [])
+        result = checker._check_firmware_consistency()
+        assert result.status == "warning"
+        assert "cnode.os_version" in result.details["mismatches"]
+
+    # --- Performance Baseline (HCF-5) -----------------------------------
+
+    def test_performance_baseline_skipped_when_no_metrics(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = _cluster_data()
+        result = checker._check_performance_baseline()
+        assert result.status == "skipped"
+        assert "no performance metrics" in result.message.lower()
+
+    def test_performance_baseline_pass_when_metrics_present(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = _cluster_data(iops=1200, latency=0.4)
+        result = checker._check_performance_baseline()
+        assert result.status == "pass"
+        assert result.details is not None
+        assert result.details.get("iops") == 1200
+        assert result.details.get("latency") == 0.4
 
     # ===================================================================
     # Orchestration tests

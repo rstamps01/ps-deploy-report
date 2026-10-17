@@ -348,9 +348,16 @@ class SwitchConfigWorkflow:
         switch_ips, api_switch_models = self._get_switch_ips_from_api()
 
         if not switch_ips:
-            self.emit("error", "No switches found via API")
-            self.emit("info", "Ensure the cluster has managed switches and API credentials are correct")
-            return {"success": False, "message": "No switches found via VAST API"}
+            self.emit("warn", "No switches registered in VMS - skipping switch configuration extraction")
+            self.emit(
+                "info",
+                "Add the switches in VMS (Infrastructure > Switches) and re-run, or collect switch configs manually.",
+            )
+            return {
+                "success": False,
+                "skipped": True,
+                "message": "No switches registered in VMS; add switches in VMS to enable switch extraction",
+            }
 
         self.emit("info", "")
         self.emit("success", f"Found {len(switch_ips)} switch(es) via API: {', '.join(switch_ips)}")

@@ -1,5 +1,5 @@
 """
-VAST As-Built Report Generator - Data Extractor Module
+asbuilt-reporter - Data Extractor Module
 
 This module processes and organizes data collected from the VAST API for report generation.
 It transforms raw API responses into structured, report-ready data with enhanced capabilities

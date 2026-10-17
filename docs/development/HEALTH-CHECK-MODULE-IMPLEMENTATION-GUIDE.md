@@ -153,7 +153,7 @@ class HealthChecker:
 3. `_check_leader_state` -- GET clusters/, check `leader_state`
 4. `_check_cluster_state` -- GET clusters/, check `state` == "ONLINE", `enabled` == true
 5. `_check_expansion_state` -- GET clusters/, `expansion_state`; pass if null/empty, warning if active
-6. `_check_upgrade_state` -- GET clusters/, `upgrade_state`; pass if null/empty, warning if active
+6. *(Removed in v1.6.2)* `_check_upgrade_state` -- VMS reports `upgrade_state` as `UNKNOWN` on idle clusters, so the check gave no useful signal
 7. `_check_cnode_status` -- GET cnodes/, all `status` == "ACTIVE" and `enabled` == true
 8. `_check_dnode_status` -- GET dnodes/, all `status` == "ACTIVE" and `enabled` == true
 9. `_check_dbox_status` -- GET dboxes/, all `state` == "ACTIVE"

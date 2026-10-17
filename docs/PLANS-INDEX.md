@@ -2,7 +2,7 @@
 
 Reconciliation of the prior Cursor plan files (in the shared `~/.cursor/plans/`) against the actual shipped state of this repository (release tags + `CHANGELOG.md`) — so there is one place that says which plans shipped, which were superseded, and which have genuinely open scope (pipeline §9).
 
-**Last reconciled:** 2026-07-31 — 173 plan files scanned (103 belong to this repo; 70 belong to other projects).
+**Last reconciled:** 2026-07-31 — 173 plan files scanned (103 belong to this repo; 70 belong to other projects). **Partial re-bucket 2026-09-26:** the 24 archived plans with open todos (see the section below the buckets).
 
 **Archive:** since 2026-09-25, redacted copies of this repo's plans are versioned in [`plans/`](plans/README.md). That's 93 plans: the 103 above, minus the 12 deleted on 2026-07-31, plus 14 plans found during the archive build or created since. Plans from other projects in the shared directory are excluded. Audit against the archive rather than `~/.cursor/plans/`. **Re-reconciliation pending (PLN-1):** 14 archived plans aren't bucketed below yet (`bug_tracking_documentation_update`, `dashboard_mechanical_odometer`, `odometer_design_review`, `ebox_label_&_sort_fix`, `fix_stepper_layout_issues`, `fix_ui_consistency`, `one-shot_report_fixes`, `reorder_sections_fix_config`, `test_suite_log_colors`, `test_suite_success_box`, `v1.5.0_pre-release_completion`, `v1.5.0_release_readiness`, `field_feedback_triage`, `thread_handoff_prep`).
 
@@ -79,6 +79,45 @@ All correspond to features already in `CHANGELOG.md` / released tags; the plan f
 | `api_health_check_report` | Ad-hoc selab-var-203 health debrief | Operational one-off, not product scope — no tracking |
 | `protect_main_branch` | GitHub branch protection on `main` | **New — proposed SEC-2 (Medium).** `main` confirmed unprotected; add to roadmap |
 | `expose_asbuilt-reporter_remotely` | Expose app via Windows `netsh portproxy` | **New — proposed OPS-1 (Low), if still needed.** Add to roadmap pending confirmation |
+
+## 2026-09-26 re-bucket: archived plans with open todos (24)
+
+Starting point for PLN-1. Covers only the 24 archived plans in [`plans/`](plans/README.md) whose frontmatter still has pending todos, checked against `CHANGELOG.md`, tags and the roadmap. The frontmatter in the archived copies is not edited here; PLN-1 does that.
+
+**Active or tracked (open scope is real):**
+
+| Plan | Open todos | Disposition |
+|------|-----------|-------------|
+| `field_diagnostics_pipeline_9b6d157c` | 38/39 | **Active.** Phase 1 is largely on the v1.6.2 branch (FR-1–6); partial items and Phases 2–6 are tracked as FR-7–15, OBS-1, TP-3, HUB-1–23, DATA-1. |
+| `expose_asbuilt-reporter_remotely_8b7d907f` | 7/7 | Tracked as OPS-1 (confirm need). |
+| `agentic_cicd_pipeline_2eb2e257` | 1/46 | Only the optional phase-2 patterns remain; now tracked as PIPE-1. |
+| `protect_main_branch_1260e0f8` | 3/4 | SEC-2 done; optional `develop` protection now tracked as SEC-5. |
+| `switch_discovery_workflow_8950f43a` | 1/7 | `field-styling` CSS task; fold into UI-5. |
+| `nav_devmode_and_log_levels_7a0eb56b` | 1/10 | Remaining item is AO-20 (tracked). |
+| `post_install_validation_gap_analysis_0e446ebb` | 3/13 | Bundling, tests and the CI job exist; the remaining items overlap HUB-2/HUB-9. Verify and close in PLN-1. |
+
+**Shipped, frontmatter stale (Bucket A; tick in PLN-1):**
+
+| Plan | Open todos | Evidence |
+|------|-----------|----------|
+| `field_feedback_triage_1d3ae704` | 5/5 | Roadmap section, DECISIONS entry, PR #34. |
+| `pre-release_cleanup_5baaebf3` | 8/8 | `pre-1.5.8-cleanup` tag. |
+| `pre-release_readiness_plan_7c8c6a1f` | 3/10 | v1.5.8 shipped. |
+| `v1.5.8_release_prep_28d74930` | 11/11 | v1.5.8 tag. |
+| `v1.5.8_release_batch_abeea236` | 22/22 | v1.5.8 tag. |
+| `tech-port_stack_v1.5.7_4ee5b210` | 1/18 | v1.5.7 tag; TP-1/TP-2 archived. |
+| `segment_results_by_psnt_739a98da` | 7/7 | QP-2 done. |
+| `node_management_map_table_6c99be75` | 7/7 | QP-1 done. |
+| `ui_and_software_mgmt_enhancements_a24a071a` | 7/7 | QP-3 done; item 2b deferred on the roadmap. |
+| `macos_intel_support_ef739002` | 4/4 | arm64 and x64 DMGs ship. |
+| `dashboard_mechanical_odometer_069590fe` | 3/3 | Shipped. |
+| `cnode_management_status_check_030edbce` | 2/2 | HC-1, v1.5.0. |
+| `restore_atlassian_mcp_4487dc26` | 3/3 | The Atlassian MCP works. |
+| `bug_tracking_documentation_update_6cbbc0ee` | 4/4 | BUG-1–6 in `ROADMAP-ARCHIVE.md`. |
+| `tp-1_fix_+_ui_investigation_a2760958` | 1/7 | RPT-VALIDATION-1/2 fixed on the v1.6.2 branch. |
+| `thread_handoff_prep_3cdd35ba` | 1/8 | Handoff delivered. |
+
+**Not product scope:** `api_health_check_report_c3c36f66` (2/2), an operational one-off cluster debrief. No tracking.
 
 ## Not this repo (70)
 

@@ -1,6 +1,6 @@
-# VSCode Configuration for VAST As-Built Report Generator
+# VSCode Configuration for asbuilt-reporter
 
-This directory contains VSCode configuration files to provide an optimal development environment for the VAST As-Built Report Generator project.
+This directory contains VSCode configuration files to provide an optimal development environment for asbuilt-reporter project.
 
 ## Configuration Files
 

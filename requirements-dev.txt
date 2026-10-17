@@ -1,4 +1,4 @@
-# VAST As-Built Report Generator - Development Dependencies
+# asbuilt-reporter - Development Dependencies
 # These are NOT bundled into the self-contained application.
 
 # Include runtime deps

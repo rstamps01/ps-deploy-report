@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-VAST As-Built Report Generator - Main CLI Application
+asbuilt-reporter - Main CLI Application
 
-This is the main entry point for the VAST As-Built Report Generator.
+This is the main entry point for asbuilt-reporter.
 It provides a command-line interface for connecting to VAST clusters,
 collecting data, and generating comprehensive as-built reports.
 
@@ -47,13 +47,13 @@ from report_builder import create_report_builder  # noqa: E402
 from utils.logger import get_logger, setup_logging  # noqa: E402
 
 # Canonical version is src/app.py APP_VERSION; kept in sync per release-packaging.
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.6.2"
 __version__ = APP_VERSION
 
 
 class VastReportGenerator:
     """
-    Main VAST As-Built Report Generator application.
+    Main asbuilt-reporter application.
 
     This class orchestrates the complete workflow from API connection
     to report generation, providing a professional command-line interface
@@ -73,7 +73,7 @@ class VastReportGenerator:
         self.data_extractor = None
         self.report_builder = None
 
-        self.logger.info("VAST As-Built Report Generator initialized")
+        self.logger.info("asbuilt-reporter initialized")
 
     def run(self, args: argparse.Namespace) -> int:
         """
@@ -86,7 +86,7 @@ class VastReportGenerator:
             int: Exit code (0 for success, 1 for failure)
         """
         try:
-            self.logger.info("Starting VAST As-Built Report Generator")
+            self.logger.info("Starting asbuilt-reporter")
             self.logger.info(f"Target cluster: {args.cluster_ip}")
             self.logger.info(f"Output directory: {args.output_dir}")
 
@@ -115,7 +115,7 @@ class VastReportGenerator:
             # Step 6: Display summary
             self._display_summary(processed_data, args)
 
-            self.logger.info("VAST As-Built Report Generator completed successfully")
+            self.logger.info("asbuilt-reporter completed successfully")
             return 0
 
         except KeyboardInterrupt:
@@ -671,7 +671,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         argparse.ArgumentParser: Configured argument parser
     """
     parser = argparse.ArgumentParser(
-        description="VAST As-Built Report Generator - Automated cluster documentation tool",
+        description="asbuilt-reporter - Automated cluster documentation tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -774,7 +774,7 @@ Examples:
         "Requires --node-user / --node-password for SSH access.",
     )
 
-    parser.add_argument("--version", action="version", version=f"VAST As-Built Report Generator {APP_VERSION}")
+    parser.add_argument("--version", action="version", version=f"asbuilt-reporter {APP_VERSION}")
 
     return parser
 
@@ -956,7 +956,7 @@ def run_gui(host: str = "127.0.0.1", port: int = 5173, dev_mode: bool = False) -
         return 1
 
     url = f"http://{host}:{bound_port}"
-    print("\n  VAST As-Built Reporter — Web UI")
+    print("\n  asbuilt-reporter — Web UI")
     print(f"  Running at {url}")
     if dev_mode:
         print("  Developer Mode: ENABLED")
@@ -1122,7 +1122,7 @@ def run_from_json() -> int:
     try:
         parser = argparse.ArgumentParser(
             description=(
-                "VAST As-Built Report Generator — offline JSON replay mode "
+                "asbuilt-reporter — offline JSON replay mode "
                 "(regenerate PDF from a saved vast_data_*.json intermediate)"
             ),
         )
@@ -1242,7 +1242,7 @@ def main() -> int:
     # ``vast-reporter --version`` reports the version instead of falling
     # through to the default GUI launch.
     if "--version" in sys.argv or "-V" in sys.argv:
-        print(f"VAST As-Built Report Generator {APP_VERSION}")
+        print(f"asbuilt-reporter {APP_VERSION}")
         return 0
 
     dev_mode = "--dev-mode" in sys.argv

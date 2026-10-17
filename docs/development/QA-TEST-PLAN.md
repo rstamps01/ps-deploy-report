@@ -61,17 +61,16 @@ Diagram rendering (Cairo/SVG) is the most platform-sensitive area — always exe
 
 ---
 
-## 4. Release-specific functional cases — v1.6.1 delta
+## 4. Release-specific functional cases — v1.6.2 delta
 
-Derived from the changes since `v1.6.0` (`git log v1.6.0..HEAD`). Validate each on at least one OS (all OSes for anything path/OS-sensitive):
+Derived from the changes since `v1.6.1` (`git log v1.6.1..HEAD`). Validate each on at least one OS (all OSes for anything path/OS-sensitive):
 
-- **HPE Turin CBox at 1U (no Library entry required):** generate a report against a cluster whose CBoxes report `model=hpe_turin_cbox` (or replay `selab-var-202`). Adjacent boxes at U24 and U25 occupy one U each with unstretched artwork. Library page lists the built-in device.
-- **Library outranks vendor fallbacks:** a user-added device whose key contains a broad built-in substring (`hpe_…`, `arista_…`) renders at the Library height, not the vendor fallback. (Covered by `tests/test_hardware_library.py`; confirm on a live Library entry if one exists.)
-- **Update dropdown architecture split:** with an update available, the dropdown lists macOS Apple Silicon, macOS Intel, and Windows as separate links, plus **Exit & Upgrade**. A 1.6.0 client still receives a single `download_url_mac`.
-- **Output Results Expand:** Expand keeps the heading (and Menu) directly under the navbar; Escape collapses. Menu is clickable before backend hydration finishes.
-- **Deployment tools live only in the nav dropdown:** Reporter tile has no Update Tools / Tool Status buttons; dropdown shows per-tool description, size, and date.
-- **In-app Docs tokens:** Installation Guide download names match `VAST-Reporter-v1.6.1-…`; no leftover `v1.5.0` artifact names. Unregistered `.md` links open on GitHub, not 404 in-app.
-- **Advanced Configuration reachable:** ☰ menu → Configuration; Installation Guide and SE one-pager describe that path.
+- **EBox Test Suite (FR-1, FR-4, NET-6, HCF-8):** on an EBox cluster, Support Tools finds `/vast/data/C-*/vms.sh` and completes; Network Extraction and vnetmap list every node; switch operations report SKIPPED when VMS has no switches; skipped health checks print `[SKIP]` with a reason.
+- **vperfsanity (FR-2, FR-3):** a full run reaches the read phase; a forced failure or Cancel still runs Step 7 cleanup and leaves no view, policy, user or elbencho on the cluster.
+- **Log Bundle and bundles (FR-5, FR-6):** the archive includes recent `/vast/log` files and reads partial when a source is missing; FAILED/SKIPPED placeholders and `SUMMARY.md` name the step and error; `diagnostics/operation_log.jsonl` is in the bundle.
+- **Report layout (RPT-TITLE-1, RPT-LAYOUT-1, RACK-1, HWL-3):** the title page reads "asbuilt-reporter"; table text wraps; no table title is separated from its table; 45U to 52U racks draw at their height with every U labelled; Milan and Turin 2U EBoxes draw at 2U. `scripts/generate_rack_validation_report.py` reports no problems.
+- **Product name:** browser tab titles, footer, `--version` and the Docs tab headings read "asbuilt-reporter"; the installed app is still "VAST Reporter".
+- **In-app Docs tokens:** Installation Guide download names match `VAST-Reporter-v1.6.2-…`.
 
 Cluster-dependent cases are validated manually against a lab cluster or a captured fixture; they are not part of CI.
 
@@ -93,16 +92,16 @@ python3 -m pytest tests/test_app.py tests/test_updater.py tests/test_update_rele
 
 ## 6. Update-notification (in-app "UPDATE AVAILABLE" pill) validation
 
-**Requirement:** an existing v1.6.0 (and v1.5.8) install must detect that v1.6.1 has been released and surface the header pill with working download links.
+**Requirement:** an existing v1.6.1 (and older) install must detect that v1.6.2 has been released and surface the header pill with working download links.
 
 **Mechanism (already shipped in v1.5.8):** `src/updater.py` queries the GitHub Releases API for `rstamps01/ps-deploy-report`, `/api/update/status` serves the result, and `base.html` + `app.js` render the `#appStatusPill` / `#appUpdate` dropdown. Config: `updates.enabled: true` (stable channel) in `config/config.yaml.template`. From v1.6.1 the dropdown lists per-architecture macOS links; older clients still read the single `download_url_mac` slot.
 
 ### 6a. Staged dry-run (automated — runs in CI, no network)
-`tests/test_update_release_readiness.py` feeds a realistic GitHub `/releases` payload using the **actual v1.6.1 asset names** (and the historical v1.6.0 set) and asserts a 1.6.0 client reports `update_available` with populated mac-arm64 / mac-x64 / win download URLs, a 1.5.8 client also sees 1.6.1, ignores non-version tags (`pre-1.5.8-cleanup`), and excludes pre-releases on the stable channel. This is the automated proof the pill flips before the real tag exists.
+`tests/test_update_release_readiness.py` feeds a realistic GitHub `/releases` payload using the **actual release asset names** for v1.6.0, v1.6.1 and v1.6.2 and asserts a 1.6.1 client sees 1.6.2 and a 1.6.0 client reports `update_available` with populated mac-arm64 / mac-x64 / win download URLs, a 1.5.8 client also sees 1.6.1, ignores non-version tags (`pre-1.5.8-cleanup`), and excludes pre-releases on the stable channel. This is the automated proof the pill flips before the real tag exists.
 
 ### 6b. Live verification (manual — right after the tag is published)
 1. Ensure the GitHub Release for `vX.Y.Z` is **published, non-draft, non-prerelease, marked latest** (`build-release.yml` does this for non-pre tags).
-2. Launch a **real v1.6.0 (or v1.5.8) build** on an internet-connected machine.
+2. Launch a **real v1.6.1 (or v1.6.0) build** on an internet-connected machine.
 3. Confirm the header pill flips to **UPDATE AVAILABLE**, the dropdown shows "Version X.Y.Z (you have 1.6.0)", the Release-notes link opens the release, and Download offers the OS-matched installer. A 1.6.1 client shows three architecture choices; a 1.5.8/1.6.0 client shows the single `mac` slot.
 4. Repeat on Windows (and, if desired, verify the dropdown lists both mac DMGs).
 

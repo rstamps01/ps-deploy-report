@@ -205,21 +205,50 @@ def probe_switch_credentials(
     if not combos:
         return None
 
-    for user, password in combos:
+    for idx, (user, password) in enumerate(combos, start=1):
         try:
             rc, _stdout, stderr = _hostname_attempt(switch_ip, user, password, log, ssh_kwargs)
             if rc == 0:
+                log.info(
+                    "Authenticated %s as '%s' with candidate %d/%d",
+                    switch_ip,
+                    user,
+                    idx,
+                    len(combos),
+                )
                 return str(user), str(password)
             # Only fall back to interactive ``show version`` when the
             # failure looks like auth — a rc != 0 with permission-denied
             # / authentication-failed in stderr is the Onyx signature.
             combined = (stderr or "").lower()
             if "permission denied" in combined or "authentication" in combined:
+                log.debug(
+                    "Rejected candidate %d/%d for %s (user '%s') — trying next",
+                    idx,
+                    len(combos),
+                    switch_ip,
+                    user,
+                )
                 rc_i, _out_i, _err_i = run_interactive_ssh(
                     switch_ip, user, password, "show version", timeout=_PROBE_TIMEOUT, **ssh_kwargs
                 )
                 if rc_i == 0:
+                    log.info(
+                        "Authenticated %s as '%s' with candidate %d/%d (interactive)",
+                        switch_ip,
+                        user,
+                        idx,
+                        len(combos),
+                    )
                     return str(user), str(password)
+            else:
+                log.debug(
+                    "Non-auth probe failure for %s candidate %d/%d (rc=%s); trying next",
+                    switch_ip,
+                    idx,
+                    len(combos),
+                    rc,
+                )
         except Exception as exc:  # noqa: BLE001 - defensive per-candidate trap
             log.debug("Switch %s probe raised %s; trying next candidate", switch_ip, exc)
             continue

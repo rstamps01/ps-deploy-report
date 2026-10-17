@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Reporter - VAST As-Built Reporter{% endblock %}
+{% block title %}Reporter - asbuilt-reporter{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -84,7 +84,7 @@
                         <span class="switch-track"><span class="switch-thumb"></span></span>
                         <span class="switch-label">Autofill Passwords</span>
                     </label>
-                    <span class="info-icon" title="When ON, auto-populates and locks default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!&#10;&#10;When OFF, default usernames stay populated and password fields are cleared for manual entry.">&#9432;</span>
+                    <span class="info-icon" title="When ON, auto-populates and locks default credentials:&#10;VMS: support / 654321&#10;Node: vastdata / vastdata&#10;Switch: cumulus / Vastdata1!&#10;&#10;When OFF, fields unlock for editing; current values are kept (including passwords loaded from a profile).">&#9432;</span>
                 </div>
 
                 <!-- Action bar: Advanced + Save + Delete -->
@@ -128,9 +128,8 @@
                         <span>VMS Mgmt Mode</span>
                         <span class="info-icon" title="Connect directly to the VMS management IP over HTTPS (no SSH tunnel).">&#9432;</span>
                     </label>
-                    <label class="conn-mode-opt conn-mode-opt--beta">
+                    <label class="conn-mode-opt conn-mode-opt--teleport">
                         <span id="reporterTshPill" class="tsh-pill tsh-pill--warn conn-tsh-pill">Install tsh</span>
-                        <span class="beta-badge">Beta Feature</span>
                         <input type="radio" name="conn_mode" value="teleport" onchange="onConnModeChange()">
                         <span>Teleport Mode</span>
                         <span class="info-icon" title="Connect through Teleport (tsh). Requires an active `tsh login` session. Forwards the cluster API (443) and SSH (22) to local ports. Set the Cluster IP field above to the cluster's VMS management VIP (e.g. 10.143.10.100) — NOT 127.0.0.1 — so the API is forwarded to the VMS and reachable from any node.">&#9432;</span>
@@ -755,24 +754,11 @@
 }
 .conn-mode-opt input[type="radio"] { accent-color: var(--accent); cursor: pointer; }
 
-/* "Beta Feature" pill badge above the Teleport Mode option */
-.conn-mode-opt--beta { position: relative; }
-.beta-badge {
-    position: absolute;
-    bottom: calc(100% + 5px);
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    font-size: 9px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
-    line-height: 1; padding: 3px 9px; border-radius: 9999px;
-    color: #fff; background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    box-shadow: 0 1px 3px rgba(99, 102, 241, 0.4);
-    pointer-events: none;
-}
-/* tsh install-status pill stacked directly above the Beta Feature badge */
+/* Teleport Mode option anchors the tsh install-status pill above the radio */
+.conn-mode-opt--teleport { position: relative; }
 .conn-tsh-pill {
     position: absolute;
-    bottom: calc(100% + 22px);
+    bottom: calc(100% + 5px);
     left: 50%;
     transform: translateX(-50%);
     cursor: help;
@@ -1061,27 +1047,34 @@ function _setCredLocked(locked) {
     });
 }
 
+function _setFieldValue(el, value) {
+    /** Set an input value and fire input/change so the browser paints it (RPT-VALIDATION-1). */
+    if (!el) return;
+    el.value = value == null ? '' : String(value);
+    try {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    } catch (_) { /* IE / restricted contexts */ }
+}
+
 function toggleDefaultCredentials() {
     var on = document.getElementById('useDefaultCreds').checked;
     if (on) {
         // Fill every credential field with its default and lock them all.
         for (var key in DEFAULT_CREDENTIALS) {
             var el = document.getElementById(profileFieldMap[key] || key);
-            if (el) el.value = DEFAULT_CREDENTIALS[key];
+            if (el) _setFieldValue(el, DEFAULT_CREDENTIALS[key]);
         }
         _setCredLocked(true);
     } else {
-        // Unlock; keep default usernames populated but clear passwords for
-        // manual entry.
+        // Unlock only. Keep whatever is currently in the fields (profile or
+        // typed values) so turning Autofill off to edit a username does not
+        // wipe passwords (RPT-VALIDATION-2).
         _setCredLocked(false);
         for (var uk in DEFAULT_USERNAMES) {
             var ue = document.getElementById(profileFieldMap[uk] || uk);
-            if (ue) ue.value = DEFAULT_USERNAMES[uk];
+            if (ue && !ue.value) _setFieldValue(ue, DEFAULT_USERNAMES[uk]);
         }
-        ['password', 'node_password', 'switch_password'].forEach(function(k) {
-            var pe = document.getElementById(profileFieldMap[k] || k);
-            if (pe) pe.value = '';
-        });
     }
 }
 
@@ -1439,10 +1432,12 @@ async function loadProfile() {
     var profiles = await fetchProfiles();
     var p = profiles[name];
     if (!p) return;
+    // Unlock before writing so programmatic values paint (RPT-VALIDATION-1).
+    _setCredLocked(false);
     for (var profileKey in profileFieldMap) {
         var formId = profileFieldMap[profileKey];
         var el = document.getElementById(formId);
-        if (el) el.value = p[profileKey] || '';
+        if (el) _setFieldValue(el, p[profileKey] || '');
     }
     var vipVis = document.getElementById('vipPoolVisible');
     if (vipVis) vipVis.value = document.getElementById('vipPool').value || 'main';
@@ -2813,14 +2808,21 @@ async function startOneShot() {
                 return;
             }
             var result = await pollOneShotValidationResult();
-            if (result && result.validation) {
-                renderOneShotValidationResults(result.validation);
-                var hasIssues = result.validation.some(function(c) { return c.status === 'warn' || c.status === 'fail'; });
-                if (hasIssues) {
-                    oneShotValidated = false;
-                    osRing.update(5, 'Pre-Validation', 'Warnings detected \u2014 review results');
-                    return;
-                }
+            if (!result || !result.validation) {
+                // Never start execution without results: the server may still hold the
+                // one-shot lock for a slow pre-validation and would reject the start (409).
+                document.getElementById('oneShotValidationResults').innerHTML = '<span style="color: #f44336;">Pre-validation did not return results. Nothing was started; run it again.</span>';
+                outputPane.append('error', 'Pre-validation did not return results; execution was not started.');
+                osRing.error('Pre-Validation incomplete');
+                resetOneShotUI();
+                return;
+            }
+            renderOneShotValidationResults(result.validation);
+            var hasIssues = result.validation.some(function(c) { return c.status === 'warn' || c.status === 'fail'; });
+            if (hasIssues) {
+                oneShotValidated = false;
+                osRing.update(5, 'Pre-Validation', 'Warnings detected \u2014 review results');
+                return;
             }
             osRing.update(5, 'Pre-Validation passed', 'Starting execution...');
         } catch (e) {
@@ -2837,8 +2839,11 @@ async function startOneShot() {
     await _continueOneShotExecution();
 }
 
+// Switch SSH probes that sweep several password candidates took ~2.5 min in the field.
+var ONESHOT_VALIDATION_MAX_WAIT_S = 900;
+
 async function pollOneShotValidationResult() {
-    for (var i = 0; i < 120; i++) {
+    for (var i = 0; i < ONESHOT_VALIDATION_MAX_WAIT_S; i++) {
         await new Promise(function(r) { setTimeout(r, 1000); });
         try {
             var results = await Promise.all([

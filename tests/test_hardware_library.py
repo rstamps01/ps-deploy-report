@@ -80,15 +80,8 @@ class TestUserLibraryOutranksBroadBuiltinKey(unittest.TestCase):
 class TestBuiltinBehaviourUnchanged(unittest.TestCase):
     """The precedence change must not disturb models that already resolved correctly."""
 
-    # The "ebox"/"enclosure" short-circuit in get_device_height returns 1U before
-    # any catalog lookup, so these two declare 2U but resolve to 1U. That is a
-    # separate defect; excluded here so this suite pins only the precedence fix.
-    _EBOX_SHORT_CIRCUIT = {"supermicro_milan_ebox", "smc_milan_ebox"}
-
     def test_every_builtin_key_resolves_to_its_own_declared_height(self):
         for key, device in BUILTIN_DEVICES.items():
-            if key in self._EBOX_SHORT_CIRCUIT:
-                continue
             with self.subTest(model=key):
                 self.assertEqual(get_device_height(key, USER_LIBRARY), device["height_u"])
 
@@ -98,6 +91,38 @@ class TestBuiltinBehaviourUnchanged(unittest.TestCase):
 
     def test_unknown_model_defaults_to_1u(self):
         self.assertEqual(get_device_height("totally_unknown_xyz", USER_LIBRARY), 1)
+
+
+class TestEboxHeights(unittest.TestCase):
+    """HWL-3: an EBox resolves to its declared height; 1U only when nothing EBox-specific matched."""
+
+    def test_milan_eboxes_render_at_declared_2u(self):
+        self.assertEqual(get_device_height("supermicro_milan_ebox"), 2)
+        self.assertEqual(get_device_height("SMC_MILAN_EBOX"), 2)
+
+    def test_supermicro_turin_ebox24_is_2u_with_its_own_image(self):
+        entry = BUILTIN_DEVICES["supermicro_turin_ebox24"]
+        self.assertEqual(entry["type"], "ebox")
+        self.assertEqual(entry["description"], "Supermicro Turin 2U EBox")
+        self.assertEqual(get_device_height("supermicro_turin_ebox24"), 2)
+        self.assertEqual(get_device_image_filename("supermicro_turin_ebox24"), "supermicro_turin_ebox24_2u.png")
+
+    def test_1u_eboxes_unchanged(self):
+        for key in ("supermicro_gen5_ebox", "dell_genoa_ebox", "cisco_ebox"):
+            with self.subTest(model=key):
+                self.assertEqual(get_device_height(key), 1)
+
+    def test_vendor_fallback_does_not_inflate_unknown_ebox(self):
+        """'hpe' (a 2U CBox fallback) must not size an unknown HPE EBox."""
+        self.assertEqual(get_device_height("HPE ProLiant EBox"), 1)
+        self.assertEqual(get_device_height("hpe enclosure"), 1)
+
+    def test_generic_ebox_defaults_to_1u(self):
+        self.assertEqual(get_device_height("ebox"), 1)
+
+    def test_user_library_2u_ebox_is_honoured(self):
+        lib = {"acme_2u_ebox": {"type": "ebox", "height_u": 2, "image_filename": "x.png"}}
+        self.assertEqual(get_device_height("ACME_2U_EBOX", lib), 2)
 
     def test_empty_model_defaults_to_1u(self):
         self.assertEqual(get_device_height("", USER_LIBRARY), 1)

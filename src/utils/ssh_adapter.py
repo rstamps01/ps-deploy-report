@@ -43,12 +43,110 @@ import logging
 import os
 import platform
 import re
+import signal
 import subprocess
-from typing import List, Optional, Tuple
+import time
+from typing import Any, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = platform.system() == "Windows"
+
+# Client-side SSH failures observed when a laptop sleeps, a VPN flaps, or the
+# local stack cannot bind (macOS "Can't assign requested address").  These are
+# transport problems, not remote-command failures — workflows should say so.
+_SSH_TRANSPORT_MARKERS = (
+    "can't assign requested address",
+    "broken pipe",
+    "connection reset by peer",
+    "connection timed out",
+    "no route to host",
+    "network is unreachable",
+    "connection refused",
+    "operation timed out",
+    "ssh: connect to host",
+    "connection closed by remote host",
+)
+
+
+def is_ssh_transport_failure(rc: int, stdout: str = "", stderr: str = "") -> bool:
+    """True when *rc*/output indicate the SSH client lost the connection.
+
+    Remote commands that fail for their own reasons (non-zero rc with ordinary
+    stderr) return False so callers do not mislabel elbencho/tool errors.
+    """
+    if rc == 0:
+        return False
+    blob = f"{stdout or ''}\n{stderr or ''}".lower()
+    return any(marker in blob for marker in _SSH_TRANSPORT_MARKERS)
+
+
+def ssh_transport_failure_message(rc: int, stdout: str = "", stderr: str = "") -> str:
+    """One-line operator message for a transport drop."""
+    blob = f"{stderr or ''}\n{stdout or ''}"
+    symptom = "connection lost"
+    for marker in _SSH_TRANSPORT_MARKERS:
+        idx = blob.lower().find(marker)
+        if idx >= 0:
+            # Prefer the original casing from the stream.
+            line = next(
+                (ln.strip() for ln in blob.splitlines() if marker in ln.lower()),
+                marker,
+            )
+            symptom = line or marker
+            break
+    return f"SSH connection lost to cluster ({symptom}; rc={rc})"
+
+
+# Login rejected before the remote command ran (ssh rc=255, sshpass rc=5 for a
+# repeated password prompt).  Remote "Permission denied" from a command is not a
+# login failure, so the markers are the ssh client's own auth messages.
+_SSH_AUTH_MARKERS = (
+    "too many authentication failures",
+    "permission denied, please try again",
+    "permission denied (",
+)
+_SSHPASS_BAD_PASSWORD_RC = 5
+_AUTH_RETRY_DELAY_S = 3
+
+# Client banners OpenSSH prints on every connection; they bury the real error.
+_SSH_NOISE_PREFIXES = (
+    "warning: permanently added",
+    "** warning: connection is not using a post-quantum",
+    "** this session may be vulnerable",
+    "** the server may need to be upgraded",
+)
+
+
+def is_ssh_auth_failure(rc: int, stdout: str = "", stderr: str = "") -> bool:
+    """True when the SSH login itself was rejected, so the remote command never ran."""
+    if rc == _SSHPASS_BAD_PASSWORD_RC:
+        return True
+    if rc != 255:
+        return False
+    blob = f"{stdout or ''}\n{stderr or ''}".lower()
+    return any(marker in blob for marker in _SSH_AUTH_MARKERS)
+
+
+def ssh_auth_failure_message(rc: int, stdout: str = "", stderr: str = "", host: str = "") -> str:
+    """One-line operator message for a rejected SSH login."""
+    lines = [ln.strip() for ln in f"{stderr or ''}\n{stdout or ''}".splitlines() if ln.strip()]
+    symptom = "password rejected"
+    for marker in _SSH_AUTH_MARKERS:
+        match = next((ln for ln in lines if marker in ln.lower()), None)
+        if match:
+            symptom = match
+            break
+    target = f" to {host}" if host else ""
+    return f"SSH login{target} was rejected ({symptom}; rc={rc})"
+
+
+def strip_ssh_noise(text: str) -> str:
+    """Drop OpenSSH client banner lines (host-key and post-quantum warnings)."""
+    if not text:
+        return text or ""
+    kept = [ln for ln in text.splitlines(keepends=True) if not ln.strip().lower().startswith(_SSH_NOISE_PREFIXES)]
+    return "".join(kept)
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +390,53 @@ def strip_terminal_escapes(text: str) -> str:
     return cleaned
 
 
+def _run_ssh_popen(cmd: List[str], timeout: int, env: dict) -> Tuple[int, str, str]:
+    """Run an SSH client command, killing the whole process group on timeout.
+
+    ``subprocess.run(..., timeout=...)`` only signals the direct child.  With
+    ``sshpass`` → ``ssh`` → remote shell, that can leave ``ssh`` hanging after
+    the timeout fires (seen as a 30 s views-API call lasting tens of minutes
+    when the laptop slept or the TCP session wedged).  A new session +
+    ``killpg`` tears the whole tree down.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        start_new_session=True,
+    )
+    try:
+        stdout_b, stderr_b = proc.communicate(timeout=timeout)
+        return int(proc.returncode or 0), _as_text(stdout_b), _as_text(stderr_b)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        try:
+            stdout_b, stderr_b = proc.communicate(timeout=5)
+        except Exception:
+            stdout_b, stderr_b = b"", b""
+        partial_out = _as_text(stdout_b)
+        partial_err = _as_text(stderr_b)
+        if partial_err and not partial_err.endswith("\n"):
+            partial_err += "\n"
+        return 1, partial_out, partial_err + "SSH command timed out after " + str(timeout) + "s"
+
+
+def _as_text(value: Any) -> str:
+    """Decode captured subprocess output (bytes on some platforms even with text=True)."""
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def _augmented_env(password=None):
     """Return a copy of ``os.environ`` with:
 
@@ -349,6 +494,11 @@ def _subprocess_ssh(
             cmd.extend(["-p", str(port)])
 
         connect_timeout = min(timeout, 30)
+        if password:
+            # Offered keys count against the server's MaxAuthTries; with several
+            # agent/identity keys the password can be refused as "Too many
+            # authentication failures".  Keys stay as the last fallback.
+            cmd.extend(["-o", "PreferredAuthentications=keyboard-interactive,password,publickey"])
         cmd.extend(
             [
                 "-o",
@@ -366,18 +516,15 @@ def _subprocess_ssh(
             ]
         )
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-            )
-            return result.returncode, result.stdout, result.stderr
-        except subprocess.TimeoutExpired:
-            return 1, "", "SSH command timed out after " + str(timeout) + "s"
-        except subprocess.CalledProcessError as exc:
-            return exc.returncode, exc.stdout or "", exc.stderr or str(exc)
+            rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env)
+            if rc == 255 and is_ssh_auth_failure(rc, out, err) and not out.strip():
+                # The server dropped the login before the command ran, so a retry cannot
+                # repeat remote side effects.  A plainly wrong password is sshpass rc=5
+                # and is not retried, so switch password sweeps do not double up.
+                logger.warning("SSH login to %s rejected (rc=%s); retrying once in %ss", host, rc, _AUTH_RETRY_DELAY_S)
+                time.sleep(_AUTH_RETRY_DELAY_S)
+                rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env)
+            return rc, out, strip_ssh_noise(err)
         except Exception as exc:
             return 1, "", str(exc)
 

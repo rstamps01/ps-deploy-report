@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a defect in the VAST As-Built Report Generator
+description: Report a defect in asbuilt-reporter
 title: "bug: <short summary>"
 labels: ["bug"]
 body:

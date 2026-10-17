@@ -2,7 +2,7 @@
 
 This is the single discoverable entry point for working in this repository the same way every time. It indexes the end-to-end lifecycle, the golden path, where canonical files live, the Pipeline Menu, and the precedence rules. Start here for any non-trivial task.
 
-> **Rollout status (M0–M6 complete; v1.6.1 shipped):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0. **v1.6.0 and v1.6.1 shipped through this pipeline**; next is the **v1.6.2 field-feedback patch** (see `docs/TODO-ROADMAP.md` Next steps). Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
+> **Rollout status (M0–M6 complete; v1.6.1 shipped, v1.6.2 prepared):** foundation + lifecycle skills (M1/M2), orchestration (M3), tracking/docs (M4), release hardening (M5), and **ADF portability extraction (M6)** — core extracted to [`agentic-dev-framework`](https://github.com/rstamps01/agentic-dev-framework) through v0.3.0. **v1.6.0 and v1.6.1 shipped through this pipeline**; **v1.6.2 is prepared and awaiting PR CI and release approval** (see `docs/TODO-ROADMAP.md` Next steps). Skills are indexed in [`.cursor/skills/CATALOG.md`](.cursor/skills/CATALOG.md). See `docs/PROJECT-STATUS.md` and `docs/development/ADF-EXTRACTION.md`.
 
 ## How this fits together
 
@@ -99,7 +99,7 @@ Rules (`architecture-03`, `change-control-07`, `documentation-08`, `todo-trackin
 
 ## Repo-specific
 
-- **Product:** VAST As-Built Report Generator — a Flask app that connects to a VAST cluster (API + SSH/Teleport/Tech-Port), extracts configuration, and renders PDF/JSON as-built reports plus advanced post-install validation workflows.
+- **Product:** asbuilt-reporter — a Flask app that connects to a VAST cluster (API + SSH/Teleport/Tech-Port), extracts configuration, and renders PDF/JSON as-built reports plus advanced post-install validation workflows.
 - **Layers (`architecture-03`):** `api_handler` → `data_extractor` → `report_builder`; `health_checker` and `oneshot_runner` orchestrate; workflows under `src/workflows/`.
 - **Run tests:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py` (add `--no-cov` for a subset). UI tests need Playwright; some `test_oneshot_runner` cases require CI-like fast connection refusal (see `docs/PROJECT-STATUS.md`).
 - **Release build:** tag `vX.Y.Z` → `.github/workflows/build-release.yml` builds the macOS `.dmg` + Windows `.zip` from that tagged commit.

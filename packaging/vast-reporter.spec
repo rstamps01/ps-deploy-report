@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for VAST As-Built Report Generator.
+PyInstaller spec for asbuilt-reporter.
 
 Builds a one-directory bundle containing the embedded Python runtime,
 all runtime dependencies, the Flask web UI, and application assets.
@@ -59,6 +59,8 @@ a = Analysis(
         (str(ROOT / "config" / "cluster_profiles.json"), "config"),
         # Assets (hardware images — exclude the large source composite)
         (str(ROOT / "assets" / "diagrams"), "assets/diagrams"),
+        # Report title font (Fira Sans Bold, SIL OFL 1.1 — license travels with it)
+        (str(ROOT / "assets" / "fonts"), "assets/fonts"),
         # Documentation (Docs page in UI): all _DOC_REGISTRY paths must be in the bundle
         (str(ROOT / "README.md"), "."),
         (str(ROOT / "CHANGELOG.md"), "."),
@@ -167,8 +169,8 @@ if IS_MAC:
         icon=ICON_MAC,
         bundle_identifier="com.vastdata.asbuilt-reporter",
         info_plist={
-            "CFBundleShortVersionString": "1.6.1",
-            "CFBundleVersion": "1.6.1",
+            "CFBundleShortVersionString": "1.6.2",
+            "CFBundleVersion": "1.6.2",
             "NSHighResolutionCapable": True,
             "NSAppTransportSecurity": {
                 "NSAllowsLocalNetworking": True,

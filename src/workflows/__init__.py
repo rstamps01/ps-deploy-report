@@ -2,11 +2,32 @@
 Workflows Package - Registry of available workflows and their implementations.
 """
 
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def get_cleanup_plan(workflow: Any) -> Tuple[Tuple[int, ...], int]:
+    """Return a workflow's declared cleanup steps and the step that makes them necessary.
+
+    Workflows that create objects on the cluster declare ``CLEANUP_STEPS`` (step ids that
+    remove them) and ``CLEANUP_REQUIRED_AFTER_STEP`` (the first step that may create them).
+    Runners execute the cleanup steps after a failure or cancel once that step was reached,
+    so an aborted run never leaves test data, views, users or services behind.
+
+    Returns:
+        Tuple of (cleanup step ids, first step that requires cleanup); ``((), 0)`` when the
+        workflow declares nothing.
+    """
+    steps = getattr(workflow, "CLEANUP_STEPS", None)
+    if not isinstance(steps, (list, tuple)) or not all(isinstance(s, int) for s in steps):
+        return (), 0
+    required_after = getattr(workflow, "CLEANUP_REQUIRED_AFTER_STEP", 1)
+    if not isinstance(required_after, int):
+        required_after = 1
+    return tuple(steps), required_after
 
 
 class WorkflowRegistry:

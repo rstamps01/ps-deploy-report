@@ -95,9 +95,9 @@ LOOPBACK_AND_CGNAT_ONLY = """\
     inet 100.64.44.2/20 scope global em3
 """
 
-# Realistic mammoth (Infiniband / IPoIB) payload.  Mgmt VIP lives on the
+# Realistic Infiniband / IPoIB payload.  Mgmt VIP lives on the
 # `bond0:m` alias on top of an ib2 (mtu 2044) device.
-MAMMOTH_IP_ADDR_OUTPUT = """\
+IB_CLUSTER_IP_ADDR_OUTPUT = """\
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
     inet 127.0.0.1/8 scope host lo
 2: em1: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN group default qlen 1000
@@ -184,9 +184,9 @@ class TestParseManagementIp:
 
     # ----- TP-1 coverage: RFC1918 ranges + IB + `:m` alias priority -----
 
-    def test_mammoth_ib_picks_bond0_m(self):
-        # Realistic mammoth payload; mgmt VIP lives on `bond0:m`.
-        assert parse_management_ip(MAMMOTH_IP_ADDR_OUTPUT) == "172.16.128.4"
+    def test_ib_cluster_picks_bond0_m(self):
+        # Realistic IB payload; mgmt VIP lives on `bond0:m`.
+        assert parse_management_ip(IB_CLUSTER_IP_ADDR_OUTPUT) == "172.16.128.4"
 
     def test_picks_iface_m_alias_on_ib(self):
         # `:m` alias directly on IB device (no bond) still wins.

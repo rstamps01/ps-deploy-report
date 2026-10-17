@@ -1,8 +1,8 @@
 ################################################################################
-# VAST As-Built Report Generator - Windows Uninstall Script
+# asbuilt-reporter - Windows Uninstall Script
 ################################################################################
 #
-# Purpose: Clean uninstallation of the VAST As-Built Report Generator
+# Purpose: Clean uninstallation of asbuilt-reporter
 # Platform: Windows 10/11, Windows Server 2019+
 # Requirements: PowerShell 5.1+
 #
@@ -364,7 +364,7 @@ function Show-Summary {
 
 function Main {
     try {
-        Write-ColorOutput "VAST As-Built Report Generator - Windows Uninstaller" -Type Header
+        Write-ColorOutput "asbuilt-reporter - Windows Uninstaller" -Type Header
 
         # Check if running as administrator (not required, but check)
         $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -381,7 +381,7 @@ function Main {
 
         # Confirm uninstallation
         Write-Host ""
-        Write-ColorOutput "This will uninstall the VAST As-Built Report Generator" -Type Warning
+        Write-ColorOutput "This will uninstall asbuilt-reporter" -Type Warning
         Write-ColorOutput "Installation: $script:InstallDir" -Type Warning
         Write-Host ""
 

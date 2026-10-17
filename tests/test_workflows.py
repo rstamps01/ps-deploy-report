@@ -869,7 +869,8 @@ class TestVperfsanityStepExecution:
         calls_str = str(mock_ssh["vperfsanity"].call_args_list)
         assert "ADMIN" in calls_str or "admin" in calls_str
 
-    def test_step7_cleanup_passes_vast_vms(self, mock_ssh):
+    def test_step7_cleanup_does_not_export_vast_vms(self, mock_ssh):
+        """FR-12: the vperfsanity scripts read /vast/vman/mgmt-vip; VAST_VMS was never used."""
         workflow = WorkflowRegistry.get("vperfsanity")
         workflow.set_credentials(
             {
@@ -885,7 +886,8 @@ class TestVperfsanityStepExecution:
         mock_ssh["vperfsanity"].return_value = (0, "", "")
         workflow.run_step(7)
         calls_str = str(mock_ssh["vperfsanity"].call_args_list)
-        assert "VAST_VMS" in calls_str
+        assert "VAST_VMS" not in calls_str
+        assert "vperfsanity_prepare.sh -c" in calls_str
 
     def test_step5_collect_results_saves_under_script_runner_local_dir(self, mock_ssh, tmp_path):
         """Regression: vperfsanity Step 5 must save results under
@@ -1089,7 +1091,7 @@ class TestVnetmapParsing:
     def test_convert_ip_format_multi_subnet_comma_list(self):
         """Multi-subnet clusters resolve to a comma-separated pattern with
         more than one bracket range. Each range must be converted; the
-        LAX-01 bug left the first range as a literal ``[1-10]`` (only the
+        original bug left the first range as a literal ``[1-10]`` (only the
         trailing range was converted), so vnetmap SSHed to the literal
         host string and never mapped that half of the cluster.
 
@@ -1559,6 +1561,7 @@ class TestLogBundleSteps:
             self._make_exec_result(True, "2.5G\t/var/log/vast"),
             self._make_exec_result(True, "0\t/var/log/messages"),
             self._make_exec_result(True, "0\t/var/log/syslog"),
+            self._make_exec_result(True, "0"),  # recent /vast/log bytes
         ]
         self.workflow._script_runner = mock_runner
         result = self.workflow._step_discover_sizes()
@@ -1572,6 +1575,7 @@ class TestLogBundleSteps:
             self._make_exec_result(True, "500M\t/var/log/vast"),
             self._make_exec_result(True, "0\t/var/log/messages"),
             self._make_exec_result(True, "0\t/var/log/syslog"),
+            self._make_exec_result(True, "0"),
         ]
         self.workflow._script_runner = mock_runner
         result = self.workflow._step_discover_sizes()
@@ -1585,6 +1589,7 @@ class TestLogBundleSteps:
             self._make_exec_result(True, "100K\t/var/log/vast"),
             self._make_exec_result(True, "0\t/var/log/messages"),
             self._make_exec_result(True, "0\t/var/log/syslog"),
+            self._make_exec_result(True, "0"),
         ]
         self.workflow._script_runner = mock_runner
         result = self.workflow._step_discover_sizes()
@@ -1780,7 +1785,7 @@ class TestVnetmapParsingV2:
     def test_parse_local_cfg_at_refs(self):
         cfg = "cnodesub0: 10.0.0.[1-2]\ncnodesub1: 10.0.0.[3-4]\ncnodes: @cnodesub0,@cnodesub1\n"
         cnodes, dnodes = self.workflow._parse_local_cfg(cfg)
-        assert cnodes == "10.0.0.[1-2],10.0.0.[3-4]"
+        assert cnodes == "10.0.0.[1-4]"
         assert dnodes is None
 
     def test_filter_output_tracebacks(self):
@@ -2468,8 +2473,12 @@ class TestVnetmapDiscoveredSwitchUser:
         workflow._script_runner = MagicMock(DEFAULT_REMOTE_DIR="/tmp/vast_scripts")
         return workflow
 
+    NODE_INI = "internal_interfaces=enp1s0f0,enp1s0f1\neth_mtu=9000\ndata_vlan=69\n"
+
     def _generate(self, workflow, mock_ssh):
-        mock_ssh["vnetmap"].return_value = (0, self.LOCAL_CFG, "")
+        mock_ssh["vnetmap"].side_effect = lambda host, user, pw, cmd, **kw: (
+            (0, self.NODE_INI, "") if "configure_network" in cmd else (0, self.LOCAL_CFG, "")
+        )
         with patch.object(
             workflow, "_get_switch_ips_from_api", return_value=["10.6.160.7", "10.6.160.8"]
         ), patch.object(workflow, "_resolve_network_type", return_value="ETH"):
