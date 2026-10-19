@@ -27,7 +27,7 @@ types-paramiko>=5.0.0.20261006
 
 # Security scanning
 bandit>=1.7.0
-pip-audit>=2.6.0
+pip-audit>=2.10.1
 
 # Pre-commit hooks
 pre-commit>=4.6.1
