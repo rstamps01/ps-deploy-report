@@ -2,7 +2,9 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-10-17 — **[v1.6.2 shipped](https://github.com/rstamps01/ps-deploy-report/releases/tag/v1.6.2)** (tag on `9111ca2`; [PR #38](https://github.com/rstamps01/ps-deploy-report/pull/38) merged; mac-arm64/mac-x64 `.dmg` and win `.zip` attached; published as latest). Live update check from 1.6.1 reports 1.6.2 with all three download links. Live validation: EBox report clean, remaining live-test sections waived by the owner. Product renamed to asbuilt-reporter in visible text; in-app guides and marketing refreshed. Contents: DIAG-1, HCF-1/2/5/6/7/8, INV-1, SR-2, RPT-VALIDATION-1/2, NET-6, FR-1–6, FR-12, GOV-1, RPT-LAYOUT-1, RPT-TITLE-1, RACK-1/2/3, HWL-3, Turin 2U EBox. TP-4 (Results filter mixes Tech Port clusters) logged for v1.6.3. See [`DECISIONS.md`](DECISIONS.md).
+**Last updated:** 2026-10-23 — **FR-16 logged as a v1.6.3 release blocker** (vperfsanity shows no output during Step 4, then a flood of output freezes the browser; a field engineer's Chrome tab hung). Must be fixed before v1.6.3 is cut; work not started. Spec: [`issues/FR-16/spec.md`](issues/FR-16/spec.md).
+
+**Previous update:** 2026-10-17 — **[v1.6.2 shipped](https://github.com/rstamps01/ps-deploy-report/releases/tag/v1.6.2)** (tag on `9111ca2`; [PR #38](https://github.com/rstamps01/ps-deploy-report/pull/38) merged; mac-arm64/mac-x64 `.dmg` and win `.zip` attached; published as latest). Live update check from 1.6.1 reports 1.6.2 with all three download links. Live validation: EBox report clean, remaining live-test sections waived by the owner. Product renamed to asbuilt-reporter in visible text; in-app guides and marketing refreshed. Contents: DIAG-1, HCF-1/2/5/6/7/8, INV-1, SR-2, RPT-VALIDATION-1/2, NET-6, FR-1–6, FR-12, GOV-1, RPT-LAYOUT-1, RPT-TITLE-1, RACK-1/2/3, HWL-3, Turin 2U EBox. TP-4 (Results filter mixes Tech Port clusters) logged for v1.6.3. See [`DECISIONS.md`](DECISIONS.md).
 
 **Reference:** [PRE-RELEASE-QA-GAP-ANALYSIS.md](PRE-RELEASE-QA-GAP-ANALYSIS.md) (feature coverage and recommendations)
 
@@ -37,6 +39,16 @@ draft ──▶ ready-for-dev ──▶ in-progress ──▶ in-review ──�
 | `blocked` | Waiting on a dependency/decision/escalation | any state | resolution → prior state |
 
 Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progress`/`in-review` → **In progress**; `done` → **Done**; `blocked` → **Deferred** (with reason).
+
+---
+
+## Release blockers — must be fixed before the next release (v1.6.3)
+
+*Source: lab vperfsanity run on a 3-CNode cluster (2026-10-23) and a field report of a Chrome hang during the same operation (field logs requested). Do not cut v1.6.3 until these are Done.*
+
+| ID | Item | Type | Priority | Size | Target | Status | Notes |
+|------|------|------|----------|------|--------|--------|--------|
+| FR-16 | **vperfsanity output stalls, then a flood of output freezes Chrome.** Step 4 shows nothing in Output Results for the whole write → burst-recovery wait → read sequence, then dumps everything at once. In the lab run, the page went silent for 18.5 min and then froze for about 90 s adding about 12,400 lines. On a larger cluster a field engineer's Chrome tab hung. Causes: (1) `_step_run_tests` uses a blocking `run_ssh_command` and emits output only after the script exits; (2) `force_tty=True` captures every elbencho full-screen redraw (about 1,500 frames, 2.2 MB); (3) the output pane's `append` re-serializes the whole history into `sessionStorage` and forces a layout on every line (`reporter.html` and `advanced_ops.html`), so cost grows with the square of the line count; (4) werkzeug access lines for the page's own polls are streamed back into the panel; (5) a new tab replays all output through the same path. | Bug | P0 | M | v1.6.3 (blocker) | Planned | Spec and acceptance criteria: [`issues/FR-16/spec.md`](issues/FR-16/spec.md). Fix: stream Step 4 output live, collapse elbencho frames to progress lines, post burst-wait status, batch and cap the output pane, drop werkzeug lines from `/stream/logs`. The 13m27s write-to-read gap itself is vperfsanity's burst-recovery wait (by design). Does not wait on FR-7. Field workaround until fixed: don't quit the app; close only the frozen tab and don't reopen the page until the run ends. |
 
 ---
 
@@ -102,7 +114,7 @@ One root cause runs through several of the health check items: `HealthCheckResul
 | FR-4 | **Switch ops fail when VMS has no switches; vnetmap runs with empty `-s`.** | Bug | P1 | S | v1.6.2 | Done (v1.6.2) | SKIPPED with guidance; accurate auth message. Manual `+Switch` IPs as a fallback source is FR-8. |
 | FR-5 | **Log bundle "OK" but only `/var/log/messages`.** | Bug | P1 | S | v1.6.2 | Done (v1.6.2) | Per-source status, recent `/vast/log` (24 h, 2 GB cap), partial labeling. Lab-verify paths; all-node collection is FR-9. |
 | FR-6 | **Bundle can't explain failures.** Placeholders pointed at an ops log that wasn't included. | Bug | P1 | S | v1.6.2 | Done (v1.6.2) | Operation log in bundle, step+error in placeholders, manifest v1.4. SSH timeouts keep partial output (subprocess path). |
-| FR-7 | **vperfsanity background runner.** Detached remote run with polled heartbeat (write / burst wait + fill % / read), stall detector, effective Cancel, Quick vs Full dataset. | Enhancement | P1 | M | v1.6.3 | Planned | Needs lab validation. |
+| FR-7 | **vperfsanity background runner.** Detached remote run with polled heartbeat (write / burst wait + fill % / read), stall detector, effective Cancel, Quick vs Full dataset. | Enhancement | P1 | M | v1.6.3 | Planned | Needs lab validation. FR-16 (release blocker) delivers live Step 4 output first; FR-7 builds on it. |
 | FR-8 | **Use manual `+Switch` entries as a switch source.** Accept IPs, or hostnames resolved on the CNode; validate input in the UI. | Enhancement | P2 | S-M | v1.6.3 | Planned | Today manual entries only place switches in the rack diagram. |
 | FR-9 | **Log bundle from all CNodes/DNodes.** | Enhancement | P2 | M | v1.6.3 | Planned | Via clush, bounded by age/size. |
 | FR-10 | **Paramiko SSH path has no overall deadline.** `recv_exit_status()` can block past the timeout on Windows (no sshpass). | Bug | P2 | S | v1.6.3 | Planned | Deadline loop that keeps partial output; rework the existing paramiko mocks. |
@@ -357,8 +369,9 @@ One root cause runs through several of the health check items: `HealthCheckResul
 
 > **Execution status (2026-10-17):** **v1.6.2 shipped** (tag on `9111ca2`; `main` = `develop`). Next is v1.6.3. ReportLab 5.x still held ([PR #31](https://github.com/rstamps01/ps-deploy-report/pull/31)); the title-with-table layout depends on ReportLab 4.4 page splitting.
 
+0. **Release blocker for v1.6.3: FR-16** (vperfsanity output stall and Chrome hang). Fix and lab-verify before cutting v1.6.3. Field logs from the engineer whose browser hung have been requested. Not started.
 1. **v1.6.2 ship-release leftovers:** confirm the UPDATE AVAILABLE pill on a real 1.6.1 install (the live API check passed), then publish: Confluence page, Slack announcement, GOV-3 advisory ([draft](issues/v1.6.2/field-advisory.md)). Each publishing step needs approval.
-2. **v1.6.3:** TP-4, FR-7–15, OBS-1, TP-3, and the local diagnostics work HUB-1–9 plus DATA-1.
+2. **v1.6.3:** FR-16 (blocker, above), TP-4, FR-7–15, OBS-1, TP-3, and the local diagnostics work HUB-1–9 plus DATA-1.
 3. **v1.7.0 minor:** HCF-3/4, INV-2, DRV-1, **RCS-1–5** (Ross install-time logging), HUB-10/11. DRV-2 follows. SW-1 waits on logs.
 4. **Results Hub backend (separate repos):** HUB-12–16, then connectors HUB-17–23 in v1.7.x.
 5. **v1.6.1 ship-release leftovers:** the live update-pill check from a real 1.6.0 build (QA §6b), and the Slack and Confluence release announcement (draft, then confirm).
