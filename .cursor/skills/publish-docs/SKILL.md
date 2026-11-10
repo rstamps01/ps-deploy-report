@@ -14,12 +14,16 @@ Multi-surface documentation consistency. Ensures version, feature list, and oper
 2. **In-app** — the documentation section rendered from `frontend/templates/` (docs modal/tab content) and any doc guides bundled in `packaging/vast-reporter.spec`.
 3. **Confluence** — page `6664028496` via Atlassian MCP (`getConfluencePage` / `updateConfluencePage`).
 
+## When to run
+
+Once per release (from `prepare-release`), not per item. Per-item changes accumulate in `docs/issues/<ID>/changelog.md` fragments, and this skill publishes them in one pass. Run it off-cycle only for an urgent correction.
+
 ## Steps
 
 1. **Determine the delta.** What changed (feature, CLI, config key, workflow, version)? List every surface it touches.
 2. **Update GitHub surfaces** directly (in the branch): README usage/badge, CHANGELOG entry, affected `docs/` pages. Confirm `config/config.yaml.template` documents any new config key.
 3. **Update in-app docs.** Edit the relevant `frontend/templates/` content so the in-app section matches; if a new guide was added, register it in the docs viewer and the PyInstaller spec.
-4. **Draft the Confluence update.** Fetch the current page, prepare the diff (version references, RFE table, feature list). **PAUSE and present the draft for user confirmation** — Confluence is customer/exec-facing; do not publish without approval.
+4. **Draft the Confluence update.** Read the page with `getConfluenceContent` `detail: "outline"` first and fetch the full body (`detail: "full"`, markdown) only for the page being edited. Never bulk re-sync `docs/confluence/`. Fetch the current page, prepare the diff (version references, RFE table, feature list). **PAUSE and present the draft for user confirmation** — Confluence is customer/exec-facing; do not publish without approval.
 5. **Cross-check.** Verify all three surfaces state the same version, feature set, and workflow. Flag and fix any residual drift.
 6. On a successful release, add the Confluence release page + Slack announcement (draft-then-confirm), not only failure escalations.
 

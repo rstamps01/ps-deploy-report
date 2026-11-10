@@ -1,34 +1,24 @@
 ---
-description: Project design docs and reference material for alignment with PRD, design guide, and implementation plans
-alwaysApply: true
+description: Product requirements, PRD, design guide, API reference, report spec, and test history synced from Confluence (page 6664028496). Read when a task needs original product intent, report layout requirements, API version history, or data-protection requirements.
+alwaysApply: false
 ---
-# Project Reference Documents
+# Project Reference Documents (local Confluence copies)
 
-Reference the following files to stay on track with project alignments.
-Source: Confluence page 6664028496 (VAST As-Built Report Generator - v1.3.0).
+Local, gitignored copies of Confluence page 6664028496 live in `docs/confluence/`. Read only the file (or section) the task needs; use Grep or an offset/limit read for the large ones.
 
-@docs/confluence/01-Concept.md
-@docs/confluence/02-PRD.md
-@docs/confluence/02.0.1.0-Data-Protection-Enhancement.md
-@docs/confluence/02.0.2.0-MVP-Gap-Analysis.md
-@docs/confluence/03-Project-Plan.md
-@docs/confluence/04-Tasks.md
-@docs/confluence/05-Status.md
-@docs/confluence/06-Design.md
-@docs/confluence/07-AI-Guardrails.md
-@docs/confluence/07.0.1.2.1-AI-Compliance-API-Handling.md
-@docs/confluence/08-Installation.md
-@docs/confluence/09-Report.md
-@docs/confluence/10-API-Reference.md
-@docs/confluence/11-Consistency-Analysis.md
-@docs/confluence/12-Implementation-Analysis-Review.md
-@docs/confluence/12.0.1.1.3-Implementation-Logging.md
-@docs/confluence/12.0.1.2.1-Implementation-Core-Functionality.md
-@docs/confluence/12.0.1.2.1-Implementation-Troubleshooting.md
-@docs/confluence/12.0.1.D-2-API-Version-Detection.md
-@docs/confluence/12.0.2.0-Report-Generation-Core.md
-@docs/confluence/13-Test-Integration-Scope.md
-@docs/confluence/13.0.1-Test-Completion-Report.md
-@docs/confluence/13.0.2-Test-Risk-Analysis.md
-@docs/confluence/13.0.3-Test-Python-Scripts.md
-@docs/confluence/14-Hardware-Diagrams.md
+| File | Read when |
+| --- | --- |
+| `01-Concept.md` | Original product goal and scope |
+| `02-PRD.md` | Requirements a feature must satisfy |
+| `02.0.1.0-Data-Protection-Enhancement.md` | Data-protection / snapshot / replication report content |
+| `02.0.2.0-MVP-Gap-Analysis.md` | Historical MVP gaps |
+| `03-Project-Plan.md`, `04-Tasks.md`, `05-Status.md` | Historical plan and status (current state is `docs/TODO-ROADMAP.md`) |
+| `06-Design.md` | Report structure, data collection design, module design |
+| `07-AI-Guardrails.md` | Deep reference behind rules 03–11 |
+| `07.0.1.2.1-AI-Compliance-API-Handling.md` | Read-only API handling policy detail |
+| `08-Installation.md` | Original install design (current: `docs/deployment/`) |
+| `09-Report.md` | Report section content and layout requirements |
+| `10-API-Reference.md` | VAST API endpoints used by the report |
+| `11-Consistency-Analysis.md`, `12-*.md` | Implementation analyses (logging, core functionality, troubleshooting, API version detection, report generation) |
+| `13-*.md` | Test scope, completion, risk analysis, test scripts |
+| `14-Hardware-Diagrams.md` | Rack and hardware diagram requirements |

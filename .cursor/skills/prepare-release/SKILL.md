@@ -19,10 +19,10 @@ Release-prep stage. Gets `develop` into a releasable, version-consistent state. 
    - `src/main.py` (argparse `--version`), `src/__init__.py` (`__version__` + docstring), `packaging/vast-reporter.spec` (`CFBundleShortVersionString`, `CFBundleVersion`), `README.md` version badge.
    - `packaging/build-mac.sh` / `packaging/build-windows.ps1` read `src/app.py` dynamically — no manual edit.
 2. **Verify sync:** `bash scripts/check-version-sync.sh` must pass.
-3. **Fold the CHANGELOG.** Move `## [Unreleased]` entries under `## [X.Y.Z] - YYYY-MM-DD` (Keep a Changelog: Added/Changed/Fixed).
+3. **Assemble the CHANGELOG.** Merge every `docs/issues/<ID>/changelog.md` fragment for the release's items, plus any `## [Unreleased]` entries, into `## [X.Y.Z] - YYYY-MM-DD` (Keep a Changelog: Added/Changed/Fixed). Do this, the release notes, the README badge and the Confluence "What's New" draft in one pass (a single fast-tier subagent is fine) from the fragments and `git log`, not by re-reading `CHANGELOG.md`. Keep `CHANGELOG.md` to the current minor series; move older minors to `docs/CHANGELOG-ARCHIVE.md`.
 4. **Release notes.** Create `docs/releases/RELEASE_NOTES_vX.Y.Z.md` (highlights, fixes, upgrade notes; include config/data migration steps if config keys changed).
 5. **Docs consistency.** Run `publish-docs` (draft) so README/in-app/Confluence version + feature text match; confirm before publishing external surfaces.
-6. **Full quality gate.** Run `quality-gate` end-to-end; produce a release checklist (tests, lint, format, types, version-sync, coverage).
+6. **Full quality gate.** Run `bash scripts/quality-gate.sh` once (the one local full run per release); produce a release checklist (tests, lint, format, types, version-sync, coverage).
 7. **Cross-platform QA.** Work the per-release checklist in `docs/development/QA-TEST-PLAN.md`: confirm CI `qa-cross-os` + `build-smoke` are green, run the cross-OS functional subset for any OS at hand, validate the release-specific functional cases, and run the update-pill staged dry-run (`tests/test_update_release_readiness.py`). Schedule the live update-pill check for immediately after the tag.
 8. **Update the register** (`update-tracker`): mark released items Done, refresh "Last updated" and "Next steps".
 
@@ -33,7 +33,7 @@ Rules: `release-packaging-12`, `change-control-07`, `documentation-08`, `ci-pipe
 ## Completion checklist
 
 - [ ] All 6 version locations bumped; `check-version-sync.sh` passes
-- [ ] CHANGELOG `[Unreleased]` folded into `[X.Y.Z]`
+- [ ] Changelog fragments + `[Unreleased]` assembled into `[X.Y.Z]`; older minors archived
 - [ ] `docs/releases/RELEASE_NOTES_vX.Y.Z.md` created
 - [ ] Full quality gate green; release checklist produced
 - [ ] Cross-platform QA (`QA-TEST-PLAN.md`) worked; update-pill dry-run green
