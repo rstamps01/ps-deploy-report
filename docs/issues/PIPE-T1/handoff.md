@@ -1,5 +1,7 @@
 # PIPE-T1 handoff (2026-11-10, 12:40 PT)
 
+**Update 2026-11-10, 15:00 PT:** #39 and #44 are merged to `develop` (`3c82bf6`, `1b61fd3`). Next agent actions 1 and 2 are done: PIPE-T1 is archived and the KPI re-measure is tracked as PIPE-T4 (due 2026-11-24). Owner actions 2–5 and 7 are still open. Next: action 3 at the v1.6.3 release, action 4 on 2026-11-24, and FR-16 (action 5) now.
+
 Continue from this file. Code and git outrank it. Spec, baseline and quality tripwires: [`spec.md`](spec.md). Project state: [`../../BRIEF.md`](../../BRIEF.md).
 
 ## State at handoff

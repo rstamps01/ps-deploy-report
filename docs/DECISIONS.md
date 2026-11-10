@@ -116,6 +116,10 @@ Approved by the owner (plan *Token efficiency workflow*). Always-on context cut 
 
 ## Memlog (newest first)
 
+### 2026-11-10 — PIPE-T1 merged
+
+#39 and #44 merged to `develop` (`3c82bf6`, `1b61fd3`). PIPE-T1 archived; KPI re-measure is PIPE-T4, due 2026-11-24. User-level skills stay in both `~/.cursor/skills` (Planalyzer depends on it) and the personal store; Cursor lists each name once.
+
 ### 2026-11-10 — PIPE-T1 thread handoff
 
 PR #44 open, CI green, depends on #39. Handoff: `docs/issues/PIPE-T1/handoff.md`. Thread-length policy adopted: hand off at a clean boundary at about 120K context tokens, 40 turns, about 600 KB, a compaction, or a new workstream.

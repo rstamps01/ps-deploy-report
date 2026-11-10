@@ -2,7 +2,7 @@
 
 **Purpose:** Canonical **live** register of planned and in-progress work. Completed history lives in [`ROADMAP-ARCHIVE.md`](ROADMAP-ARCHIVE.md); shipped detail is in [`../CHANGELOG.md`](../CHANGELOG.md); the current point-in-time snapshot is in [`PROJECT-STATUS.md`](PROJECT-STATUS.md). Validated in CI (todo-tracking-09).
 
-**Last updated:** 2026-11-10 — **PIPE-T1 token-efficiency workflow in progress** on `chore/token-efficiency` (see [`issues/PIPE-T1/spec.md`](issues/PIPE-T1/spec.md)); Done rows moved to `ROADMAP-ARCHIVE.md`.
+**Last updated:** 2026-11-10 — **PIPE-T1 token-efficiency workflow merged** to `develop` ([#44](https://github.com/rstamps01/ps-deploy-report/pull/44)); row archived, KPI re-measure tracked as PIPE-T4 (due 2026-11-24).
 
 **Earlier update:** 2026-10-23 — **FR-16 logged as a v1.6.3 release blocker** (vperfsanity shows no output during Step 4, then a flood of output freezes the browser; a field engineer's Chrome tab hung). Must be fixed before v1.6.3 is cut; work not started. Spec: [`issues/FR-16/spec.md`](issues/FR-16/spec.md).
 
@@ -66,9 +66,9 @@ Mapping to the summary key: `draft`/`ready-for-dev` → **Planned**; `in-progres
 | GOV-2 | **vperfsanity package embeds long-lived upload keys.** | Medium | Planned | Notify the vperfsanity owner. Never reuse the keys; HUB-21 replaces the upload path. The keys are not bundled in the DMG (`output/tools/` is not packaged). |
 | GOV-3 | **Field advisory for v1.6.1 users.** EBox Support Tools, vperfsanity timeout and cleanup, switches missing from VMS. | Medium | In progress | Drafted 2026-10-16: [`issues/v1.6.2/field-advisory.md`](issues/v1.6.2/field-advisory.md). Post to Slack before v1.6.2 ships, then add the release link. |
 | SEC-5 | **Optional branch protection on `develop`.** | Low | Planned | Follow-up to SEC-2 (plan `protect_main_branch_1260e0f8`). |
-| PIPE-T1 | **Token-efficiency workflow.** Cut always-on agent context (about 45 KB to about 7 KB), archive hot state files, quiet and de-duplicate test runs, CI-first verification, changelog fragments, context packs, model tiers and numeric autonomy budgets; user-level hooks and rules. Gates unchanged. | High | In progress | Spec, baseline and quality tripwires: [`issues/PIPE-T1/spec.md`](issues/PIPE-T1/spec.md). Re-measure KPIs two weeks after merge. |
 | PIPE-T2 | **Optional `pytest-xdist` for local full runs.** `scripts/quality-gate.sh --parallel` is wired; add `pytest-xdist` to `requirements-dev.txt` once the suite is verified xdist-safe (network guard, shared fixtures). | Low | Planned | From PIPE-T1 Phase 7. |
 | PIPE-T3 | **Split the largest modules for cheaper reads.** `report_builder.py` (266 KB) by section, `app.py` routes into Blueprints, plus a complexity ratchet (Gap Analysis S1–S3). | Medium | Planned | From PIPE-T1 Phase 6; do incrementally with feature work. |
+| PIPE-T4 | **Re-measure PIPE-T1 KPIs (due 2026-11-24).** Run `make report` in `cursor-budget-report` and compare against the KPI and tripwire tables in [`issues/PIPE-T1/spec.md`](issues/PIPE-T1/spec.md); revert the latest intervention if a tripwire worsens by more than 10%. | Medium | Planned | Needs a fresh cursor.com sign-in first (the last refresh failed with `not_authenticated`). |
 | PIPE-1 | **Optional agentic pipeline phase-2 patterns:** dependency graph, next-actionable selector, fix-bug path. | Low | Planned | From plan `agentic_cicd_pipeline`. |
 | PLN-1 | **Audit the project plan archive.** Re-check every plan in [`plans/`](plans/README.md) against `CHANGELOG.md` and release tags. Re-bucket each as A–D in [`PLANS-INDEX.md`](PLANS-INDEX.md), mark stale frontmatter as done in the archived copies, and move any genuine open work into this roadmap. Then call `scripts/sync-cursor-plans.py --check` from the `update-tracker` skill so new plans don't go untracked. | Medium | Planned | The archive was created 2026-09-25. The last reconciliation was 2026-07-31. |
 
