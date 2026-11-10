@@ -116,6 +116,10 @@ Approved by the owner (plan *Token efficiency workflow*). Always-on context cut 
 
 ## Memlog (newest first)
 
+### 2026-11-10 — PIPE-T1 thread handoff
+
+PR #44 open, CI green, depends on #39. Handoff: `docs/issues/PIPE-T1/handoff.md`. Thread-length policy adopted: hand off at a clean boundary at about 120K context tokens, 40 turns, about 600 KB, a compaction, or a new workstream.
+
 ### 2026-10-08 — Teleport Beta removal carried onto the v1.6.2 branch
 - The Beta Feature pill was still visible in field testing because PR #36 had not merged. Its UI and doc changes are now applied on `fix/v1.6.2-field-feedback` as well, so the v1.6.2 build ships without the badge either way. The changes match PR #36 line for line, so merging both should not conflict, except possibly in the CHANGELOG `[Unreleased]` entry.
 

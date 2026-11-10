@@ -6,10 +6,11 @@ Phase: v1.6.2 shipped (2026-10-17); v1.6.3 in planning | Version: 1.6.2 | CI on 
 ## Next 3
 1. FR-16 (P0, v1.6.3 blocker): vperfsanity Step 4 output stalls, then floods and freezes Chrome. Spec: `docs/issues/FR-16/spec.md`.
 2. v1.6.3 scope: TP-4, FR-7–15, OBS-1, TP-3, HUB-1–9, DATA-1 (see `docs/TODO-ROADMAP.md` Next steps).
-3. PIPE-T1 token-efficiency workflow: land the PR, then re-measure KPIs after two weeks (`docs/issues/PIPE-T1/spec.md`).
+3. PIPE-T1 token-efficiency workflow: PR #44 open, CI green, depends on #39. Handoff: `docs/issues/PIPE-T1/handoff.md`. Re-measure KPIs two weeks after merge.
 
 ## Open PRs / waiting
-- PR #39 `docs/v1.6.2-shipped` (tracker; FR-16 log commit is local only until pushed).
+- PR #39 `docs/v1.6.2-shipped` (tracker + FR-16 log), merge before #44.
+- PR #44 `chore/token-efficiency` (PIPE-T1), CI green.
 - Dependabot #31 (ReportLab 5, held: title-with-table layout needs 4.4 splitting), #40–#43.
 - v1.6.2 ship leftovers needing approval: live UPDATE AVAILABLE check from a real 1.6.1 install; Confluence, Slack and GOV-3 advisory posts.
 

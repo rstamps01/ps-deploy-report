@@ -28,7 +28,7 @@ Single entry point for working in this repo. **Current state: read `docs/BRIEF.m
 - **Tests:** while coding, run only targeted tests (`pytest tests/test_<module>.py -x --lf`). The full suite runs once via `bash scripts/quality-gate.sh` before a PR or tag, and CI runs it on every push. Read CI failures with `gh run view --log-failed` or the job step summary.
 - **Plans with more than 3 to-dos:** build a context pack (`python3 scripts/context-pack.py <ID>`), then run each to-do as a subagent on the fast model tier with the brief, the to-do and the file list. The parent chat integrates, reviews and runs the final gate. Keep tightly coupled edits in the parent.
 - **Group work** by code area before high-token stages (see `project-manager` pre-flight).
-- **Sessions:** keep one model per chat (switching rewrites the prompt cache). After a compaction or a task switch, run `/handoff` and continue in a new chat.
+- **Sessions:** keep one model per chat (switching rewrites the prompt cache). Hand off at the first clean boundary (commit, PR, green gate) once any of these is true: context at about 120K tokens or more, 40 user turns, about 600 KB of transcript, a compaction, or a new workstream. Run `/handoff`: update `docs/issues/<ID>/handoff.md` and `docs/BRIEF.md`, commit, and give a one-line starter prompt pointing at the handoff file.
 - **Superpowers skills:** use `brainstorming` only for new features or behavior changes. Questions, docs, refreshes, runbook runs, and one- or two-file fixes skip the mandatory skill reads.
 
 ## Canonical files
