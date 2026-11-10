@@ -46,7 +46,7 @@ def test_endpoint_failure_returns_unavailable(self, mock_session):
 
 ## Running Tests
 ```bash
-python3 -m pytest tests/ -v              # all tests
-python3 -m pytest tests/ --cov=src       # with coverage
-python3 -m pytest tests/test_main.py -v  # single module
+python3 -m pytest tests/test_main.py -x --lf   # while coding: targeted, no coverage (default)
+bash scripts/quality-gate.sh                    # full gate with the coverage floor, before PR/tag
+python3 -m pytest tests/ -v                     # verbose full run (humans; avoid in agent context)
 ```

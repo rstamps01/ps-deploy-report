@@ -17,13 +17,19 @@ The concrete commands and the blocking-gate order are declared in the project ma
 
 The steps below are the resolved commands for **this** (Python) repo; if they ever drift from the manifest, the manifest wins (CI validates it with `pipeline_manifest.py validate --strict`).
 
+## One-call runner (default)
+
+`bash scripts/quality-gate.sh` runs all five steps below in order, writes full logs to `test_output/quality-gate/`, and prints one PASS/FAIL line per step plus the failing tail. Read the log file only for a failing step (Grep or tail it). Add `--fix` to run `black` before the format check.
+
+**When to run it:** once before `open-pr` and once before a release tag. While coding, run targeted tests only; after pushing, CI runs the full suite, so read CI failures with `gh run view <id> --log-failed` (or the job step summary) instead of re-running locally.
+
 ## Steps (run in order; stop and fix on first failure)
 
 1. **Version sync:** `bash scripts/check-version-sync.sh` (canonical = `src/app.py` `APP_VERSION`).
 2. **Format:** `black --check --line-length 120 src/ tests/` (run `black` without `--check` to fix).
 3. **Lint:** `flake8 src/ tests/` and `flake8 src/ tests/ --select=E722 --extend-ignore=` (no bare `except`).
 4. **Types:** `mypy src/ --ignore-missing-imports --no-strict-optional`.
-5. **Tests + coverage:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py -m "not flaky"` with the coverage floor (`--cov-fail-under=60`, per `pyproject.toml`). A global `--timeout=300` backstop (pyproject `addopts`) + the `tests/conftest.py` network guard keep the suite hang-proof; `-m "not flaky"` excludes quarantined tests, mirroring CI.
+5. **Tests + coverage:** `python3 -m pytest tests/ --ignore=tests/test_ui.py --ignore=tests/test_integration.py -m "not flaky"` with `--cov=src --cov-report=term:skip-covered --cov-fail-under=60` (coverage is not in `addopts`, so targeted runs stay quiet). A global `--timeout=300` backstop (pyproject `addopts`) + the `tests/conftest.py` network guard keep the suite hang-proof; `-m "not flaky"` excludes quarantined tests, mirroring CI.
 
 ## Iterate-until-green
 
@@ -31,7 +37,7 @@ On any failure: fix the root cause, re-run that step, then continue. If the same
 
 ## Coverage ratchet
 
-Coverage is **upward-only**: never lower `--cov-fail-under`. A FEAT that drops coverage needs more tests; a BUG needs its failing-first regression test. When coverage rises comfortably above the floor, raise the floor (toward 80%, TSE items) in `pyproject.toml` + `ci-pipeline-13`.
+Coverage is **upward-only**: never lower `--cov-fail-under`. A FEAT that drops coverage needs more tests; a BUG needs its failing-first regression test. When coverage rises comfortably above the floor, raise the floor (toward 80%, TSE items) in `scripts/quality-gate.sh`, `.cursor/pipeline.yml` `test_cov`, the CI and build-release pytest steps, and `ci-pipeline-13`.
 
 ## Test reliability (hang-proofing + flaky quarantine)
 

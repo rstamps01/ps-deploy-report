@@ -83,12 +83,18 @@ jobs:
         run: |
           # -m "not flaky": exclude quarantined nondeterministic tests from the
           # blocking release gate (test-reliability policy §21), mirroring ci.yml.
-          python -m pytest tests/ -v \
+          python -m pytest tests/ \
             --ignore=tests/test_ui.py \
             -m "not flaky" \
+            --junitxml=test-results/junit.xml \
             --cov=src \
             --cov-report=xml \
+            --cov-report=term:skip-covered \
             --cov-fail-under=60
+
+      - name: Summarize test failures
+        if: always()
+        run: python scripts/junit_summary.py test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
 
   # -------------------------------------------------------------------
   # Build platform-specific bundles from the tagged release code (checkout at tag).

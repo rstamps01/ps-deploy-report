@@ -131,14 +131,26 @@ jobs:
           # Coverage threshold aligned with pyproject.toml; raise as tests expand.
           # -m "not flaky": quarantined nondeterministic tests are excluded from
           # the blocking gate and tracked as BUGs (test-reliability policy §21).
-          python -m pytest tests/ -v \
+          python -m pytest tests/ \
             --ignore=tests/test_ui.py \
             --ignore=tests/test_integration.py \
             -m "not flaky" \
+            --junitxml=test-results/junit.xml \
             --cov=src \
             --cov-report=xml \
-            --cov-report=term-missing \
+            --cov-report=term:skip-covered \
             --cov-fail-under=60
+
+      - name: Summarize test failures
+        if: always()
+        run: python scripts/junit_summary.py test-results/junit.xml >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-unit
+          path: test-results/junit.xml
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
@@ -147,69 +159,10 @@ jobs:
           name: coverage-report
           path: coverage.xml
 
-  # -------------------------------------------------------------------
-  # Job 3: Health check tests (Linux only)
-  # -------------------------------------------------------------------
-  health-check-tests:
-    needs: quality-gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Cache pip packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-health-${{ hashFiles('requirements-dev.txt') }}
-          restore-keys: ${{ runner.os }}-pip-health-
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements-dev.txt
-
-      - name: Run health check tests
-        run: |
-          if [ -f tests/test_health_checker.py ]; then
-            python -m pytest tests/test_health_checker.py -v --no-cov -m "not flaky"
-          else
-            echo "tests/test_health_checker.py not yet created -- skipping"
-          fi
+  # Health-check and Advanced Operations tests run inside unit-tests (tests/ covers them);
+  # the separate subset jobs were removed to avoid running them twice (PIPE-T1).
 
   # -------------------------------------------------------------------
-  # Job 3.5: Advanced Operations tests (Linux only)
-  # -------------------------------------------------------------------
-  advanced-ops-tests:
-    needs: quality-gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Cache pip packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-advops-${{ hashFiles('requirements-dev.txt') }}
-          restore-keys: ${{ runner.os }}-pip-advops-
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements-dev.txt
-
-      - name: Run Advanced Operations tests
-        run: |
-          python -m pytest             tests/test_advanced_ops.py             tests/test_script_runner.py             tests/test_workflows.py             tests/test_result_bundler.py             tests/test_tool_manager.py             tests/test_external_port_mapper.py             -v --no-cov -m "not flaky"
-
-    # -------------------------------------------------------------------
   # Job 4: Integration tests (Linux only)
   # -------------------------------------------------------------------
   integration-tests:
@@ -236,7 +189,11 @@ jobs:
 
       - name: Run integration tests
         run: |
-          python -m pytest tests/test_integration.py -v -m "integration and not flaky" --no-cov
+          python -m pytest tests/test_integration.py -m "integration and not flaky" --no-cov --junitxml=test-results/junit-integration.xml
+
+      - name: Summarize test failures
+        if: always()
+        run: python scripts/junit_summary.py test-results/junit-integration.xml >> "$GITHUB_STEP_SUMMARY"
 
   # -------------------------------------------------------------------
   # Job 4: UI tests (Playwright) — develop/main only

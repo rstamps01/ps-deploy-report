@@ -524,7 +524,7 @@ python -m pytest tests/ -v --ignore=tests/test_ui.py --ignore=tests/test_integra
   --cov=src --cov-report=term-missing --cov-fail-under=60
 ```
 
-Coverage threshold is currently 60% (`pyproject.toml`); target is 75%+ per roadmap item TSE-9.
+Coverage threshold is currently 60%, enforced by the explicit gate commands (`scripts/quality-gate.sh`, CI); plain `pytest` runs don't collect coverage. Target is 75%+ per roadmap item TSE-9. `bash scripts/quality-gate.sh` runs the whole local gate (version sync, black, flake8, mypy, tests + coverage) and prints one line per step.
 
 See [docs/TODO-ROADMAP.md](docs/TODO-ROADMAP.md) for quality-gate items (QG-1 through QG-3).
 

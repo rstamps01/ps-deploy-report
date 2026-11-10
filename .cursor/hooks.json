@@ -6,6 +6,12 @@
         "command": ".cursor/hooks/guard-git.sh",
         "matcher": "git\\s+(commit|push)"
       }
+    ],
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/format-python.sh",
+        "timeout": 15
+      }
     ]
   }
 }
