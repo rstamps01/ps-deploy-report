@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-10-17 — v1.6.2 shipped
+
+- **Release:** [v1.6.2](https://github.com/rstamps01/ps-deploy-report/releases/tag/v1.6.2) tagged on `9111ca2`. Build-release run `39034321140` attached `VAST-Reporter-v1.6.2-mac-arm64.dmg`, `-mac-x64.dmg` and `-win.zip`. Published as latest; the marketing site redeployed and shows v1.6.2.
+- **Branches:** [PR #38](https://github.com/rstamps01/ps-deploy-report/pull/38) merged into `develop` (`4e2f52f`, CI green), `develop` merged into `main` (`9111ca2`), then `develop` fast-forwarded, so `main` = `develop`.
+- **Update check:** the updater run as 1.6.1 against the live release reports 1.6.2 with all three download links; run as 1.6.2 it reports no update.
+- **Not yet done:** UPDATE AVAILABLE pill on a real 1.6.1 install, Confluence page, Slack announcement, GOV-3 advisory. v1.6.1's announcement was also never done.
+- **Next:** v1.6.3 (TP-4, FR-7–15, OBS-1, TP-3, HUB-1–9, DATA-1).
+
+---
+
 ## 2026-10-16 — v1.6.2 prepare-release
 
 - **Version strings:** `1.6.2` across all locations (`src/app.py` `APP_VERSION` canonical); `check-version-sync.sh` passes.
