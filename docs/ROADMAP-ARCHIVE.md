@@ -4,6 +4,14 @@ Completed roadmap items moved out of [`TODO-ROADMAP.md`](TODO-ROADMAP.md) to kee
 
 ---
 
+## Done — PIPE-T1 (2026-11-10)
+
+| ID | Item | Priority | Status | Notes |
+|------|------|----------|--------|--------|
+| PIPE-T1 | **Token-efficiency workflow.** Cut always-on agent context (about 45 KB to about 7 KB), archive hot state files, quiet and de-duplicate test runs, CI-first verification, changelog fragments, context packs, model tiers and numeric autonomy budgets; user-level hooks and rules. Gates unchanged. | High | Done | Merged to `develop` in [#44](https://github.com/rstamps01/ps-deploy-report/pull/44) (`1b61fd3`), 2026-11-10. Spec: [`issues/PIPE-T1/spec.md`](issues/PIPE-T1/spec.md). KPI re-measure: PIPE-T4. |
+
+---
+
 ## Done — moved from the live register (2026-11-10)
 
 *Done rows taken out of `TODO-ROADMAP.md` during the token-efficiency trim (PIPE-T1), grouped by their original section.*
