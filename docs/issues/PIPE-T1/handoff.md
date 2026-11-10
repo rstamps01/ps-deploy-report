@@ -26,7 +26,7 @@ Continue from this file. Code and git outrank it. Spec, baseline and quality tri
 | CI | JUnit failure summary per job; duplicate health-check and advanced-ops jobs removed |
 | Hooks (repo) | `afterFileEdit` runs black on edited `src/` and `tests/` Python files |
 | Skills | `project-manager` pre-flight; `implement-change` targeted tests, one review, hub-and-worker; changelog fragments assembled at release; `publish-docs` once per release |
-| User level | `~/.cursor/hooks.json` (`sessionStart` brief, `preCompact` handoff nudge, MCP size log), personal-store `skills/handoff`, five duplicate skills moved to `~/.cursor/skills-backup-2026-11-10/` |
+| User level | `~/.cursor/hooks.json` (`sessionStart` brief, `preCompact` handoff nudge, MCP size log), personal-store `skills/handoff`. The skills dedupe was reverted: other projects (Planalyzer) load skills from `~/.cursor/skills`, so all six stay there. |
 | Budget report | Five interventions logged in `~/vast-repos/cursor-budget-report/config/interventions.yml` (uncommitted, alongside the owner's own uncommitted changes) |
 
 ## Owner actions outstanding (agent can't do these)
@@ -36,7 +36,7 @@ Continue from this file. Code and git outrank it. Spec, baseline and quality tri
 3. **Rotate the exposed keys** in `~/.cursor/mcp.json`: Google AI key (nanobanana) at <https://aistudio.google.com/apikey>, and the 21st.dev Magic key in the 21st.dev console (<https://21st.dev>). Then remove the old values from the file.
 4. **Cursor Settings → Tools & MCP:** turn off Stitch, 21st-dev Magic, nanobanana, and the duplicate Slack server if it isn't needed. **Cursor Settings → Plugins:** remove `gitlab` and `nvidia-skills`; disable `continual-learning`, or install bun (`brew install oven-sh/bun/bun`, see <https://bun.sh>).
 5. **Cursor Settings → Rules → User Rules:** add the three lines in "User Rule additions" below.
-6. **Pick one copy of `generating-orion-bugs`.** `~/.cursor/skills/generating-orion-bugs` and the personal-store copy differ in `orion-conventions.md` and `output-templates.md`; the store copies are larger.
+6. **Don't move or delete anything in `~/.cursor/skills`.** Other projects depend on it. `generating-orion-bugs` there differs from the personal-store copy in `orion-conventions.md` and `output-templates.md`; reconcile only with the owner of those projects.
 7. **Optional:** `rtk` shell-output compression (`brew install rtk && rtk init -g --agent cursor`, then restart Cursor). It rewrites shell commands in every project.
 
 ## Next agent actions
