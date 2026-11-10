@@ -9,7 +9,13 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ---
 
+**Reading this file:** don't read it whole. Recent decisions are the first ~40 lines under *Decisions*; find older ones with `grep -n '^### ' docs/DECISIONS.md` (one heading per entry, `### YYYY-MM-DD — title`) and read only that entry. The Memlog section starts at `## Memlog`.
+
 ## Decisions (newest first)
+
+### 2026-11-10 — Token-efficiency trim of the agent workflow (PIPE-T1)
+
+Approved by the owner (plan *Token efficiency workflow*). Always-on context cut from about 45 KB to about 7 KB: only `AGENTS.md`, `change-control-07` and `config-security-11` stay always-applied; other rules are glob-scoped or agent-requested; `ai-develop-guidelines-02` deleted (duplicated rules 03–11); `design-guidelines-01` no longer `@`-references the 25 local Confluence docs. Billing data showed those docs were not expanded into prompts, so the bigger levers are session length, test-output volume and whole-file reads of hot state files: CHANGELOG v1.5.x and Done roadmap rows archived, pytest coverage moved out of `addopts`, CI-first verification, changelog fragments, context packs, model tiers and autonomy budgets. Gates, coverage floor and hooks unchanged. Quality tripwires in `docs/issues/PIPE-T1/spec.md`.
 
 ### 2026-10-17 — v1.6.2 shipped
 - **Decision:** ship v1.6.2: merge [PR #38](https://github.com/rstamps01/ps-deploy-report/pull/38) into `develop`, merge `develop` into `main` (`9111ca2`, pushed with the admin bypass for the PR-only rule, as for v1.6.1), tag `v1.6.2`. The build-release run passed its gates and published the two macOS `.dmg` files and the Windows `.zip` as the latest release.
