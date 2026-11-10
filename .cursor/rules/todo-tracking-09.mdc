@@ -1,6 +1,6 @@
 ---
-description: Task tracking — TODO management, session handoff, roadmap, and CI/CD status validation
-alwaysApply: true
+description: Task tracking — TODO-ROADMAP register, item status, session start/end protocol. Read when starting or finishing roadmap work, updating the tracker, or ending a session.
+alwaysApply: false
 ---
 # Task & TODO Tracking
 
@@ -16,7 +16,7 @@ At the start of every development session:
 1. Read `docs/TODO-ROADMAP.md` for next steps and planned work (and `5-Development-Status.md` or latest status reference if present)
 2. Review open TODOs and pending items in the roadmap
 3. Check `CHANGELOG.md` for recent changes
-4. Run `python3 -m pytest tests/ -v` to confirm baseline health
+4. Confirm baseline health from CI instead of re-running the suite: `gh run list --branch develop -L 1` (run targeted tests only for the area you will touch)
 
 ## During Development
 - Use Cursor's TODO tracking to manage multi-step tasks

@@ -1,6 +1,6 @@
 ---
-description: Repository structure standard — canonical layout, fixed homes for pipeline artifacts, layered src map for new modules, and archival/runtime conventions
-alwaysApply: true
+description: Repository structure standard — where new files, docs, modules, and pipeline artifacts belong. Read when adding a new file, module, doc, or top-level path.
+alwaysApply: false
 ---
 
 # Repository Structure Standard

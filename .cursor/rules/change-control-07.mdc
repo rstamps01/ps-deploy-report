@@ -1,60 +1,23 @@
 ---
-description: Change control — git workflow, branching strategy, commit conventions, and release process
+description: Change control — git workflow, branching strategy, commit conventions
 alwaysApply: true
 ---
 
 # Change Control & Git Workflow
 
-## Branch Strategy
+## Branches
 
-- `main` — protected, production-ready releases only (tagged)
-- `develop` — primary development branch, all features merge here first
-- `feature/<name>` — feature branches off `develop`
-- `fix/<name>` — bugfix branches off `develop`
+- `main` — protected, tagged releases only. Never commit or push to it directly.
+- `develop` — integration branch; everything merges here first.
+- `feature/<name>`, `fix/<name>`, `chore/<name>` — off `develop`.
 
-Never push directly to `main`. All changes go through `develop` first.
+## Commits (Conventional Commits)
 
-## Commit Message Format (Conventional Commits)
+`<type>(<scope>): <short description>`, with an optional body explaining why.
 
-```
-<type>(<scope>): <short description>
+- **Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+- **Scopes:** `api`, `extractor`, `report`, `cli`, `config`, `tests`, `docs`, `port-mapping`, `web`, `ui`, `packaging`
 
-<optional body explaining why, not what>
-```
+## Before a commit
 
-**Types:** `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-**Scopes:** `api`, `extractor`, `report`, `cli`, `config`, `tests`, `docs`, `port-mapping`, `web`, `ui`, `packaging`
-
-Examples:
-
-- `feat(api): add rack height detection for v7 endpoints`
-- `fix(extractor): handle missing PSNT field gracefully`
-- `docs(docs): update macOS install script for Python 3.14`
-- `test(api): add retry behavior tests for auth failures`
-
-## Pre-Commit Checklist
-
-Before every commit, verify:
-
-1. All tests pass: `python3 -m pytest tests/ -v`
-2. No lint errors: `flake8 src/ tests/`
-3. Format check: `black --check --line-length 120 src/ tests/`
-4. No credentials or secrets in staged files
-5. CHANGELOG.md updated for user-facing changes
-6. Version bump if releasing: update `src/app.py` (APP_VERSION) first, then all locations per `release-packaging-12.mdc`
-
-## Release Process
-
-See `release-packaging-12.mdc` for the full end-to-end checklist. Summary:
-
-1. Merge `develop` to `main`
-2. Update version in all locations (canonical source: `src/app.py` APP_VERSION)
-3. Update `CHANGELOG.md`, optionally create `RELEASE_NOTES_vX.Y.Z.md`
-4. Tag `vX.Y.Z` and push — CI builds .dmg and .zip automatically
-5. Verify GitHub Release artifacts
-
-## Semantic Versioning
-
-- **MAJOR**: breaking CLI or config changes
-- **MINOR**: new features, new report sections, new API support
-- **PATCH**: bug fixes, doc updates, minor improvements
+The `quality-gate` skill (or CI) must be green, no secrets are staged, and `CHANGELOG.md` (or the item's changelog fragment) covers user-facing changes. Versioning is semantic (MAJOR breaking CLI/config, MINOR features, PATCH fixes); the release procedure is in `release-packaging-12` and the `prepare-release` / `ship-release` skills.

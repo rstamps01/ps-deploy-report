@@ -1,6 +1,7 @@
 ---
-description: Release and packaging workflow — end-to-end process for shipping fixes, features, and .dmg builds
-alwaysApply: true
+description: Release and packaging workflow — version sync, tag-driven .dmg/.zip builds, release checklist. Read when preparing, shipping, hotfixing, or rolling back a release, or bumping versions.
+globs: "packaging/**,.github/workflows/build-release.yml"
+alwaysApply: false
 ---
 
 # Release & Packaging Workflow

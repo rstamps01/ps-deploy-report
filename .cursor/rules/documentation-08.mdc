@@ -1,6 +1,7 @@
 ---
 description: Documentation update requirements — when and what to update after code changes
-alwaysApply: true
+globs: "docs/**,README.md,CHANGELOG.md,config/*.template"
+alwaysApply: false
 ---
 # Documentation Standards
 

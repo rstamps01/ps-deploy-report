@@ -1,6 +1,6 @@
 ---
-description: Agentic CI/CD pipeline entry point — how to run lifecycle work through AGENTS.md, repo-local skills, hooks, and the PM orchestrator
-alwaysApply: true
+description: Agentic pipeline detail — golden path, non-negotiables, and precedence behind AGENTS.md. Read when running lifecycle skills, the PM orchestrator, or changing rules/skills/hooks.
+alwaysApply: false
 ---
 
 # Agentic Workflow

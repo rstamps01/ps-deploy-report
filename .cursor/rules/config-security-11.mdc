@@ -4,49 +4,17 @@ alwaysApply: true
 ---
 # Configuration & Security
 
-## Configuration Management
-- All runtime settings in `config/config.yaml` (YAML format)
-- Template: `config/config.yaml.template` (committed, no secrets)
-- Environment-specific overrides via env vars or CLI args
-- New config keys must be added to both `config.yaml.template` and documented in `README.md`
+## Configuration
+- Runtime settings live in `config/config.yaml` (gitignored); the committed template is `config/config.yaml.template` (no secrets).
+- New config keys go in the template and `README.md`. Behavior changes belong in config, not hardcoded.
 
-## Config Structure
-```yaml
-api:         # timeout, max_retries, retry_delay, verify_ssl, version
-logging:     # level, format, file_path, rotation_size, backup_count, console_colors
-report:      # organization, template, pdf
-output:      # default_directory, pdf_filename, json_filename
-data_collection:  # sections, concurrent_requests, validate_responses, graceful_degradation
-security:    # prompt_for_credentials, session_timeout, sanitize_logs
-```
+## Credentials (mandatory)
+- NEVER hardcode credentials in source, config, comments, docs, briefs, or ledgers.
+- NEVER log tokens, passwords, or session cookies. Log sanitization filters: password, token, secret, credential, authorization.
+- Credential flow: CLI args → env vars → interactive `getpass`. Tokens are held in memory only.
+- Env vars: `VAST_API_TOKEN`, `VAST_USERNAME`/`VAST_PASSWORD`, `VAST_NODE_USER`/`VAST_NODE_PASSWORD`, `VAST_SWITCH_USER`/`VAST_SWITCH_PASSWORD`, `SMTP_USERNAME`/`SMTP_PASSWORD`.
+- New secrets are registered in `docs/development/PIPELINE-SECRETS.md`; values never enter git.
 
-## Credential Security (mandatory)
-- NEVER hardcode credentials in source code, config files, or comments
-- NEVER log tokens, passwords, or session cookies
-- Credentials flow: CLI args → env vars → interactive `getpass` prompt
-- API tokens stored in memory only; destroyed after session
-- Log sanitization must filter: password, token, secret, credential, authorization
-
-## SSL/TLS
-- Default: `verify_ssl: true`
-- Self-signed certs: configurable via `api.verify_ssl: false` (warn in logs)
-- Always use HTTPS for API communication
-
-## Sensitive Data in Reports
-- Reports contain cluster configuration, not credentials
-- JSON export must not include auth tokens or passwords
-- Sanitize any field that could contain credentials before writing output
-
-## Environment Variables
-| Variable | Purpose |
-|----------|---------|
-| `VAST_API_TOKEN` | API token authentication |
-| `VAST_USERNAME` | Cluster username |
-| `VAST_PASSWORD` | Cluster password |
-| `VAST_NODE_USER` / `VAST_NODE_PASSWORD` | SSH node credentials |
-| `VAST_SWITCH_USER` / `VAST_SWITCH_PASSWORD` | SSH switch credentials |
-| `SMTP_USERNAME` / `SMTP_PASSWORD` | Pipeline escalation email (SMTP app-password); read by `src/utils/notifier.py`, never stored in config |
-
-## Secrets registry
-
-The full pipeline secrets registry — every secret, its store (local `.env` / OS env / GitHub Actions secret / MCP auth), and its consumer (app, notifier, Slack/Atlassian MCP, `gh`) — is documented in [`docs/development/PIPELINE-SECRETS.md`](../../docs/development/PIPELINE-SECRETS.md). Add any new secret there, keep the value out of git, and put only non-secret companion settings in `config.yaml.template`.
+## SSL/TLS and output
+- Default `verify_ssl: true`; `api.verify_ssl: false` is allowed for self-signed certs and must warn in logs. Always HTTPS.
+- Reports and JSON exports contain configuration, never auth tokens or passwords; sanitize any field that could hold a credential.

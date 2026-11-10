@@ -25,7 +25,7 @@ Routing index of every repo-local skill under `.cursor/skills/`. `AGENTS.md` and
 
 | Skill | Invoke when | Role | Enforces |
 | --- | --- | --- | --- |
-| [`project-manager`](project-manager/SKILL.md) | Any `PM:` command; drive multi-item work end-to-end | Orchestrator | `agentic-workflow-16`, `todo-tracking-09` |
+| [`project-manager`](project-manager/SKILL.md) | Any `PM:` command; drive multi-item work end-to-end | Orchestrator | `AGENTS.md`, `agentic-workflow-16`, `todo-tracking-09` |
 | [`deliver-autonomously`](deliver-autonomously/SKILL.md) | An approved item is cleared for hands-off delivery | Delivery loop | all pipeline rules |
 | [`remediate-failure`](remediate-failure/SKILL.md) | A gate fails and needs bounded auto-remediation + escalation | Failure handling | `ci-pipeline-13`, `config-security-11` |
 
