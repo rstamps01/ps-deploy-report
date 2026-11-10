@@ -34,7 +34,17 @@ The single orchestrator that sits above the lifecycle skills, maintains project 
 
 The PM autonomously researches, plans, tracks, writes docs/tests, creates branches, and opens PRs. It **PAUSES for explicit approval** before any destructive/irreversible action: merging to `main`, releasing/tagging, deleting files, and any force/destructive git operation. Every pause is a concise decision brief (options + pros/cons + recommendation), recorded in `docs/DECISIONS.md`.
 
-**Budgets + kill switch (§22):** each autonomous run carries a max turns/cost + max parallel subagent fan-out; exceeding it pauses and escalates. `PM: pause`/`PM: stop` halt immediately. A dry-run/`--check` previews actions before writing.
+**Budgets + kill switch (§22):** each autonomous run carries the numeric budgets in `.cursor/pipeline.yml` `autonomy` (`max_turns_per_item`, `token_budget_per_item`, `max_parallel_subagents`); exceeding it pauses and escalates. `PM: pause`/`PM: stop` halt immediately. A dry-run/`--check` previews actions before writing.
+
+## Pre-flight before high-token work
+
+Before `implement-change`, `remediate-failure`, review, or release docs:
+
+1. **Fresh chat** that starts from `docs/BRIEF.md`; one model per chat.
+2. **Batch and group.** Triage new requests in one weekly pass (`PM: intake` with several items). Group ready items by code area (for example oneshot/vperfsanity, report builder, network diagram) so one worker loads a large module once for all of that area's items. Commit per item; split PRs with `split-to-prs` if needed.
+3. **Context pack** per item: `python3 scripts/context-pack.py <ID> --terms <symbols>` writes `docs/issues/<ID>/context.md` (files, line ranges, tests, recent commits) with no model involved.
+4. **Plan on the strong tier**, approve, then **execute on the fast tier** (`.cursor/pipeline.yml` `models`), one subagent per independent to-do.
+5. **Verify in CI first:** targeted tests locally, push, read only CI failures (`gh run view --log-failed`). One local full gate before the PR and before a tag.
 
 ## Orchestration
 

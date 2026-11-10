@@ -25,9 +25,10 @@ Keeps project state truthful in one place. Enforces `todo-tracking-09`. The regi
 2. **Advance the state** to match reality (branch open = `in-progress`; PR open = `in-review`; merged + released = `done`).
 3. **Move completed items** to `docs/ROADMAP-ARCHIVE.md` when the live list grows; keep only active + near-term work in the register.
 4. **Refresh metadata:** "Last updated" (date + one-line what-changed) and "Next steps (current focus)".
-5. **Sync CHANGELOG** for user-facing changes (Keep a Changelog). Do not duplicate CHANGELOG narrative inside the register.
-6. **Append to the memlog** (`docs/DECISIONS.md` for decisions; issue log for progress) so runs are resumable.
-7. Confirm CI's todo-list structural validation still passes (required sections/headings intact).
+5. **Changelog:** per item, write `docs/issues/<ID>/changelog.md`; `prepare-release` assembles `CHANGELOG.md`. Do not read or duplicate `CHANGELOG.md` in the register. Locate items with Grep (`grep -n '| <ID> |' docs/TODO-ROADMAP.md`) and edit by line range rather than reading the whole register.
+6. **Refresh `docs/BRIEF.md`** (under 2.5 KB; replace, don't append): phase, CI status, next 3, open PRs/blockers, last decisions.
+7. **Append to the memlog** (`docs/DECISIONS.md` for decisions; issue log for progress) so runs are resumable.
+8. Confirm CI's todo-list structural validation still passes (required sections/headings intact).
 
 ## Leverages
 
@@ -37,6 +38,6 @@ Rules: `todo-tracking-09`, `documentation-08`. Skills: `generate-status-report` 
 
 - [ ] Item status matches reality (state machine)
 - [ ] Done items archived; register kept lean
-- [ ] "Last updated" + "Next steps" refreshed
+- [ ] "Last updated" + "Next steps" refreshed; `docs/BRIEF.md` replaced
 - [ ] CHANGELOG in sync for user-facing changes
 - [ ] Memlog appended; CI todo-validation still passes

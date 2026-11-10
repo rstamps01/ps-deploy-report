@@ -38,7 +38,8 @@ commands:
   format_fix: black --line-length 120 src/ tests/
   typecheck: mypy src/ --ignore-missing-imports --no-strict-optional
   test: python -m pytest tests/ --ignore=tests/test_ui.py
-  test_cov: python -m pytest tests/ --ignore=tests/test_ui.py --cov=src --cov-report=term-missing --cov-fail-under=60
+  test_targeted: python -m pytest -x --lf   # append tests/test_<module>.py; no coverage
+  test_cov: python -m pytest tests/ --ignore=tests/test_ui.py --cov=src --cov-report=term:skip-covered --cov-fail-under=60 -m "not flaky"
   ui_test: python -m pytest tests/test_ui.py
   build: bash packaging/build-mac.sh          # Windows: powershell -File packaging/build-windows.ps1
   clean: bash scripts/clean-workspace.sh
@@ -89,7 +90,18 @@ tracking:
 
 autonomy:                       # governance + kill switch (pipeline §22)
   max_remediation_attempts: 3   # per issue, then escalate (§16)
+  max_turns_per_item: 60        # pause + /handoff + escalate when reached
+  token_budget_per_item: 15000000  # input-side tokens incl. cache reads; pause + escalate when reached
+  max_parallel_subagents: 4
   pause_before: [merge_to_main, tag_release, file_deletion, force_git]
   flaky_marker: flaky           # quarantined tests excluded from the blocking gate (§21)
+
+# Model tiers (token efficiency). Skills and the PM pick a tier, not a model.
+models:
+  strong: claude-opus-5-5-high     # planning, review, remediate-failure, cross-system debugging (never xhigh)
+  fast: composer-2.5               # explore, update-tracker, publish-docs, prepare-release assembly, mechanical to-dos (not -fast)
+  routing:
+    strong: [intake-feature, implement-change-review, remediate-failure, review-bugbot, review-security, hotfix]
+    fast: [explore, update-tracker, publish-docs, codebase-health, prepare-release-assembly, implement-change-worker]
 
 mcps: [atlassian, slack, gitlens]

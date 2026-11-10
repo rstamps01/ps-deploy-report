@@ -11,7 +11,7 @@ The end-to-end loop that composes the lifecycle skills so the only required huma
 ## Preconditions
 
 - The item is approved and at status `ready-for-dev` (via `intake-feature`) with acceptance criteria.
-- Autonomy budget + governance (§22) are known: max turns/cost, max parallel fan-out, dry-run flag.
+- Autonomy budget + governance (§22) are known: `.cursor/pipeline.yml` `autonomy.max_turns_per_item`, `autonomy.token_budget_per_item`, `autonomy.max_parallel_subagents`, dry-run flag. Run the `project-manager` pre-flight first.
 
 ## Loop (driven by the §6 state machine)
 
@@ -29,7 +29,7 @@ intake-feature (done) → start-work → [spec.md + consistency check if non-tri
 2. **Spec-first (right-sized):** for non-trivial items produce a minimal `spec.md` and run a cross-artifact consistency check (spec ↔ plan ↔ tasks ↔ code) before `implement-change`; trivial fixes skip the ceremony.
 3. **Delegate in parallel** where independent (`explore` research, partitioned implementers) under the single-writer rule (§27) — never two implementers on the same files.
 4. **On any gate failure**, hand to `remediate-failure` (bounded 3-attempt loop + escalation); do not silently retry forever.
-5. **Respect budgets + kill switch (§22):** on `PM: pause`/`PM: stop`, or budget exhaustion, stop cleanly and escalate with current state. `--check`/dry-run previews the plan without writing.
+5. **Respect budgets + kill switch (§22):** count turns and estimate tokens per item; on reaching either numeric budget, on context compaction (write `/handoff` first), on `PM: pause`/`PM: stop`, or on budget exhaustion, stop cleanly and escalate with current state. `--check`/dry-run previews the plan without writing.
 
 ## Required human touchpoints (everything else is autonomous)
 
