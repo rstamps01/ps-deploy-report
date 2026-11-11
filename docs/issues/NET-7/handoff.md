@@ -17,7 +17,7 @@ Cost measurement (PIPE-T4) is paused: the cursor-budget-report tool needs change
 
 ## Working tree
 
-FR-16 is committed and in review in [PR #49](https://github.com/rstamps01/ps-deploy-report/pull/49) (CI green, not merged; the owner's lab re-run, T8, is still pending). The main checkout `~/vast-asbuilt-reporter` is on `fix/FR-16-vperfsanity-output-stall` with a clean tree. Do NET-7 work in its own worktree so the two branches never share a checkout:
+FR-16 is merged to `develop` ([PR #49](https://github.com/rstamps01/ps-deploy-report/pull/49), `92f3669`); the owner's lab re-run (T8) is still pending. The main checkout `~/vast-asbuilt-reporter` is on `develop` with a clean tree. Do NET-7 work in its own worktree so the two branches never share a checkout:
 
 `git worktree add -b feature/NET-7-vnetmap-lldp ../asbuilt-net7 origin/develop`
 
@@ -27,7 +27,7 @@ Never `git checkout`, `git stash` or `git commit -a` in a checkout another chat 
 
 | ID | Item | Priority | State |
 | --- | --- | --- | --- |
-| FR-16 | vperfsanity Step 4 output stalls, then floods and freezes Chrome | P0, v1.6.3 blocker | **In review, PR #49.** Merge after CI; lab re-run (T8) before v1.6.3. Don't re-plan it. |
+| FR-16 | vperfsanity Step 4 output stalls, then floods and freezes Chrome | P0, v1.6.3 blocker | **Merged (PR #49).** Lab re-run (T8) before v1.6.3. Don't re-plan it. |
 | HCF-3 | Critical alarms only produce a warning (17 critical/major alarms gave a warning in one field run) | P1 | Planned |
 | FR-7 | vperfsanity background runner (builds on FR-16) | P1 | Planned |
 | DRV-1, RCS-1–5 | Report-content features (drive inventory, friendly model names, RLR count, metadata triplication, 1-strip, vperfsanity figure) | P1 | Planned; enhancements, not fixes |
@@ -54,7 +54,7 @@ Never `git checkout`, `git stash` or `git commit -a` in a checkout another chat 
   - config: `config/config.yaml.template` (`run_vnetmap`, `include_prior_vnetmap`)
   - tests: `test_vnetmap_*`, `test_e2e_vnetmap_diagram.py`, `test_external_port_mapper.py`, `test_port_mapper.py`, `test_network_diagram_v2.py`, `test_tool_manager.py`, `test_workflows.py`
   - earlier plans: `docs/plans/vnetmap_+_network_diagram_d3e4b87f.plan.md`, `docs/plans/vnetmap_and_log-bundle_teleport_fixes_e9a4abc3.plan.md`
-- **Overlap with FR-16 (PR #49):** FR-16 changes `src/app.py`, `src/oneshot_runner.py`, `src/advanced_ops.py`, `src/utils/ssh_adapter.py`, `src/utils/logger.py`, `reporter.html` and `advanced_ops.html`. Branch NET-7 from `develop` after #49 merges, or merge `develop` in once it does.
+- **Overlap with FR-16 (PR #49):** FR-16 changes `src/app.py`, `src/oneshot_runner.py`, `src/advanced_ops.py`, `src/utils/ssh_adapter.py`, `src/utils/logger.py`, `reporter.html` and `advanced_ops.html`. #49 is merged, so branch NET-7 from current `develop`.
 
 ## Open questions for the owner
 

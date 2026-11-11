@@ -4,7 +4,7 @@ Goal: field-ready as-built PDF/JSON reports and post-install validation for VAST
 Phase: v1.6.2 shipped (2026-10-17); v1.6.3 in planning | Version: 1.6.2 | CI on `develop`: green (2026-11-09)
 
 ## Next 3
-1. FR-16 (P0, v1.6.3 blocker): in review, PR #49 (CI, then merge); owner lab re-run with a full Step 4 (T8) before v1.6.3. `docs/issues/FR-16/`.
+1. FR-16 (P0, v1.6.3 blocker): merged to `develop` in PR #49 (`92f3669`); owner lab re-run with a full Step 4 (T8) before v1.6.3. `docs/issues/FR-16/`.
 2. v1.6.3 scope: TP-4, FR-7–15, OBS-1, TP-3, HUB-1–9, DATA-1 (see `docs/TODO-ROADMAP.md` Next steps).
 3. Plan critical fixes + NET-7 (vnetmap_lldp port map and diagram): `docs/issues/NET-7/handoff.md`. PIPE-T4 cost re-measure paused.
 
