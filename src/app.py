@@ -1170,7 +1170,7 @@ def _register_routes(app: Flask) -> None:
 
         from advanced_ops import get_advanced_ops_manager
 
-        get_advanced_ops_manager()._output_buffer.clear()
+        get_advanced_ops_manager().clear_output()
 
         # IMPORTANT: pre-validation must honour the Autofill toggle so the
         # Switch SSH probe iterates the full candidate list (primary entered
@@ -1292,9 +1292,19 @@ def _register_routes(app: Flask) -> None:
                 with app.config["ONESHOT_LOCK"]:
                     app.config["ONESHOT_RUNNING"] = False
 
+        from advanced_ops import get_advanced_ops_manager
+
+        output_cursor = get_advanced_ops_manager().output_count()
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
-        return jsonify({"status": "started", "operations": selected_ops, "include_report": include_report})
+        return jsonify(
+            {
+                "status": "started",
+                "operations": selected_ops,
+                "include_report": include_report,
+                "output_cursor": output_cursor,
+            }
+        )
 
     @app.route("/advanced-ops/oneshot/status")
     def advanced_ops_oneshot_status():

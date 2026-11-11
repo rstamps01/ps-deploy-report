@@ -15,17 +15,19 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from script_runner import ScriptRunner
 from utils.ssh_adapter import (
     is_ssh_auth_failure,
+    is_ssh_noise_line,
     is_ssh_transport_failure,
     run_ssh_command,
     ssh_auth_failure_message,
     ssh_transport_failure_message,
 )
 from utils.logger import get_logger
+from workflows.vperfsanity_output import VperfsanityOutputFilter, visible_tail
 
 logger = get_logger(__name__)
 
@@ -451,18 +453,66 @@ class VperfsanityWorkflow:
             return minimum
         return -(-minimum // per_thread_round) * per_thread_round
 
-    def _emit_run_output(self, output: str) -> None:
-        for line in output.strip().split("\n"):
-            if line.strip():
-                ll = line.lower()
-                if "error" in ll:
-                    self.emit("error", line)
-                elif "warning" in ll or "warn" in ll:
-                    self.emit("warn", line)
-                elif "pass" in ll or "success" in ll or "complete" in ll:
-                    self.emit("success", line)
-                else:
-                    self.emit("info", line)
+    def _emit_run_line(self, line: str) -> None:
+        ll = line.lower()
+        if "error" in ll:
+            self.emit("error", line)
+        elif "warning" in ll or "warn" in ll:
+            self.emit("warn", line)
+        elif "pass" in ll or "success" in ll or "complete" in ll:
+            self.emit("success", line)
+        else:
+            self.emit("info", line)
+
+    def _emit_transcript(self, line: str) -> None:
+        """Send a raw Step 4 line to the operation log only (``transcript`` tier)."""
+        if self._output_callback:
+            try:
+                self._output_callback("info", line, None, "transcript")  # type: ignore[call-arg]
+            except Exception:
+                pass
+
+    def _run_vperfsanity(
+        self, ssh_host: str, user: str, password: Optional[str], run_cmd: str, timeout: int, ssh_port: int
+    ) -> Tuple[int, str, str]:
+        """Run ``vperfsanity_run.sh`` and stream its filtered output to Output Results as it arrives.
+
+        Returns:
+            Tuple[int, str, str]: ``(rc, stdout, stderr)`` from ``run_ssh_command``, unfiltered.
+        """
+        streamed_tails: Set[str] = set()
+
+        def raw_line(line: str) -> None:
+            tail = visible_tail(line)
+            if tail:
+                streamed_tails.add(tail)
+            self._emit_transcript(line)
+
+        def was_streamed(text: str) -> bool:
+            return text in streamed_tails or any(tail.endswith(text) for tail in streamed_tails)
+
+        stream = VperfsanityOutputFilter(self._emit_run_line, raw_line)
+        rc, stdout, stderr = run_ssh_command(
+            ssh_host,
+            user,
+            password,
+            run_cmd,
+            timeout=timeout,
+            force_tty=True,
+            port=ssh_port,
+            on_output=stream.feed,
+        )
+        streamed = stream.received
+        if not streamed:
+            stream.feed(stdout + stderr)
+        stream.flush()
+        if streamed:
+            # Adapter-made messages (timeout notice, connection errors) are only in the returned stderr.
+            for line in (stderr or "").splitlines():
+                text = line.strip()
+                if text and not was_streamed(text) and not is_ssh_noise_line(text):
+                    self.emit("error", text)
+        return rc, stdout, stderr
 
     def _step_run_tests(self) -> Dict[str, Any]:
         """Step 4: Run vperfsanity write and read tests."""
@@ -492,12 +542,9 @@ class VperfsanityWorkflow:
         )
         self.emit("info", "")
 
-        # Long timeout for performance tests, force_tty for interactive output
-        rc, stdout, stderr = run_ssh_command(
-            ssh_host, user, password, run_cmd, timeout=timeout, force_tty=True, port=ssh_port
-        )
+        # force_tty: the script reports burst-wait progress only to a TTY.
+        rc, stdout, stderr = self._run_vperfsanity(ssh_host, user, password, run_cmd, timeout, ssh_port)
         output = stdout + stderr
-        self._emit_run_output(output)
 
         num_objects = self._object_count_for_part_limit(output) if rc != 0 else None
         if num_objects:
@@ -509,11 +556,8 @@ class VperfsanityWorkflow:
             run_cmd = f"cd {vperf_dir} && ./vperfsanity_run.sh -w -r -n {num_objects} {vip_pool}"
             self.emit("info", f"$ {run_cmd}")
             self.emit("info", "")
-            rc, stdout, stderr = run_ssh_command(
-                ssh_host, user, password, run_cmd, timeout=timeout, force_tty=True, port=ssh_port
-            )
+            rc, stdout, stderr = self._run_vperfsanity(ssh_host, user, password, run_cmd, timeout, ssh_port)
             output = stdout + stderr
-            self._emit_run_output(output)
             self._step_data["num_objects"] = num_objects
 
         self._step_data["test_output"] = output

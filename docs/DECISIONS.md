@@ -116,6 +116,10 @@ Approved by the owner (plan *Token efficiency workflow*). Always-on context cut 
 
 ## Memlog (newest first)
 
+### 2026-11-10 — FR-16 started
+
+Branch `fix/FR-16-vperfsanity-output-stall` off `develop` (`3090153`). Plan and tasks: `docs/issues/FR-16/plan.md`, `tasks.md`. SSH streaming and the output pane run as parallel workers; filter, workflow, transcript tier and werkzeug filter are in the parent. The 2026-10-23 lab log isn't local; the fixture comes from the 2026-04-23 lab log plus the burst-wait format in `vperfsanity_run.sh`.
+
 ### 2026-11-10 — PIPE-T1 merged
 
 #39 and #44 merged to `develop` (`3c82bf6`, `1b61fd3`). PIPE-T1 archived; KPI re-measure is PIPE-T4, due 2026-11-24. User-level skills stay in both `~/.cursor/skills` (Planalyzer depends on it) and the personal store; Cursor lists each name once.

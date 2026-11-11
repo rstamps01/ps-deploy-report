@@ -1,0 +1,4 @@
+### Fixed
+- **vperfsanity output (FR-16):** Step 4 now streams to Output Results while it runs. You see elbencho progress for the write and read phases (percent done, MiB/s, elapsed time) and a status line every 30 seconds during the burst-recovery wait. Before, nothing appeared until the end and then everything arrived at once. elbencho's screen redraws no longer flood the panel; the full raw output is still saved in the operation log and the result bundle.
+- **Output Results freezes (FR-16):** the panel adds lines in batches and saves its history at most once per batch. It keeps the newest 5,000 lines, with a notice when older ones are dropped. Long runs and pages reopened mid-run no longer freeze the browser. Starting a one-shot run no longer repeats the pre-validation output or the previous run's output.
+- **Output Results noise (FR-16):** the web server's request lines for the page's own status polls no longer appear in Output Results or the operation log.
