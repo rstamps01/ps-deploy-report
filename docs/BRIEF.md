@@ -4,7 +4,7 @@ Goal: field-ready as-built PDF/JSON reports and post-install validation for VAST
 Phase: v1.6.2 shipped (2026-10-17); v1.6.3 planned (scope set 2026-11-11) | Version: 1.6.2 | CI on `develop`: green (2026-11-09)
 
 ## Next 3
-1. v1.6.3 plan: `docs/issues/v1.6.3/plan.md`. Docs PR first (`chore/v1.6.3-plan`), then FR-10, FR-11, TP-4, HCF-3 and NET-7 in parallel; OBS-1 after HCF-3; FR-7 after FR-10; TP-3 needs a repro.
+1. v1.6.3: start from `docs/issues/v1.6.3/handoff.md`. Docs PR #51 (`chore/v1.6.3-plan`) first, then FR-10, FR-11, TP-4, HCF-3 and NET-7 in parallel; OBS-1 after HCF-3; FR-7 after FR-10; TP-3 needs a repro.
 2. NET-7 (vnetmap_lldp port map and diagram; Auto / vnetmap / LLDP source): `docs/issues/NET-7/plan.md`, worktree `~/asbuilt-net7`, branch `feature/NET-7-vnetmap-lldp`.
 3. FR-16 lab re-run (T8) and the other lab gates (FR-7, NET-7 on a cluster with LLDP active, TP-3) before the v1.6.3 cut.
 
