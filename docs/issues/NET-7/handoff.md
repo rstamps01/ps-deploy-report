@@ -66,6 +66,8 @@ Never `git checkout`, `git stash` or `git commit -a` in a checkout another chat 
 
 ## Next agent actions
 
-1. Read this file, `spec.md` and `docs/BRIEF.md`; create the worktree above.
-2. Plan mode: brainstorm, ask the open questions, then write the plan (`docs/issues/NET-7/plan.md`, plus a `docs/issues/<ID>/` folder for any critical fix that lacks one).
-3. On approval: `start-work`, then `implement-change` per to-do. Ship tests with every feature and a failing-first regression test with every bug fix.
+Planning is done (2026-11-11). The open questions above are answered in `docs/DECISIONS.md` (2026-11-11) and
+[`plan.md`](plan.md). The worktree exists.
+
+1. Read [`../v1.6.3/plan.md`](../v1.6.3/plan.md), [`plan.md`](plan.md) and [`tasks.md`](tasks.md).
+2. `start-work`, then `implement-change` per to-do (workers A–C in `plan.md`). Ship tests with every feature and a failing-first regression test with every bug fix.

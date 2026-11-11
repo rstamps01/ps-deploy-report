@@ -13,6 +13,14 @@ Append-only decision log (ADR-lite) **and** working-memory ledger for the agenti
 
 ## Decisions (newest first)
 
+### 2026-11-11 — v1.6.3 scope: critical fixes + NET-7 (vnetmap_lldp)
+- **Scope:** v1.6.3 carries FR-16, TP-4, FR-10, FR-11, OBS-1, TP-3, HCF-3, FR-7 and NET-7 in one release. This is a deliberate exception to patch-only semver; the release notes name the two behavior changes (HCF-3, NET-7). FR-8/9/13–15, HUB-1–9 and DATA-1 move to v1.7.0. TP-3 moves to v1.7.0 if it cannot be reproduced before the cut.
+- **HCF-3:** moves from v1.7.0 to v1.6.3; default `health_check.alarms.fail_on: critical` (critical fails, major warns; `none` restores the old behavior).
+- **NET-7:** the operator picks the port-map source per run: Auto (default), vnetmap or LLDP. Auto never leaves vnetmap while any switch login works. Only `vnetmap_lldp.py` is in scope; switch IPs come from the VMS switches API. The tcpdump / `nw_check.sh` enrichment is NET-8 (v1.7.x). `show-mapping` was confirmed read-only for lldpd/lldpad and interfaces, but it rewrites `/userdata/switch_mapping.json` (which `ifup` reads), so the workflow preserves that file. `-f` is never passed.
+- **OBS-1:** filenames use local time through one helper.
+- **Lab:** a cluster with LLDP already active on the nodes is available for the NET-7 gate.
+- **Rationale:** the field needs a port map when customers keep switch credentials, and critical alarms passing as warnings is a hand-over risk; one release avoids a second field update cycle. **Approver:** user (2026-11-11). Plan: `docs/issues/v1.6.3/plan.md`.
+
 ### 2026-11-10 — Token-efficiency trim of the agent workflow (PIPE-T1)
 
 Approved by the owner (plan *Token efficiency workflow*). Always-on context cut from about 45 KB to about 7 KB: only `AGENTS.md`, `change-control-07` and `config-security-11` stay always-applied; other rules are glob-scoped or agent-requested; `ai-develop-guidelines-02` deleted (duplicated rules 03–11); `design-guidelines-01` no longer `@`-references the 25 local Confluence docs. Billing data showed those docs were not expanded into prompts, so the bigger levers are session length, test-output volume and whole-file reads of hot state files: CHANGELOG v1.5.x and Done roadmap rows archived, pytest coverage moved out of `addopts`, CI-first verification, changelog fragments, context packs, model tiers and autonomy budgets. Gates, coverage floor and hooks unchanged. Quality tripwires in `docs/issues/PIPE-T1/spec.md`.

@@ -1,6 +1,7 @@
 # NET-7 — vnetmap fallback to vnetmap_lldp (customer-managed switches)
 
-**Status:** Planned (future enhancement, documentation only; target v1.7.x). Assessed 2026-10-16.
+**Status:** Planned for v1.6.3 (owner, 2026-11-11). Assessed 2026-10-16. Plan: [`plan.md`](plan.md). The
+owner's decisions there override the "fallback" wording below: the operator picks Auto / vnetmap / LLDP per run.
 
 ## Problem
 
@@ -53,7 +54,7 @@ The `tcpdump` one-liners and `nw_check.sh` read the switches' own LLDP frames pa
 ## Scope when implemented
 
 1. **Update Tools:** add `vnetmap_lldp.py` to `ToolManager.TOOLS` (`src/tool_manager.py`) with URL `https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/vnetmap_lldp.py`, so it appears in the Update Tools list and is cached/deployed like `vnetmap.py`. On the cluster it runs from `/vast/data/vnetmap_lldp.py`.
-2. **Fallback selection:** in the vnetmap workflow, when no switch credentials are provided (or switch auth fails for every switch), offer the LLDP path instead of failing; never switch automatically when credentials work.
+2. **Source selection:** the operator picks Auto (default), vnetmap or LLDP per run. Auto uses LLDP when no switch credentials are provided or switch auth fails for every switch; it never switches when any switch login works.
 3. **Readiness check (read-only)** as in Guardrails 2.
 4. **Parser:** `VNetMapLLDPParser` for the final "LLDP Connection Mapping" table (tolerant of per-switch tables and progress lines), with tests on a scrubbed fixture.
 5. **Mapper/diagram:** name-only switch keys; subnet-derived network side; "inter-switch links not discovered" note.
