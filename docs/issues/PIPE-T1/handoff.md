@@ -1,6 +1,6 @@
 # PIPE-T1 handoff (2026-11-10, 12:40 PT)
 
-**Update 2026-11-10, 15:00 PT:** #39 and #44 are merged to `develop` (`3c82bf6`, `1b61fd3`). Next agent actions 1 and 2 are done: PIPE-T1 is archived and the KPI re-measure is tracked as PIPE-T4 (due 2026-11-24). Owner actions 2–5 and 7 are still open. Next: action 3 at the v1.6.3 release, action 4 on 2026-11-24, and FR-16 (action 5) now.
+**Update 2026-11-10, 15:00 PT:** #39 and #44 are merged to `develop` (`3c82bf6`, `1b61fd3`). Next agent actions 1 and 2 are done: PIPE-T1 is archived and the KPI re-measure is tracked as PIPE-T4 (due 2026-11-24). Owner actions are all resolved (see below). Next: action 3 at the v1.6.3 release, action 4 on 2026-11-24, and FR-16 (action 5) now.
 
 Continue from this file. Code and git outrank it. Spec, baseline and quality tripwires: [`spec.md`](spec.md). Project state: [`../../BRIEF.md`](../../BRIEF.md).
 
@@ -31,15 +31,15 @@ Continue from this file. Code and git outrank it. Spec, baseline and quality tri
 | User level | `~/.cursor/hooks.json` (`sessionStart` brief, `preCompact` handoff nudge, MCP size log), personal-store `skills/handoff`. The skills dedupe was reverted: other projects (Planalyzer) load skills from `~/.cursor/skills`, so all six stay there. |
 | Budget report | Five interventions logged in `~/vast-repos/cursor-budget-report/config/interventions.yml` (uncommitted, alongside the owner's own uncommitted changes) |
 
-## Owner actions outstanding (agent can't do these)
+## Owner actions (decided 2026-11-10, 18:00 PT)
 
-1. **Merge [#39](https://github.com/rstamps01/ps-deploy-report/pull/39), then [#44](https://github.com/rstamps01/ps-deploy-report/pull/44).**
-2. **Baseline:** sign in at <https://cursor.com/dashboard>, then run `cd ~/vast-repos/cursor-budget-report && make report`. The last refresh failed with `not_authenticated`.
-3. **Rotate the exposed keys** in `~/.cursor/mcp.json`: Google AI key (nanobanana) at <https://aistudio.google.com/apikey>, and the 21st.dev Magic key in the 21st.dev console (<https://21st.dev>). Then remove the old values from the file.
-4. **Cursor Settings → Tools & MCP:** turn off Stitch, 21st-dev Magic, nanobanana, and the duplicate Slack server if it isn't needed. **Cursor Settings → Plugins:** remove `gitlab` and `nvidia-skills`; disable `continual-learning`, or install bun (`brew install oven-sh/bun/bun`, see <https://bun.sh>).
-5. **Cursor Settings → Rules → User Rules:** add the three lines in "User Rule additions" below.
-6. **Don't move or delete anything in `~/.cursor/skills`.** Other projects depend on it. `generating-orion-bugs` there differs from the personal-store copy in `orion-conventions.md` and `output-templates.md`; reconcile only with the owner of those projects.
-7. **Optional:** `rtk` shell-output compression (`brew install rtk && rtk init -g --agent cursor`, then restart Cursor). It rewrites shell commands in every project.
+1. **Merge #39 and #44.** Done (`3c82bf6`, `1b61fd3`); tracker close-out in #45 (`3090153`).
+2. **Baseline (`make report`).** Owned by the cursor-budget-report project, including its uncommitted `config/interventions.yml`.
+3. **Rotate the exposed MCP keys.** Done by the owner.
+4. **Turn off unused MCP servers and plugins.** Declined: they stay available. MCP tool schemas already load on demand (each chat carries only the server and tool names, about 2 KB for the four servers in question), and plugin skills add one description line each until used. The remaining always-on plugin cost is the Superpowers `sessionStart` injection (about 3.4 KB).
+5. **Add the three User Rule lines.** Declined. They repeat what `AGENTS.md` already says for this repo and would wrongly constrain other projects, which have no `docs/BRIEF.md`, context-pack script or `quality-gate.sh`.
+6. **`generating-orion-bugs` copies.** No action. Cursor mirrors the personal store into `~/.cursor/skills` on its own schedule. The store copy is the newer superset, and it is the one orion-generator vendors.
+7. **`rtk`.** Declined: it rewrites agent shell commands and filters their output, which can hide failure detail, change output that pipes parse, and stop command-text guards such as `guard-git.sh` from matching.
 
 ## Next agent actions
 
