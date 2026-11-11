@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import requests as _requests_lib
 
 from tool_manager import TOOL_FRESHNESS_WARN_DAYS
-from utils.logger import get_logger
+from utils.logger import get_logger, is_access_log_record
 from utils.switch_password_candidates import (
     BUILTIN_AUTOFILL_SWITCH_PASSWORDS as _SHARED_BUILTIN_AUTOFILL_SWITCH_PASSWORDS,
     resolve_switch_password_candidates as _shared_resolve_switch_password_candidates,
@@ -77,6 +77,8 @@ class _OneShotLogHandler(logging.Handler):
         self._callback = callback
 
     def emit(self, record):
+        if is_access_log_record(record):
+            return
         try:
             tier = "debug" if record.levelno <= logging.DEBUG else "live"
             level_map = {
@@ -2235,11 +2237,11 @@ class OneShotRunner:
 
     @staticmethod
     def _operation_log_snapshot() -> List[Dict[str, Any]]:
-        """Copy of the Output Results entries recorded so far, for bundling."""
+        """Copy of the Output Results entries and raw transcript recorded so far, for bundling."""
         try:
             from advanced_ops import get_advanced_ops_manager
 
-            return list(get_advanced_ops_manager()._output_buffer[:])
+            return list(get_advanced_ops_manager().operation_log())
         except Exception as exc:  # noqa: BLE001 - bundling must not fail over the log copy
             logger.warning("Could not snapshot operation log for bundle: %s", exc)
             return []
@@ -2272,7 +2274,7 @@ class OneShotRunner:
             )
             cluster_ip = self._credentials.get("cluster_ip", "unknown")
             log_manager.save_session_log(
-                mgr._output_buffer[:], session_id, cluster_ip, secrets=self._credential_values(self._credentials)
+                mgr.operation_log(), session_id, cluster_ip, secrets=self._credential_values(self._credentials)
             )
             self._emit("info", "Operation log saved to disk.")
         except Exception as log_exc:

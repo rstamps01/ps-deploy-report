@@ -76,6 +76,17 @@ class TestSSELogHandler(unittest.TestCase):
     def test_handler_level_defaults_to_debug(self):
         self.assertEqual(self.handler.level, logging.DEBUG)
 
+    def test_werkzeug_access_lines_are_not_streamed(self):
+        """FR-16: /stream/logs must not echo the page's own status/output polls."""
+        access = logging.LogRecord(
+            "werkzeug", logging.INFO, "", 0, '127.0.0.1 - - "GET /advanced-ops/output?since=7 HTTP/1.1" 200 -', (), None
+        )
+        failure = logging.LogRecord("werkzeug", logging.ERROR, "", 0, "Error on request", (), None)
+        self.handler.emit(access)
+        self.handler.emit(failure)
+        self.assertEqual(self.q.qsize(), 1)
+        self.assertEqual(self.q.get_nowait()["message"], "Error on request")
+
     def test_emit_never_raises_when_filter_breaks_format_string(self):
         """Regression: the SensitiveDataFilter redacts ``key=%s`` in a *format
         string* to ``KEY_[REDACTED]``, deleting a ``%s`` placeholder.  The

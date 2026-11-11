@@ -1,0 +1,59 @@
+Collecting information about the cluster to start run...
+Restarting elbencho service...
+DBoxes: 1 | Files: 128 | Filesize: 32G | Size total: 4.0T
+-------------- Command line: --------------
+"artifacts/elbencho" --hostsfile "artifacts/cnodes_mgmt_ips.elbencho" -c "artifacts/s3cred.txt" --port 1612 --treefile "artifacts/elbencho-treefile.txt" --resfile "artifacts/elbencho-results.txt" --csvfile "artifacts/elbencho-results.csv" --s3fastput --s3fastget -t 64 -b 16m --s3endpoints "http://1.2.3.4" -w "vperfsanity"
+-------------------------------------------
+OPERATION   RESULT TYPE         FIRST DONE   LAST DONE
+=========== ================    ==========   =========
+[?1049h[22;0;0t[1;40r(B[m[4l[?7h[?25l[H[2JPhase: WRITE  CPU:  48%  Active: 2  Elapsed: 2s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   0[16G23352[27G11676[3;40H689[3;53H0[3;64H0  128  49[4;5H0   0[16G12464[28G6232[4;40H372[4;53H0[4;64H0   64  53 172.16.0.7:1612[5;5H1   0[16G10888[28G5444[5;40H317[5;53H0[5;64H0   64  46 172.16.0.8:1612
+[6d[H[2JPhase: WRITE  CPU:  53%  Active: 2  Elapsed: 4s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   1[16G54464[27G15555[3;40H970[3;53H0[3;64H0  128  51[4;5H0   1[16G29286[28G8411[4;40H522[4;53H0[4;64H0   64  54 172.16.0.7:1612[5;5H1   1[16G25178[28G7144[5;40H448[5;53H0[5;64H0   64  48 172.16.0.8:1612
+[6d[H[2JPhase: WRITE  CPU:  56%  Active: 2  Elapsed: 6s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   2[16G84855[27G15195[3;40H948[3;53H0[3;64H0  128  54[4;5H0   2[16G45969[28G8341[4;40H520[4;53H0[4;64H0   64  57 172.16.0.7:1612[5;5H1   1[16G38885[28G6853[5;40H427[5;53H0[5;64H0   64  51 172.16.0.8:1612
+[6d[H[2JPhase: WRITE  CPU:  52%  Active: 2  Elapsed: 8s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   2     113402[27G14273[3;40H892[3;53H0[3;64H0  128  50[4;5H0   2[16G60187[28G7108[4;40H445[4;53H0[4;64H0   64  50 172.16.0.7:1612[5;5H1   2[16G53214[28G7164[5;40H446[5;53H0[5;64H0   64  51 172.16.0.8:1612
+[6d[H[2JPhase: WRITE  CPU:  33%  Active: 1  Elapsed: 6m58s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal  99    4193251[3;29H411[3;41H25[3;51H126[3;64H0    2  17[4;5H0 100    2097152[4;31H0[4;42H0[4;52H64[4;64H0    0   0 172.16.0.7:1612[5;5H1  99    2096099[5;29H411[5;41H25[5;52H62[5;64H0    2  35 172.16.0.8:1612
+[6d[H[2JPhase: WRITE  CPU:  34%  Active: 1  Elapsed: 7m0s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal  99    4194144[3;29H446[3;41H28[3;51H126[3;64H0    2  17[4;5H0 100    2097152[4;31H0[4;42H0[4;52H64[4;64H0    0   0 172.16.0.7:1612[5;5H1  99    2096992[5;29H446[5;41H28[5;52H62[5;64H0    2  35 172.16.0.8:1612
+[6d[40;1H[?12l[?25h[?1049l[23;0;0t
+[?1l>WRITE       Elapsed time     :   5m31.501s    7m1.077s
+            Objects/s        :           0           0
+            IOPS             :         673         622
+            Throughput MiB/s :       10772        9960
+            Total MiB        :     3571214     4194304
+            Objects total    :           1         128
+---
+Waiting for burst / post-burst phase to finish...
+(Pressing 'x' key will skip waiting, but also invalidates read result. Update interval: 30s; max wait time: 120m:00s)
+Elapsed time at last status check: 0m:30s [Burst buffer fill: 61.3%]Elapsed time at last status check: 1m:00s [Burst buffer fill: 58.9%]
+Cluster finished burst / post-burst phase. (Wait time: 1m:30s)
+-------------- Command line: --------------
+"artifacts/elbencho" --hostsfile "artifacts/cnodes_mgmt_ips.elbencho" -c "artifacts/s3cred.txt" --port 1612 --treefile "artifacts/elbencho-treefile.txt" --resfile "artifacts/elbencho-results.txt" --csvfile "artifacts/elbencho-results.csv" --s3fastput --s3fastget -t 64 -b 16m --s3endpoints "http://1.2.3.4" -r "vperfsanity"
+-------------------------------------------
+OPERATION   RESULT TYPE         FIRST DONE   LAST DONE
+=========== ================    ==========   =========
+[?1049h[22;0;0t[1;40r(B[m[4l[?7h[?25l[H[2JPhase: READ  CPU:  43%  Active: 2  Elapsed: 2s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   1[16G57822[27G28911[39G1783[3;53H0[3;64H0  128  45[4;5H0   1[16G27825[27G13912[4;40H859[4;53H0[4;64H0   64  44 172.16.0.7:1612[5;5H1   1[16G29997[27G14998[5;40H924[5;53H0[5;64H0   64  46 172.16.0.8:1612
+[6d[H[2JPhase: READ  CPU:  47%  Active: 2  Elapsed: 4s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   3     131050[27G36613[39G2289[3;53H0[3;64H0  128  47[4;5H0   3[16G65726[27G18950[39G1183[4;53H0[4;64H0   64  47 172.16.0.7:1612[5;5H1   3[16G65323[27G17663[39G1106[5;53H0[5;64H0   64  48 172.16.0.8:1612
+[6d[H[2JPhase: READ  CPU:  50%  Active: 2  Elapsed: 6s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   4     207955[27G38452[39G2399[3;53H0[3;64H0  128  50[4;5H0   5     106309[27G20291[39G1266[4;53H0[4;64H0   64  52 172.16.0.7:1612[5;5H1   4     101645[27G18161[39G1133[5;53H0[5;64H0   64  48 172.16.0.8:1612
+[6d[H[2JPhase: READ  CPU:  50%  Active: 2  Elapsed: 8s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal   6     287501[27G39773[39G2487[3;53H0[3;64H0  128  50[4;5H0   6     144962[27G19326[39G1207[4;53H0[4;64H0   64  53 172.16.0.7:1612[5;5H1   6     142538[27G20446[39G1279[5;53H0[5;64H0   64  48 172.16.0.8:1612
+[6d[H[2JPhase: READ  CPU:  60%  Active: 2  Elapsed: 1m42s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal  98    4141835[27G42902[39G2684[3;52H94[3;63H15   34  48[4;5H0  97    2049354[27G29939[39G1872[4;52H32[4;64H7   32  60 172.16.0.7:1612[5;5H1  99    2092481[27G12962[5;40H812[5;52H62[5;64H7    2  36 172.16.0.8:1612
+[6d[H[2JPhase: READ  CPU:  45%  Active: 1  Elapsed: 1m44s
+[2d(B[0;7m Rank   %    DoneMiB      MiB/s [6bIOPS    Objects  Objects/s  Act CPU Service [12b [3;1H(B[mTotal  99    4192339[27G25251[39G1583[3;51H125[3;63H15    3  19[4;5H0  99    2095187[27G22916[39G1437[4;52H61[4;63H14    3  39 172.16.0.7:1612[5;5H1 100    2097152[28G2335[5;40H146[5;52H64[5;64H1    0   0 172.16.0.8:1612
+[6d[40;1H[?12l[?25h[?1049l[23;0;0t
+[?1l>READ        Elapsed time     :   1m13.424s   1m44.067s
+            Objects/s        :           0           1
+            IOPS             :        2479        2518
+            Throughput MiB/s :       39677       40303
+            Total MiB        :     2913305     4194304
+            Objects total    :           1         128
+---
+Warning: Permanently added '10.0.0.1' (ECDSA) to the list of known hosts.
+Connection to 10.0.0.1 closed.

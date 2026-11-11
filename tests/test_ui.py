@@ -9,6 +9,7 @@ Run with:
 """
 
 import json
+import re
 import socket
 import sys
 import tempfile
@@ -389,6 +390,231 @@ class TestOutputTerminalExpand:
         if not page.query_selector("#btnOutputMenu"):
             pytest.skip(f"{path} has no output terminal in this build")
         self._open_menu(page)
+
+
+# ---------------------------------------------------------------------------
+# Output Results pane — large batches (FR-16)
+# ---------------------------------------------------------------------------
+
+OUTPUT_PAGES = ["/reporter", "/advanced-ops"]
+BIG_BATCH = 15000
+PANE_READY_JS = "!!(window.outputPane && typeof window.outputPane.appendEntries === 'function')"
+MAKE_ENTRIES_JS = "window.mkEntries = (n, p) => Array.from({length: n}, (_, i) => ({level: 'info', message: p + i}))"
+
+
+def _backend_entries(n: int, prefix: str):
+    return [
+        {
+            "timestamp": "2026-10-23T16:46:40.000000",
+            "level": "info",
+            "message": f"{prefix}{i}",
+            "details": None,
+            "log_tier": "status",
+        }
+        for i in range(n)
+    ]
+
+
+class TestOutputPaneLargeBatches:
+    """A single poll returning ~12,400 lines froze Chrome for ~90 s in the field.
+
+    Every line re-serialised the whole history into sessionStorage and forced a
+    layout to scroll, so a batch cost N x history. These pin the batched path:
+    one storage write per batch, a capped history, and a fresh-tab hydration
+    that stays responsive.
+    """
+
+    @staticmethod
+    def _open(page, flask_server, path):
+        # The ambient /stream/logs feed would add lines (and storage writes)
+        # of its own while a test is counting.
+        page.route("**/stream/logs", lambda route: route.abort())
+        page.goto(f"{flask_server['url']}{path}", wait_until="networkidle")
+        page.wait_for_function(PANE_READY_JS, timeout=5000)
+        page.evaluate("outputPane.flushPersist()")
+        page.evaluate(MAKE_ENTRIES_JS)
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_big_batch_writes_storage_once_and_is_fast(self, flask_server, page, path):
+        self._open(page, flask_server, path)
+        result = page.evaluate(
+            """(n) => {
+                const entries = mkEntries(n, 'batch-');
+                window.__outputWrites = 0;
+                const real = Storage.prototype.setItem;
+                Storage.prototype.setItem = function(k, v) {
+                    if (k === OUTPUT_STORAGE_KEY) window.__outputWrites++;
+                    return real.call(this, k, v);
+                };
+                const t0 = performance.now();
+                outputPane.appendEntries(entries);
+                return performance.now() - t0;
+            }""",
+            BIG_BATCH,
+        )
+        page.wait_for_timeout(700)
+        writes = page.evaluate("window.__outputWrites")
+        print(f"\n{path}: appendEntries({BIG_BATCH}) took {result:.0f} ms, {writes} storage write(s)")
+        assert writes == 1, f"sessionStorage written {writes} times for one batch"
+        assert result < 1500, f"appending {BIG_BATCH} entries took {result:.0f} ms"
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_history_is_capped_with_a_dropped_notice(self, flask_server, page, path):
+        self._open(page, flask_server, path)
+        page.evaluate(
+            """(n) => {
+                outputPane.appendEntries(mkEntries(n, 'cap-'));
+                outputPane.appendEntries(mkEntries(10, 'tail-'));
+            }""",
+            BIG_BATCH,
+        )
+        page.wait_for_timeout(700)
+        state = page.evaluate("""() => {
+                const msgs = outputPane.entries.map(e => e.message);
+                const stored = JSON.parse(sessionStorage.getItem(OUTPUT_STORAGE_KEY));
+                const notice = document.querySelector('#outputPane .output-dropped-notice');
+                return {
+                    cap: OUTPUT_MAX_ENTRIES,
+                    entries: msgs.length,
+                    lines: document.querySelectorAll('#outputPane .output-line').length,
+                    newest: msgs[msgs.length - 1],
+                    hasOldest: msgs.indexOf('cap-0') !== -1,
+                    oldestInDom: Array.from(document.querySelectorAll('#outputPane .output-line'))
+                        .some(l => l.textContent.endsWith('] cap-0')),
+                    stored: stored.length,
+                    notice: notice ? notice.textContent : null,
+                    noticeFirst: notice === document.getElementById('outputPane').firstElementChild,
+                };
+            }""")
+        assert state["cap"] == 5000
+        assert state["entries"] <= 5000
+        assert state["lines"] <= 5001
+        assert state["newest"] == "tail-9"
+        assert not state["hasOldest"] and not state["oldestInDom"]
+        assert state["stored"] <= 5000
+        assert state["notice"] and "10,010 older lines dropped" in state["notice"]
+        assert state["noticeFirst"]
+
+        # A reload straight after an append must not lose it (pagehide flush),
+        # and the cap and notice survive the restore.
+        page.evaluate("outputPane.append('info', 'just-before-reload')")
+        page.reload(wait_until="networkidle")
+        page.wait_for_function(PANE_READY_JS, timeout=5000)
+        restored = page.evaluate("""() => ({
+                entries: outputPane.entries.length,
+                newest: outputPane.entries[outputPane.entries.length - 1].message,
+                notice: (document.querySelector('#outputPane .output-dropped-notice') || {}).textContent || null,
+            })""")
+        assert restored["entries"] <= 5000
+        assert restored["newest"] == "just-before-reload"
+        assert restored["notice"] and "older lines dropped" in restored["notice"]
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_fresh_tab_hydration_of_a_big_backlog_stays_responsive(self, flask_server, page, path):
+        snapshot = {
+            "oneshot": {"running": False, "state": None, "result": None},
+            "workflow": {"running": False, "workflow_id": None, "state": None},
+            "output_count": BIG_BATCH,
+        }
+        backlog = {"entries": _backend_entries(BIG_BATCH, "hydrate-"), "count": BIG_BATCH}
+        page.route(
+            "**/advanced-ops/state-snapshot",
+            lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(snapshot)),
+        )
+        page.route(
+            re.compile(r"/advanced-ops/output(\?|$)"),
+            lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(backlog)),
+        )
+        page.route("**/stream/logs", lambda route: route.abort())
+        page.add_init_script("""
+            window.__longestTaskMs = 0;
+            new PerformanceObserver(list => {
+                for (const e of list.getEntries()) window.__longestTaskMs = Math.max(window.__longestTaskMs, e.duration);
+            }).observe({type: 'longtask', buffered: true});
+        """)
+
+        page.goto(f"{flask_server['url']}{path}")
+        page.wait_for_function(f"sessionStorage.getItem(SYNC_CURSOR_KEY) === '{BIG_BATCH}'", timeout=8000)
+        page.wait_for_timeout(200)
+        longest = page.evaluate("window.__longestTaskMs")
+        print(f"\n{path}: longest main-thread task during hydration {longest:.0f} ms")
+        assert longest < 1000, f"hydration blocked the page for {longest:.0f} ms"
+        state = page.evaluate("""() => ({
+                entries: outputPane.entries.length,
+                newest: outputPane.entries[outputPane.entries.length - 1].message,
+                lines: document.querySelectorAll('#outputPane .output-line').length,
+            })""")
+        assert state["entries"] <= 5000
+        assert state["lines"] <= 5001
+        assert state["newest"] == f"hydrate-{BIG_BATCH - 1}"
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_local_append_leaves_the_sync_cursor_alone(self, flask_server, page, path):
+        self._open(page, flask_server, path)
+        cursors = page.evaluate("""() => {
+                sessionStorage.setItem(SYNC_CURSOR_KEY, '7');
+                outputPane.append('info', 'Workflow started');
+                outputPane.appendEntries([{level: 'info', message: 'local batch'}]);
+                const afterLocal = sessionStorage.getItem(SYNC_CURSOR_KEY);
+                appendBackendEntries([{level: 'info', message: 'a'}, {level: 'info', message: 'b'}]);
+                return [afterLocal, sessionStorage.getItem(SYNC_CURSOR_KEY)];
+            }""")
+        assert cursors == ["7", "9"]
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_malformed_entry_does_not_drop_the_batch(self, flask_server, page, path):
+        self._open(page, flask_server, path)
+        state = page.evaluate("""() => {
+                const before = outputPane.entries.length;
+                outputPane.appendEntries([
+                    {level: 'info', message: 'first'},
+                    {level: 7, message: 42},
+                    {level: 'info', message: null},
+                    {level: 'info', message: 'last'},
+                ]);
+                return {
+                    added: outputPane.entries.length - before,
+                    lines: outputPane._lines.length === outputPane.entries.length,
+                    last: outputPane.entries[outputPane.entries.length - 1].message,
+                };
+            }""")
+        assert state == {"added": 4, "lines": True, "last": "last"}
+
+    @pytest.mark.parametrize("path", OUTPUT_PAGES)
+    def test_slow_output_poll_does_not_append_the_same_range_twice(self, flask_server, page, path):
+        self._open(page, flask_server, path)
+        # Output responses take longer than the 1.5 s poll interval, so without
+        # an in-flight guard the next tick re-requests the same `since`.
+        page.evaluate("""() => {
+                const realFetch = window.fetch;
+                const json = (body) => new Response(JSON.stringify(body), {headers: {'Content-Type': 'application/json'}});
+                window.__outputResolved = 0;
+                window.fetch = function(url) {
+                    if (typeof url === 'string' && url.indexOf('/advanced-ops/output') === 0) {
+                        const since = parseInt(new URL(url, location.href).searchParams.get('since'), 10);
+                        const entries = since === 0
+                            ? ['overlap-a', 'overlap-b', 'overlap-c'].map(m => ({level: 'info', message: m}))
+                            : [];
+                        return new Promise(r => setTimeout(() => {
+                            window.__outputResolved++;
+                            r(json({entries: entries, count: entries.length}));
+                        }, 2000));
+                    }
+                    if (url === '/advanced-ops/oneshot/status') {
+                        return Promise.resolve(json({running: true, state: {phase: 'operations'}}));
+                    }
+                    return realFetch.apply(this, arguments);
+                };
+                startOneShotPolling();
+            }""")
+        # Without the guard the second response carries since=0 again; with it, since=3.
+        page.wait_for_function("window.__outputResolved >= 2", timeout=10000)
+        page.wait_for_timeout(200)
+        count = page.evaluate("""() => {
+                stopOneShotPolling();
+                return outputPane.entries.filter(e => e.message === 'overlap-a').length;
+            }""")
+        assert count == 1
 
 
 # ---------------------------------------------------------------------------

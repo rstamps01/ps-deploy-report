@@ -7,6 +7,7 @@ workflow execution for complex script-based validations.
 This module requires Developer Mode to be enabled (--dev-mode flag).
 """
 
+import heapq
 import threading
 import time
 from dataclasses import dataclass, field
@@ -17,6 +18,8 @@ from typing import Any, Callable, Dict, List, Optional
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+TRANSCRIPT_TIER = "transcript"
 
 
 class StepStatus(Enum):
@@ -68,6 +71,9 @@ class AdvancedOpsManager:
         self._lock = threading.Lock()
         self._cancel_event = threading.Event()
         self._output_buffer: List[Dict[str, Any]] = []
+        # Raw workflow output kept for the operation log and bundle only.  Separate from
+        # ``_output_buffer`` so ``/advanced-ops/output?since=N`` indices stay stable.
+        self._transcript_buffer: List[Dict[str, Any]] = []
         self._output_callbacks: List[Callable[[str, str, Optional[str]], None]] = []
         # QP-2: per-workflow-run cache of the resolved per-cluster scripts dir
         # so a lightweight identity fetch happens once, not per step.
@@ -300,7 +306,7 @@ class AdvancedOpsManager:
                 started_at=datetime.now(),
             )
             self._cancel_event.clear()
-            self._output_buffer.clear()
+            self.clear_output()
             # Reset the QP-2 per-cluster cache so a new run re-resolves identity.
             self._cluster_key = None
             self._cluster_scripts_dir = None
@@ -589,7 +595,7 @@ class AdvancedOpsManager:
         with self._lock:
             self._current_state = None
             self._cancel_event.clear()
-            self._output_buffer.clear()
+            self.clear_output()
             self._cluster_key = None
             self._cluster_scripts_dir = None
             self._cluster_scripts_ip = None
@@ -606,7 +612,11 @@ class AdvancedOpsManager:
         self._emit_output("info" if not error else "error", f"Workflow completed {status}")
 
     def _emit_output(self, level: str, message: str, details: Optional[str] = None, log_tier: str = "status") -> None:
-        """Emit output to the buffer and callbacks."""
+        """Emit output to the buffer and callbacks.
+
+        Entries with ``log_tier == "transcript"`` go to the operation log only: they are not
+        served by ``get_output`` and do not reach the registered callbacks.
+        """
         entry = {
             "timestamp": datetime.now().isoformat(),
             "level": level,
@@ -614,6 +624,9 @@ class AdvancedOpsManager:
             "details": details,
             "log_tier": log_tier,
         }
+        if log_tier == TRANSCRIPT_TIER:
+            self._transcript_buffer.append(entry)
+            return
         self._output_buffer.append(entry)
 
         for callback in self._output_callbacks:
@@ -625,6 +638,21 @@ class AdvancedOpsManager:
     def get_output(self, since: int = 0) -> List[Dict[str, Any]]:
         """Get output entries since a given index."""
         return self._output_buffer[since:]
+
+    def output_count(self) -> int:
+        """Number of Output Results entries; the ``since`` cursor for output that comes after now."""
+        return len(self._output_buffer)
+
+    def clear_output(self) -> None:
+        """Drop all Output Results entries and the raw transcript."""
+        self._output_buffer.clear()
+        self._transcript_buffer.clear()
+
+    def operation_log(self) -> List[Dict[str, Any]]:
+        """Output Results entries plus the raw transcript, in time order, for the saved log and bundle."""
+        return list(
+            heapq.merge(self._output_buffer[:], self._transcript_buffer[:], key=lambda e: str(e.get("timestamp", "")))
+        )
 
     def register_output_callback(self, callback: Callable[[str, str, Optional[str]], None]) -> None:
         """Register a callback for output events."""

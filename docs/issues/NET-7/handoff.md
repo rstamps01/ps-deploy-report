@@ -15,19 +15,19 @@ Cost measurement (PIPE-T4) is paused: the cursor-budget-report tool needs change
 3. Plans with more than 3 to-dos: hand each to-do to a subagent with the brief, the to-do and its file list (`AGENTS.md`, Working efficiently).
 4. Ask the owner the open questions below before writing the final plan.
 
-## Shared working tree: don't touch it
+## Working tree
 
-The main checkout `~/vast-asbuilt-reporter` is on `fix/FR-16-vperfsanity-output-stall` with **uncommitted FR-16 work** owned by another chat (16 modified and 8 new files). Never `git checkout`, `git stash`, `git commit -a` or `git add -A` there. Do any work for this stream in its own worktree:
+FR-16 is committed and in review in [PR #49](https://github.com/rstamps01/ps-deploy-report/pull/49) (CI green, not merged; the owner's lab re-run, T8, is still pending). The main checkout `~/vast-asbuilt-reporter` is on `fix/FR-16-vperfsanity-output-stall` with a clean tree. Do NET-7 work in its own worktree so the two branches never share a checkout:
 
 `git worktree add -b feature/NET-7-vnetmap-lldp ../asbuilt-net7 origin/develop`
 
-On 2026-11-10 a branch switch in the shared tree carried that FR-16 work into a docs commit (closed PR #46; restored, nothing lost). The remote branch `chore/pipe-t1-owner-decisions` still holds that commit. Deleting it is waiting on owner approval.
+Never `git checkout`, `git stash` or `git commit -a` in a checkout another chat is using. On 2026-11-10 a branch switch in the shared tree carried uncommitted FR-16 work into a docs commit (PR #46, closed; nothing lost; backup bundle in `~/git-backups/`).
 
 ## Critical fixes: candidates (confirm scope with the owner)
 
 | ID | Item | Priority | State |
 | --- | --- | --- | --- |
-| FR-16 | vperfsanity Step 4 output stalls, then floods and freezes Chrome | P0, v1.6.3 blocker | **In progress in another chat** (branch above). Plan around it; don't re-plan it. |
+| FR-16 | vperfsanity Step 4 output stalls, then floods and freezes Chrome | P0, v1.6.3 blocker | **In review, PR #49.** Merge after CI; lab re-run (T8) before v1.6.3. Don't re-plan it. |
 | HCF-3 | Critical alarms only produce a warning (17 critical/major alarms gave a warning in one field run) | P1 | Planned |
 | FR-7 | vperfsanity background runner (builds on FR-16) | P1 | Planned |
 | DRV-1, RCS-1–5 | Report-content features (drive inventory, friendly model names, RLR count, metadata triplication, 1-strip, vperfsanity figure) | P1 | Planned; enhancements, not fixes |
@@ -54,7 +54,7 @@ On 2026-11-10 a branch switch in the shared tree carried that FR-16 work into a 
   - config: `config/config.yaml.template` (`run_vnetmap`, `include_prior_vnetmap`)
   - tests: `test_vnetmap_*`, `test_e2e_vnetmap_diagram.py`, `test_external_port_mapper.py`, `test_port_mapper.py`, `test_network_diagram_v2.py`, `test_tool_manager.py`, `test_workflows.py`
   - earlier plans: `docs/plans/vnetmap_+_network_diagram_d3e4b87f.plan.md`, `docs/plans/vnetmap_and_log-bundle_teleport_fixes_e9a4abc3.plan.md`
-- **Overlap with FR-16:** FR-16's uncommitted changes touch `src/app.py`, `src/oneshot_runner.py`, `src/advanced_ops.py`, `src/utils/ssh_adapter.py`, `src/utils/logger.py`, `reporter.html` and `advanced_ops.html`. Sequence NET-7 edits to those files after FR-16 merges, or rebase onto it.
+- **Overlap with FR-16 (PR #49):** FR-16 changes `src/app.py`, `src/oneshot_runner.py`, `src/advanced_ops.py`, `src/utils/ssh_adapter.py`, `src/utils/logger.py`, `reporter.html` and `advanced_ops.html`. Branch NET-7 from `develop` after #49 merges, or merge `develop` in once it does.
 
 ## Open questions for the owner
 

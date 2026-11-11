@@ -31,6 +31,16 @@ import colorlog
 _sse_log_queue: Optional[queue.Queue] = None
 
 
+def is_access_log_record(record: logging.LogRecord) -> bool:
+    """True for werkzeug's per-request access lines.
+
+    Output Results polls the server every second or two, so forwarding these lines to
+    the page makes it display its own polling (FR-16).  werkzeug warnings and errors
+    are not access lines and still pass.
+    """
+    return record.name == "werkzeug" and record.levelno <= logging.INFO
+
+
 class SSELogHandler(logging.Handler):
     """Pushes formatted log records onto a queue consumed by the SSE endpoint."""
 
@@ -39,6 +49,8 @@ class SSELogHandler(logging.Handler):
         self.log_queue = log_queue
 
     def emit(self, record):
+        if is_access_log_record(record):
+            return
         try:
             formatted = self.format(record)
             entry = {

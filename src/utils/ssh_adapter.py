@@ -24,6 +24,10 @@ Key design choices
 * **PTY allocation**: ``force_tty=True`` adds ``-tt`` (subprocess) or
   ``get_pty=True`` (paramiko) for commands that require a pseudo-terminal
   (``docker exec -it``, ``vms.sh``, etc.).
+* **Live output**: ``run_ssh_command(..., on_output=cb)`` calls ``cb`` with
+  decoded stdout/stderr text chunks as they arrive, for long commands whose
+  progress the UI should show before they exit.  The return value is still
+  the full ``(rc, stdout, stderr)``.
 
 Usage::
 
@@ -39,18 +43,27 @@ Usage::
     )
 """
 
+import codecs
 import logging
 import os
 import platform
 import re
 import signal
 import subprocess
+import threading
 import time
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
 IS_WINDOWS = platform.system() == "Windows"
+
+OutputCallback = Callable[[str], None]
+
+_STREAM_READ_SIZE = 65536
+_PARAMIKO_POLL_S = 0.1
+_PARAMIKO_EOF_GRACE_S = 2.0
+_READER_JOIN_AFTER_KILL_S = 5
 
 # Client-side SSH failures observed when a laptop sleeps, a VPN flaps, or the
 # local stack cannot bind (macOS "Can't assign requested address").  These are
@@ -141,11 +154,16 @@ def ssh_auth_failure_message(rc: int, stdout: str = "", stderr: str = "", host: 
     return f"SSH login{target} was rejected ({symptom}; rc={rc})"
 
 
+def is_ssh_noise_line(line: str) -> bool:
+    """True for an OpenSSH client banner line (host-key or post-quantum warning)."""
+    return line.strip().lower().startswith(_SSH_NOISE_PREFIXES)
+
+
 def strip_ssh_noise(text: str) -> str:
     """Drop OpenSSH client banner lines (host-key and post-quantum warnings)."""
     if not text:
         return text or ""
-    kept = [ln for ln in text.splitlines(keepends=True) if not ln.strip().lower().startswith(_SSH_NOISE_PREFIXES)]
+    kept = [ln for ln in text.splitlines(keepends=True) if not is_ssh_noise_line(ln)]
     return "".join(kept)
 
 
@@ -226,6 +244,7 @@ def run_ssh_command(
     jump_password: Optional[str] = None,
     port: int = 22,
     jump_port: int = 22,
+    on_output: Optional[OutputCallback] = None,
 ) -> Tuple[int, str, str]:
     """Execute a single command over SSH and return (returncode, stdout, stderr).
 
@@ -259,6 +278,12 @@ def run_ssh_command(
         jump_port:        TCP port for the *jump_host* connection (default
                           22).  Used when the jump host itself is reached
                           over a forwarded local port (Teleport mode).
+        on_output:        Optional callback for live output.  Called with
+                          decoded text chunks (any size, not line-aligned) of
+                          remote stdout and stderr as they arrive.  Exceptions
+                          it raises are ignored.  Adapter-generated messages
+                          (timeout notice, connection errors) are only in the
+                          returned stderr.  The return value is unchanged.
     """
     effective_cmd = _wrap_login_shell(command) if login_shell else command
 
@@ -276,6 +301,7 @@ def run_ssh_command(
             jump_password=jump_password,
             port=port,
             jump_port=jump_port,
+            on_output=on_output,
         )
 
     if IS_WINDOWS:
@@ -288,6 +314,7 @@ def run_ssh_command(
             force_tty=force_tty,
             agent_forward=agent_forward,
             port=port,
+            on_output=on_output,
         )
     return _subprocess_ssh(
         host,
@@ -299,6 +326,7 @@ def run_ssh_command(
         force_tty=force_tty,
         agent_forward=agent_forward,
         port=port,
+        on_output=on_output,
     )
 
 
@@ -390,7 +418,12 @@ def strip_terminal_escapes(text: str) -> str:
     return cleaned
 
 
-def _run_ssh_popen(cmd: List[str], timeout: int, env: dict) -> Tuple[int, str, str]:
+def _run_ssh_popen(
+    cmd: List[str],
+    timeout: int,
+    env: dict,
+    on_output: Optional[OutputCallback] = None,
+) -> Tuple[int, str, str]:
     """Run an SSH client command, killing the whole process group on timeout.
 
     ``subprocess.run(..., timeout=...)`` only signals the direct child.  With
@@ -398,6 +431,9 @@ def _run_ssh_popen(cmd: List[str], timeout: int, env: dict) -> Tuple[int, str, s
     the timeout fires (seen as a 30 s views-API call lasting tens of minutes
     when the laptop slept or the TCP session wedged).  A new session +
     ``killpg`` tears the whole tree down.
+
+    With *on_output*, stdout and stderr are read by two threads and each
+    decoded chunk is passed to the callback as it arrives.
     """
     proc = subprocess.Popen(
         cmd,
@@ -406,26 +442,142 @@ def _run_ssh_popen(cmd: List[str], timeout: int, env: dict) -> Tuple[int, str, s
         env=env,
         start_new_session=True,
     )
+    if on_output is not None:
+        return _stream_popen(proc, timeout, on_output)
     try:
         stdout_b, stderr_b = proc.communicate(timeout=timeout)
         return int(proc.returncode or 0), _as_text(stdout_b), _as_text(stderr_b)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError, OSError):
-            try:
-                proc.kill()
-            except OSError:
-                pass
+        _kill_process_group(proc)
         try:
             stdout_b, stderr_b = proc.communicate(timeout=5)
         except Exception:
             stdout_b, stderr_b = b"", b""
-        partial_out = _as_text(stdout_b)
-        partial_err = _as_text(stderr_b)
-        if partial_err and not partial_err.endswith("\n"):
-            partial_err += "\n"
-        return 1, partial_out, partial_err + "SSH command timed out after " + str(timeout) + "s"
+        return 1, _as_text(stdout_b), _timeout_stderr(_as_text(stderr_b), timeout)
+
+
+def _kill_process_group(proc: "subprocess.Popen[bytes]") -> None:
+    """SIGKILL *proc*'s process group, falling back to the process itself."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            pass
+
+
+def _timeout_stderr(partial_err: str, timeout: int) -> str:
+    """Append the adapter's timeout notice to whatever stderr was captured."""
+    if partial_err and not partial_err.endswith("\n"):
+        partial_err += "\n"
+    return partial_err + "SSH command timed out after " + str(timeout) + "s"
+
+
+def _deliver_chunk(
+    text: str,
+    parts: List[str],
+    on_output: Optional[OutputCallback],
+    lock: Optional[threading.Lock] = None,
+    stopped: Optional[threading.Event] = None,
+) -> None:
+    """Record *text* and hand it to *on_output*; callback errors never propagate.
+
+    Once *stopped* is set (the call has returned) chunks are dropped, so a reader
+    thread kept alive by an orphaned pipe can't call back into a finished caller.
+    """
+    if not text or (stopped is not None and stopped.is_set()):
+        return
+    parts.append(text)
+    if on_output is None:
+        return
+    try:
+        if lock is None:
+            on_output(text)
+        else:
+            with lock:
+                if stopped is None or not stopped.is_set():
+                    on_output(text)
+    except Exception:
+        logger.debug("SSH on_output callback raised; ignoring", exc_info=True)
+
+
+def _stop_delivery(lock: threading.Lock, stopped: threading.Event) -> None:
+    """Set *stopped* under *lock* so no callback can still be running or start after this returns."""
+    with lock:
+        stopped.set()
+
+
+def _pump_pipe(
+    pipe: Any, parts: List[str], on_output: OutputCallback, lock: threading.Lock, stopped: threading.Event
+) -> None:
+    """Reader-thread body: read *pipe* (a buffered ``Popen`` pipe) until EOF, decoding UTF-8 incrementally."""
+    decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    try:
+        while True:
+            data = pipe.read1(_STREAM_READ_SIZE)
+            if not data:
+                break
+            _deliver_chunk(decoder.decode(data), parts, on_output, lock, stopped)
+    except Exception:
+        logger.debug("SSH output reader stopped", exc_info=True)
+    finally:
+        _deliver_chunk(decoder.decode(b"", final=True), parts, on_output, lock, stopped)
+
+
+def _stream_popen(proc: "subprocess.Popen[bytes]", timeout: int, on_output: OutputCallback) -> Tuple[int, str, str]:
+    """Wait for *proc* while streaming its pipes to *on_output*.
+
+    Mirrors ``communicate(timeout=...)``: the deadline covers both process exit
+    and EOF on both pipes, and on expiry the process group is killed.
+    """
+    deadline = time.monotonic() + timeout
+    out_parts: List[str] = []
+    err_parts: List[str] = []
+    lock = threading.Lock()
+    stopped = threading.Event()
+    readers = [
+        threading.Thread(target=_pump_pipe, args=(proc.stdout, out_parts, on_output, lock, stopped), daemon=True),
+        threading.Thread(target=_pump_pipe, args=(proc.stderr, err_parts, on_output, lock, stopped), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+
+    timed_out = False
+    try:
+        proc.wait(timeout=max(0.0, deadline - time.monotonic()))
+        for reader in readers:
+            reader.join(timeout=max(0.0, deadline - time.monotonic()))
+        timed_out = any(reader.is_alive() for reader in readers)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+
+    if timed_out:
+        _kill_process_group(proc)
+        grace_deadline = time.monotonic() + _READER_JOIN_AFTER_KILL_S
+        try:
+            proc.wait(timeout=_READER_JOIN_AFTER_KILL_S)
+        except Exception:
+            pass
+        for reader in readers:
+            reader.join(timeout=max(0.0, grace_deadline - time.monotonic()))
+        _stop_delivery(lock, stopped)
+        _close_drained_pipes(proc, readers)
+        return 1, "".join(list(out_parts)), _timeout_stderr("".join(list(err_parts)), timeout)
+
+    _stop_delivery(lock, stopped)
+    _close_drained_pipes(proc, readers)
+    return int(proc.returncode or 0), "".join(out_parts), "".join(err_parts)
+
+
+def _close_drained_pipes(proc: "subprocess.Popen[bytes]", readers: List[threading.Thread]) -> None:
+    """Close the pipes whose reader thread has finished (a live reader keeps its pipe)."""
+    for pipe, reader in zip((proc.stdout, proc.stderr), readers):
+        if pipe is not None and not reader.is_alive():
+            try:
+                pipe.close()
+            except OSError:
+                pass
 
 
 def _as_text(value: Any) -> str:
@@ -473,10 +625,12 @@ def _subprocess_ssh(
     force_tty: bool = False,
     agent_forward: bool = False,
     port: int = 22,
+    on_output: Optional[OutputCallback] = None,
 ) -> Tuple[int, str, str]:
     """Non-interactive SSH via ``sshpass -e`` + ``ssh``.
 
-    Falls back to paramiko when ``sshpass`` is not installed.
+    Falls back to paramiko when ``sshpass`` is not installed.  *on_output*
+    receives raw remote output chunks (before ``strip_ssh_noise``).
     """
     import shutil
 
@@ -516,14 +670,14 @@ def _subprocess_ssh(
             ]
         )
         try:
-            rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env)
+            rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env, on_output=on_output)
             if rc == 255 and is_ssh_auth_failure(rc, out, err) and not out.strip():
                 # The server dropped the login before the command ran, so a retry cannot
                 # repeat remote side effects.  A plainly wrong password is sshpass rc=5
                 # and is not retried, so switch password sweeps do not double up.
                 logger.warning("SSH login to %s rejected (rc=%s); retrying once in %ss", host, rc, _AUTH_RETRY_DELAY_S)
                 time.sleep(_AUTH_RETRY_DELAY_S)
-                rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env)
+                rc, out, err = _run_ssh_popen(cmd, timeout=timeout, env=env, on_output=on_output)
             return rc, out, strip_ssh_noise(err)
         except Exception as exc:
             return 1, "", str(exc)
@@ -538,6 +692,7 @@ def _subprocess_ssh(
         force_tty=force_tty,
         agent_forward=agent_forward,
         port=port,
+        on_output=on_output,
     )
 
 
@@ -748,6 +903,7 @@ def _paramiko_exec(
     jump_password: Optional[str] = None,
     port: int = 22,
     jump_port: int = 22,
+    on_output: Optional[OutputCallback] = None,
 ) -> Tuple[int, str, str]:
     """Execute a command over SSH using paramiko (pure Python, cross-platform).
 
@@ -756,6 +912,9 @@ def _paramiko_exec(
     channel.  This is the only reliable cross-platform approach for reaching
     hosts (e.g. switches) that are only accessible from inside a cluster
     network.
+
+    With *on_output*, the channel is polled and each decoded chunk is passed
+    to the callback as it arrives, within an overall *timeout* deadline.
     """
     try:
         import paramiko  # type: ignore[import-untyped]
@@ -854,6 +1013,8 @@ def _paramiko_exec(
             timeout=timeout,
             get_pty=force_tty,
         )
+        if on_output is not None:
+            return _stream_paramiko_channel(stdout.channel, timeout, on_output)
         rc = stdout.channel.recv_exit_status()
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
@@ -870,3 +1031,57 @@ def _paramiko_exec(
         client.close()
         if jump_client is not None:
             jump_client.close()
+
+
+def _stream_paramiko_channel(chan: Any, timeout: int, on_output: OutputCallback) -> Tuple[int, str, str]:
+    """Poll a paramiko exec channel, passing decoded output chunks to *on_output*.
+
+    The exit status can arrive before the last output (the remote PTY drains
+    after the process exits), so reading continues until the channel reports
+    EOF with empty buffers, or ``_PARAMIKO_EOF_GRACE_S`` after the exit status
+    for servers that never send EOF.  Unlike the non-streaming path, *timeout*
+    is a hard deadline for the whole command, not a per-read idle timeout.
+    """
+    deadline = time.monotonic() + timeout
+    out_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    err_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+    out_parts: List[str] = []
+    err_parts: List[str] = []
+
+    def _finish() -> None:
+        _deliver_chunk(out_decoder.decode(b"", final=True), out_parts, on_output)
+        _deliver_chunk(err_decoder.decode(b"", final=True), err_parts, on_output)
+
+    exited_idle_since: Optional[float] = None
+    while True:
+        received = False
+        if chan.recv_ready():
+            data = chan.recv(_STREAM_READ_SIZE)
+            if data:
+                received = True
+                _deliver_chunk(out_decoder.decode(data), out_parts, on_output)
+        if chan.recv_stderr_ready():
+            data = chan.recv_stderr(_STREAM_READ_SIZE)
+            if data:
+                received = True
+                _deliver_chunk(err_decoder.decode(data), err_parts, on_output)
+        drained = not received and not chan.recv_ready() and not chan.recv_stderr_ready()
+        if drained and chan.exit_status_ready():
+            if getattr(chan, "eof_received", False):
+                break
+            now = time.monotonic()
+            if exited_idle_since is None:
+                exited_idle_since = now
+            elif now - exited_idle_since >= _PARAMIKO_EOF_GRACE_S:
+                break
+        elif received:
+            exited_idle_since = None
+        if time.monotonic() >= deadline:
+            chan.close()
+            _finish()
+            return 1, "".join(out_parts), _timeout_stderr("".join(err_parts), timeout)
+        if not received:
+            time.sleep(_PARAMIKO_POLL_S)
+
+    _finish()
+    return chan.recv_exit_status(), "".join(out_parts), "".join(err_parts)

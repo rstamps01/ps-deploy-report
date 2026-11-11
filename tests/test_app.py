@@ -2148,6 +2148,28 @@ class TestOneShotStartHandoff(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         new_runner.seed_switch_credentials.assert_not_called()
 
+    @patch("oneshot_runner.OneShotRunner")
+    def test_start_returns_output_cursor_past_earlier_output(self, mock_runner_cls):
+        """FR-16: the browser polls from here, so validation output isn't replayed."""
+        from advanced_ops import get_advanced_ops_manager
+
+        mock_runner_cls.return_value = MagicMock()
+        self.app.config["ONESHOT_RUNNING"] = False
+        mgr = get_advanced_ops_manager()
+        mgr.clear_output()
+        mgr._emit_output("info", "validation line 1")
+        mgr._emit_output("info", "validation line 2")
+
+        resp = self.client.post(
+            "/advanced-ops/oneshot/start",
+            data=json.dumps({"selected_ops": ["vnetmap"], "cluster_ip": "10.0.0.1"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_json()["output_cursor"], 2)
+        mgr.clear_output()
+
 
 class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
     """SR-1: when the Reporter tile runs in Tech-Port mode it builds a

@@ -168,6 +168,41 @@ class TestAdvancedOpsOutput:
         assert len(entries) == 0
 
 
+class TestTranscriptTier:
+    """FR-16: raw Step 4 output is kept for the operation log but never sent to the browser."""
+
+    def test_transcript_entries_are_not_served_to_output_results(self, manager):
+        manager._emit_output("info", "visible")
+        manager._emit_output("info", "raw frame", None, "transcript")
+        manager._emit_output("info", "visible again", None, "live")
+        assert [e["message"] for e in manager.get_output()] == ["visible", "visible again"]
+        assert [e["message"] for e in manager.get_output(1)] == ["visible again"]
+
+    def test_operation_log_merges_transcript_in_time_order(self, manager):
+        manager._emit_output("info", "a")
+        manager._emit_output("info", "raw 1", None, "transcript")
+        manager._emit_output("info", "b")
+        manager._emit_output("info", "raw 2", None, "transcript")
+        log = manager.operation_log()
+        assert [e["message"] for e in log] == ["a", "raw 1", "b", "raw 2"]
+        assert log[1]["log_tier"] == "transcript"
+
+    def test_transcript_entries_skip_output_callbacks(self, manager):
+        seen = []
+        manager.register_output_callback(lambda level, message, details: seen.append(message))
+        manager._emit_output("info", "raw", None, "transcript")
+        assert seen == []
+
+    def test_clear_output_and_reset_drop_both_buffers(self, manager):
+        manager._emit_output("info", "a")
+        manager._emit_output("info", "raw", None, "transcript")
+        manager.clear_output()
+        assert manager.operation_log() == []
+        manager._emit_output("info", "raw", None, "transcript")
+        manager.reset()
+        assert manager.operation_log() == []
+
+
 # ===================================================================
 # TestWorkflowLifecycle
 # ===================================================================

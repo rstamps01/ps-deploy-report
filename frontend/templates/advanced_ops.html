@@ -396,6 +396,9 @@ var OUTPUT_STORAGE_KEY = 'advanced_ops_output';
 var UI_STATE_KEY = 'advanced_ops_ui_state';
 var LOG_TIER_KEY = 'advanced_ops_log_tier';
 var SYNC_CURSOR_KEY = 'advanced_ops_sync_cursor';
+var OUTPUT_DROPPED_KEY = 'advanced_ops_output_dropped';
+var OUTPUT_MAX_ENTRIES = 5000;
+var OUTPUT_PERSIST_DELAY_MS = 500;
 var outputPane, pollInterval = null;
 var currentLogTier = 'status';
 
@@ -593,23 +596,26 @@ async function hydrateFromBackend() {
         var resp = await fetch('/advanced-ops/state-snapshot');
         var snap = await resp.json();
 
-        var localCount = outputPane ? outputPane.entries.length : 0;
         var syncCursor = 0;
-        try { syncCursor = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); } catch(e) {}
+        try { syncCursor = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10) || 0; } catch(e) {}
+        // A buffer shorter than our cursor was cleared by a run this tab never saw.
+        if (snap.output_count < syncCursor) syncCursor = 0;
 
+        var hydratedTo = syncCursor;
         if (snap.output_count > syncCursor) {
             var outResp = await fetch('/advanced-ops/output?since=' + syncCursor);
             var outData = await outResp.json();
-            if (outData.entries && outData.entries.length > 0) {
-                outData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
-            }
-            try { sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count)); } catch(e) {}
+            var backlog = outData.entries || [];
+            hydratedTo = syncCursor + backlog.length;
+            appendBackendEntries(backlog, hydratedTo);
+        } else {
+            try { sessionStorage.setItem(SYNC_CURSOR_KEY, String(hydratedTo)); } catch(e) {}
         }
 
         if (snap.oneshot && snap.oneshot.running) {
             if (!oneShotMode) { document.getElementById('modeToggle').checked = true; toggleOneShotMode(); }
             showOneShotProgress(snap.oneshot.state);
-            startOneShotPolling();
+            startOneShotPolling(hydratedTo);
             return true;
         }
 
@@ -620,7 +626,7 @@ async function hydrateFromBackend() {
             if (snap.workflow.state && snap.workflow.state.steps) {
                 snap.workflow.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); });
             }
-            startPolling();
+            startPolling(hydratedTo);
             return true;
         }
 
@@ -653,26 +659,109 @@ function showOneShotProgress(state) {
 }
 
 // --- OutputPane ---
+// Lines arrive in batches of thousands from a single poll: each batch gets one
+// DOM insert, one scroll per frame and one debounced sessionStorage write, and
+// the history is capped at OUTPUT_MAX_ENTRIES (FR-16).
 function OutputPaneCtor(containerId) {
     this.container = document.getElementById(containerId);
     this.autoScroll = true;
     this.entries = [];
+    this._lines = [];
+    this.droppedCount = 0;
+    this._notice = null;
+    this._persistTimer = null;
+    this._scrollQueued = false;
     this._restore();
+    var self = this;
+    window.addEventListener('pagehide', function() { self.flushPersist(); });
+    window.addEventListener('beforeunload', function() { self.flushPersist(); });
 }
 OutputPaneCtor.prototype.append = function(level, message, details, log_tier) {
-    details = details || null;
-    log_tier = log_tier || 'status';
-    var timestamp = new Date().toISOString().slice(11, 19);
-    var entry = { timestamp: timestamp, level: level, message: message, details: details, log_tier: log_tier };
-    this.entries.push(entry);
-    this._renderEntry(entry);
-    this._persist();
-    try { var c = parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10); sessionStorage.setItem(SYNC_CURSOR_KEY, String(c + 1)); } catch(e) {}
-    if (this.autoScroll) this.container.scrollTop = this.container.scrollHeight;
+    this.appendEntries([{ level: level, message: message, details: details, log_tier: log_tier }]);
 };
-OutputPaneCtor.prototype._renderEntry = function(entry) {
+OutputPaneCtor.prototype.appendEntries = function(entries, opts) {
+    if (!entries || !entries.length) return;
+    opts = opts || {};
+    var now = new Date().toISOString().slice(11, 19);
+    // Lines that would be dropped by the cap straight away are never built.
+    var skipped = Math.max(0, entries.length - OUTPUT_MAX_ENTRIES);
     var placeholder = this.container.querySelector('.output-placeholder');
     if (placeholder) placeholder.remove();
+    var frag = document.createDocumentFragment();
+    var added = [];
+    var lines = [];
+    for (var i = skipped; i < entries.length; i++) {
+        var e = entries[i];
+        var entry = {
+            timestamp: /^\d\d:\d\d:\d\d$/.test(e.timestamp || '') ? e.timestamp : now,
+            level: String(e.level || 'info'),
+            message: e.message == null ? '' : String(e.message),
+            details: e.details || null,
+            log_tier: String(e.log_tier || 'status')
+        };
+        var line = this._buildLine(entry);
+        added.push(entry);
+        lines.push(line);
+        frag.appendChild(line);
+    }
+    this.container.appendChild(frag);
+    Array.prototype.push.apply(this._lines, lines);
+    Array.prototype.push.apply(this.entries, added);
+    this._trim(skipped);
+    this._scheduleScroll();
+    if (opts.persist !== false) this._schedulePersist();
+};
+OutputPaneCtor.prototype._trim = function(alreadyDropped) {
+    var dropped = alreadyDropped || 0;
+    var excess = this.entries.length - OUTPUT_MAX_ENTRIES;
+    if (excess > 0) {
+        this.entries.splice(0, excess);
+        var old = this._lines.splice(0, excess);
+        for (var i = 0; i < old.length; i++) old[i].remove();
+        dropped += excess;
+    }
+    if (dropped > 0) {
+        this.droppedCount += dropped;
+        this._renderNotice();
+    }
+};
+OutputPaneCtor.prototype._renderNotice = function() {
+    if (!this.droppedCount) {
+        if (this._notice) { this._notice.remove(); this._notice = null; }
+        return;
+    }
+    if (!this._notice) {
+        this._notice = document.createElement('div');
+        // Tagged status so tier filtering never hides it.
+        this._notice.className = 'output-line output-dropped-notice warn';
+        this._notice.setAttribute('data-tier', 'status');
+    }
+    this._notice.textContent = '\u2026 ' + this.droppedCount.toLocaleString('en-US') +
+        ' older lines dropped from this view (full output is in the operation log and result bundle)';
+    if (this.container.firstChild !== this._notice) this.container.insertBefore(this._notice, this.container.firstChild);
+};
+OutputPaneCtor.prototype._scheduleScroll = function() {
+    if (!this.autoScroll || this._scrollQueued) return;
+    this._scrollQueued = true;
+    var self = this;
+    var raf = window.requestAnimationFrame || function(cb) { return setTimeout(cb, 16); };
+    raf(function() {
+        self._scrollQueued = false;
+        if (self.autoScroll) self.container.scrollTop = self.container.scrollHeight;
+    });
+};
+OutputPaneCtor.prototype._schedulePersist = function() {
+    if (this._persistTimer) return;
+    var self = this;
+    this._persistTimer = setTimeout(function() { self._persistTimer = null; self._persist(); }, OUTPUT_PERSIST_DELAY_MS);
+};
+OutputPaneCtor.prototype.flushPersist = function() {
+    if (!this._persistTimer) return;
+    clearTimeout(this._persistTimer);
+    this._persistTimer = null;
+    this._persist();
+};
+OutputPaneCtor.prototype._buildLine = function(entry) {
     var tier = entry.log_tier || 'status';
     var visible = TIER_HIERARCHY[currentLogTier] || ['status'];
     var line = document.createElement('div');
@@ -697,16 +786,63 @@ OutputPaneCtor.prototype._renderEntry = function(entry) {
         d.textContent = '> ' + entry.details;
         line.appendChild(d);
     }
-    this.container.appendChild(line);
+    return line;
 };
 OutputPaneCtor.prototype._escapeHtml = function(text) { var d = document.createElement('div'); d.textContent = text; return d.innerHTML; };
-OutputPaneCtor.prototype._persist = function() { try { sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(this.entries)); } catch(e) {} };
-OutputPaneCtor.prototype._restore = function() { try { var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY); if (s) { this.entries = JSON.parse(s); var self = this; this.entries.forEach(function(e) { self._renderEntry(e); }); } } catch(e) {} };
+OutputPaneCtor.prototype._persist = function() {
+    var entries = this.entries.length > OUTPUT_MAX_ENTRIES ? this.entries.slice(-OUTPUT_MAX_ENTRIES) : this.entries;
+    var dropped = this.droppedCount + (this.entries.length - entries.length);
+    try {
+        sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(entries));
+    } catch(e) {
+        // Over the sessionStorage quota: keep the newest half, then give up quietly.
+        var half = entries.slice(Math.floor(entries.length / 2));
+        try {
+            sessionStorage.setItem(OUTPUT_STORAGE_KEY, JSON.stringify(half));
+            dropped += entries.length - half.length;
+        } catch(e2) {
+            try { sessionStorage.removeItem(OUTPUT_STORAGE_KEY); } catch(e3) {}
+            dropped += entries.length;
+        }
+    }
+    try { sessionStorage.setItem(OUTPUT_DROPPED_KEY, String(dropped)); } catch(e) {}
+};
+OutputPaneCtor.prototype._restore = function() {
+    try {
+        var s = sessionStorage.getItem(OUTPUT_STORAGE_KEY);
+        var saved = s ? JSON.parse(s) : [];
+        if (!Array.isArray(saved)) saved = [];
+        var dropped = parseInt(sessionStorage.getItem(OUTPUT_DROPPED_KEY) || '0', 10) || 0;
+        if (saved.length > OUTPUT_MAX_ENTRIES) {
+            dropped += saved.length - OUTPUT_MAX_ENTRIES;
+            saved = saved.slice(-OUTPUT_MAX_ENTRIES);
+        }
+        var frag = document.createDocumentFragment();
+        for (var i = 0; i < saved.length; i++) {
+            var line = this._buildLine(saved[i]);
+            this._lines.push(line);
+            frag.appendChild(line);
+        }
+        if (saved.length) {
+            var placeholder = this.container.querySelector('.output-placeholder');
+            if (placeholder) placeholder.remove();
+            this.container.appendChild(frag);
+        }
+        this.entries = saved;
+        this.droppedCount = dropped;
+        this._renderNotice();
+    } catch(e) { this._lines = []; }
+};
 OutputPaneCtor.prototype.clear = function() {
     if (confirm('Clear all output?')) {
         this.entries = [];
+        this._lines = [];
+        this.droppedCount = 0;
+        this._notice = null;
+        if (this._persistTimer) { clearTimeout(this._persistTimer); this._persistTimer = null; }
         this.container.innerHTML = '<div class="output-placeholder"><p>Output cleared.</p></div>';
         sessionStorage.removeItem(OUTPUT_STORAGE_KEY);
+        sessionStorage.removeItem(OUTPUT_DROPPED_KEY);
         fetch('/advanced-ops/state-snapshot').then(function(r) { return r.json(); }).then(function(snap) {
             sessionStorage.setItem(SYNC_CURSOR_KEY, String(snap.output_count || 0));
         }).catch(function() { sessionStorage.removeItem(SYNC_CURSOR_KEY); });
@@ -717,6 +853,17 @@ OutputPaneCtor.prototype.expandTarget = function() { return this.container.close
 OutputPaneCtor.prototype.toggleExpand = function() { this.expandTarget().classList.toggle('expanded'); };
 OutputPaneCtor.prototype.isExpanded = function() { return this.expandTarget().classList.contains('expanded'); };
 OutputPaneCtor.prototype.collapse = function() { this.expandTarget().classList.remove('expanded'); };
+
+// The sync cursor counts only entries consumed from /advanced-ops/output (not
+// SSE or local messages) so a reload hydrates from where this tab left off.
+function appendBackendEntries(entries, cursorAfter) {
+    if (entries && entries.length) outputPane.appendEntries(entries);
+    try {
+        var next = typeof cursorAfter === 'number' ? cursorAfter
+            : (parseInt(sessionStorage.getItem(SYNC_CURSOR_KEY) || '0', 10) || 0) + (entries ? entries.length : 0);
+        sessionStorage.setItem(SYNC_CURSOR_KEY, String(next));
+    } catch(e) {}
+}
 
 // --- Profile management ---
 async function fetchProfiles() {
@@ -945,23 +1092,26 @@ async function resetWorkflow() {
     } catch (e) { outputPane.append('error', 'Failed to reset: ' + e.message); }
 }
 
-function startPolling() {
+function startPolling(fromCursor) {
     if (pollInterval) return;
-    var lastCount = 0;
+    var lastCount = fromCursor || 0;
+    var busy = false;
     pollInterval = setInterval(async function() {
+        if (busy) return;
+        busy = true;
         try {
             var results = await Promise.all([fetch('/advanced-ops/status'), fetch('/advanced-ops/output?since=' + lastCount)]);
             var status = await results[0].json();
             var output = await results[1].json();
             if (status.state && status.state.steps) { status.state.steps.forEach(function(s) { updateStepStatus(s.id, s.status); }); }
-            output.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
-            lastCount += output.count;
+            lastCount += output.entries.length;
+            appendBackendEntries(output.entries, lastCount);
             if (!status.running && status.state && status.state.status !== 'running') {
                 stopPolling();
                 document.getElementById('btnCancel').disabled = true;
                 document.getElementById('btnDownload').disabled = false;
             }
-        } catch (e) { console.error('Poll error:', e); }
+        } catch (e) { console.error('Poll error:', e); } finally { busy = false; }
     }, 1000);
 }
 
@@ -1125,7 +1275,10 @@ async function runOneShotValidation() {
 function startValidationPolling() {
     if (validationPollInterval) return;
     var lastOutputCount = 0;
+    var busy = false;
     validationPollInterval = setInterval(async function() {
+        if (busy) return;
+        busy = true;
         try {
             var results = await Promise.all([
                 fetch('/advanced-ops/oneshot/status'),
@@ -1134,8 +1287,8 @@ function startValidationPolling() {
             var statusData = await results[0].json();
             var outputData = await results[1].json();
 
-            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
-            lastOutputCount += outputData.count;
+            lastOutputCount += outputData.entries.length;
+            appendBackendEntries(outputData.entries, lastOutputCount);
 
             if (!statusData.running && statusData.result && statusData.result.validation) {
                 stopValidationPolling();
@@ -1148,7 +1301,7 @@ function startValidationPolling() {
                 }
                 resetValidationUI();
             }
-        } catch (e) { console.error('Validation poll error:', e); }
+        } catch (e) { console.error('Validation poll error:', e); } finally { busy = false; }
     }, 1000);
 }
 
@@ -1231,7 +1384,8 @@ async function startOneShot() {
         var data = await resp.json();
         if (data.error) { outputPane.append('error', data.error); resetOneShotUI(); return; }
         outputPane.append('info', 'One-shot execution started with ' + selectedOps.length + ' operations');
-        startOneShotPolling();
+        // The backend buffer still holds the validation output already shown.
+        startOneShotPolling(data.output_cursor);
     } catch (e) {
         outputPane.append('error', 'Failed to start one-shot: ' + e.message);
         resetOneShotUI();
@@ -1246,10 +1400,13 @@ async function cancelOneShot() {
     } catch (e) { outputPane.append('error', 'Failed to cancel: ' + e.message); }
 }
 
-function startOneShotPolling() {
+function startOneShotPolling(fromCursor) {
     if (oneShotPollInterval) return;
-    var lastOutputCount = 0;
+    var lastOutputCount = fromCursor || 0;
+    var busy = false;
     oneShotPollInterval = setInterval(async function() {
+        if (busy) return;
+        busy = true;
         try {
             var results = await Promise.all([
                 fetch('/advanced-ops/oneshot/status'),
@@ -1258,8 +1415,8 @@ function startOneShotPolling() {
             var statusData = await results[0].json();
             var outputData = await results[1].json();
 
-            outputData.entries.forEach(function(e) { outputPane.append(e.level, e.message, e.details, e.log_tier || 'status'); });
-            lastOutputCount += outputData.count;
+            lastOutputCount += outputData.entries.length;
+            appendBackendEntries(outputData.entries, lastOutputCount);
 
             if (statusData.state) {
                 updateOneShotPhases(statusData.state.phase);
@@ -1287,7 +1444,7 @@ function startOneShotPolling() {
                     document.getElementById('btnOneShotStart').disabled = false;
                 }
             }
-        } catch (e) { console.error('One-shot poll error:', e); }
+        } catch (e) { console.error('One-shot poll error:', e); } finally { busy = false; }
     }, 1500);
 }
 
