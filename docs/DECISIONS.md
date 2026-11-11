@@ -116,6 +116,10 @@ Approved by the owner (plan *Token efficiency workflow*). Always-on context cut 
 
 ## Memlog (newest first)
 
+### 2026-11-10 — FR-16 in review
+
+PR #49. All findings from the three reviews and re-reviews applied (the filter re-review's were applied from the PIPE-T1 thread after the FR-16 chat missed its completion). Security review clean; Bugbot's two findings were rejected by its validator. Lab re-run (T8) is the owner's.
+
 ### 2026-11-10 — FR-16 started
 
 Branch `fix/FR-16-vperfsanity-output-stall` off `develop` (`3090153`). Plan and tasks: `docs/issues/FR-16/plan.md`, `tasks.md`. SSH streaming and the output pane run as parallel workers; filter, workflow, transcript tier and werkzeug filter are in the parent. The 2026-10-23 lab log isn't local; the fixture comes from the 2026-04-23 lab log plus the burst-wait format in `vperfsanity_run.sh`.
