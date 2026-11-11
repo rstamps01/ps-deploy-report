@@ -110,6 +110,106 @@ class TestS3PartLimitObjectCount:
         assert mock_ssh.call_count == 1
 
 
+class TestStep4LiveOutput:
+    """FR-16: Step 4 output reaches Output Results while the remote script runs."""
+
+    @staticmethod
+    def _recording_workflow(**creds):
+        wf = _workflow(**creds)
+        events = []
+        wf.set_output_callback(lambda level, message, details=None, tier="status": events.append((tier, message)))
+        return wf, events
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command")
+    def test_step4_emits_output_before_remote_command_returns(self, mock_ssh):
+        wf, events = self._recording_workflow()
+        seen_before_return = []
+
+        def remote(*_args, **kwargs):
+            kwargs["on_output"]("Collecting information about the cluster to start run...\r\n")
+            seen_before_return.extend(message for tier, message in events if tier == "status")
+            return 0, "Collecting information about the cluster to start run...\r\n", ""
+
+        mock_ssh.side_effect = remote
+        result = wf._step_run_tests()
+
+        assert result["success"] is True
+        assert "Collecting information about the cluster to start run..." in seen_before_return
+        visible = [m for tier, m in events if tier == "status"]
+        assert visible.count("Collecting information about the cluster to start run...") == 1
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command")
+    def test_raw_output_goes_to_transcript_tier_only(self, mock_ssh):
+        wf, events = self._recording_workflow()
+        frame = "\x1b[?1049h\x1b[H\x1b[2JPhase: WRITE  CPU:  48%  Active: 2  Elapsed: 2s\r\n\x1b[?1049l\r\n"
+
+        def remote(*_args, **kwargs):
+            kwargs["on_output"](frame)
+            return 0, frame, ""
+
+        mock_ssh.side_effect = remote
+        wf._step_run_tests()
+
+        transcript = [m for tier, m in events if tier == "transcript"]
+        visible = [m for tier, m in events if tier == "status"]
+        assert any("Phase: WRITE" in m for m in transcript)
+        assert not any("Phase: WRITE" in m or "\x1b" in m for m in visible)
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command", return_value=(0, "line one\r\nline two\r\n", ""))
+    def test_output_returned_without_streaming_is_emitted_once(self, mock_ssh):
+        wf, events = self._recording_workflow()
+        wf._step_run_tests()
+        visible = [m for tier, m in events if tier == "status"]
+        assert visible.count("line one") == 1 and visible.count("line two") == 1
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command")
+    def test_streamed_timeout_notice_is_shown(self, mock_ssh):
+        wf, events = self._recording_workflow()
+
+        def remote(*_args, **kwargs):
+            kwargs["on_output"]("Waiting for burst / post-burst phase to finish...\r\n")
+            return 1, "Waiting for burst / post-burst phase to finish...\r\n", "SSH command timed out after 14400s"
+
+        mock_ssh.side_effect = remote
+        result = wf._step_run_tests()
+
+        assert "burst" in result["message"].lower()
+        assert any("SSH command timed out after 14400s" in m for tier, m in events if tier == "status")
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command")
+    def test_adapter_messages_not_streamed_are_shown_once(self, mock_ssh):
+        wf, events = self._recording_workflow()
+
+        def remote(*_args, **kwargs):
+            kwargs["on_output"]("WRITE progress\r\nConnection to 10.0.0.1 closed.\r\n")
+            return 1, "", "Connection to 10.0.0.1 closed.\nSSH error for vastdata@10.0.0.1: Socket is closed"
+
+        mock_ssh.side_effect = remote
+        wf._step_run_tests()
+
+        visible = [m for tier, m in events if tier == "status"]
+        assert visible.count("SSH error for vastdata@10.0.0.1: Socket is closed") == 1
+        assert visible.count("Connection to 10.0.0.1 closed.") == 1
+
+    @patch("workflows.vperfsanity_workflow.run_ssh_command")
+    def test_part_limit_retry_streams_both_runs(self, mock_ssh):
+        wf, events = self._recording_workflow()
+        outputs = iter([(1, PART_LIMIT_REFUSAL, ""), (0, "second run line\r\n", "")])
+
+        def remote(*_args, **kwargs):
+            rc, out, err = next(outputs)
+            kwargs["on_output"](out)
+            return rc, out, err
+
+        mock_ssh.side_effect = remote
+        result = wf._step_run_tests()
+
+        assert result["success"] is True
+        visible = [m for tier, m in events if tier == "status"]
+        assert "HINT: Consider increasing the number of objects to: 1128" in visible
+        assert "second run line" in visible
+
+
 class TestPrevalidationDurationNotice:
     def test_notice_does_not_promise_thirty_minutes(self):
         from oneshot_runner import VPERFSANITY_DURATION_NOTICE

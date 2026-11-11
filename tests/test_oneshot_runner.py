@@ -1484,6 +1484,27 @@ class TestOneShotLogHandler(unittest.TestCase):
         self.assertTrue(len(live_entries) >= 2)
         self.assertTrue(len(debug_entries) >= 1)
 
+    def test_werkzeug_access_lines_are_dropped(self):
+        """FR-16: the page's own status/output polls must not feed back into Output Results."""
+        import logging
+
+        from oneshot_runner import _OneShotLogHandler
+
+        collected = []
+        handler = _OneShotLogHandler(lambda level, msg, details=None, log_tier="status": collected.append(msg))
+        werkzeug_logger = logging.getLogger("werkzeug")
+        old_level = werkzeug_logger.level
+        werkzeug_logger.setLevel(logging.INFO)
+        werkzeug_logger.addHandler(handler)
+        try:
+            werkzeug_logger.info('127.0.0.1 - - "GET /advanced-ops/oneshot/status HTTP/1.1" 200 -')
+            werkzeug_logger.error("Error on request: boom")
+        finally:
+            werkzeug_logger.removeHandler(handler)
+            werkzeug_logger.setLevel(old_level)
+
+        self.assertEqual(collected, ["[werkzeug] Error on request: boom"])
+
 
 class TestCredentialRouting(unittest.TestCase):
     """Tests for per-phase credential routing with default creds.
