@@ -1,44 +1,64 @@
-# Handoff: v1.6.3 implementation (2026-11-11)
+# Handoff: v1.6.3 implementation (2026-11-11, evening)
 
-Start here for the implementation chat. Code and git outrank this file. Plan: [`plan.md`](plan.md); scope and
-gates: [`spec.md`](spec.md); tasks: [`tasks.md`](tasks.md). Owner decisions: `docs/DECISIONS.md` 2026-11-11.
+Start here. Code and git outrank this file. Plan: [`plan.md`](plan.md); scope and gates: [`spec.md`](spec.md);
+tasks: [`tasks.md`](tasks.md). Owner decisions: `docs/DECISIONS.md` 2026-11-11.
 
 ## State
 
-- Planning is done and approved by the owner. Docs PR [#51](https://github.com/rstamps01/ps-deploy-report/pull/51)
-  (`chore/v1.6.3-plan`) has the plan, all specs, register, decisions and brief. Gate passed locally (coverage 74%).
-- No code has started. FR-16 is merged (PR #49); its lab re-run (T8) is still pending.
-- Lab: the owner has a cluster with LLDP already active on the nodes (NET-7 gate). Ask which one when needed;
-  never enable lldpd/lldpad.
+- Plan PR #51 merged to `develop` (`9bbd671`).
+- Wave A is in review, each with a green local gate (coverage 74%), green CI and a changelog fragment:
+  FR-11 [#52](https://github.com/rstamps01/ps-deploy-report/pull/52), FR-10
+  [#53](https://github.com/rstamps01/ps-deploy-report/pull/53), TP-4
+  [#54](https://github.com/rstamps01/ps-deploy-report/pull/54), HCF-3
+  [#55](https://github.com/rstamps01/ps-deploy-report/pull/55). Review fixes already folded in: FR-11 stale
+  `local_path` (second commit); HCF-3 CLI report paths now apply `ReportConfig.from_yaml` (third commit).
+- TP-4: an independent reviewer subagent was still running at handoff. If its findings are not on #54, re-run
+  a fresh review of `git diff origin/develop...HEAD` in `~/asbuilt-tp4`. Manual UI check is listed in the PR.
+- NET-7 (`feature/NET-7-vnetmap-lldp`, pushed, no PR yet): N1–N6 committed (`b528a1f` parser, `9c4cfbe`
+  workflow + selector + guardrail test + tool manager, `f026f2f` mapper/diagram). Parent integration N7–N10 next.
+- TP-3: owner chose "decide later"; ask again before the release cut, else move to v1.7.0 with the reason.
 
-## Worktrees and branches
+## Worktrees (one per branch; never switch branches in `~/vast-asbuilt-reporter`)
 
-- `~/vast-asbuilt-reporter`: main checkout on `develop`. Other chats may use it; don't switch branches there.
-- `~/asbuilt-net7`: branch `feature/NET-7-vnetmap-lldp` (from `develop` at `f5ea66a`, upstream unset). Rebase
-  it on `develop` after #51 merges. The `venv` symlink to the main checkout's venv is excluded locally (via
-  `.git/info/exclude`); don't stage it.
-- Every other item gets its own worktree off `develop` (after #51 merges), for example
-  `git worktree add -b fix/FR-10-paramiko-deadline ../asbuilt-fr10 origin/develop`, then `ln -s
-  ~/vast-asbuilt-reporter/venv venv` to run `bash scripts/quality-gate.sh`.
+`~/asbuilt-fr10`, `~/asbuilt-fr11`, `~/asbuilt-tp4`, `~/asbuilt-hcf3`, `~/asbuilt-net7`, `~/asbuilt-tracker`
+(`chore/v1.6.3-tracker`). Each has a `venv` symlink (excluded via `.git/info/exclude`). Remove a worktree only
+after its PR merges, with owner approval.
 
 ## Next agent actions
 
-1. Confirm #51 is merged (or ask the owner to merge it); then rebase `feature/NET-7-vnetmap-lldp` on `develop`.
-2. Wave A, in parallel (one subagent per item on the implementation model, each with the brief, its spec and its
-   file list): FR-10, FR-11, TP-4, HCF-3. Failing-first test for each. Then OBS-1 after HCF-3, and FR-7 after FR-10.
-3. NET-7 in `~/asbuilt-net7`, per [`../NET-7/plan.md`](../NET-7/plan.md): workers A (parser) and C (workflow,
-   selector, guardrail test, tool manager) in parallel, B (mapper/diagram) after A's row contract, parent
-   integration last.
-4. TP-3: ask the owner for the scrubbed field ops log or a lab Tech Port session; otherwise move it to v1.7.0
-   with the reason.
-5. Each item: changelog fragment in `docs/issues/<ID>/changelog.md`, independent review, gate, PR to `develop`,
-   register to in-review.
+1. Check #52–#55 for review comments and CI; ask the owner to merge (or for approval to merge) to `develop`.
+2. OBS-1 after HCF-3 and FR-7 after FR-10: new worktrees off `develop` once #55 / #53 merge, or stacked on
+   those branches if the owner wants to proceed first. One implementer subagent each (current model, not the
+   fast tier), failing-first test, parent review + gate + PR.
+3. NET-7 parent integration in `~/asbuilt-net7`, per [`../NET-7/plan.md`](../NET-7/plan.md) Design 2, 7–9:
+   - N7 `extract_port_mapping` LLDP branch: resolve `switch_name` to VMS `mgmt_ip` (name, hostname,
+     case-insensitive, domain stripped); unresolved names become synthetic switches (`mgmt_ip` = name,
+     `discovered_via: "lldp"`, `registered_in_vms: False`); set `data_source = "lldp"`, `ipl_connections = []`,
+     `isl_discovered = False`. Worker B: the diagram reads `port_mapping_data["isl_discovered"]`, and the
+     synthetic switches must also go into the hardware-inventory switches list `report_builder` passes to the
+     diagram.
+   - N8 Reporter job and One-Shot call `select_topology_source()` before/after vnetmap; output discovery for
+     both filename patterns; add `vnetmap_lldp` to One-Shot's node-SSH and download operation sets; bundler
+     and Results scanner pick up `vnetmap_lldp_*` files.
+   - N9 report source line + "Switch not registered in VMS" note; `data_source.startswith("vnetmap")` gate
+     accepts `lldp`. N10 UI select (`vnetmap_source`), config keys, README. Then review, gate, changelog
+     fragment, PR.
+4. Owner questions for NET-7 (from worker C): Auto falls back to LLDP only when every switch login fails (one
+   switch: any auth failure) — OK? Should a failed `switch_mapping.json` restore fail step 3 (today: warn and
+   report the backup path)? Confirm `clush -a` covers the intended nodes on the lab cluster.
+5. Lab pass (owner): FR-16 T8, FR-7, NET-7 on a cluster with LLDP already active, TP-3 if reproducible.
 
 ## Gotchas
 
-- `vnetmap_lldp.py show-mapping` rewrites `/userdata/switch_mapping.json` on the CNode (Support's `ifup` reads
-  it). The workflow must preserve it, and the guardrail test checks the restore on success and failure.
-- Its readiness check requires the `lldpad` package; we never pass `-f`.
-- `health_checker.py` is edited by both HCF-3 and OBS-1, and `ssh_adapter.py` by both FR-10 and FR-7: keep them
-  sequential.
-- HCF-3 is a behavior change in a patch release; the release notes must name it with the `fail_on: none` opt-out.
+- The `bugbot` and `security-review` subagents diff against a stale base (about 85–90 files, apparently
+  `main`) and skip most item files; their findings must be verified, and the parent reviews security-sensitive
+  code directly. Worth a pipeline fix item.
+- `ui-tests` CI can fail at "Install Playwright browsers" when the runner cannot resolve the Ubuntu mirrors;
+  re-run the failed job (PR #51 needed four attempts).
+- Adding Python 3.10+ syntax to a test file can make black reformat older `with` blocks in it; accept it as
+  a separate `style(tests)` commit.
+- `~/Downloads/vnetmap-lldp-output.txt` is a real customer capture: format reference only, never copied.
+- `vnetmap_lldp.py show-mapping` rewrites `/userdata/switch_mapping.json`; the workflow restores it and the
+  guardrail test enforces that. We never pass `-f` and never touch lldpd/lldpad.
+- HCF-3 and NET-7 are behavior changes; the v1.6.3 release notes must name them (HCF-3 with the
+  `fail_on: none` opt-out). FR-11 deletes with `sudo rm -f`, and a Support Tools size mismatch now fails the step.
