@@ -202,6 +202,48 @@ class TestSubprocessSSH(unittest.TestCase):
         self.assertIn("no such file", err)
 
 
+class _CompletedChannel:
+    """Minimal paramiko Channel for a command that has already exited and sent EOF."""
+
+    eof_received = True
+
+    def __init__(self, stdout: bytes = b"", stderr: bytes = b"", exit_status: int = 0) -> None:
+        self._out = stdout
+        self._err = stderr
+        self._exit_status = exit_status
+
+    def recv_ready(self) -> bool:
+        return bool(self._out)
+
+    def recv(self, size: int) -> bytes:
+        data, self._out = self._out[:size], self._out[size:]
+        return data
+
+    def recv_stderr_ready(self) -> bool:
+        return bool(self._err)
+
+    def recv_stderr(self, size: int) -> bytes:
+        data, self._err = self._err[:size], self._err[size:]
+        return data
+
+    def exit_status_ready(self) -> bool:
+        return True
+
+    def recv_exit_status(self) -> int:
+        return self._exit_status
+
+    def close(self) -> None:
+        pass
+
+
+def _wire_paramiko_exec(mock_client, stdout: bytes = b"", stderr: bytes = b"", exit_status: int = 0) -> MagicMock:
+    """Make *mock_client*.exec_command return a stdout whose channel replays the given output."""
+    mock_stdout = MagicMock()
+    mock_stdout.channel = _CompletedChannel(stdout, stderr, exit_status)
+    mock_client.exec_command.return_value = (MagicMock(), mock_stdout, MagicMock())
+    return mock_stdout
+
+
 class TestParamikoExec(unittest.TestCase):
     """Tests for the paramiko SSH path."""
 
@@ -217,13 +259,7 @@ class TestParamikoExec(unittest.TestCase):
         mock_paramiko = self._make_mock_paramiko()
         mock_client = MagicMock()
         mock_paramiko.SSHClient.return_value = mock_client
-
-        mock_stdout = MagicMock()
-        mock_stdout.channel.recv_exit_status.return_value = 0
-        mock_stdout.read.return_value = b"output data"
-        mock_stderr = MagicMock()
-        mock_stderr.read.return_value = b""
-        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+        _wire_paramiko_exec(mock_client, stdout=b"output data")
 
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
@@ -234,8 +270,26 @@ class TestParamikoExec(unittest.TestCase):
 
         self.assertEqual(rc, 0)
         self.assertEqual(out, "output data")
+        self.assertEqual(err, "")
         mock_client.connect.assert_called_once()
         mock_client.close.assert_called_once()
+
+    @patch.dict("sys.modules", {})
+    def test_captures_stderr_and_exit_status(self):
+        mock_paramiko = self._make_mock_paramiko()
+        mock_client = MagicMock()
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_stdout = _wire_paramiko_exec(mock_client, stdout=b"partial", stderr=b"No such file\n", exit_status=2)
+
+        with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
+            from importlib import reload
+            import utils.ssh_adapter as mod
+
+            reload(mod)
+            rc, out, err = mod._paramiko_exec("host", "user", "pass", "ls /missing", 10)
+
+        self.assertEqual((rc, out, err), (2, "partial", "No such file\n"))
+        mock_stdout.read.assert_not_called()
 
     @patch.dict("sys.modules", {})
     def test_auth_failure(self):
@@ -317,12 +371,7 @@ class TestExplicitPort(unittest.TestCase):
         mock_paramiko.AutoAddPolicy.return_value = "policy"
         mock_client = MagicMock()
         mock_paramiko.SSHClient.return_value = mock_client
-        mock_stdout = MagicMock()
-        mock_stdout.channel.recv_exit_status.return_value = 0
-        mock_stdout.read.return_value = b"ok"
-        mock_stderr = MagicMock()
-        mock_stderr.read.return_value = b""
-        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+        _wire_paramiko_exec(mock_client, stdout=b"ok")
 
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             from importlib import reload
@@ -388,12 +437,7 @@ class TestPexpectFallback(unittest.TestCase):
 
         mock_client = MagicMock()
         mock_paramiko.SSHClient.return_value = mock_client
-        mock_stdout = MagicMock()
-        mock_stdout.channel.recv_exit_status.return_value = 0
-        mock_stdout.read.return_value = b"fallback output"
-        mock_stderr = MagicMock()
-        mock_stderr.read.return_value = b""
-        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+        _wire_paramiko_exec(mock_client, stdout=b"fallback output")
 
         import builtins
 
