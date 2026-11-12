@@ -84,6 +84,27 @@ class TestLogBundleRemoteCleanup:
         assert _rm_commands(runner) == []
         assert f"192.0.2.10:{LOG_ARCHIVE}" in result["message"]
 
+    def test_stale_local_copy_from_earlier_run_does_not_trigger_cleanup(self, tmp_path):
+        runner = MagicMock()
+        runner.get_local_dir.return_value = tmp_path
+        runner.download_from_remote.return_value = MagicMock(success=False, error="connection reset")
+        runner.execute_remote.return_value = _exec_result()
+        wf = _log_bundle(tmp_path, runner)
+        wf._step_data["archive_name"] = Path(LOG_ARCHIVE).name
+        assert wf._step_download_to_laptop()["success"] is False
+        with patch("subprocess.run", return_value=_tar_ok()):
+            result = wf._step_verify_contents()
+        assert result["success"] is False
+        assert _rm_commands(runner) == []
+
+    def test_new_archive_discards_previous_download_record(self, tmp_path):
+        runner = MagicMock()
+        runner.execute_remote.return_value = _exec_result(stdout="1.0G")
+        wf = _log_bundle(tmp_path, runner)
+        wf._step_data["collection_confirmed"] = True
+        wf._step_create_archive()
+        assert "local_path" not in wf._step_data
+
     def test_unrecognised_path_is_refused(self, tmp_path):
         runner = MagicMock()
         runner.execute_remote.return_value = _exec_result()

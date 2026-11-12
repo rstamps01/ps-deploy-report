@@ -234,6 +234,10 @@ class LogBundleWorkflow:
         if not self._step_data.get("collection_confirmed"):
             return {"success": False, "message": "Collection not confirmed. Run step 2 first."}
 
+        # Step 5 deletes the remote archive once the local copy verifies, so a local copy
+        # from an earlier run must never stand in for this run's archive.
+        self._step_data.pop("local_path", None)
+
         host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
@@ -357,6 +361,7 @@ class LogBundleWorkflow:
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         archive_path = self._step_data.get("archive_path")
+        self._step_data.pop("local_path", None)
 
         if not archive_path:
             return {"success": False, "message": "No archive path available from previous step"}
