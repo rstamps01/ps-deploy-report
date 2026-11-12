@@ -8,6 +8,7 @@ without changing the returned ``(rc, stdout, stderr)``.
 
 import os
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -16,6 +17,8 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from utils import ssh_adapter  # noqa: E402
+
+_HANG_GUARD_S = 10.0
 
 
 def _py(code: str) -> list:
@@ -194,7 +197,8 @@ class _FakeChannel:
 
     ``exit_first`` reports the exit status as ready from the start, and ``tail_delay_polls``
     holds the last chunk back for that many ``recv_ready`` polls, as a remote PTY that is
-    still draining after the process exited would.
+    still draining after the process exited would.  With ``never_exits``,
+    ``recv_exit_status`` blocks until ``close`` like paramiko's does.
     """
 
     def __init__(
@@ -212,6 +216,7 @@ class _FakeChannel:
         self._exit_first = exit_first
         self._tail_delay_polls = tail_delay_polls
         self._sends_eof = sends_eof
+        self._closed_event = threading.Event()
         self.closed = False
 
     def _next_is(self, kind: str) -> bool:
@@ -244,10 +249,14 @@ class _FakeChannel:
         return self._sends_eof and not self._events and not self._never_exits
 
     def recv_exit_status(self) -> int:
+        if self._never_exits:
+            self._closed_event.wait(_HANG_GUARD_S)
+            return -1
         return self._exit_status
 
     def close(self) -> None:
         self.closed = True
+        self._closed_event.set()
 
 
 def _mock_paramiko_with_channel(channel: _FakeChannel):
@@ -337,24 +346,56 @@ class TestParamikoStreaming(unittest.TestCase):
         self.assertTrue(channel.closed)
         self.assertEqual(rec.text, "partial\n")
 
-    def test_paramiko_exec_without_callback_reads_at_end(self):
-        mock_paramiko = MagicMock()
-        mock_paramiko.AuthenticationException = type("AuthenticationException", (Exception,), {})
-        mock_paramiko.SSHException = type("SSHException", (Exception,), {})
-        mock_client = MagicMock()
-        mock_paramiko.SSHClient.return_value = mock_client
-        mock_stdout = MagicMock()
-        mock_stdout.channel.recv_exit_status.return_value = 0
-        mock_stdout.read.return_value = b"done"
-        mock_stderr = MagicMock()
-        mock_stderr.read.return_value = b""
-        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+    def test_paramiko_exec_without_callback_polls_channel(self):
+        channel = _FakeChannel([("out", b"done\n"), ("err", b"warn\n")], exit_status=3)
+        mock_paramiko, _client, mock_stdout = _mock_paramiko_with_channel(channel)
 
         with patch.dict("sys.modules", {"paramiko": mock_paramiko}):
             rc, out, err = ssh_adapter._paramiko_exec("h", "u", "p", "cmd", 10)
 
-        self.assertEqual((rc, out, err), (0, "done", ""))
-        mock_stdout.channel.recv_ready.assert_not_called()
+        self.assertEqual((rc, out, err), (3, "done\n", "warn\n"))
+        mock_stdout.read.assert_not_called()
+        self.assertFalse(channel.closed)
+
+
+class TestParamikoNonStreamingDeadline(unittest.TestCase):
+    """Without on_output, the paramiko path still treats *timeout* as a hard deadline (FR-10)."""
+
+    def test_paramiko_exec_without_callback_times_out_when_exit_status_never_ready(self):
+        timeout = 1
+        channel = _FakeChannel([("out", b"partial\n"), ("err", b"warn\n")], never_exits=True)
+        mock_paramiko, mock_client, _stdout = _mock_paramiko_with_channel(channel)
+        clock = [0.0]
+        result: dict = {}
+
+        def _sleep(seconds: float) -> None:
+            clock[0] += seconds
+
+        def _call() -> None:
+            result["value"] = ssh_adapter._paramiko_exec("h", "u", "p", "cmd", timeout)
+            result["returned_at"] = clock[0]
+
+        worker = threading.Thread(target=_call, daemon=True)
+        with (
+            patch.dict("sys.modules", {"paramiko": mock_paramiko}),
+            patch("utils.ssh_adapter.time.sleep", side_effect=_sleep),
+            patch("utils.ssh_adapter.time.monotonic", side_effect=lambda: clock[0]),
+        ):
+            worker.start()
+            worker.join(2.0)
+            hung = worker.is_alive()
+            if hung:
+                channel.close()
+                worker.join(2.0)
+
+        self.assertFalse(hung, "_paramiko_exec blocked past its timeout waiting for the exit status")
+        rc, out, err = result["value"]
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "partial\n")
+        self.assertEqual(err, "warn\nSSH command timed out after 1s")
+        self.assertLessEqual(result["returned_at"], timeout + ssh_adapter._PARAMIKO_POLL_S + 1e-6)
+        self.assertTrue(channel.closed)
+        mock_client.close.assert_called_once()
 
 
 if __name__ == "__main__":

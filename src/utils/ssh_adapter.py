@@ -913,8 +913,9 @@ def _paramiko_exec(
     hosts (e.g. switches) that are only accessible from inside a cluster
     network.
 
-    With *on_output*, the channel is polled and each decoded chunk is passed
-    to the callback as it arrives, within an overall *timeout* deadline.
+    The channel is polled within an overall *timeout* deadline; with
+    *on_output*, each decoded chunk is also passed to the callback as it
+    arrives.
     """
     try:
         import paramiko  # type: ignore[import-untyped]
@@ -1008,17 +1009,12 @@ def _paramiko_exec(
         # Intentional [B601]: `command` is always constructed internally by workflow code from
         # fixed templates plus validated parameters (host/user/password from credential
         # prompts and discovered IPs), never sourced from untrusted external input.
-        _stdin, stdout, stderr = client.exec_command(  # nosec B601
+        _stdin, stdout, _stderr = client.exec_command(  # nosec B601
             command,
             timeout=timeout,
             get_pty=force_tty,
         )
-        if on_output is not None:
-            return _stream_paramiko_channel(stdout.channel, timeout, on_output)
-        rc = stdout.channel.recv_exit_status()
-        out = stdout.read().decode("utf-8", errors="replace")
-        err = stderr.read().decode("utf-8", errors="replace")
-        return rc, out, err
+        return _stream_paramiko_channel(stdout.channel, timeout, on_output)
     except paramiko.AuthenticationException:
         return 1, "", "Authentication failed for " + username + "@" + host
     except paramiko.SSHException as exc:
@@ -1033,14 +1029,25 @@ def _paramiko_exec(
             jump_client.close()
 
 
-def _stream_paramiko_channel(chan: Any, timeout: int, on_output: OutputCallback) -> Tuple[int, str, str]:
-    """Poll a paramiko exec channel, passing decoded output chunks to *on_output*.
+def _stream_paramiko_channel(
+    chan: Any, timeout: int, on_output: Optional[OutputCallback] = None
+) -> Tuple[int, str, str]:
+    """Poll a paramiko exec channel, collecting its output within a hard deadline.
 
     The exit status can arrive before the last output (the remote PTY drains
     after the process exits), so reading continues until the channel reports
     EOF with empty buffers, or ``_PARAMIKO_EOF_GRACE_S`` after the exit status
-    for servers that never send EOF.  Unlike the non-streaming path, *timeout*
-    is a hard deadline for the whole command, not a per-read idle timeout.
+    for servers that never send EOF.  *timeout* is a hard deadline for the
+    whole command, not a per-read idle timeout; on expiry the channel is
+    closed and the partial output is returned with the timeout notice.
+
+    Args:
+        chan: The paramiko ``Channel`` returned with ``exec_command``.
+        timeout: Seconds allowed for the whole command.
+        on_output: Optional callback that also receives each decoded chunk.
+
+    Returns:
+        ``(rc, stdout, stderr)``; ``rc`` is 1 when the deadline expired.
     """
     deadline = time.monotonic() + timeout
     out_decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")

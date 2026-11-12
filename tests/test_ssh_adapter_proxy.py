@@ -26,13 +26,17 @@ def _make_mock_paramiko():
 
 
 def _setup_successful_exec(mock_client):
-    """Wire up a mock SSHClient so exec_command returns successfully."""
+    """Wire up a mock SSHClient whose exec channel has finished, printing ``switch-01``."""
+    pending = [b"switch-01"]
+    channel = MagicMock(eof_received=True)
+    channel.recv_ready.side_effect = lambda: bool(pending)
+    channel.recv.side_effect = lambda _size: pending.pop()
+    channel.recv_stderr_ready.return_value = False
+    channel.exit_status_ready.return_value = True
+    channel.recv_exit_status.return_value = 0
     mock_stdout = MagicMock()
-    mock_stdout.channel.recv_exit_status.return_value = 0
-    mock_stdout.read.return_value = b"switch-01"
-    mock_stderr = MagicMock()
-    mock_stderr.read.return_value = b""
-    mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+    mock_stdout.channel = channel
+    mock_client.exec_command.return_value = (MagicMock(), mock_stdout, MagicMock())
 
 
 class TestParamikoExecWithJumpHost(unittest.TestCase):
