@@ -12,8 +12,7 @@ tasks: [`tasks.md`](tasks.md). Owner decisions: `docs/DECISIONS.md` 2026-11-11.
   [#54](https://github.com/rstamps01/ps-deploy-report/pull/54), HCF-3
   [#55](https://github.com/rstamps01/ps-deploy-report/pull/55). Review fixes already folded in: FR-11 stale
   `local_path` (second commit); HCF-3 CLI report paths now apply `ReportConfig.from_yaml` (third commit).
-- TP-4: an independent reviewer subagent was still running at handoff. If its findings are not on #54, re-run
-  a fresh review of `git diff origin/develop...HEAD` in `~/asbuilt-tp4`. Manual UI check is listed in the PR.
+- TP-4 #54: independent review says REQUEST CHANGES (details in the PR comment). Blocker: `ResultBundler` writes every bundle to the flat `output/bundles/`, so Tech Port bundles show under Unassigned (legacy) and never under their cluster. Fix in `~/asbuilt-tp4`: pass the per-cluster bundles dir at `oneshot_runner.py:2140` and `app.py:1061`, move the test fixtures to where the app writes (failing-first), plus the two low findings (cluster-scoped file actions; early-exit Unassigned check). Manual UI check is listed in the PR.
 - NET-7 (`feature/NET-7-vnetmap-lldp`, pushed, no PR yet): N1–N6 committed (`b528a1f` parser, `9c4cfbe`
   workflow + selector + guardrail test + tool manager, `f026f2f` mapper/diagram). Parent integration N7–N10 next.
 - TP-3: owner chose "decide later"; ask again before the release cut, else move to v1.7.0 with the reason.
@@ -26,7 +25,7 @@ after its PR merges, with owner approval.
 
 ## Next agent actions
 
-1. Check #52–#55 for review comments and CI; ask the owner to merge (or for approval to merge) to `develop`.
+1. Fix TP-4 #54 first (above). Check #52–#55 for review comments and CI; ask the owner to merge (or for approval to merge) to `develop`.
 2. OBS-1 after HCF-3 and FR-7 after FR-10: new worktrees off `develop` once #55 / #53 merge, or stacked on
    those branches if the owner wants to proceed first. One implementer subagent each (current model, not the
    fast tier), failing-first test, parent review + gate + PR.
