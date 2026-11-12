@@ -2259,10 +2259,11 @@ class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
             "auth_method": "password",
         }
 
-        with patch("utils.vms_tunnel.VMSTunnel", _FakeVMSTunnel), patch(
-            "api_handler.create_vast_api_handler", return_value=fake_handler
-        ), patch("app._preprobe_switch_passwords_for_job", return_value={}), patch(
-            "workflows.vnetmap_workflow.VnetmapWorkflow", _FakeVnetmapWorkflow
+        with (
+            patch("utils.vms_tunnel.VMSTunnel", _FakeVMSTunnel),
+            patch("api_handler.create_vast_api_handler", return_value=fake_handler),
+            patch("app._preprobe_switch_passwords_for_job", return_value={}),
+            patch("workflows.vnetmap_workflow.VnetmapWorkflow", _FakeVnetmapWorkflow),
         ):
             _run_report_job(self.app, params)
 
