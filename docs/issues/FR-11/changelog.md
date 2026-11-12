@@ -1,0 +1,4 @@
+### Fixed
+- **Remote archives left on the cluster (FR-11):** VMS Log Bundle and VAST Support Tools now delete their archive from the cluster (`/tmp/vast_log_bundle_<timestamp>.tar.gz` on the CNode, `/userdata/<host>-support_tool_logs_<timestamp>.tgz` on the VMS host) once the local copy is verified. These archives are often several GB. Only the exact file the workflow created is removed; any other path is refused.
+- **Support Tools download check (FR-11):** the Download Results step now compares the local file size with the remote archive size. A short download fails the step instead of passing.
+- **Archive location on failure (FR-11):** when a download or verification fails, the archive stays on the cluster and the message gives its host and path. If cleanup itself fails, the step still succeeds and Output Results shows a warning with the path to remove by hand.

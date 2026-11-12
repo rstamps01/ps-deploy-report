@@ -10,6 +10,8 @@ VMS Log Bundle Workflow
 """
 
 import json
+import re
+import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -43,6 +45,8 @@ class LogBundleWorkflow:
     MAX_BUNDLE_MB = 5120
     # Intentional [B108]: staging directory on the remote VAST CNode (populated via SSH), not a local tempfile.
     BUNDLE_DIR = "/tmp/vast_log_bundle"  # nosec B108
+    # Only an archive this workflow named itself may be deleted from the CNode.
+    REMOTE_ARCHIVE_RE = re.compile(r"^/tmp/vast_log_bundle_\d{8}_\d{6}\.tar\.gz$")
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -230,6 +234,10 @@ class LogBundleWorkflow:
         if not self._step_data.get("collection_confirmed"):
             return {"success": False, "message": "Collection not confirmed. Run step 2 first."}
 
+        # Step 5 deletes the remote archive once the local copy verifies, so a local copy
+        # from an earlier run must never stand in for this run's archive.
+        self._step_data.pop("local_path", None)
+
         host = self._ssh_host()
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
@@ -353,6 +361,7 @@ class LogBundleWorkflow:
         user = self._credentials.get("node_user", "vastdata")
         password = self._credentials.get("node_password")
         archive_path = self._step_data.get("archive_path")
+        self._step_data.pop("local_path", None)
 
         if not archive_path:
             return {"success": False, "message": "No archive path available from previous step"}
@@ -365,7 +374,7 @@ class LogBundleWorkflow:
         if not result.success:
             return {
                 "success": False,
-                "message": f"Download failed: {result.error}",
+                "message": f"Download failed: {result.error}. {self._archive_kept_note()}",
             }
 
         self._step_data["local_path"] = local_path
@@ -383,7 +392,7 @@ class LogBundleWorkflow:
 
         local_path = self._step_data.get("local_path")
         if not local_path or not Path(local_path).exists():
-            return {"success": False, "message": "Archive file not found"}
+            return {"success": False, "message": f"Archive file not found. {self._archive_kept_note()}"}
 
         import subprocess
 
@@ -394,7 +403,7 @@ class LogBundleWorkflow:
             if result.returncode != 0:
                 return {
                     "success": False,
-                    "message": "Archive verification failed",
+                    "message": f"Archive verification failed. {self._archive_kept_note()}",
                     "details": result.stderr,
                 }
 
@@ -421,14 +430,56 @@ class LogBundleWorkflow:
             message = f"Archive verified: {file_count} files"
             if not_collected:
                 message += f" (partial: not collected {', '.join(not_collected)})"
+            cleanup = self._cleanup_remote_archive()
             return {
                 "success": True,
                 "message": message,
                 "details": f"Sample contents:\n" + "\n".join(files[:10]),
                 "data": verification,
+                "remote_cleanup": cleanup,
             }
 
         except subprocess.TimeoutExpired:
-            return {"success": False, "message": "Archive verification timed out"}
+            return {"success": False, "message": f"Archive verification timed out. {self._archive_kept_note()}"}
         except Exception as e:
-            return {"success": False, "message": f"Verification error: {str(e)}"}
+            return {"success": False, "message": f"Verification error: {str(e)}. {self._archive_kept_note()}"}
+
+    def _archive_kept_note(self) -> str:
+        """Describe where the un-removed remote archive is, for failure messages."""
+        archive_path = self._step_data.get("archive_path")
+        if not archive_path:
+            return "No remote archive was recorded."
+        return f"Remote archive kept at {self._credentials.get('cluster_ip', '')}:{archive_path}"
+
+    def _cleanup_remote_archive(self) -> str:
+        """Remove the verified archive from the CNode by its exact recorded path.
+
+        A cleanup problem never fails the step; it is reported as a warning.
+
+        Returns:
+            "removed", "failed", or "skipped" (no recorded path, or a path this workflow
+            did not create, in which case no command is sent).
+        """
+        archive_path = str(self._step_data.get("archive_path") or "")
+        location = f"{self._credentials.get('cluster_ip', '')}:{archive_path}"
+        if not self.REMOTE_ARCHIVE_RE.match(archive_path):
+            self.emit("warn", f"Remote cleanup skipped: refusing to delete unrecognised path '{archive_path}'")
+            return "skipped"
+
+        assert self._script_runner is not None
+        host = self._ssh_host()
+        user = self._credentials.get("node_user", "vastdata")
+        password = self._credentials.get("node_password")
+        # The archive was written by root into sticky /tmp, so removal needs sudo.
+        cmd = f"sudo rm -f -- {shlex.quote(archive_path)}"
+        try:
+            result = self._script_runner.execute_remote(host, user, password, cmd, timeout=60)
+        except Exception as exc:  # noqa: BLE001 - cleanup must not fail a verified download
+            self.emit("warn", f"Remote cleanup failed; archive kept at {location}: {exc}")
+            return "failed"
+        if not result.success:
+            reason = (result.stderr or result.stdout or "").strip()
+            self.emit("warn", f"Remote cleanup failed; archive kept at {location}: {reason}")
+            return "failed"
+        self.emit("success", f"Remote cleanup: removed {location}")
+        return "removed"

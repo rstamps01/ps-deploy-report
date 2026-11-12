@@ -12,6 +12,7 @@ VAST Support Tools Workflow
 import json
 import posixpath
 import re
+import shlex
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -89,6 +90,8 @@ class SupportToolWorkflow:
     # (e.g. /vast/data/C-4200/vms.sh) and the script must sit beside it.
     WRAPPER_PROBE_CMD = 'for f in /vast/data/vms.sh /vast/data/C-*/vms.sh; do [ -e "$f" ] && echo "$f" && break; done'
     INSPECT_TIMEOUT_S = 600
+    # Only an archive this workflow named itself may be deleted from the VMS host.
+    REMOTE_ARCHIVE_RE = re.compile(r"^/userdata/[\w.-]+-support_tool_logs_\d{8}_\d{6}\.tgz$")
 
     def __init__(self):
         self._output_callback: Optional[Callable[[str, str, Optional[str]], None]] = None
@@ -817,6 +820,16 @@ class SupportToolWorkflow:
             # Verify download
             if local_path.exists():
                 size = local_path.stat().st_size
+                location = f"{scp_target}:{archive_path}"
+                remote_size = self._remote_archive_size(archive_path)
+                if remote_size is not None and remote_size != size:
+                    self.emit("error", f"Downloaded {size:,} bytes but the remote archive is {remote_size:,} bytes")
+                    return {
+                        "success": False,
+                        "message": f"Download incomplete ({size:,} of {remote_size:,} bytes). "
+                        f"Remote archive kept at {location}",
+                        "details": str(local_path),
+                    }
                 self.emit("success", f"Downloaded: {local_path}")
                 self.emit("info", f"Size: {size:,} bytes ({size/1024/1024:.2f} MB)")
 
@@ -834,14 +847,76 @@ class SupportToolWorkflow:
                 )
 
                 self._step_data["local_archive"] = str(local_path)
+                if remote_size is None:
+                    self.emit("warn", f"Could not confirm the remote archive size; archive kept at {location}")
+                    cleanup = "skipped"
+                else:
+                    cleanup = self._cleanup_remote_archive(archive_path, location)
                 return {
                     "success": True,
                     "message": f"Downloaded {archive_name}",
                     "details": str(local_path),
+                    "remote_cleanup": cleanup,
                 }
             else:
-                return {"success": False, "message": "Download failed - file not found"}
+                return {
+                    "success": False,
+                    "message": f"Download failed - file not found. Remote archive kept at {scp_target}:{archive_path}",
+                }
 
         except Exception as e:
             self.emit("error", f"SCP failed: {e}")
-            return {"success": False, "message": f"Download failed: {e}"}
+            return {
+                "success": False,
+                "message": f"Download failed: {e}. Remote archive kept at {scp_target}:{archive_path}",
+            }
+
+    def _remote_archive_size(self, archive_path: str) -> Optional[int]:
+        """Return the remote archive size in bytes, or ``None`` when it cannot be read."""
+        user = self._credentials.get("node_user", "vastdata")
+        password = self._credentials.get("node_password")
+        target, conn_kwargs = self._vms_target()
+        try:
+            rc, stdout, _ = run_ssh_command(
+                target, user, password, f"stat -c %s -- {shlex.quote(archive_path)}", timeout=30, **conn_kwargs
+            )
+            return int(stdout.strip().splitlines()[-1]) if rc == 0 else None
+        except (ValueError, IndexError, AttributeError):
+            return None
+        except Exception as exc:  # noqa: BLE001 - an unreadable size only keeps the archive
+            logger.debug("Remote archive size check failed: %s", exc)
+            return None
+
+    def _cleanup_remote_archive(self, archive_path: str, location: str) -> str:
+        """Remove the downloaded archive from the VMS host by its exact recorded path.
+
+        A cleanup problem never fails the step; it is reported as a warning.
+
+        Args:
+            archive_path: Remote path recorded by Step 4.
+            location: ``host:path`` shown to the operator.
+
+        Returns:
+            "removed", "failed", or "skipped" (a path this workflow did not create, in
+            which case no command is sent).
+        """
+        if not self.REMOTE_ARCHIVE_RE.match(archive_path or ""):
+            self.emit("warn", f"Remote cleanup skipped: refusing to delete unrecognised path '{archive_path}'")
+            return "skipped"
+
+        user = self._credentials.get("node_user", "vastdata")
+        password = self._credentials.get("node_password")
+        target, conn_kwargs = self._vms_target()
+        # Step 4 creates the archive with sudo tar, so it is root-owned.
+        cmd = f"sudo rm -f -- {shlex.quote(archive_path)}"
+        try:
+            rc, stdout, stderr = run_ssh_command(target, user, password, cmd, timeout=60, **conn_kwargs)
+        except Exception as exc:  # noqa: BLE001 - cleanup must not fail a verified download
+            self.emit("warn", f"Remote cleanup failed; archive kept at {location}: {exc}")
+            return "failed"
+        if rc != 0:
+            reason = (stderr or stdout or "").strip()
+            self.emit("warn", f"Remote cleanup failed; archive kept at {location}: {reason}")
+            return "failed"
+        self.emit("success", f"Remote cleanup: removed {location}")
+        return "removed"

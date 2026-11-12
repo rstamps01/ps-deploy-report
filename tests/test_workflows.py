@@ -1727,7 +1727,10 @@ class TestSupportToolSteps:
     def test_download_results_success(self, tmp_path):
         mock_scp_module = MagicMock()
 
-        with patch.dict("sys.modules", {"scp": mock_scp_module}):
+        remote_size = (0, f"{len(b'fake archive content')}\n", "")
+        with patch.dict("sys.modules", {"scp": mock_scp_module}), patch(
+            "workflows.support_tool_workflow.run_ssh_command", return_value=remote_size
+        ):
             with patch("paramiko.SSHClient") as mock_ssh_class:
                 mock_ssh = MagicMock()
                 mock_ssh_class.return_value = mock_ssh
@@ -2167,7 +2170,10 @@ class TestSupportToolStepsV2:
     def test_download_results_success(self, tmp_path):
         mock_scp_module = MagicMock()
 
-        with patch.dict("sys.modules", {"scp": mock_scp_module}):
+        remote_size = (0, f"{len(b'fake archive content')}\n", "")
+        with patch.dict("sys.modules", {"scp": mock_scp_module}), patch(
+            "workflows.support_tool_workflow.run_ssh_command", return_value=remote_size
+        ):
             with patch("paramiko.SSHClient") as mock_ssh_class:
                 mock_ssh = MagicMock()
                 mock_ssh_class.return_value = mock_ssh
