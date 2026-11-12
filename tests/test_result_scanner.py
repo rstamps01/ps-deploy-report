@@ -26,6 +26,7 @@ from result_scanner import (
     sidecar_cluster_ip,
     verification_cluster_ip,
 )
+from utils.cluster_paths import cluster_paths, write_cluster_marker
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -33,6 +34,12 @@ from result_scanner import (
 
 CLUSTER_A = "10.143.11.202"
 CLUSTER_B = "10.141.200.217"
+TECH_PORT_IP = "192.168.2.2"
+VMS_HTTPS_IP = "192.0.2.10"
+KEY_A = "ACME-A__PSNT0001"
+KEY_B = "ACME-B__PSNT0002"
+# Public API value of the "Unassigned (legacy)" filter choice.
+UNASSIGNED = "__unassigned__"
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +116,53 @@ def populated_data_dir(data_dir):
         )
 
     return data_dir
+
+
+def _write_bundle(path: Path, cluster_ip: str, cluster_name: str) -> None:
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(
+            "manifest.json",
+            json.dumps({"metadata": {"cluster_ip": cluster_ip, "cluster_name": cluster_name}, "files": []}),
+        )
+
+
+def _make_cluster_folder(data_dir: Path, key: str, name: str, marker_ip: str, ts: str) -> None:
+    """Create a per-cluster folder holding one artifact of each listed kind."""
+    cp = cluster_paths(data_dir, key)
+    cp.ensure_all()
+    write_cluster_marker(cp.root, {"name": name, "cluster_ip": marker_ip, "psnt": key.split("__")[-1]})
+    (cp.reports / f"vast_data_{name}_{ts}.json").write_text(
+        json.dumps({"cluster_ip": marker_ip, "cluster_summary": {"name": name}})
+    )
+    (cp.reports / f"vast_asbuilt_report_{name}_{ts}.pdf").write_bytes(b"%PDF-fake")
+    (cp.health / f"health_check_{name}_{ts}.json").write_text(json.dumps({"cluster_ip": marker_ip, "results": []}))
+    (cp.scripts / f"vperfsanity_results_{marker_ip}_{ts}.txt").write_text(f"perf {name}")
+    (cp.scripts / f"vnetmap_results_{marker_ip}_{ts}.json").write_text(json.dumps({"cluster_ip": marker_ip}))
+    _write_bundle(cp.bundles / f"validation_bundle_{name}_{ts}.zip", marker_ip, name)
+
+
+@pytest.fixture
+def tech_port_data_dir(data_dir):
+    """Two Tech Port clusters sharing 192.168.2.2, a VMS-HTTPS cluster, and legacy flat files."""
+    _make_cluster_folder(data_dir, KEY_A, "ACME-A", TECH_PORT_IP, "20260301_120000")
+    _make_cluster_folder(data_dir, KEY_B, "ACME-B", TECH_PORT_IP, "20260302_120000")
+    _make_cluster_folder(data_dir, "ACME-C__PSNT0003", "ACME-C", VMS_HTTPS_IP, "20260303_120000")
+
+    (data_dir / "reports" / "vast_data_ACME-OLD_20250101_120000.json").write_text(
+        json.dumps({"cluster_ip": TECH_PORT_IP, "cluster_summary": {"name": "ACME-OLD"}})
+    )
+    (data_dir / "output" / "health" / "health_check_old_20250101_120000.json").write_text(
+        json.dumps({"cluster_ip": TECH_PORT_IP, "results": []})
+    )
+    scripts = data_dir / "output" / "scripts"
+    (scripts / f"vperfsanity_results_{TECH_PORT_IP}_20250101_120000.txt").write_text("legacy perf")
+    _write_bundle(data_dir / "output" / "bundles" / "validation_bundle_old_20250101_120000.zip", TECH_PORT_IP, "old")
+    (scripts / f"vperfsanity_results_{VMS_HTTPS_IP}_20250102_120000.txt").write_text("legacy https perf")
+    return data_dir
+
+
+def _all_paths(results):
+    return [e["path"] for entries in results.values() for e in entries]
 
 
 # ===================================================================
@@ -482,6 +536,126 @@ class TestGetKnownClusters:
         clusters = scanner.get_known_clusters()
         for c in clusters:
             assert isinstance(c["profile_name"], str)
+
+
+# ===================================================================
+# ResultScanner.scan_all(cluster_key=...) — TP-4
+# ===================================================================
+
+
+class TestScanAllByClusterKey:
+    LISTED_OPS = ("asbuilt_reports", "health_checks", "vperfsanity", "vnetmap", "bundles")
+
+    def test_tech_port_clusters_sharing_ip_never_mix(self, tech_port_data_dir):
+        """REGRESSION (TP-4): filtering to one Tech Port cluster lists only its
+        artifacts even though every Tech Port cluster reports 192.168.2.2."""
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        for mine, other in ((KEY_A, KEY_B), (KEY_B, KEY_A)):
+            results = scanner.scan_all(cluster_key=mine)
+            for op in self.LISTED_OPS:
+                assert results[op], f"{mine}: no {op} listed"
+                assert {e["cluster_key"] for e in results[op]} == {mine}
+            paths = _all_paths(results)
+            assert all(f"/clusters/{mine}/" in p for p in paths)
+            assert not any(other in p for p in paths)
+
+    def test_cluster_key_excludes_legacy_tech_port_files(self, tech_port_data_dir):
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        for key in (KEY_A, KEY_B):
+            paths = _all_paths(scanner.scan_all(cluster_key=key))
+            assert not any("/clusters/" not in p for p in paths)
+            assert not any("ACME-OLD" in p or "_old_" in p or "20250101" in p for p in paths)
+
+    def test_unassigned_lists_only_legacy_tech_port_files(self, tech_port_data_dir):
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        results = scanner.scan_all(cluster_key=UNASSIGNED)
+        entries = [e for v in results.values() for e in v]
+        assert {e["filename"] for e in entries} == {
+            "vast_data_ACME-OLD_20250101_120000.json",
+            "health_check_old_20250101_120000.json",
+            f"vperfsanity_results_{TECH_PORT_IP}_20250101_120000.txt",
+            "validation_bundle_old_20250101_120000.zip",
+        }
+        assert all(e["cluster_key"] == "" for e in entries)
+        assert all(e["cluster_ip"] == TECH_PORT_IP for e in entries)
+
+    def test_unknown_cluster_key_returns_nothing(self, tech_port_data_dir):
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        for key in ("no-such-cluster", "../reports", f"{KEY_A}/../{KEY_B}"):
+            results = scanner.scan_all(cluster_key=key)
+            assert sum(len(v) for v in results.values()) == 0, key
+
+    def test_cluster_key_wins_over_cluster_ip(self, tech_port_data_dir):
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        results = scanner.scan_all(cluster_ip=TECH_PORT_IP, cluster_key=KEY_A)
+        assert {e["cluster_key"] for v in results.values() for e in v} == {KEY_A}
+
+    def test_vms_https_ip_filter_unchanged(self, tech_port_data_dir):
+        """A VMS-HTTPS cluster filtered by its real IP still lists its folder
+        and its legacy flat files, exactly as before TP-4."""
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        results = scanner.scan_all(cluster_ip=VMS_HTTPS_IP)
+        assert all(e["cluster_ip"] == VMS_HTTPS_IP for v in results.values() for e in v)
+        perf = {e["filename"] for e in results["vperfsanity"]}
+        assert perf == {
+            f"vperfsanity_results_{VMS_HTTPS_IP}_20260303_120000.txt",
+            f"vperfsanity_results_{VMS_HTTPS_IP}_20250102_120000.txt",
+        }
+        assert len(results["asbuilt_reports"]) == 2
+        assert len(results["bundles"]) == 1
+
+    def test_tech_port_ip_filter_does_not_mix_clusters(self, tech_port_data_dir):
+        """An old ``?cluster_ip=192.168.2.2`` bookmark cannot identify a cluster,
+        so it falls back to the Unassigned (legacy) set instead of mixing."""
+        scanner = ResultScanner(data_dir=tech_port_data_dir)
+        by_ip = scanner.scan_all(cluster_ip=TECH_PORT_IP)
+        unassigned = scanner.scan_all(cluster_key=UNASSIGNED)
+        assert by_ip == unassigned
+        assert not any("/clusters/" in p for p in _all_paths(by_ip))
+
+    def test_unassigned_key_constant_matches_api_value(self):
+        import result_scanner
+
+        assert result_scanner.UNASSIGNED_LEGACY_KEY == UNASSIGNED
+
+
+class TestFilterChoices:
+    def test_tech_port_clusters_listed_by_key_with_name_and_ip(self, tech_port_data_dir):
+        profiles = {
+            "acme-a": {"cluster_ip": TECH_PORT_IP, "tech_port": True},
+            "acme-b": {"cluster_ip": TECH_PORT_IP, "tech_port": True},
+            "acme-c": {"cluster_ip": VMS_HTTPS_IP},
+        }
+        scanner = ResultScanner(data_dir=tech_port_data_dir, profiles=profiles)
+        choices = scanner.get_filter_choices()
+
+        by_value = {(c["param"], c["value"]): c for c in choices}
+        assert by_value[("cluster_key", KEY_A)]["label"] == f"ACME-A — {TECH_PORT_IP}"
+        assert by_value[("cluster_key", KEY_B)]["label"] == f"ACME-B — {TECH_PORT_IP}"
+        assert by_value[("cluster_ip", VMS_HTTPS_IP)]["label"] == f"acme-c — {VMS_HTTPS_IP}"
+        assert by_value[("cluster_key", UNASSIGNED)]["label"] == "Unassigned (legacy)"
+        assert ("cluster_ip", TECH_PORT_IP) not in by_value
+        assert ("cluster_key", "ACME-C__PSNT0003") not in by_value
+
+    def test_no_unassigned_choice_without_legacy_tech_port_files(self, data_dir):
+        _make_cluster_folder(data_dir, KEY_A, "ACME-A", TECH_PORT_IP, "20260301_120000")
+        scanner = ResultScanner(data_dir=data_dir)
+        values = {c["value"] for c in scanner.get_filter_choices()}
+        assert values == {KEY_A}
+
+    def test_unsaved_vms_https_folder_listed_by_key(self, data_dir):
+        _make_cluster_folder(data_dir, "ACME-C__PSNT0003", "ACME-C", VMS_HTTPS_IP, "20260303_120000")
+        scanner = ResultScanner(data_dir=data_dir)
+        choices = scanner.get_filter_choices()
+        assert choices == [{"param": "cluster_key", "value": "ACME-C__PSNT0003", "label": f"ACME-C — {VMS_HTTPS_IP}"}]
+
+    def test_get_known_clusters_does_not_guess_profile_by_tech_port_ip(self, tech_port_data_dir):
+        profiles = {"acme-a": {"cluster_ip": TECH_PORT_IP}}
+        scanner = ResultScanner(data_dir=tech_port_data_dir, profiles=profiles)
+        clusters = {c["cluster_key"]: c for c in scanner.get_known_clusters()}
+        assert clusters[KEY_A]["profile_name"] == ""
+        assert clusters[KEY_B]["profile_name"] == ""
+        assert clusters[KEY_A]["cluster_name"] == "ACME-A"
 
 
 # ===================================================================

@@ -22,6 +22,15 @@ logger = get_logger(__name__)
 _IP_RE = re.compile(r"(\d{1,3}(?:\.\d{1,3}){3})")
 _TIMESTAMP_RE = re.compile(r"(\d{8}_\d{6})")
 
+# Every cluster reached over a CBox Tech Port reports this management IP, so it
+# never identifies a single cluster.
+TECH_PORT_IP = "192.168.2.2"
+# ``cluster_key`` filter value for legacy flat-layout files that carry only the
+# Tech Port IP. Sanitized folder keys never start with ``_``, so it cannot
+# collide with a real ``clusters/<key>/`` folder.
+UNASSIGNED_LEGACY_KEY = "__unassigned__"
+UNASSIGNED_LEGACY_LABEL = "Unassigned (legacy)"
+
 
 # ------------------------------------------------------------------
 # Shared cluster-matching helpers (also used by ResultBundler)
@@ -253,19 +262,45 @@ class ResultScanner:
                 except Exception:
                     pass
 
-    def scan_all(self, cluster_ip: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+    def scan_all(
+        self,
+        cluster_ip: Optional[str] = None,
+        cluster_key: Optional[str] = None,
+    ) -> Dict[str, List[Dict[str, Any]]]:
         """Return all results grouped by operation key.
 
-        When *cluster_ip* is given, only results matching that cluster are
-        returned.  Each value is a list of ``ResultEntry.to_dict()`` dicts
-        sorted newest-first.
+        Args:
+            cluster_ip: Only return results whose resolved cluster IP matches.
+                The Tech Port IP cannot identify a cluster, so it is treated as
+                ``cluster_key=UNASSIGNED_LEGACY_KEY``.
+            cluster_key: Only scan the ``clusters/<cluster_key>/`` folder (no
+                legacy flat files). ``UNASSIGNED_LEGACY_KEY`` selects legacy
+                flat files that carry only the Tech Port IP. An unknown key
+                returns no results. Takes precedence over *cluster_ip*.
+
+        Returns:
+            A mapping of operation key to ``ResultEntry.to_dict()`` dicts,
+            sorted newest-first.
         """
         results: Dict[str, List[Dict[str, Any]]] = {k: [] for k in OPERATION_KEYS}
 
-        # Folder-scoped first (per-cluster roots), legacy flat second. Segmented
-        # and legacy artifacts live in different paths, so the union never
-        # double-counts a file.
-        for scope in self._build_scopes():
+        if not cluster_key and cluster_ip == TECH_PORT_IP:
+            cluster_key = UNASSIGNED_LEGACY_KEY
+
+        scopes: List[_ScanScope]
+        if cluster_key == UNASSIGNED_LEGACY_KEY:
+            scopes = [self._legacy_scope()]
+            cluster_ip = TECH_PORT_IP
+        elif cluster_key:
+            scopes = [s for s in self._cluster_scopes() if s.cluster_key == cluster_key]
+            cluster_ip = None
+        else:
+            # Folder-scoped first (per-cluster roots), legacy flat second.
+            # Segmented and legacy artifacts live in different paths, so the
+            # union never double-counts a file.
+            scopes = self._build_scopes()
+
+        for scope in scopes:
             self._scan_asbuilt_reports(results["asbuilt_reports"], cluster_ip, scope)
             self._scan_health_checks(results["health_checks"], cluster_ip, scope)
             self._scan_network_config(results["network_config"], cluster_ip, scope)
@@ -296,6 +331,10 @@ class ResultScanner:
 
     def _build_scopes(self) -> List[_ScanScope]:
         """Return per-cluster scopes (folder-scoped) plus the legacy flat scope."""
+        return self._cluster_scopes() + [self._legacy_scope()]
+
+    def _cluster_scopes(self) -> List[_ScanScope]:
+        """Return one scope per ``clusters/<key>/`` folder, sorted by key."""
         scopes: List[_ScanScope] = []
         for root in iter_cluster_roots(self._data_dir):
             marker = read_cluster_marker(root)
@@ -314,8 +353,66 @@ class ResultScanner:
                     cluster_key=root.name,
                 )
             )
-        scopes.append(self._legacy_scope())
         return scopes
+
+    def _cluster_folders(self) -> List[Dict[str, str]]:
+        """Return ``{cluster_key, cluster_name, cluster_ip}`` for each cluster folder.
+
+        Read from the ``cluster.json`` markers only; no result files are scanned.
+        The name falls back to the folder key when the marker has none.
+        """
+        folders: List[Dict[str, str]] = []
+        for root in iter_cluster_roots(self._data_dir):
+            marker = read_cluster_marker(root)
+            name = marker.get("name")
+            ip = marker.get("cluster_ip")
+            folders.append(
+                {
+                    "cluster_key": root.name,
+                    "cluster_name": name.strip() if isinstance(name, str) and name.strip() else root.name,
+                    "cluster_ip": ip.strip() if isinstance(ip, str) else "",
+                }
+            )
+        return folders
+
+    def get_filter_choices(self) -> List[Dict[str, str]]:
+        """Return the Results page cluster-filter choices.
+
+        Saved profiles with a distinguishing IP are offered by ``cluster_ip``
+        (unchanged behaviour, includes their legacy flat files). Cluster
+        folders are offered by ``cluster_key`` unless a saved profile already
+        covers their IP, so every Tech Port cluster gets its own entry. An
+        "Unassigned (legacy)" entry is added when legacy flat files carry only
+        the Tech Port IP.
+
+        Returns:
+            Ordered dicts with ``param`` (``cluster_ip`` or ``cluster_key``),
+            ``value`` and a display ``label``.
+        """
+        choices: List[Dict[str, str]] = []
+        profile_ips = set()
+        for name, prof in self._profiles.items():
+            ip = str(prof.get("cluster_ip") or "").strip()
+            if not ip or ip == TECH_PORT_IP:
+                continue
+            profile_ips.add(ip)
+            choices.append({"param": "cluster_ip", "value": ip, "label": f"{name} — {ip}"})
+
+        for folder in self._cluster_folders():
+            ip = folder["cluster_ip"]
+            if ip and ip != TECH_PORT_IP and ip in profile_ips:
+                continue
+            choices.append(
+                {
+                    "param": "cluster_key",
+                    "value": folder["cluster_key"],
+                    "label": f"{folder['cluster_name']} — {ip or 'IP unknown'}",
+                }
+            )
+
+        if any(self.scan_all(cluster_key=UNASSIGNED_LEGACY_KEY).values()):
+            choices.append({"param": "cluster_key", "value": UNASSIGNED_LEGACY_KEY, "label": UNASSIGNED_LEGACY_LABEL})
+        return choices
 
     def get_known_clusters(self) -> List[Dict[str, Any]]:
         """Return distinct clusters found across all result files with counts.
@@ -342,14 +439,18 @@ class ResultScanner:
                 bucket["total"] += 1
                 bucket[op_key] = bucket.get(op_key, 0) + 1
 
+        folder_names = {f["cluster_key"]: f["cluster_name"] for f in self._cluster_folders()}
         result = []
         for _identity, info in sorted(clusters.items()):
             cip = info["cluster_ip"]
-            profile_name = self._ip_to_profile_name(cip)
+            # Several Tech Port profiles share one IP, so an IP lookup would
+            # name the wrong cluster.
+            profile_name = "" if cip == TECH_PORT_IP else self._ip_to_profile_name(cip)
             result.append(
                 {
                     "cluster_ip": cip,
                     "cluster_key": info["cluster_key"],
+                    "cluster_name": folder_names.get(info["cluster_key"], ""),
                     "profile_name": profile_name,
                     "counts": info["counts"],
                 }
