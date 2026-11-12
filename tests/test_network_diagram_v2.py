@@ -2197,3 +2197,152 @@ class TestSwitchLabels:
         svg = self._svg()
         for legacy in (">SWA<", ">SWB<", ">SP1<", ">SP2<"):
             assert legacy not in svg
+
+
+def _lldp_switch(name: str) -> Dict[str, Any]:
+    """Synthetic switch the extractor adds for an LLDP name not found in VMS."""
+    return {"mgmt_ip": name, "hostname": name, "name": name, "discovered_via": "lldp", "registered_in_vms": False}
+
+
+class TestNameKeyedSwitchesLLDP:
+    """NET-7: node-side LLDP keys unresolved switches by name (``ACME-SW-01``)
+    and discovers no inter-switch links (``isl_discovered: False``)."""
+
+    def _port_map(self, sw_a: str = "ACME-SW-02", sw_b: str = "ACME-SW-01") -> List[Dict[str, Any]]:
+        return [
+            _make_port_map_entry("198.51.100.11", sw_a, "A", "enp7s0f0", "acme-cn1"),
+            _make_port_map_entry("203.0.113.11", sw_b, "B", "enp7s0f1", "acme-cn1"),
+            _make_port_map_entry("198.51.100.12", sw_a, "A", "enp7s0f0", "acme-cn2"),
+            _make_port_map_entry("203.0.113.12", sw_b, "B", "enp7s0f1", "acme-cn2"),
+        ]
+
+    def _capture_generate(self, monkeypatch, port_mapping_data, switches) -> str:
+        svgs: List[str] = []
+        monkeypatch.setattr(
+            RackCentricDiagramGenerator,
+            "_svg_to_png",
+            staticmethod(lambda svg, path, dpi=150: svgs.append(svg)),
+        )
+        hardware_data = {
+            "cboxes": [
+                _make_cbox("acme-cn1", "Rack-1"),
+                _make_cbox("acme-cn2", "Rack-1"),
+            ],
+            "dboxes": [],
+            "eboxes": [],
+            "switches": switches,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            RackCentricDiagramGenerator(config={"mode": "detailed"}).generate(
+                port_mapping_data=port_mapping_data, hardware_data=hardware_data, output_dir=td
+            )
+        assert len(svgs) == 1
+        return svgs[0]
+
+    def test_sort_name_keyed_switches_by_network(self):
+        sw1, sw2 = _lldp_switch("ACME-SW-01"), _lldp_switch("ACME-SW-02")
+        ordered = RackCentricDiagramGenerator._sort_switches_by_network([sw1, sw2], self._port_map())
+        assert [s["mgmt_ip"] for s in ordered] == ["ACME-SW-02", "ACME-SW-01"]
+
+    def test_sort_unlabelled_name_keys_falls_back_to_name(self):
+        sw1, sw2 = _lldp_switch("ACME-SW-02"), _lldp_switch("ACME-SW-01")
+        ordered = RackCentricDiagramGenerator._sort_switches_by_network([sw1, sw2], [])
+        assert [s["mgmt_ip"] for s in ordered] == ["ACME-SW-01", "ACME-SW-02"]
+
+    def test_alias_name_key_is_identity_and_resolves_to_registered_ip(self):
+        switches = [_lldp_switch("ACME-SW-02"), _make_switch("ACME-SW-01", "192.0.2.201")]
+        port_map = self._port_map(sw_b="acme-sw-01")
+        alias = RackCentricDiagramGenerator._build_switch_ip_alias(port_map, switches)
+        assert alias == {"ACME-SW-02": "ACME-SW-02", "acme-sw-01": "192.0.2.201"}
+
+    def test_subnet_colors_follow_subnet_order_for_name_keys(self):
+        """ACME-SW-01 sorts first by name but serves the higher subnet; the
+        lower subnet (network A) still gets palette[0]."""
+        switches = [_lldp_switch("ACME-SW-01"), _lldp_switch("ACME-SW-02")]
+        colors = RackCentricDiagramGenerator._assign_subnet_color_map(switches, self._port_map())
+        assert colors == {"198.51.100": SUBNET_COLOR_PALETTE[0], "203.0.113": SUBNET_COLOR_PALETTE[1]}
+
+    def test_legend_note_replaces_ipl_and_isl_pills(self):
+        from network_diagram_v2 import ISL_NOT_DISCOVERED_LABEL
+
+        gen = RackCentricDiagramGenerator(config={"mode": "detailed"})
+        switches = [_lldp_switch("ACME-SW-01"), _lldp_switch("ACME-SW-02")]
+        color_map = gen._assign_subnet_colors(switches, self._port_map())
+        for has_spine in (False, True):
+            labels = [
+                lbl
+                for _, lbl in gen._compute_legend_items(
+                    switches, color_map, self._port_map(), has_spine=has_spine, isl_discovered=False
+                )
+            ]
+            assert labels == ["198.51.100/24", "203.0.113/24", ISL_NOT_DISCOVERED_LABEL]
+
+    def test_generate_name_keyed_no_isl_draws_no_ipl_and_fits_legend(self, monkeypatch):
+        import re as _re
+
+        from network_diagram_v2 import ISL_NOT_DISCOVERED_LABEL, MARGIN
+
+        switches = [_lldp_switch("ACME-SW-01"), _lldp_switch("ACME-SW-02")]
+        port_mapping_data = {
+            "port_map": self._port_map(),
+            "ipl_connections": [{"switch1_ip": "ACME-SW-01", "switch2_ip": "ACME-SW-02", "connection_type": "IPL"}],
+            "data_source": "lldp",
+            "isl_discovered": False,
+        }
+        svg = self._capture_generate(monkeypatch, port_mapping_data, switches)
+
+        assert ISL_NOT_DISCOVERED_LABEL in svg
+        assert ">IPL<" not in svg
+        assert COLOR_IPL not in svg
+        assert "Not in VMS" in svg
+        # Network A switch (ACME-SW-02) is placed left of ACME-SW-01.
+        assert svg.index(">ACME-SW-02<") < svg.index(">ACME-SW-01<")
+
+        total_w = float(_re.search(r'width="([0-9.]+)px"', svg).group(1))
+        gen = RackCentricDiagramGenerator(config={"mode": "detailed"})
+        items = gen._compute_legend_items(
+            switches, gen._assign_subnet_colors(switches, self._port_map()), self._port_map(), isl_discovered=False
+        )
+        assert total_w >= gen._legend_content_width(items) + 2 * MARGIN
+
+    def test_isl_not_discovered_suppresses_inferred_spine_mesh(self):
+        import svgwrite
+
+        gen = RackCentricDiagramGenerator(config={"mode": "detailed"})
+        leaves = [_lldp_switch("ACME-SW-LF-01"), _lldp_switch("ACME-SW-LF-02")]
+        spines = [{"hostname": "ACME-SW-SP-01", "mgmt_ip": "192.0.2.250", "_assigned_rack": "Rack-1"}]
+        racks = [{"rack_name": "Rack-1", "cboxes": [], "bottom_devices": [], "switches": leaves, "bottom_label": "DN"}]
+        port_map = self._port_map("ACME-SW-LF-01", "ACME-SW-LF-02")
+
+        with_isl = gen._render_page(svgwrite, racks, spines, [], port_map, leaves + spines)
+        without = gen._render_page(svgwrite, racks, spines, [], port_map, leaves + spines, isl_discovered=False)
+
+        assert 'stroke-dasharray="4,2"' in with_isl
+        assert 'stroke-dasharray="4,2"' not in without
+        assert "ISL (Leaf-Spine)" not in without
+
+    def test_mixed_resolved_and_unresolved_switches(self, monkeypatch):
+        from network_diagram_v2 import ISL_NOT_DISCOVERED_LABEL
+
+        switches = [_make_switch("ACME-SW-01", "192.0.2.201"), _lldp_switch("ACME-SW-02")]
+        port_mapping_data = {
+            "port_map": self._port_map(sw_b="192.0.2.201"),
+            "ipl_connections": [],
+            "isl_discovered": False,
+        }
+        svg = self._capture_generate(monkeypatch, port_mapping_data, switches)
+
+        assert ">ACME-SW-01<" in svg and ">ACME-SW-02<" in svg
+        assert ">192.0.2.201<" in svg
+        assert ">Not in VMS<" in svg
+        assert ISL_NOT_DISCOVERED_LABEL in svg
+        assert ">IPL<" not in svg
+
+    def test_absent_isl_discovered_keeps_inferred_ipl(self, monkeypatch):
+        from network_diagram_v2 import ISL_NOT_DISCOVERED_LABEL
+
+        switches = [_lldp_switch("ACME-SW-01"), _lldp_switch("ACME-SW-02")]
+        svg = self._capture_generate(monkeypatch, {"port_map": self._port_map(), "ipl_connections": []}, switches)
+        assert ">IPL<" in svg
+        assert "IPL/MLAG" in svg
+        assert ISL_NOT_DISCOVERED_LABEL not in svg

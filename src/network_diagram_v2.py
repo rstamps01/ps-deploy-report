@@ -75,6 +75,9 @@ COLOR_NETWORK_A = SUBNET_COLOR_PALETTE[0]
 COLOR_NETWORK_B = SUBNET_COLOR_PALETTE[1]
 COLOR_IPL = "#7B1FA2"  # purple
 COLOR_SPINE_FABRIC = "#757575"  # gray
+# Legend note when port_mapping_data["isl_discovered"] is False (node-side
+# LLDP sees only node<->leaf links, so no IPL/ISL edges are drawn).
+ISL_NOT_DISCOVERED_LABEL = "Inter-switch links not discovered (LLDP from nodes)"
 # Cabling validation banner colors (independent of the connection palette so a
 # restyle of the lines never changes PASS/FAIL semantics).
 COLOR_VALIDATION_PASS = "#059669"  # emerald green
@@ -441,6 +444,12 @@ class RackCentricDiagramGenerator:
     ) -> List[str]:
         """Generate one or more PNG diagram files.
 
+        ``port_mapping_data["isl_discovered"]`` (default ``True``) set to
+        ``False`` suppresses every IPL/ISL edge, including the inferred
+        leaf-pair IPL and leaf->spine mesh, and adds the
+        ``ISL_NOT_DISCOVERED_LABEL`` legend note. Switch keys
+        (``mgmt_ip`` / port-map ``switch_ip``) may be names rather than IPs.
+
         Returns:
             List of output PNG file paths (one per page).
         """
@@ -454,6 +463,7 @@ class RackCentricDiagramGenerator:
 
         port_map = port_mapping_data.get("port_map", [])
         ipl_conns = port_mapping_data.get("ipl_connections", [])
+        isl_discovered = port_mapping_data.get("isl_discovered", True) is not False
         switches = hardware_data.get("switches", [])
 
         # IB clusters store the switch identity as a GUID in the port_map's
@@ -616,6 +626,7 @@ class RackCentricDiagramGenerator:
                 switches,
                 page_num=page_idx + 1,
                 total_pages=total_pages,
+                isl_discovered=isl_discovered,
             )
             png_path = out_dir / f"network_topology_p{page_idx + 1}.png"
             self._svg_to_png(svg_content, str(png_path))
@@ -974,11 +985,16 @@ class RackCentricDiagramGenerator:
         # mgmt_ip strings sort lexicographically — fine for the IPv4 dotted form
         # produced by VAST API since IPv4 strings of equal-length octets sort
         # in the same order numerically.
+        # Name-keyed switches (NET-7 LLDP) have no IP order, so subnets are
+        # then ordered numerically, matching the parser's A/B labels.
         subnet_to_min_ip: Dict[str, str] = {}
         for ip, subnet in sw_subnet.items():
             if subnet not in subnet_to_min_ip or ip < subnet_to_min_ip[subnet]:
                 subnet_to_min_ip[subnet] = ip
-        ordered_subnets = sorted(subnet_to_min_ip.keys(), key=lambda s: subnet_to_min_ip[s])
+        if all(RackCentricDiagramGenerator._ipv4_subnet_24(ip) for ip in sw_subnet):
+            ordered_subnets = sorted(subnet_to_min_ip.keys(), key=lambda s: subnet_to_min_ip[s])
+        else:
+            ordered_subnets = sorted(subnet_to_min_ip.keys(), key=RackCentricDiagramGenerator._ip_octets)
 
         # 3) assign palette colors (cycling)
         palette_n = len(SUBNET_COLOR_PALETTE)
@@ -1053,6 +1069,12 @@ class RackCentricDiagramGenerator:
         Unresolvable identifiers are omitted (caller keeps the original
         value; the edge degrades to ``orphan`` rather than crashing).
 
+        A row keyed by a switch *name* (NET-7 node-side LLDP) whose switch is
+        listed under an IP ``mgmt_ip`` resolves through a case-insensitive
+        match of ``switch_ip``, ``switch_hostname`` or ``switch_name``
+        against each switch's ``name``/``hostname``. Name-keyed switches
+        (``mgmt_ip`` equal to the name) take the identity path.
+
         Args:
             port_map: ``port_mapping_data['port_map']`` rows. ``None``
                 tolerated (returns ``{}``).
@@ -1066,6 +1088,7 @@ class RackCentricDiagramGenerator:
             return {}
 
         host_to_mgmt: Dict[str, str] = {}
+        name_to_mgmt: Dict[str, str] = {}
         mgmt_ips: set = set()
         for sw in switches or []:
             if not isinstance(sw, dict):
@@ -1077,6 +1100,10 @@ class RackCentricDiagramGenerator:
             host = sw.get("hostname")
             if host:
                 host_to_mgmt[host] = mgmt
+            for field in ("name", "hostname"):
+                value = sw.get(field)
+                if value:
+                    name_to_mgmt.setdefault(str(value).strip().lower(), mgmt)
 
         alias: Dict[str, str] = {}
         for conn in port_map:
@@ -1092,6 +1119,11 @@ class RackCentricDiagramGenerator:
             # InfiniBand: resolve GUID via switch_hostname -> mgmt_ip
             host = conn.get("switch_hostname")
             mgmt = host_to_mgmt.get(host) if host else None
+            if not mgmt:
+                for candidate in (sw_ip, host, conn.get("switch_name")):
+                    if candidate and str(candidate).strip().lower() in name_to_mgmt:
+                        mgmt = name_to_mgmt[str(candidate).strip().lower()]
+                        break
             if mgmt:
                 alias[sw_ip] = mgmt
 
@@ -1583,8 +1615,14 @@ class RackCentricDiagramGenerator:
         _all_switches: List[Dict[str, Any]],
         page_num: int = 1,
         total_pages: int = 1,
+        isl_discovered: bool = True,
     ) -> str:
-        """Render a single page SVG and return the XML string."""
+        """Render a single page SVG and return the XML string.
+
+        With ``isl_discovered=False`` no IPL or ISL edge is drawn (neither
+        from ``ipl_conns`` nor inferred) and the legend carries
+        ``ISL_NOT_DISCOVERED_LABEL`` instead of the IPL/ISL pill.
+        """
         num_racks = len(racks)
 
         # QP-1: size each switch box (and therefore the rack and the overall
@@ -1629,6 +1667,7 @@ class RackCentricDiagramGenerator:
             subnet_color_map=subnet_color_map,
             port_map=port_map,
             has_spine=has_spine,
+            isl_discovered=isl_discovered,
         )
         legend_w = self._legend_content_width(legend_items)
 
@@ -1759,7 +1798,7 @@ class RackCentricDiagramGenerator:
                     sx = fallback_start + i * (switch_w + 40)
                 sy = content_y + 10
                 sp_name = sp.get("display_name") or sp.get("hostname") or sp.get("name") or f"Spine-{i+1}"
-                sp_mgmt = sp.get("mgmt_ip", "")
+                sp_mgmt = self._switch_subtitle(sp)
                 self._draw_switch_node(
                     dwg,
                     sx,
@@ -1865,7 +1904,7 @@ class RackCentricDiagramGenerator:
                     sw_pair_w,
                     SWITCH_H,
                     sw_name,
-                    mgmt_ip,
+                    self._switch_subtitle(sw),
                     self._fill("grad_switch"),
                     COLOR_DEVICE_STROKE,
                 )
@@ -1874,7 +1913,7 @@ class RackCentricDiagramGenerator:
             # IPL between paired leaf switches — only for non-leaf/spine
             # topologies. Leaf/spine fabrics have NO leaf-leaf IPL; each
             # leaf instead uplinks to every spine via ISLs (drawn below).
-            if not has_spine and len(rack_switches) >= 2:
+            if isl_discovered and not has_spine and len(rack_switches) >= 2:
                 sw0 = rack_switches[0]
                 sw1 = rack_switches[1]
                 ip0 = sw0.get("mgmt_ip", "") if isinstance(sw0, dict) else ""
@@ -2068,7 +2107,7 @@ class RackCentricDiagramGenerator:
             # capture inter-switch links, so we render an inferred full mesh:
             # every leaf in this rack connects to every spine. Drawn in the
             # spine-fabric gray, dashed, to distinguish from node edges.
-            if has_spine and rack_switches and spine_positions:
+            if isl_discovered and has_spine and rack_switches and spine_positions:
                 for sw in rack_switches[:2]:
                     if not isinstance(sw, dict):
                         continue
@@ -2099,7 +2138,9 @@ class RackCentricDiagramGenerator:
         sw_y_ipl = content_y + RACK_PAD_TOP
         ipl_y_global = sw_y_ipl + SWITCH_H / 2
         inter_rack_ipl_pairs = (
-            [] if has_spine else self._collect_inter_rack_ipl_pairs(ipl_conns, switch_centers, switch_rack_idx)
+            []
+            if has_spine or not isl_discovered
+            else self._collect_inter_rack_ipl_pairs(ipl_conns, switch_centers, switch_rack_idx)
         )
         for ip1, ip2 in inter_rack_ipl_pairs:
             c1 = switch_centers[ip1]
@@ -2182,6 +2223,7 @@ class RackCentricDiagramGenerator:
             port_map=port_map,
             has_spine=has_spine,
             items=legend_items,
+            isl_discovered=isl_discovered,
         )
 
         # ----- Page number -----
@@ -2313,6 +2355,20 @@ class RackCentricDiagramGenerator:
                 fill=COLOR_LABEL,
             )
         )
+
+    @staticmethod
+    def _switch_subtitle(sw: Any) -> str:
+        """Return a switch box's subtitle: its mgmt IP, or ``Not in VMS``.
+
+        An LLDP-discovered switch missing from the VMS switches list
+        (``registered_in_vms: False``) is keyed by its name, so showing the
+        key would repeat the name.
+        """
+        if not isinstance(sw, dict):
+            return ""
+        if sw.get("registered_in_vms") is False:
+            return "Not in VMS"
+        return str(sw.get("mgmt_ip", "") or "")
 
     def _draw_switch_node(
         self,
@@ -2639,6 +2695,7 @@ class RackCentricDiagramGenerator:
         subnet_color_map: Optional[Dict[str, str]] = None,
         port_map: Optional[List[Dict[str, Any]]] = None,
         has_spine: bool = False,
+        isl_discovered: bool = True,
     ) -> List[Tuple[str, str]]:
         """Build the ordered ``(color, label)`` legend items.
 
@@ -2646,6 +2703,8 @@ class RackCentricDiagramGenerator:
         /24 prefix (e.g. ``"172.16.0/24"``). IPL/MLAG and Spine pills are
         appended only when relevant. Falls back to a generic
         ``Same-rack``/``Cross-rack`` legend when subnet evidence is absent.
+        With ``isl_discovered=False`` the IPL/ISL pill is replaced by the
+        ``ISL_NOT_DISCOVERED_LABEL`` note.
 
         Extracted from ``_draw_legend`` so ``_render_page`` can size the
         canvas to the legend's natural width up front (preventing the
@@ -2655,9 +2714,20 @@ class RackCentricDiagramGenerator:
         subnet_color_map = subnet_color_map or {}
         port_map = port_map or []
 
+        def _mgmt(sw: Any) -> str:
+            return sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
+
+        if all(self._ipv4_subnet_24(_mgmt(sw)) for sw in switches if _mgmt(sw)):
+            ordered_switches = sorted(switches, key=_mgmt)
+        else:
+            ordered_switches = sorted(
+                switches,
+                key=lambda s: (self._ip_octets(self._compute_switch_subnet(_mgmt(s), port_map) or ""), _mgmt(s)),
+            )
+
         seen_colors: set = set()
         items: List[Tuple[str, str]] = []
-        for sw in sorted(switches, key=lambda s: s.get("mgmt_ip", "") if isinstance(s, dict) else ""):
+        for sw in ordered_switches:
             mgmt_ip = sw.get("mgmt_ip", "") if isinstance(sw, dict) else ""
             color = subnet_color_map.get(mgmt_ip)
             if not color or color in seen_colors:
@@ -2675,7 +2745,9 @@ class RackCentricDiagramGenerator:
 
         # Leaf/spine fabrics have no leaf-leaf IPL — show the ISL legend
         # instead. Only show IPL/MLAG for non-spine topologies.
-        if has_spine:
+        if not isl_discovered:
+            items.append((COLOR_SPINE_FABRIC, ISL_NOT_DISCOVERED_LABEL))
+        elif has_spine:
             items.append((COLOR_SPINE_FABRIC, "ISL (Leaf-Spine)"))
         elif switches:
             items.append((COLOR_IPL, "IPL/MLAG"))
@@ -2705,6 +2777,7 @@ class RackCentricDiagramGenerator:
         port_map: Optional[List[Dict[str, Any]]] = None,
         has_spine: bool = False,
         items: Optional[List[Tuple[str, str]]] = None,
+        isl_discovered: bool = True,
     ) -> None:
         """Render the bottom legend.
 
@@ -2716,7 +2789,7 @@ class RackCentricDiagramGenerator:
         sizing and rendering in sync; otherwise it is derived here.
         """
         if items is None:
-            items = self._compute_legend_items(switches, subnet_color_map, port_map, has_spine)
+            items = self._compute_legend_items(switches, subnet_color_map, port_map, has_spine, isl_discovered)
 
         content_w = self._legend_content_width(items)
         start_x = max(float(MARGIN), (total_w - content_w) / 2)

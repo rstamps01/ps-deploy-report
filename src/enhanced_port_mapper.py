@@ -6,8 +6,10 @@ Implements the port mapping designation system:
 - Switch Side: SWA-P12 (Switch-1/Port-12)
 """
 
+import ipaddress
 import logging
 import re
+from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -257,24 +259,53 @@ class EnhancedPortMapper:
         Leaf switches (those in the port_map) get SWA/SWB/... designations.
         Spine switches (in inventory but NOT in port_map) get SP1/SP2/...
         designations with ``role: "spine"``.
+
+        Switch keys need not be IPs: node-side LLDP (NET-7) keys switches it
+        could not resolve to a VMS ``mgmt_ip`` by name (e.g. ``ACME-SW-01``),
+        and a port-map row whose ``switch_ip`` equals a switch's
+        ``name``/``hostname`` (case-insensitive) is aliased to that switch.
+        When every leaf key is an IPv4, leaves are lettered in ``mgmt_ip``
+        order as before; otherwise in port-map ``network`` label order (A
+        before B), then by key.
         """
         self.switch_map = {}
 
         port_map_switch_ips = {e.get("switch_ip") for e in self.external_port_map if e.get("switch_ip")}
+        port_map_keys_by_name = {str(k).strip().lower(): k for k in port_map_switch_ips}
 
-        leaf_switches = [sw for sw in self.switches if sw.get("mgmt_ip") in port_map_switch_ips]
-        spine_switches = [
-            sw for sw in self.switches if sw.get("mgmt_ip") and sw.get("mgmt_ip") not in port_map_switch_ips
-        ]
+        def _port_map_key(sw: Dict[str, Any]) -> Optional[str]:
+            mgmt_ip = sw.get("mgmt_ip")
+            if mgmt_ip in port_map_switch_ips:
+                return str(mgmt_ip)
+            for field in ("name", "hostname", "host_name"):
+                candidate = sw.get(field)
+                if candidate and str(candidate).strip().lower() in port_map_keys_by_name:
+                    return str(port_map_keys_by_name[str(candidate).strip().lower()])
+            return None
+
+        leaf_switches = [sw for sw in self.switches if _port_map_key(sw)]
+        spine_switches = [sw for sw in self.switches if sw.get("mgmt_ip") and not _port_map_key(sw)]
         if not leaf_switches:
             leaf_switches = list(self.switches)
             spine_switches = []
 
-        sorted_leaves = sorted(leaf_switches, key=lambda s: s.get("mgmt_ip", ""))
+        leaf_keys = [sw.get("mgmt_ip") for sw in leaf_switches if sw.get("mgmt_ip")]
+        if all(self._is_ipv4(key) for key in leaf_keys):
+            sorted_leaves = sorted(leaf_switches, key=lambda s: s.get("mgmt_ip", ""))
+        else:
+            network_rank = self._switch_network_ranks()
+            sorted_leaves = sorted(
+                leaf_switches,
+                key=lambda s: (
+                    network_rank.get(_port_map_key(s) or "", (1,)),
+                    str(s.get("mgmt_ip") or _port_map_key(s) or "").lower(),
+                ),
+            )
 
         sw_letters = "ABCDEFGH"
         for idx, switch in enumerate(sorted_leaves):
-            mgmt_ip = switch.get("mgmt_ip")
+            port_map_key = _port_map_key(switch)
+            mgmt_ip = switch.get("mgmt_ip") or port_map_key
             if not mgmt_ip:
                 continue
 
@@ -288,6 +319,8 @@ class EnhancedPortMapper:
                 "hostname": hostname,
                 "role": "leaf",
             }
+            if port_map_key and port_map_key != mgmt_ip:
+                self.switch_map[port_map_key] = self.switch_map[mgmt_ip]
             logger.debug("Mapped Leaf %d: %s -> %s (%s)", idx + 1, mgmt_ip, hostname, designation)
 
         sorted_spines = sorted(spine_switches, key=lambda s: s.get("mgmt_ip", ""))
@@ -325,6 +358,41 @@ class EnhancedPortMapper:
         # of which value the topology row carried.
         if self.ib_switch_headers:
             self._add_ib_guid_aliases()
+
+    @staticmethod
+    def _is_ipv4(value: Any) -> bool:
+        """Return True when ``value`` is an IPv4 address string."""
+        if not isinstance(value, str):
+            return False
+        try:
+            ipaddress.IPv4Address(value.strip())
+        except ValueError:
+            return False
+        return True
+
+    def _switch_network_ranks(self) -> Dict[str, Tuple[Any, ...]]:
+        """Rank each port-map switch key by its dominant row ``network`` label.
+
+        Labels order ``A`` < ``B`` < ... < ``Z`` < ``AA`` (the LLDP parser's
+        subnet labelling); ties between labels on one switch resolve to the
+        earlier label.
+
+        Returns:
+            Dict mapping ``switch_ip`` to a sortable rank tuple. Switches
+            without a label are absent (callers sort them last).
+        """
+        labels: Dict[str, Counter] = {}
+        for entry in self.external_port_map:
+            key = entry.get("switch_ip")
+            label = str(entry.get("network") or "").strip().upper()
+            if key and label:
+                labels.setdefault(key, Counter())[label] += 1
+
+        ranks: Dict[str, Tuple[Any, ...]] = {}
+        for key, counts in labels.items():
+            label = min(counts, key=lambda lbl: (-counts[lbl], len(lbl), lbl))
+            ranks[key] = (0, len(label), label)
+        return ranks
 
     def _add_ib_guid_aliases(self) -> None:
         """Add GUID alias keys to ``switch_map`` for IB clusters.
