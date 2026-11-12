@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import requests as _requests_lib
 
 from tool_manager import TOOL_FRESHNESS_WARN_DAYS
+from utils.alarm_policy import alarm_fail_on_from_config
 from utils.logger import get_logger, is_access_log_record
 from utils.switch_password_candidates import (
     BUILTIN_AUTOFILL_SWITCH_PASSWORDS as _SHARED_BUILTIN_AUTOFILL_SWITCH_PASSWORDS,
@@ -1443,6 +1444,7 @@ class OneShotRunner:
                 ssh_config=ssh_config,
                 switch_ssh_config=switch_ssh_config,
                 cancel_event=self._cancel_event,
+                alarm_fail_on=alarm_fail_on_from_config(config),
             )
 
             tier_desc = f"Tier {', '.join(str(t) for t in tiers)}"
@@ -1828,7 +1830,11 @@ class OneShotRunner:
                     self._emit("info", f"Running health checks ({tier_desc})...")
 
                     checker = HealthChecker(
-                        api_handler=api, ssh_config=ssh_cfg, switch_ssh_config=sw_cfg, cancel_event=self._cancel_event
+                        api_handler=api,
+                        ssh_config=ssh_cfg,
+                        switch_ssh_config=sw_cfg,
+                        cancel_event=self._cancel_event,
+                        alarm_fail_on=alarm_fail_on_from_config(config),
                     )
                     hc_report = checker.run_all_checks(tiers=tiers)
 

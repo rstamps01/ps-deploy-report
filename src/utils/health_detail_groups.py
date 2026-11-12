@@ -400,7 +400,15 @@ def _alarms(checks: _Checks) -> Optional[DetailGroup]:
     event_rows: List[List[str]] = []
     if checks.has("Active Alarms"):
         summary.append(["Total alarms", _fmt(checks.get("Active Alarms", "total_alarms"))])
-        summary.append(["Unresolved critical/major alarms", _fmt(checks.get("Active Alarms", "critical_unresolved"))])
+        major_unresolved = checks.get("Active Alarms", "major_unresolved")
+        if major_unresolved is None:
+            # Exports before HCF-3 saved one combined critical/major count.
+            summary.append(
+                ["Unresolved critical/major alarms", _fmt(checks.get("Active Alarms", "critical_unresolved"))]
+            )
+        else:
+            summary.append(["Unresolved critical alarms", _fmt(checks.get("Active Alarms", "critical_unresolved"))])
+            summary.append(["Unresolved major alarms", _fmt(major_unresolved)])
         for alarm in checks.get("Active Alarms", "alarms") or []:
             if isinstance(alarm, dict):
                 alarm_rows.append(

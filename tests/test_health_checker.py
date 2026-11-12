@@ -143,12 +143,82 @@ class TestHealthChecker:
         assert "No unresolved" in result.message
 
     def test_check_alarms_critical(self, checker, mock_api_handler):
+        """HCF-3: an unresolved CRITICAL alarm fails the check under the default policy."""
         mock_api_handler._make_api_request.return_value = [
             {"severity": "CRITICAL", "resolved": False, "message": "Disk failure"},
         ]
         result = checker._check_active_alarms()
-        assert result.status == "warning"
+        assert result.status == "fail"
         assert "1 unresolved" in result.message
+        assert result.details["critical_unresolved"] == 1
+        assert result.details["major_unresolved"] == 0
+
+    _MIXED_ALARMS = [
+        {"id": 1, "severity": "CRITICAL", "resolved": False, "message": "Disk failure"},
+        {"id": 2, "severity": "MAJOR", "resolved": False, "message": "High CPU"},
+        {"id": 3, "severity": "CRITICAL", "resolved": True, "message": "Old failure"},
+        {"id": 4, "severity": "MINOR", "resolved": False, "message": "Info"},
+    ]
+
+    def test_check_alarms_major_only_warns(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"severity": "MAJOR", "resolved": False, "message": "High CPU"},
+        ]
+        result = checker._check_active_alarms()
+        assert result.status == "warning"
+        assert result.details["critical_unresolved"] == 0
+        assert result.details["major_unresolved"] == 1
+
+    def test_check_alarms_fail_on_major(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"severity": "MAJOR", "resolved": False, "message": "High CPU"},
+        ]
+        result = HealthChecker(api_handler=mock_api_handler, alarm_fail_on="major")._check_active_alarms()
+        assert result.status == "fail"
+
+    def test_check_alarms_fail_on_none_warns_for_both(self, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = list(self._MIXED_ALARMS)
+        result = HealthChecker(api_handler=mock_api_handler, alarm_fail_on="none")._check_active_alarms()
+        assert result.status == "warning"
+        assert result.details["critical_unresolved"] == 1
+        assert result.details["major_unresolved"] == 1
+
+    def test_check_alarms_resolved_ignored(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = [
+            {"severity": "CRITICAL", "resolved": True, "message": "Old failure"},
+            {"severity": "MAJOR", "resolved": True, "message": "Old CPU"},
+        ]
+        result = checker._check_active_alarms()
+        assert result.status == "pass"
+        assert result.details["critical_unresolved"] == 0
+        assert result.details["major_unresolved"] == 0
+
+    def test_check_alarms_details_shape(self, checker, mock_api_handler):
+        mock_api_handler._make_api_request.return_value = list(self._MIXED_ALARMS)
+        result = checker._check_active_alarms()
+        assert result.status == "fail"
+        assert result.details["total_alarms"] == 4
+        assert [a["id"] for a in result.details["alarms"]] == [1, 2]
+        assert set(result.details["alarms"][0]) == {
+            "id",
+            "severity",
+            "object_type",
+            "object_name",
+            "description",
+            "timestamp",
+        }
+        assert "1 critical, 1 major" in result.message
+
+    def test_invalid_fail_on_falls_back_to_critical(self, mock_api_handler, caplog):
+        mock_api_handler._make_api_request.return_value = [
+            {"severity": "CRITICAL", "resolved": False, "message": "Disk failure"},
+            {"severity": "MAJOR", "resolved": False, "message": "High CPU"},
+        ]
+        with caplog.at_level("WARNING"):
+            checker = HealthChecker(api_handler=mock_api_handler, alarm_fail_on="sometimes")
+        assert checker.alarm_fail_on == "critical"
+        assert "fail_on" in caplog.text
+        assert checker._check_active_alarms().status == "fail"
 
     def test_check_alarms_404(self, checker, mock_api_handler):
         mock_api_handler._make_api_request.return_value = None
@@ -1633,6 +1703,28 @@ class TestRemediationEdgeCases:
         assert "CNode Status" in correlations
         assert "DNode Status" in correlations
         assert any("chassis" in c.lower() for c in correlations["CNode Status"])
+
+    @pytest.mark.parametrize("alarm_status", ["fail", "warning"])
+    def test_correlate_alarms_with_inactive_nodes(self, mock_api_handler, alarm_status):
+        checker = HealthChecker(api_handler=mock_api_handler)
+        results = [
+            HealthCheckResult(
+                check_name="CNode Status",
+                category="api",
+                status="fail",
+                message="1 CNode INACTIVE",
+                details={"inactive": ["cnode-2"]},
+            ),
+            HealthCheckResult(
+                check_name="Active Alarms",
+                category="api",
+                status=alarm_status,
+                message="3 unresolved critical/major alarm(s)",
+                details={"critical_unresolved": 1, "major_unresolved": 2, "alarms": []},
+            ),
+        ]
+        correlations = checker._correlate_findings(results)
+        assert any(c.startswith("3 unresolved alarms") for c in correlations["Active Alarms"])
 
     def test_remediation_report_all_pass(self, mock_api_handler, tmp_path):
         checker = HealthChecker(api_handler=mock_api_handler)

@@ -40,6 +40,7 @@ if sys.platform == "darwin":
             os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = f"{_brew_lib}:{_dyld}" if _dyld else str(_brew_lib)
 
 from utils import get_bundle_dir, get_data_dir  # noqa: E402
+from utils.alarm_policy import alarm_fail_on_from_config  # noqa: E402
 from utils.logger import enable_sse_logging, get_logger, get_sse_queue  # noqa: E402
 from hardware_library import get_builtin_devices_for_ui  # noqa: E402
 
@@ -2897,6 +2898,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         switch_ssh_config=switch_ssh_config,
                         cancel_event=app.config["JOB_CANCEL"],
                         progress_callback=_inline_hc_progress,
+                        alarm_fail_on=alarm_fail_on_from_config(config),
                     )
                 else:
                     tiers = [1]
@@ -2905,6 +2907,7 @@ def _run_report_job(app: Flask, params: Dict[str, Any]) -> None:
                         api_handler=api_handler,
                         cancel_event=app.config["JOB_CANCEL"],
                         progress_callback=_inline_hc_progress,
+                        alarm_fail_on=alarm_fail_on_from_config(config),
                     )
 
                 health_report = checker.run_all_checks(tiers=tiers)
@@ -3453,6 +3456,7 @@ def _run_health_job(app: Flask, params: Dict[str, Any]) -> None:
             switch_ssh_config=switch_ssh_config,
             cancel_event=app.config["HEALTH_JOB_CANCEL"],
             progress_callback=_health_progress_callback,
+            alarm_fail_on=alarm_fail_on_from_config(config),
         )
         report = checker.run_all_checks(tiers=params.get("tiers", [1]))
         report_dict = checker.to_dict(report)

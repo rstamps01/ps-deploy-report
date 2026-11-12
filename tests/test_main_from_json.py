@@ -163,6 +163,20 @@ class TestRunFromJsonSuccess(unittest.TestCase):
         out_path = Path(builder.generate_pdf_report.call_args[0][1])
         self.assertIn("unknown", out_path.name)
 
+    def test_replay_applies_configured_alarm_policy(self) -> None:
+        good = self.tmp_dir / "good.json"
+        good.write_text(json.dumps({"cluster_summary": {"name": "acme"}}))
+        config = {"health_check": {"alarms": {"fail_on": "none"}}}
+
+        with patch("main.create_report_builder") as builder_factory:
+            builder_factory.return_value.generate_pdf_report.return_value = True
+            rc = _run_from_json(str(good), str(self.tmp_dir), self.logger, config=config)
+
+        self.assertEqual(rc, 0)
+        report_config = builder_factory.call_args.kwargs.get("config")
+        self.assertIsNotNone(report_config)
+        self.assertEqual(report_config.alarm_fail_on, "none")
+
 
 class TestRunFromJsonEndToEnd(unittest.TestCase):
     """Real-fixture round-trip through the report builder.

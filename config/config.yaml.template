@@ -206,6 +206,14 @@ health_check:
     api: true
     switch_ssh: true
 
+  # Active Alarms check: which unresolved alarm severity fails the check.
+  #   critical (default) - CRITICAL alarms fail, MAJOR alarms warn
+  #   major              - CRITICAL and MAJOR alarms both fail
+  #   none               - CRITICAL and MAJOR alarms both warn (pre-v1.6.3 behavior)
+  # Also applied when a report is regenerated from a saved JSON export.
+  alarms:
+    fail_on: critical
+
 # Advanced Operations Configuration
 advanced_operations:
   # Default mode for Select Operation toggle (reporter or oneshot)

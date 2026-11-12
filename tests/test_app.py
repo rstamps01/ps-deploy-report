@@ -2259,10 +2259,11 @@ class TestSR1ReporterTunnelAddressPlumbing(unittest.TestCase):
             "auth_method": "password",
         }
 
-        with patch("utils.vms_tunnel.VMSTunnel", _FakeVMSTunnel), patch(
-            "api_handler.create_vast_api_handler", return_value=fake_handler
-        ), patch("app._preprobe_switch_passwords_for_job", return_value={}), patch(
-            "workflows.vnetmap_workflow.VnetmapWorkflow", _FakeVnetmapWorkflow
+        with (
+            patch("utils.vms_tunnel.VMSTunnel", _FakeVMSTunnel),
+            patch("api_handler.create_vast_api_handler", return_value=fake_handler),
+            patch("app._preprobe_switch_passwords_for_job", return_value={}),
+            patch("workflows.vnetmap_workflow.VnetmapWorkflow", _FakeVnetmapWorkflow),
         ):
             _run_report_job(self.app, params)
 
@@ -2577,6 +2578,39 @@ class TestUpdateStatusRoute(unittest.TestCase):
             }
             resp = client.get("/api/update/status")
         self.assertEqual(resp.status_code, 200)
+
+
+class TestHCF3HealthJobAlarmPolicy(unittest.TestCase):
+    """HCF-3: ``_run_health_job`` hands ``health_check.alarms.fail_on`` to ``HealthChecker``."""
+
+    def setUp(self):
+        self.app = create_flask_app()
+        self.tmpdir = tempfile.mkdtemp(prefix="hcf3_test_")
+        self.app.config["CONFIG_PATH"] = os.path.join(self.tmpdir, "config.yaml")
+
+    def _run(self, config_text: str) -> MagicMock:
+        from app import _run_health_job
+
+        Path(self.app.config["CONFIG_PATH"]).write_text(config_text)
+        handler = MagicMock()
+        handler.authenticate.return_value = True
+        mock_hc = MagicMock()
+        mock_hc.run_all_checks.side_effect = RuntimeError("stop after construction")
+        with (
+            patch("api_handler.create_vast_api_handler", return_value=handler),
+            patch("health_checker.HealthChecker", return_value=mock_hc) as MockHC,
+        ):
+            _run_health_job(self.app, {"cluster_ip": "192.0.2.10", "api_token": "test-token"})
+        return MockHC
+
+    def test_fail_on_from_config(self):
+        MockHC = self._run("health_check:\n  alarms:\n    fail_on: none\n")
+        MockHC.assert_called_once()
+        self.assertEqual(MockHC.call_args.kwargs["alarm_fail_on"], "none")
+
+    def test_default_when_key_absent(self):
+        MockHC = self._run("api:\n  timeout: 30\n")
+        self.assertEqual(MockHC.call_args.kwargs["alarm_fail_on"], "critical")
 
 
 if __name__ == "__main__":

@@ -1890,5 +1890,69 @@ class TestRM16ReportHealthAuthParity(unittest.TestCase):
         self.assertEqual(sw_cfg["proxy_jump"]["password"], "nodepw")
 
 
+class TestHCF3AlarmPolicyThreaded(unittest.TestCase):
+    """HCF-3: both OneShot HealthChecker sites pass ``health_check.alarms.fail_on``."""
+
+    _CONFIG = {"health_check": {"alarms": {"fail_on": "major"}}}
+
+    def _make_runner(self):
+        from oneshot_runner import OneShotRunner
+
+        return OneShotRunner(
+            selected_ops=[],
+            credentials={"cluster_ip": "10.0.0.1", "username": "admin", "password": "apipw"},
+            include_report=True,
+            include_health=True,
+        )
+
+    @staticmethod
+    def _mock_hc():
+        mock_hc = MagicMock()
+        mock_hc.run_all_checks.return_value = MagicMock(results=[], summary={"pass": 0, "fail": 0, "warning": 0})
+        return mock_hc
+
+    def test_run_health_checks_passes_fail_on(self):
+        runner = self._make_runner()
+        with (
+            patch.object(runner, "_load_config", return_value=dict(self._CONFIG)),
+            patch("api_handler.create_vast_api_handler", return_value=MagicMock()),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+            patch("health_checker.HealthChecker", return_value=self._mock_hc()) as MockHC,
+        ):
+            runner._run_health_checks()
+        MockHC.assert_called_once()
+        self.assertEqual(MockHC.call_args.kwargs["alarm_fail_on"], "major")
+
+    def test_run_report_passes_fail_on(self):
+        runner = self._make_runner()
+        mock_api = MagicMock()
+        mock_api.get_all_data.return_value = {"cluster_summary": {"name": "cx"}}
+        mock_extractor = MagicMock()
+        mock_extractor.extract_all_data.return_value = {"cluster_summary": {"name": "cx"}}
+        with (
+            patch.object(runner, "_load_config", return_value=dict(self._CONFIG)),
+            patch("api_handler.create_vast_api_handler", return_value=mock_api),
+            patch("data_extractor.create_data_extractor", return_value=mock_extractor),
+            patch("report_builder.create_report_builder", return_value=MagicMock()),
+            patch("report_builder.ReportConfig.from_yaml", return_value=MagicMock()),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+            patch("health_checker.HealthChecker", return_value=self._mock_hc()) as MockHC,
+        ):
+            runner._run_report()
+        MockHC.assert_called_once()
+        self.assertEqual(MockHC.call_args.kwargs["alarm_fail_on"], "major")
+
+    def test_default_policy_when_key_absent(self):
+        runner = self._make_runner()
+        with (
+            patch.object(runner, "_load_config", return_value={}),
+            patch("api_handler.create_vast_api_handler", return_value=MagicMock()),
+            patch("utils.get_data_dir", return_value=Path("/tmp")),
+            patch("health_checker.HealthChecker", return_value=self._mock_hc()) as MockHC,
+        ):
+            runner._run_health_checks()
+        self.assertEqual(MockHC.call_args.kwargs["alarm_fail_on"], "critical")
+
+
 if __name__ == "__main__":
     unittest.main()
