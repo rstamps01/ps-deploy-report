@@ -34,6 +34,10 @@ class ToolManager:
             "url": "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/vnetmap.py",
             "description": "Network topology validation tool",
         },
+        "vnetmap_lldp.py": {
+            "url": "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/vnetmap_lldp.py",
+            "description": "Port map from node-side LLDP (no switch login)",
+        },
         "mlnx_switch_api.py": {
             "url": "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/mlnx_switch_api.py",
             "description": "Mellanox switch API helper",

@@ -916,11 +916,13 @@ class VnetmapWorkflow:
             if result.success:
                 self._step_data["vnetmap_output"] = result.stdout
                 self._step_data["vnetmap_command"] = display_cmd
+                self._step_data["switch_auth_failed_all"] = False
                 self.emit("success", "vnetmap.py completed using per-switch credentials.")
                 return {
                     "success": True,
                     "message": "vnetmap.py completed successfully",
                     "details": result.stdout,
+                    "switch_auth_failed_all": False,
                 }
 
             # If the per-switch attempt still failed (e.g. switch API rejects
@@ -930,10 +932,12 @@ class VnetmapWorkflow:
             if not self._is_auth_failure(result.stdout, result.stderr):
                 self.emit("error", f"vnetmap exited with return code: {result.returncode}")
                 self._emit_switch_api_hint(result.stdout, result.stderr)
+                self._step_data["switch_auth_failed_all"] = False
                 return {
                     "success": False,
                     "message": f"vnetmap failed with rc={result.returncode}",
                     "details": result.stderr or result.stdout,
+                    "switch_auth_failed_all": False,
                 }
             self.emit(
                 "warn",
@@ -988,12 +992,14 @@ class VnetmapWorkflow:
                 # step summary JSON / bundle, and must not contain a real
                 # switch password.  RM-1.
                 self._step_data["vnetmap_command"] = redacted_vnetmap_cmd
+                self._step_data["switch_auth_failed_all"] = False
                 if attempt_index > 0:
                     self.emit("success", f"vnetmap.py succeeded with fallback password (candidate {attempt_index + 1})")
                 return {
                     "success": True,
                     "message": "vnetmap.py completed successfully",
                     "details": last_result.stdout,
+                    "switch_auth_failed_all": False,
                 }
 
             if not self._is_auth_failure(last_result.stdout, last_result.stderr):
@@ -1001,7 +1007,8 @@ class VnetmapWorkflow:
 
         result = last_result
         if result is None:
-            return {"success": False, "message": "vnetmap did not execute"}
+            self._step_data["switch_auth_failed_all"] = False
+            return {"success": False, "message": "vnetmap did not execute", "switch_auth_failed_all": False}
 
         self.emit("error", f"vnetmap exited with return code: {result.returncode}")
         if len(candidates) > 1 and self._is_auth_failure(result.stdout, result.stderr):
@@ -1014,16 +1021,40 @@ class VnetmapWorkflow:
         # Even on failure, never persist the real password.  Replace the
         # ``-p '<pw>'`` argument in whatever form we last tried.  RM-1.
         self._step_data["vnetmap_command"] = self._rebuild_vnetmap_cmd(last_vnetmap_cmd, "<switch-password>")
+        auth_failed_all = self._switch_auth_failed_all(result.stdout, result.stderr)
+        self._step_data["switch_auth_failed_all"] = auth_failed_all
         return {
             "success": False,
             "message": f"vnetmap failed with rc={result.returncode}",
             "details": result.stderr or result.stdout,
+            "switch_auth_failed_all": auth_failed_all,
         }
 
     def _is_auth_failure(self, stdout: str, stderr: str) -> bool:
         """Return True if the combined output matches known auth/connect failure patterns."""
         combined = f"{stdout or ''}\n{stderr or ''}".lower()
         return any(token in combined for token in self._VNETMAP_AUTH_INDICATORS)
+
+    def _switch_auth_failed_all(self, stdout: str, stderr: str) -> bool:
+        """Return True only when a failed Ethernet run shows a login failure for every switch.
+
+        With more than one switch, each switch IP must appear on a line carrying one of
+        :attr:`_VNETMAP_AUTH_INDICATORS` (vnetmap.py names the IP of every switch it could
+        not log in to). Missing per-switch evidence counts as "some login may have worked".
+        """
+        if self._step_data.get("network_type") != "ETH" or not self._is_auth_failure(stdout, stderr):
+            return False
+        switch_ips = [str(ip) for ip in (self._step_data.get("switch_ips") or [])]
+        if len(switch_ips) <= 1:
+            return True
+        failure_lines = [
+            line
+            for line in f"{stdout or ''}\n{stderr or ''}".lower().splitlines()
+            if any(token in line for token in self._VNETMAP_AUTH_INDICATORS)
+        ]
+        return all(
+            any(re.search(rf"(?<![\d.]){re.escape(ip)}(?![\d.])", line) for line in failure_lines) for ip in switch_ips
+        )
 
     def _emit_switch_api_hint(self, stdout: str, stderr: str) -> None:
         """Emit one clear, actionable hint for the Onyx web-API failure mode.

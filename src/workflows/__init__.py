@@ -67,8 +67,10 @@ def register_workflows() -> None:
     from workflows.log_bundle_workflow import LogBundleWorkflow
     from workflows.switch_config_workflow import SwitchConfigWorkflow
     from workflows.network_config_workflow import NetworkConfigWorkflow
+    from workflows.vnetmap_lldp_workflow import VnetmapLLDPWorkflow
 
     WorkflowRegistry.register("vnetmap", VnetmapWorkflow)
+    WorkflowRegistry.register("vnetmap_lldp", VnetmapLLDPWorkflow)
     WorkflowRegistry.register("support_tool", SupportToolWorkflow)
     WorkflowRegistry.register("vperfsanity", VperfsanityWorkflow)
     WorkflowRegistry.register("log_bundle", LogBundleWorkflow)

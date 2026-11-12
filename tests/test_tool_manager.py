@@ -32,7 +32,15 @@ class TestToolManagerInit:
     def test_initialization(self):
         tm = ToolManager()
         assert isinstance(tm, ToolManager)
-        assert len(ToolManager.TOOLS) == 4
+        assert len(ToolManager.TOOLS) == 5
+
+    def test_vnetmap_lldp_registered_like_vnetmap(self):
+        entry = ToolManager.TOOLS["vnetmap_lldp.py"]
+        assert entry["url"] == (
+            "https://vastdatasupport.blob.core.windows.net/support-tools/main/support/vnetperf/vnetmap_lldp.py"
+        )
+        assert set(entry) == set(ToolManager.TOOLS["vnetmap.py"])
+        assert entry["description"]
 
     def test_get_tool_info_known(self, tool_manager):
         info = tool_manager.get_tool_info("vnetmap.py")
@@ -45,7 +53,7 @@ class TestToolManagerInit:
 
     def test_get_all_tools_info(self, tool_manager):
         all_info = tool_manager.get_all_tools_info()
-        assert len(all_info) == 4
+        assert len(all_info) == 5
 
 
 class TestToolManagerLocalOps:
@@ -124,19 +132,19 @@ class TestToolFreshness:
 class TestToolStatusSummary:
     def test_all_missing_needs_attention(self, tool_manager):
         status = tool_manager.get_tools_status()
-        assert status["total"] == 4
+        assert status["total"] == 5
         assert status["cached"] == 0
-        assert status["missing"] == 4
+        assert status["missing"] == 5
         assert status["stale"] == 0
         assert status["needs_attention"] is True
         assert status["warn_days"] == TOOL_FRESHNESS_WARN_DAYS
-        assert len(status["tools"]) == 4
+        assert len(status["tools"]) == 5
 
     def test_all_fresh_no_attention(self, tool_manager):
         for name in ToolManager.TOOLS:
             _write_tool(tool_manager, name, age_days=2)
         status = tool_manager.get_tools_status()
-        assert status["cached"] == 4
+        assert status["cached"] == 5
         assert status["missing"] == 0
         assert status["stale"] == 0
         assert status["needs_attention"] is False
