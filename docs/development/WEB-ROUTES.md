@@ -11,6 +11,6 @@ Reference list moved out of the always-loaded architecture rule. Update it in th
 - Advanced Ops tools: /advanced-ops/tools (GET), /advanced-ops/tools/update (POST), /advanced-ops/tools/deploy (POST)
 - Advanced Ops bundling: /advanced-ops/bundle/collect (POST), /advanced-ops/bundle/create (POST), /advanced-ops/bundle/download/<path> (GET), /advanced-ops/bundles (GET)
 - Advanced Ops one-shot: /advanced-ops/oneshot/validate (POST), /advanced-ops/oneshot/start (POST), /advanced-ops/oneshot/status (GET), /advanced-ops/oneshot/cancel (POST)
-- Validation Results: /validation-results (GET), /validation-results/api/results (GET), /validation-results/api/clusters (GET), /validation-results/api/file/<operation>/<filename> (GET/DELETE)
+- Validation Results: /validation-results (GET), /validation-results/api/results (GET; `cluster_key=<clusters/ folder>` or `__unassigned__` for legacy Tech Port files, `cluster_ip=<ip>`, `profile=Unsaved`; `cluster_key` wins), /validation-results/api/clusters (GET), /validation-results/api/file/<operation>/<filename> (GET/DELETE)
 - Application control: /shutdown (POST) — graceful server termination via stored werkzeug server reference
 - Config keys: DEFAULT_OUTPUT_DIR, OUTPUT_DIRS, CONFIG_PATH, PROFILES_PATH, DEVELOPER_MODE, JOB_RUNNING, JOB_RESULT, JOB_LOCK, JOB_CANCEL, HEALTH_JOB_RUNNING, HEALTH_JOB_RESULT, HEALTH_JOB_LOCK, HEALTH_JOB_CANCEL, ONESHOT_RUNNING, ONESHOT_RESULT, ONESHOT_LOCK, ONESHOT_CANCEL, _SERVER

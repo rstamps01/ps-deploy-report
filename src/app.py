@@ -1388,21 +1388,30 @@ def _register_routes(app: Flask) -> None:
     @app.route("/validation-results")
     def validation_results_page():
         """Validation Results page — browse operation results by cluster."""
+        from result_scanner import ResultScanner
+
         profiles = _load_profiles(app.config["PROFILES_PATH"])
         return render_template(
             "validation_results.html",
             version=APP_VERSION,
-            profiles=profiles,
+            filter_choices=ResultScanner(profiles=profiles).get_filter_choices(),
             output_dir=app.config["DEFAULT_OUTPUT_DIR"],
         )
 
     @app.route("/validation-results/api/results")
     def validation_results_api():
-        """Return all results grouped by operation, optionally filtered."""
+        """Return all results grouped by operation, optionally filtered.
+
+        Query params: ``cluster_key`` (a ``clusters/<key>/`` folder, or
+        ``__unassigned__`` for legacy Tech Port files), ``cluster_ip`` (real
+        management IP; ignored when ``cluster_key`` is set) or
+        ``profile=Unsaved``.
+        """
         from result_scanner import ResultScanner
 
         profiles = _load_profiles(app.config["PROFILES_PATH"])
         cluster_ip = request.args.get("cluster_ip", "").strip() or None
+        cluster_key = request.args.get("cluster_key", "").strip() or None
         profile_filter = request.args.get("profile", "").strip()
 
         scanner = ResultScanner(profiles=profiles)
@@ -1414,7 +1423,7 @@ def _register_routes(app: Flask) -> None:
                 all_results[op_key] = [e for e in all_results[op_key] if e["cluster_ip"] not in saved_ips]
             return jsonify({"operations": all_results})
 
-        results = scanner.scan_all(cluster_ip=cluster_ip)
+        results = scanner.scan_all(cluster_ip=cluster_ip, cluster_key=cluster_key)
         return jsonify({"operations": results})
 
     @app.route("/validation-results/api/clusters")

@@ -235,8 +235,8 @@
             <label for="profileFilter">Cluster Filter</label>
             <select id="profileFilter" onchange="applyFilter()">
                 <option value="">All Clusters</option>
-                {% for name, prof in profiles.items() %}
-                <option value="{{ prof.cluster_ip }}">{{ name }} — {{ prof.cluster_ip }}</option>
+                {% for choice in filter_choices %}
+                <option data-param="{{ choice.param }}" value="{{ choice.value }}">{{ choice.label }}</option>
                 {% endfor %}
                 <option value="__unsaved__">Unsaved Cluster Results</option>
             </select>
@@ -467,12 +467,14 @@ function renderTable(operation, entries) {
 }
 
 async function loadResults() {
-    var filter = document.getElementById('profileFilter').value;
+    var select = document.getElementById('profileFilter');
+    var filter = select.value;
+    var param = select.options[select.selectedIndex].getAttribute('data-param') || 'cluster_ip';
     var url = '/validation-results/api/results';
     if (filter === '__unsaved__') {
         url += '?profile=Unsaved';
     } else if (filter) {
-        url += '?cluster_ip=' + encodeURIComponent(filter);
+        url += '?' + param + '=' + encodeURIComponent(filter);
     }
 
     OPERATIONS.forEach(function(op) {
