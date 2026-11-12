@@ -1,0 +1,25 @@
+
+================================================================================
+  VAST Network Mapping and Switch Maintenance Tool
+================================================================================
+Operation: Mapping network connections
+Performance settings: max_workers=20, fanout=32, batch_size=50
+Checking LLDP installation (this may take a moment)...
+LLDP service status: 4 active, 4 inactive
+Reading node port configuration...
+Found 4 nodes with 8 total network ports
+Looking for connections to switches: all
+Pre-fetching hostnames...
+Running hostname... | Running hostname... /                                                   
+
+Processing 8 node-port pairs across 1 batches...
+Overall Progress: |----------------------------------------| 0.0% 0/8 Complete - ETA: calculating...Overall Progress: |████████████████████--------------------| 50.0% 4/8 Complete - ETA: 0m 1sOverall Progress: |████████████████████████████████████████| 100.0% 8/8 Complete - ETA: 0m 0s                                                                      Completed in 0m 2s                              
+
+Found 0 connection(s)
+
+No LLDP connections found
+
+================================================================================
+Operation completed successfully
+================================================================================
+

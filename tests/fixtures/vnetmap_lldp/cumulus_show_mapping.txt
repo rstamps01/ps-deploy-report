@@ -1,0 +1,66 @@
+
+================================================================================
+  VAST Network Mapping and Switch Maintenance Tool
+================================================================================
+Operation: Mapping network connections
+Performance settings: max_workers=20, fanout=32, batch_size=50
+Checking LLDP installation (this may take a moment)...
+LLDP service status: 4 active, 4 inactive
+Reading node port configuration...
+Found 4 nodes with 8 total network ports
+Looking for connections to switches: all
+Pre-fetching hostnames...
+Running hostname... | Running hostname... /                                                   
+
+Processing 8 node-port pairs across 1 batches...
+Overall Progress: |----------------------------------------| 0.0% 0/8 Complete - ETA: calculating...Overall Progress: |████████████████████--------------------| 50.0% 4/8 Complete - ETA: 0m 1sOverall Progress: |████████████████████████████████████████| 100.0% 8/8 Complete - ETA: 0m 0s                                                                      Completed in 0m 2s                              
+
+Found 8 connection(s)
+
+Per-Switch Connection Breakdown:
+
++-------------+-------------------+-----------------+
+| Switch Name | Total Connections | Connected Nodes |
++-------------+-------------------+-----------------+
+| ACME-SW-01  | 4                 | 4               |
+| ACME-SW-02  | 4                 | 4               |
++-------------+-------------------+-----------------+
+
+Connections for switch: ACME-SW-01
++----------+------------+-----------+---------------+-------------+
+| Hostname | Node       | Port      | IPs           | Switch Port |
++----------+------------+-----------+---------------+-------------+
+| acme-cn1 | 192.0.2.11 | ens1f0np0 | 198.51.100.11 | swp1s0      |
+| acme-cn2 | 192.0.2.12 | ens1f0np0 | 198.51.100.12 | swp1s1      |
+| acme-dn1 | 192.0.2.21 | ens2f0np0 | 198.51.100.21 | swp2s0      |
+| acme-dn2 | 192.0.2.22 | ens2f0np0 | 198.51.100.22 | swp2s1      |
++----------+------------+-----------+---------------+-------------+
+
+Connections for switch: ACME-SW-02
++----------+------------+-----------+--------------+-------------+
+| Hostname | Node       | Port      | IPs          | Switch Port |
++----------+------------+-----------+--------------+-------------+
+| acme-cn1 | 192.0.2.11 | ens1f1np1 | 203.0.113.11 | swp1s0      |
+| acme-cn2 | 192.0.2.12 | ens1f1np1 | 203.0.113.12 | swp1s1      |
+| acme-dn1 | 192.0.2.21 | ens2f1np1 | 203.0.113.21 | swp2s0      |
+| acme-dn2 | 192.0.2.22 | ens2f1np1 | 203.0.113.22 | swp2s1      |
++----------+------------+-----------+--------------+-------------+
+
+LLDP Connection Mapping:
++----------+------------+-----------+---------------+------------+-------------+
+| Hostname | Node       | Port      | IPs           | Switch     | Switch Port |
++----------+------------+-----------+---------------+------------+-------------+
+| acme-cn1 | 192.0.2.11 | ens1f0np0 | 198.51.100.11 | ACME-SW-01 | swp1s0      |
+| acme-cn1 | 192.0.2.11 | ens1f1np1 | 203.0.113.11  | ACME-SW-02 | swp1s0      |
+| acme-cn2 | 192.0.2.12 | ens1f0np0 | 198.51.100.12 | ACME-SW-01 | swp1s1      |
+| acme-cn2 | 192.0.2.12 | ens1f1np1 | 203.0.113.12  | ACME-SW-02 | swp1s1      |
+| acme-dn1 | 192.0.2.21 | ens2f0np0 | 198.51.100.21 | ACME-SW-01 | swp2s0      |
+| acme-dn1 | 192.0.2.21 | ens2f1np1 | 203.0.113.21  | ACME-SW-02 | swp2s0      |
+| acme-dn2 | 192.0.2.22 | ens2f0np0 | 198.51.100.22 | ACME-SW-01 | swp2s1      |
+| acme-dn2 | 192.0.2.22 | ens2f1np1 | 203.0.113.22  | ACME-SW-02 | swp2s1      |
++----------+------------+-----------+---------------+------------+-------------+
+
+================================================================================
+Operation completed successfully
+================================================================================
+

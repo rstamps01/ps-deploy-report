@@ -1,0 +1,75 @@
+[acme-cn1] vastdata@acme-cn1 ~:$ sudo systemctl status lldpd
+● lldpd.service - LLDP daemon
+   Loaded: loaded (/usr/lib/systemd/system/lldpd.service; enabled; vendor preset: disabled)
+   Active: active (running) since Mon 2026-11-09 08:00:00 UTC; 2 days ago
+   CGroup: /system.slice/lldpd.service
+           ├─1001 /usr/sbin/lldpd
+           └─1002 /usr/sbin/lldpd
+[acme-cn1] vastdata@acme-cn1 ~:$ python3 /vast/data/vnetmap_lldp.py --operation show-mapping
+
+================================================================================
+  VAST Network Mapping and Switch Maintenance Tool
+================================================================================
+Operation: Mapping network connections
+Performance settings: max_workers=20, fanout=32, batch_size=50
+Checking LLDP installation (this may take a moment)...
+LLDP service status: 4 active, 4 inactive
+Reading node port configuration...
+Found 4 nodes with 8 total network ports
+Looking for connections to switches: all
+Pre-fetching hostnames...
+Running hostname... | Running hostname... /                                                   
+
+Processing 8 node-port pairs across 1 batches...
+Overall Progress: |----------------------------------------| 0.0% 0/8 Complete - ETA: calculating...Overall Progress: |████████████████████--------------------| 50.0% 4/8 Complete - ETA: 0m 1sOverall Progress: |████████████████████████████████████████| 100.0% 8/8 Complete - ETA: 0m 0s                                                                      Completed in 0m 2s                              
+
+Found 8 connection(s)
+
+Per-Switch Connection Breakdown:
+
++-------------+-------------------+-----------------+
+| Switch Name | Total Connections | Connected Nodes |
++-------------+-------------------+-----------------+
+| ACME-SW-01  | 4                 | 4               |
+| ACME-SW-02  | 4                 | 4               |
++-------------+-------------------+-----------------+
+
+Connections for switch: ACME-SW-01
++----------+------------+-------------+------------------------------------------+-------------+
+| Hostname | Node       | Port        | IPs                                      | Switch Port |
++----------+------------+-------------+------------------------------------------+-------------+
+| acme-cn1 | 192.0.2.11 | enp7s0f1    | 192.0.2.11, 203.0.113.11                 | Eth1/1/1    |
+| acme-cn2 | 192.0.2.12 | enp7s0f1    | 203.0.113.12                             | Eth1/1/2    |
+| acme-dn1 | 192.0.2.21 | enp3s0f1np1 | 198.51.100.250, 203.0.113.21, 192.0.2.21 | Eth1/13/1   |
+| acme-dn2 | 192.0.2.22 | enp3s0f1np1 | 198.51.100.122                           | Eth1/13/2   |
++----------+------------+-------------+------------------------------------------+-------------+
+
+Connections for switch: ACME-SW-02
++----------+------------+-------------+---------------------------+-------------+
+| Hostname | Node       | Port        | IPs                       | Switch Port |
++----------+------------+-------------+---------------------------+-------------+
+| acme-cn1 | 192.0.2.11 | enp7s0f0    | 198.51.100.11, 192.0.2.11 | Eth1/1/1    |
+| acme-cn2 | 192.0.2.12 | enp7s0f0    | 198.51.100.12             | Eth1/1/2    |
+| acme-dn1 | 192.0.2.21 | enp3s0f0np0 | 198.51.100.21             | Eth1/13/1   |
+| acme-dn2 | 192.0.2.22 | enp3s0f0np0 | 198.51.100.22             | Eth1/13/2   |
++----------+------------+-------------+---------------------------+-------------+
+
+LLDP Connection Mapping:
++----------+------------+-------------+------------------------------------------+------------+-------------+
+| Hostname | Node       | Port        | IPs                                      | Switch     | Switch Port |
++----------+------------+-------------+------------------------------------------+------------+-------------+
+| acme-cn1 | 192.0.2.11 | enp7s0f0    | 198.51.100.11, 192.0.2.11                | ACME-SW-02 | Eth1/1/1    |
+| acme-cn1 | 192.0.2.11 | enp7s0f1    | 192.0.2.11, 203.0.113.11                 | ACME-SW-01 | Eth1/1/1    |
+| acme-cn2 | 192.0.2.12 | enp7s0f0    | 198.51.100.12                            | ACME-SW-02 | Eth1/1/2    |
+| acme-cn2 | 192.0.2.12 | enp7s0f1    | 203.0.113.12                             | ACME-SW-01 | Eth1/1/2    |
+| acme-dn1 | 192.0.2.21 | enp3s0f0np0 | 198.51.100.21                            | ACME-SW-02 | Eth1/13/1   |
+| acme-dn1 | 192.0.2.21 | enp3s0f1np1 | 198.51.100.250, 203.0.113.21, 192.0.2.21 | ACME-SW-01 | Eth1/13/1   |
+| acme-dn2 | 192.0.2.22 | enp3s0f0np0 | 198.51.100.22                            | ACME-SW-02 | Eth1/13/2   |
+| acme-dn2 | 192.0.2.22 | enp3s0f1np1 | 198.51.100.122                           | ACME-SW-01 | Eth1/13/2   |
++----------+------------+-------------+------------------------------------------+------------+-------------+
+
+================================================================================
+Operation completed successfully
+================================================================================
+
+[acme-cn1] vastdata@acme-cn1 ~:$

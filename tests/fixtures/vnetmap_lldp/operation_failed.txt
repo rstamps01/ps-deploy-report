@@ -1,0 +1,39 @@
+
+================================================================================
+  VAST Network Mapping and Switch Maintenance Tool
+================================================================================
+Operation: Mapping network connections
+Performance settings: max_workers=20, fanout=32, batch_size=50
+Checking LLDP installation (this may take a moment)...
+LLDP service status: 2 active, 6 inactive
+Reading node port configuration...
+Found 4 nodes with 8 total network ports
+Looking for connections to switches: all
+Pre-fetching hostnames...
+Running hostname... | Running hostname... /                                                   
+
+Processing 8 node-port pairs across 1 batches...
+Overall Progress: |----------------------------------------| 0.0% 0/8 Complete - ETA: calculating...Overall Progress: |████████████████████--------------------| 50.0% 4/8 Complete - ETA: 0m 1sOverall Progress: |████████████████████████████████████████| 100.0% 8/8 Complete - ETA: 0m 0s                                                                      Completed in 0m 2s                              
+
+Found 2 connection(s)
+
+Per-Switch Connection Breakdown:
+
++-------------+-------------------+-----------------+
+| Switch Name | Total Connections | Connected Nodes |
++-------------+-------------------+-----------------+
+| ACME-SW-02  | 2                 | 2               |
++-------------+-------------------+-----------------+
+
+Connections for switch: ACME-SW-02
++----------+------------+----------+---------------------------+-------------+
+| Hostname | Node       | Port     | IPs                       | Switch Port |
++----------+------------+----------+---------------------------+-------------+
+| acme-cn1 | 192.0.2.11 | enp7s0f0 | 198.51.100.11, 192.0.2.11 | Eth1/1/1    |
+| acme-cn2 | 192.0.2.12 | enp7s0f0 | 198.51.100.12             | Eth1/1/2    |
++----------+------------+----------+---------------------------+-------------+
+
+================================================================================
+Operation failed - see logs for details
+================================================================================
+
