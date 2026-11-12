@@ -293,6 +293,25 @@ class TestAlarms:
         group = _groups([events])["alarms"]
         assert group.tables[-1].rows[0] == ["CRITICAL", "dnode-1", "NodeDown: Node down", "2026-10-15 01:02:03"]
 
+    def test_split_critical_and_major_counts(self):
+        """HCF-3: results with ``major_unresolved`` show separate critical and major rows."""
+        alarms = _r(
+            "Active Alarms",
+            {
+                "total_alarms": 3,
+                "critical_unresolved": 1,
+                "major_unresolved": 2,
+                "alarms": [{"severity": "CRITICAL", "object_name": "ssd-1", "description": "Drive failure"}],
+            },
+            status="fail",
+        )
+        groups = _groups([alarms])
+        summary = _row_map(groups["alarms"], 0)
+        assert summary["Unresolved critical alarms"] == ["1"]
+        assert summary["Unresolved major alarms"] == ["2"]
+        assert "Unresolved critical/major alarms" not in summary
+        assert "other" not in groups
+
 
 class TestPerformance:
     def test_performance_baseline_has_no_details_group(self):

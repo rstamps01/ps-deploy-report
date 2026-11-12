@@ -17,6 +17,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, cast
 
+from utils.alarm_policy import (
+    DEFAULT_ALARM_FAIL_ON,
+    alarm_check_status,
+    count_unresolved_alarms,
+    normalize_alarm_fail_on,
+)
 from utils.ssh_adapter import (
     build_switch_credential_combos,
     run_ssh_command,
@@ -114,13 +120,28 @@ class HealthChecker:
         logger: Optional[logging.Logger] = None,
         thresholds: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
+        alarm_fail_on: Optional[str] = DEFAULT_ALARM_FAIL_ON,
     ) -> None:
+        """Initialise the checker.
+
+        Args:
+            api_handler: Authenticated VAST API handler.
+            ssh_config: Node SSH settings, if node checks are available.
+            switch_ssh_config: Switch SSH settings for Tier 3 checks.
+            cancel_event: Event that cancels the run when set.
+            logger: Logger; defaults to this module's logger.
+            thresholds: Overrides for :attr:`DEFAULT_THRESHOLDS`.
+            progress_callback: Called as ``(check_idx, total, check_name)``.
+            alarm_fail_on: ``health_check.alarms.fail_on`` policy (``critical``,
+                ``major`` or ``none``); invalid values fall back to ``critical``.
+        """
         self.api_handler = api_handler
         self.ssh_config = ssh_config
         self.switch_ssh_config = switch_ssh_config
         self.cancel_event = cancel_event
         self.logger = logger or logging.getLogger(__name__)
         self.thresholds = {**self.DEFAULT_THRESHOLDS, **(thresholds or {})}
+        self.alarm_fail_on = normalize_alarm_fail_on(alarm_fail_on, self.logger)
         self.progress_callback = progress_callback
         self._cluster_cache: Optional[Dict[str, Any]] = None
         self._ebox_cluster_cached: Optional[bool] = None
@@ -288,8 +309,14 @@ class HealthChecker:
         },
         "Active Alarms": {
             "severity": "HIGH",
-            "impact": "Unresolved alarms indicate ongoing issues that may affect cluster stability.",
+            "impact": (
+                "Unresolved alarms indicate ongoing issues that may affect cluster stability. "
+                "Unresolved CRITICAL alarms fail this check by default (health_check.alarms.fail_on); "
+                "MAJOR alarms are a warning."
+            ),
             "steps": [
+                "Resolve every unresolved CRITICAL alarm before handover; a failed Active Alarms check "
+                "is not a clean health check.",
                 "Review each alarm in VAST Management UI > Alarms for severity, component, and timestamp.",
                 "Correlate alarm timestamps with node status changes to identify the triggering event.",
                 "Address root cause (e.g., inactive nodes) first -- alarms should auto-clear.",
@@ -501,11 +528,13 @@ class HealthChecker:
                 correlations["Leader State"] = correlations.get("Leader State", [])
                 correlations["Leader State"].append(msg)
 
-        if (inactive_cnodes or inactive_dnodes) and alarm_result and alarm_result.status == "fail":
+        if (inactive_cnodes or inactive_dnodes) and alarm_result and alarm_result.status in ("fail", "warning"):
             total_inactive = len(inactive_cnodes) + len(inactive_dnodes)
             alarm_count = 0
             if alarm_result.details:
-                alarm_count = alarm_result.details.get("critical_unresolved", 0)
+                alarm_count = alarm_result.details.get("critical_unresolved", 0) + alarm_result.details.get(
+                    "major_unresolved", 0
+                )
             msg = (
                 f"{alarm_count} unresolved alarms likely relate to the "
                 f"{total_inactive} inactive node(s). Address node issues first; "
@@ -1510,9 +1539,11 @@ class HealthChecker:
                     }
                 )
 
+            critical_count, major_count = count_unresolved_alarms(critical_alarms)
             details = {
                 "total_alarms": len(data),
-                "critical_unresolved": len(critical_alarms),
+                "critical_unresolved": critical_count,
+                "major_unresolved": major_count,
                 "alarms": alarm_summaries,
             }
 
@@ -1520,8 +1551,11 @@ class HealthChecker:
                 return HealthCheckResult(
                     check_name="Active Alarms",
                     category="api",
-                    status="warning",
-                    message=f"{len(critical_alarms)} unresolved critical/major alarm(s)",
+                    status=alarm_check_status(critical_count, major_count, self.alarm_fail_on),
+                    message=(
+                        f"{len(critical_alarms)} unresolved critical/major alarm(s) "
+                        f"({critical_count} critical, {major_count} major)"
+                    ),
                     details=details,
                     timestamp=self._now(),
                     duration_seconds=time.time() - start,

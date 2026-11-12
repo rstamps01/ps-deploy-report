@@ -303,6 +303,8 @@ The Health Check module runs tiered cluster validation:
 
 **VIP Pools:** When no VIP pools are configured, the check returns `warning` (not `fail`) — an unconfigured VIP pool is informational. Reports regenerated from older JSON files automatically correct stale statuses.
 
+**Active Alarms:** `health_check.alarms.fail_on` sets which unresolved alarms fail the check. `critical` (the default) fails on unresolved CRITICAL alarms and warns on MAJOR alarms; `major` fails on both; `none` warns on both (the behavior before v1.6.3). Resolved alarms are ignored. Reports regenerated from saved JSON apply the same setting to any Active Alarms result that lists per-alarm severities.
+
 ### Health check report sections
 
 When health check is included, the PDF report contains two additional sections:

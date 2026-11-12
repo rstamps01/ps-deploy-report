@@ -782,6 +782,143 @@ class TestHealthCheckSummaryTotal(unittest.TestCase):
         self.assertEqual(row, ["23", "0", "3", "2", "0", "28"])
 
 
+class TestAlarmPolicyFixup(unittest.TestCase):
+    """HCF-3: re-rendered Active Alarms results follow ``health_check.alarms.fail_on``."""
+
+    @staticmethod
+    def _health_data(status, details):
+        summary = {"pass": 1, "fail": 0, "warning": 0, "skipped": 0, "error": 0}
+        summary[status] += 1
+        return {
+            "summary": summary,
+            "results": [
+                {"check_name": "Expansion State", "category": "api", "status": "pass", "message": "ok"},
+                {
+                    "check_name": "Active Alarms",
+                    "category": "api",
+                    "status": status,
+                    "message": "unresolved critical/major alarm(s)",
+                    "details": details,
+                },
+            ],
+        }
+
+    @staticmethod
+    def _pre_hc1_json(severities):
+        """Pre-HC-1 export: status ``fail`` and one combined ``critical_unresolved`` count."""
+        alarms = [{"severity": s, "object_name": "obj", "description": "d"} for s in severities]
+        return TestAlarmPolicyFixup._health_data(
+            "fail", {"total_alarms": len(alarms), "critical_unresolved": len(alarms), "alarms": alarms}
+        )
+
+    @staticmethod
+    def _v162_json(severities):
+        """v1.6.2 export: every unresolved critical/major alarm saved as ``warning``."""
+        alarms = [{"severity": s, "object_name": "obj", "description": "d"} for s in severities]
+        return TestAlarmPolicyFixup._health_data(
+            "warning", {"total_alarms": len(alarms), "critical_unresolved": len(alarms), "alarms": alarms}
+        )
+
+    @staticmethod
+    def _alarm(health_data):
+        return next(r for r in health_data["results"] if r["check_name"] == "Active Alarms")
+
+    def test_v162_json_with_critical_fails_by_default(self):
+        data = self._v162_json(["CRITICAL", "MAJOR"])
+        VastReportBuilder._fixup_health_results(data, None)
+        self.assertEqual(self._alarm(data)["status"], "fail")
+        self.assertEqual(data["summary"]["fail"], 1)
+        self.assertEqual(data["summary"]["warning"], 0)
+
+    def test_v162_json_with_critical_warns_when_fail_on_none(self):
+        data = self._v162_json(["CRITICAL"])
+        VastReportBuilder._fixup_health_results(data, None, alarm_fail_on="none")
+        self.assertEqual(self._alarm(data)["status"], "warning")
+        self.assertEqual(data["summary"]["warning"], 1)
+
+    def test_v162_json_major_only_fails_when_fail_on_major(self):
+        data = self._v162_json(["MAJOR"])
+        VastReportBuilder._fixup_health_results(data, None, alarm_fail_on="major")
+        self.assertEqual(self._alarm(data)["status"], "fail")
+        self.assertEqual(data["summary"]["fail"], 1)
+        self.assertEqual(data["summary"]["warning"], 0)
+
+    def test_pre_hc1_json_major_only_downgrades_to_warning(self):
+        data = self._pre_hc1_json(["MAJOR", "MAJOR"])
+        VastReportBuilder._fixup_health_results(data, None)
+        self.assertEqual(self._alarm(data)["status"], "warning")
+        self.assertEqual(data["summary"]["fail"], 0)
+        self.assertEqual(data["summary"]["warning"], 1)
+
+    def test_pre_hc1_json_with_critical_keeps_fail(self):
+        data = self._pre_hc1_json(["MAJOR", "CRITICAL"])
+        VastReportBuilder._fixup_health_results(data, None)
+        self.assertEqual(self._alarm(data)["status"], "fail")
+        self.assertEqual(data["summary"]["fail"], 1)
+
+    def test_split_counts_used_when_present(self):
+        """Saved counts win over a truncated (20-entry) alarm list."""
+        data = self._health_data(
+            "warning",
+            {
+                "total_alarms": 25,
+                "critical_unresolved": 1,
+                "major_unresolved": 24,
+                "alarms": [{"severity": "MAJOR", "object_name": "obj"}] * 20,
+            },
+        )
+        VastReportBuilder._fixup_health_results(data, None)
+        self.assertEqual(self._alarm(data)["status"], "fail")
+
+    def test_results_without_alarm_details_keep_status(self):
+        for status, details in (("fail", None), ("warning", {}), ("fail", {"critical_unresolved": 3})):
+            with self.subTest(status=status, details=details):
+                data = self._health_data(status, details)
+                if details is None:
+                    del self._alarm(data)["details"]
+                before = dict(data["summary"])
+                VastReportBuilder._fixup_health_results(data, None)
+                self.assertEqual(self._alarm(data)["status"], status)
+                self.assertEqual(data["summary"], before)
+
+    def test_report_config_reads_fail_on(self):
+        self.assertEqual(ReportConfig().alarm_fail_on, "critical")
+        self.assertEqual(ReportConfig.from_yaml({}).alarm_fail_on, "critical")
+        cfg = {"health_check": {"alarms": {"fail_on": "none"}}}
+        self.assertEqual(ReportConfig.from_yaml(cfg).alarm_fail_on, "none")
+        with self.assertLogs("utils.alarm_policy", level="WARNING"):
+            bad = ReportConfig.from_yaml({"health_check": {"alarms": {"fail_on": "always"}}})
+        self.assertEqual(bad.alarm_fail_on, "critical")
+
+    def test_section_uses_configured_policy(self):
+        builder = VastReportBuilder(config=ReportConfig(alarm_fail_on="none"))
+        data = self._pre_hc1_json(["CRITICAL"])
+        row = TestHealthCheckSummaryTotal._summary_row(builder._create_health_check_section(data))
+        self.assertEqual(row, ["1", "0", "1", "0", "0", "2"])
+        self.assertEqual(self._alarm(data)["status"], "warning")
+
+    def test_live_result_unchanged_and_summary_matches_statuses(self):
+        """A fresh run's JSON re-renders with the same status and counts the Health page shows."""
+        from dataclasses import asdict
+
+        from health_checker import HealthChecker
+
+        api = MagicMock()
+        api._make_api_request.side_effect = lambda path: (
+            [
+                {"severity": "CRITICAL", "resolved": False, "message": "Disk failure"},
+                {"severity": "MAJOR", "resolved": False, "message": "High CPU"},
+            ]
+            if path == "alarms/"
+            else []
+        )
+        result = HealthChecker(api_handler=api)._check_active_alarms()
+        data = {"summary": HealthChecker._summarize([result]), "results": [asdict(result)]}
+        VastReportBuilder._fixup_health_results(data, None)
+        self.assertEqual(data["results"][0]["status"], "fail")
+        self.assertEqual(data["summary"], {"pass": 0, "fail": 1, "warning": 0, "skipped": 0, "error": 0})
+
+
 class TestHealthCheckDetailsRendering(unittest.TestCase):
     """HCF-6 / RPT-LAYOUT-1: non-empty check details render in their functional-area group."""
 

@@ -34,6 +34,12 @@ from brand_compliance import BRAND_PRODUCT_NAME, VastBrandCompliance, create_vas
 # Import rack diagram module
 from rack_diagram import RackDiagram
 from utils import get_bundle_dir, get_data_dir
+from utils.alarm_policy import (
+    DEFAULT_ALARM_FAIL_ON,
+    alarm_fail_on_from_config,
+    alarm_status_from_details,
+    normalize_alarm_fail_on,
+)
 from utils.health_detail_groups import DetailGroup, build_health_detail_groups
 from utils.logger import get_logger
 from utils.pdf_layout import bind_titles_to_content, make_table
@@ -123,6 +129,7 @@ class ReportConfig:
     include_enhanced_features: bool = True
     organization: str = "VAST Professional Services"
     sections: Dict[str, bool] = field(default_factory=dict)
+    alarm_fail_on: str = DEFAULT_ALARM_FAIL_ON
     network_diagram: Dict[str, Any] = field(
         default_factory=lambda: {
             "mode": "detailed",
@@ -173,6 +180,8 @@ class ReportConfig:
         raw_sections = dc.get("sections", {})
         if isinstance(raw_sections, dict):
             kwargs["sections"] = {k: bool(v) for k, v in raw_sections.items()}
+
+        kwargs["alarm_fail_on"] = alarm_fail_on_from_config(config)
 
         nd = config.get("network_diagram", {})
         if isinstance(nd, dict) and nd:
@@ -5272,16 +5281,24 @@ class VastReportBuilder:
     def _fixup_health_results(
         health_data: Dict[str, Any],
         processed_data: Optional[Dict[str, Any]],
+        alarm_fail_on: Optional[str] = DEFAULT_ALARM_FAIL_ON,
     ) -> None:
         """Correct stale health-check results from older JSON exports.
 
         Applies render-time patches so reports regenerated from pre-fix JSON
         files reflect current check logic without requiring a new live run.
+
+        Args:
+            health_data: Saved health check dict (``results`` / ``summary``); patched in place.
+            processed_data: Full report data, used for management-CNode corrections.
+            alarm_fail_on: ``health_check.alarms.fail_on`` policy applied to
+                Active Alarms results that carry per-alarm severities.
         """
         results = health_data.get("results")
         if not results:
             return
 
+        fail_on = normalize_alarm_fail_on(alarm_fail_on)
         summary = health_data.get("summary")
 
         node_ssh = [r for r in results if r.get("category") == "node_ssh"]
@@ -5325,11 +5342,13 @@ class VastReportBuilder:
                         summary["fail"] = max(0, summary.get("fail", 1) - 1)
                         summary["pass"] = summary.get("pass", 0) + 1
 
-            elif name == "Active Alarms" and status == "fail":
-                r["status"] = "warning"
-                if summary:
-                    summary["fail"] = max(0, summary.get("fail", 1) - 1)
-                    summary["warning"] = summary.get("warning", 0) + 1
+            elif name == "Active Alarms" and status in ("pass", "warning", "fail"):
+                new_status = alarm_status_from_details(r.get("details"), fail_on)
+                if new_status and new_status != status:
+                    r["status"] = new_status
+                    if summary:
+                        summary[status] = max(0, summary.get(status, 1) - 1)
+                        summary[new_status] = summary.get(new_status, 0) + 1
 
             elif name == "Switches in VMS" and status == "warning":
                 msg = r.get("message", "")
@@ -5377,7 +5396,11 @@ class VastReportBuilder:
         Returns:
             List of flowables for the section.
         """
-        self._fixup_health_results(health_data, processed_data)
+        self._fixup_health_results(
+            health_data,
+            processed_data,
+            alarm_fail_on=getattr(self.config, "alarm_fail_on", DEFAULT_ALARM_FAIL_ON),
+        )
         styles = getSampleStyleSheet()
 
         heading_style = ParagraphStyle(
